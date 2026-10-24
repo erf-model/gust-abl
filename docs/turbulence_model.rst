@@ -261,6 +261,10 @@ cap. On Big Southern Butte the lee separates only on the unsmoothed terrain with
 (``Tests/Real_Terrain/WindNinja2019/inputs_bsb_srtm``: lee RMSE 2.58 m/s against 3.53 m/s on the paper-like mesh,
 with 68 m first cells and smoothed terrain).
 
+``Tests/Paper/JWEIA2026`` runs all the variants of the paper on this setting (without and with the sensor, the
+limit without the blending, first-order upwinding, the sensitivity to :math:`C_r`, :math:`\sigma_\mathrm{max}`
+and :math:`H_b`, and the grids) and draws its figures.
+
 The comparison uses data made openly available by N. Wagenbrenner (windninja-tools, the Big Southern Butte
 database and Wagenbrenner et al. 2019), T. Ishihara and Q. Zhou (the ridge wind-tunnel data) and ERCOFTAC (the
 RUSHIL data of Khurshudyan, Snyder and Nekrasov); we thank them. The case READMEs list the sources and licences.

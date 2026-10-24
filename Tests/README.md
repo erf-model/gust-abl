@@ -14,6 +14,7 @@ nothing is written into the source tree.
 | `Initialization` | The mass-consistent initial field: Askervein, and the hilltop speed-up trend against FastWindTerrain. | regression |
 | `Canonical_RANS` | The SIMPLEC stage to steady on ERF's canonical RANS cases: the neutral column, Neutral_ABL_Flat, Neutral_Hill_2D, Neutral_Hill_3D and its truly neutral variant, and the smooth plateau comparison case. | regression / nightly |
 | `Real_Terrain` | Askervein to steady, with a log-law inflow and in a conventionally neutral boundary layer. | regression |
+| `Paper` | `JWEIA2026`: the driver and figure scripts of the paper on the realizability sensor, over the `Real_Terrain` comparison cases. | scripts (no CTest) |
 | `Unit_Tests` | The GoogleTest suite (`unit_tests`) and its ERF golds. | unit |
 | `Supporting_Files` | Check scripts shared by more than one case, and the test-only drivers (`Tools/`). | assets |
 
