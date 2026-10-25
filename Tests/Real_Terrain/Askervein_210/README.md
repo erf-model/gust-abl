@@ -12,7 +12,7 @@ stretched by 1.08).
 |---|---|
 | `inputs_steady_askervein_210` | The deck. Terrain and inflow on the command line: `terrain.file=extern_erf/askervein.txt`, `bc.inflow_file=Tests/Real_Terrain/Askervein_210/askervein_210_inflow.txt`. The deck sets no sweep, CFL cap or sequencing; `rt_steady_askervein_210` adds `steady.sweep=lusgs steady.sequencing=1 mesh.hierarchy_levels=2`, and the old-vs-new run `rt_steady_askervein_210_zjacobi` adds the z-line Jacobi settings. |
 | `askervein_210_inflow.txt` | z u v θ rows from `extern_erf/inflow_powerlaw.txt` (`tools/erf_inflow_table.py --theta 300`). |
-| `askervein_lines.csv` | The masts of lines A and AA (Taylor and Teunissen 1987): positions in the frame of the terrain file, as tabulated in N. Wagenbrenner's windninja-tools. |
+| `askervein_lines.csv` | The masts of lines A and AA (Taylor and Teunissen 1987): positions in the frame of the terrain file, as tabulated in N. Wagenbrenner's windninja-tools, used with her permission. |
 | `Gold/erf_urans_lines_10m.csv` | ERF's 10 m speeds at the masts, averaged over 2400–4800 s. |
 | `Gold/askervein_210_level_history.json` | The grid-sequencing history of the line LU-SGS run (`rt_askervein_210_level_history`). |
 

@@ -169,8 +169,10 @@ new eddy viscosity is capped before the relaxation of ``turb.nut_relax``:
    \qquad S = \sqrt{2 S_{ij} S_{ij}},
 
 with :math:`w` = ``turb.nut_relax`` and :math:`\nu_t^\mathrm{old}` the stored value of the last iteration. The form
-is that of the SST limiter (Bradshaw's :math:`-\overline{uw}/k = a_1 = 0.31`); Durbin's (1996) time-scale bound gives
-:math:`\alpha/\sqrt{6} \approx 0.245` for :math:`\alpha = 0.6`. Unlike SST it acts everywhere, not only inside the
+is that of the SST limiter (Bradshaw's :math:`-\overline{uw}/k = a_1 = 0.31`). Durbin's (1996) time-scale bound is
+:math:`\nu_t \le \alpha k/(\sqrt{6}\,|S|)` with :math:`|S|^2 = S_{ij}S_{ij}`; in the :math:`S` above it is
+:math:`C_r = \alpha/\sqrt{3} \approx 0.346` for :math:`\alpha = 0.6` (0.245 = :math:`\alpha/\sqrt{6}` would be the same
+formula with Durbin's :math:`|S|` taken as this :math:`S`). Unlike SST it acts everywhere, not only inside the
 boundary layer. With the closure's relations, :math:`\nu_t S/k = C_{\mu 0}^2 \sqrt{P/\varepsilon}` in neutral flow, so the
 cap acts where :math:`P/\varepsilon > (C_r/C_{\mu 0}^2)^2`. :math:`C_r = 0.309` is 0.1 % below :math:`C_{\mu 0}^2 = 0.30936`
 for the default :math:`C_{\mu 0}`: the cap is active in an equilibrium surface layer too, where it lowers

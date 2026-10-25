@@ -11,9 +11,10 @@ is given twice. A run with a `done` file is not run again. Groups (default MAHSC
   M  main comparison: every case without and with the sensor (the three-curve figures, Tables 4-6)
   A  separation of the limit and the blending: limit only; first-order upwind without and with the limit (Table 7)
   H  empty-domain test (Section 5.1)
-  S  sensitivity (Appendix B): sigma_max, Tucker wall distance, consistent inflow, C_r sweep, H_b, freeze threshold,
+  S  sensitivity (Appendix B): sigma_max, Tucker wall distance, consistent inflow, C_r sweep (with Durbin's 0.346), H_b,
+     freeze threshold,
      the smoothed Butte terrain
-  C  Durbin's C_r = 0.245 (Appendix A)
+  C  C_r = 0.245, below the equilibrium value (Appendix A), with the empty domain at 0.245 in group H
   E  grid sensitivity: coarse and fine grids, with the sensor and with the limit only (Table 8)
 The Kato-Launder runs of Section 5.7 used the exploratory option turb.production of commit dfb0443, which was
 removed again (cf867cf); they are not repeated here.
@@ -50,6 +51,7 @@ def cases(out):
                       ("wn", "askervein")),
         "bsb": (f"{WN}/inputs_bsb_srtm", {"terrain.file": f"{w}/bsb.xyz"}, 1965, ("wn", "bsb")),
         "bsb_smooth": (f"{WN}/inputs_bsb_wn_consistent", {"terrain.file": f"{w}/bsb_wn.xyz"}, 1965, ("wn", "bsb_smooth")),
+        "bsb_flatedge": (f"{WN}/inputs_bsb_srtm", {"terrain.file": f"{w}/bsb_flatedge.xyz"}, 1965, ("wn", "bsb_flatedge")),
     }
     for h in (3, 5, 8):
         c[f"hill_{h}"] = (f"{RT}/RUSHIL/inputs_rushil", {"terrain.file": f"{ru}/hill{h}.xyz",
@@ -142,9 +144,10 @@ class Runner:
                    "--out", f"{d}/compare.csv"]
         else:
             site, case = {"askervein": ("askervein", "210"), "bsb": ("bsb", "222"),
-                          "bsb_smooth": ("bsb", "222")}.get(kind[1]) or ("bolund", kind[1].split("_")[1])
+                          "bsb_smooth": ("bsb", "222"), "bsb_flatedge": ("bsb", "222")}.get(kind[1]) or ("bolund", kind[1].split("_")[1])
             ter = (["--erf_terrain", ASK_TERRAIN] if site == "askervein" else
-                   ["--terrain", f"{o}/wn/bsb_wn.xyz" if kind[1] == "bsb_smooth" else f"{o}/wn/{site}.xyz"])
+                   ["--terrain", {"bsb_smooth": f"{o}/wn/bsb_wn.xyz", "bsb_flatedge": f"{o}/wn/bsb_flatedge.xyz"}.get(
+                       kind[1], f"{o}/wn/{site}.xyz")])
             z0 = "0.03" if site == "askervein" else "0.01"
             cmd = [WN_PY, "sample", p, "--site", site, "--case", case, "--masts", f"{o}/wn/masts.csv", *ter,
                    "--z0", z0, "--out", f"{o}/samples/{tag}.csv"]
@@ -176,7 +179,11 @@ class Runner:
                                 ("H_sensor", "inputs_hhabl_base", {**sens(290), "turb.max_geom_lscale": "100"}),
                                 ("H_lscale100", "inputs_hhabl_base", {"turb.max_geom_lscale": "100"}),
                                 ("H_consistent", "inputs_hhabl_consistent", {"turb.max_geom_lscale": "1.e6"}),
-                                ("H_consistent_sensor", "inputs_hhabl_consistent", {**sens(290), "turb.max_geom_lscale": "1.e6"})):
+                                ("H_consistent_sensor", "inputs_hhabl_consistent", {**sens(290), "turb.max_geom_lscale": "1.e6"}),
+                                ("H_consistent_cr245", "inputs_hhabl_consistent",
+                                 {**sens(290), "turb.max_geom_lscale": "1.e6", "turb.realizability": "0.245"}),
+                                ("H_consistent_cr346", "inputs_hhabl_consistent",
+                                 {**sens(290), "turb.max_geom_lscale": "1.e6", "turb.realizability": "0.346"})):
             d = f"{self.out}/runs/{tag}"
             os.makedirs(d, exist_ok=True)
             write_deck(f"{HERE}/{deck}", keys, f"{d}/inputs")
@@ -204,6 +211,9 @@ def do_run(a):
             R.run(f"A_caponly_{c}", c, CAPONLY)
             R.run(f"A_upwind_nocap_{c}", c, {**OFF, **UP})
             R.run(f"A_upwind_cap_{c}", c, {**CAPONLY, **UP})
+        # the Butte with no slope normal to the outflow faces over the last 680 m (flatten_outflow_edges.py)
+        R.run("A_caponly_bsb_flatedge", "bsb_flatedge", CAPONLY)
+        R.run("A_sensor_bsb_flatedge", "bsb_flatedge", sens(H["bsb_flatedge"]))
     if "H" in g:
         R.hhabl()
     if "S" in g:
@@ -223,9 +233,11 @@ def do_run(a):
                 R.run(f"S_Hb{nm}_{c}", c, {**sens(H[c]), "convection.hybrid_height": f"{f * H[c] / 2.5:g}"})
         for c in ["ridge_smooth", "bsb"]:
             R.run(f"S_freeze1e-3_{c}", c, {**sens(H[c]), "convection.hybrid_freeze": "1.e-3"})
+        for c in two_d + field + ["bsb"]:  # Durbin's bound with alpha = 0.6 in S = sqrt(2 S_ij S_ij): C_r = 0.6/sqrt(3)
+            R.run(f"S_cr0.346_{c}", c, {**sens(H[c]), "turb.realizability": "0.346"})
         R.run("S_sensor_bsb_smooth", "bsb_smooth", sens(H["bsb_smooth"]))
     if "C" in g:
-        for c in two_d + field:
+        for c in two_d + field + ["bsb"]:
             R.run(f"C_cr245_{c}", c, {**sens(H[c]), "turb.realizability": "0.245"})
     if "E" in g:
         for c in ["ridge_smooth", "hill_3"]:
@@ -246,6 +258,8 @@ def do_prepare(a):
     subprocess.run([*py, WN_PY, "smooth", f"{a.wntools}/test_cases/big_butte.asc", f"{o}/wn/bsb_wn.xyz",
                     "--sigma", "120", "--cap", "2050", "--soft", "150"], check=True)
     subprocess.run([*py, "-I", Z0_PY, f"{o}/wn/bolund.xyz", f"{o}/wn/bolund_z0.xyz"], check=True)
+    subprocess.run([*py, os.path.join(HERE, "flatten_outflow_edges.py"), f"{o}/wn/bsb.xyz", f"{o}/wn/bsb_flatedge.xyz"],
+                   check=True)
     subprocess.run([*py, IZ_PY, "prepare", a.iz_data, f"{o}/iz"], check=True)
     subprocess.run([*py, RU_PY, "prepare", a.rushil_data, f"{o}/rushil"], check=True)
 
