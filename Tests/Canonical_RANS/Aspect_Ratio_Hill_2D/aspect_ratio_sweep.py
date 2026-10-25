@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""Aspect-ratio sweep on the 2-D hill: iterations to a relative residual of 1e-4 for dx/dz1 = 10 ... 500.
+"""Aspect-ratio sweep on the 2-D hill: iterations to a relative residual of 1e-4 for dx/dz1 = 10 ... 5000.
 
     python3 aspect_ratio_sweep.py --gust build-rel/gust --out ar-runs [--np 2] [--ratios 10 25 50 100 200 500]
         [--max-iterations 8000] [--check] [--mpiexec "mpirun -np"]
 
 For each ratio the deck inputs_aspect_ratio_hill is copied with mesh.dz0 = dx/ratio and enough layers (stretched by
-mesh.stretch_ratio) to reach the same top, about 1.5 km. The run's log gives the first iteration with r < 1e-4 and
-the steady verdict. With --check the script exits non-zero unless every ratio up to 200 reaches r < 1e-4 within
+mesh.stretch_ratio) to reach the first level at or above 1.5 km (1.5-1.65 km). The run's log gives the first iteration with r < 1e-4 and
+the steady verdict. Iteration lines are printed every 10 iterations, so a count is exact only where the run stops at
+the target; otherwise it is rounded up to a multiple of 10. With --check the script exits non-zero unless every ratio up to 200 reaches r < 1e-4 within
 the iteration limit (the CTest).
 """
 import argparse
@@ -58,6 +59,7 @@ def main():
     ap.add_argument("--target", type=float, default=1e-4)
     ap.add_argument("--check", action="store_true")
     ap.add_argument("--mpiexec", default="mpirun -np", help="launcher and its rank flag; empty for a serial build")
+    ap.add_argument("--gust-arg", action="append", default=[], help="extra key=value for gust (repeatable)")
     a = ap.parse_args()
     ok = True
     print("| dx/dz1 | dz1 (m) | layers | iterations to r < 1e-4 | verdict |")
@@ -68,13 +70,13 @@ def main():
         dz, nz = write_deck(os.path.join(d, "inputs"), ratio, a.max_iterations)
         with open(os.path.join(d, "log.txt"), "w") as lg:
             launch = a.mpiexec.split() + [str(a.np)] if a.mpiexec.strip() else []
-            subprocess.run(launch + [os.path.abspath(a.gust), "inputs"], cwd=d,
-                           stdin=subprocess.DEVNULL, stdout=lg, stderr=subprocess.STDOUT)
+            rc = subprocess.run(launch + [os.path.abspath(a.gust), "inputs"] + a.gust_arg, cwd=d,
+                                stdin=subprocess.DEVNULL, stdout=lg, stderr=subprocess.STDOUT).returncode
         log = os.path.join(d, "log.txt")
         it = first_below(log, a.target)
         verdict = next((l.split("gust: ")[1].strip() for l in open(log) if re.search(r"steady after|not steady", l)), "no verdict")
         print(f"| {ratio:g} | {dz:g} | {nz} | {it if it is not None else 'not reached'} | {verdict} |", flush=True)
-        if ratio <= CHECKED_UP_TO and it is None:
+        if ratio <= CHECKED_UP_TO and (it is None or rc != 0):
             ok = False
     if a.check and not ok:
         sys.exit(1)

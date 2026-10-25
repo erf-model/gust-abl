@@ -701,9 +701,9 @@ Current tests
        284 measured). Without ``simplec.w_vnn_cap`` dx/dz1 = 100 and 200 do not reach it. Label ``regression``.
    * - ``outflow_steep_terrain_prepare``, ``rt_outflow_steep_terrain_flat``, ``rt_outflow_steep_terrain_cut``
      - Steep terrain at an outflow face (``Tests/Canonical_RANS/Outflow_Steep_Terrain``): a 2-D domain ending on the
-       steepest part of a rising cos² ridge. With no slope normal to the outflow face the realizability limit is
-       steady within 400 iterations (206 measured); with the face cutting the slope the iteration stops at a fixed
-       state (relative residual 0.178), the known limitation of the outflow condition on sloping terrain, which the
+       steepest part of a rising cos² ridge. With the terrain levelled at the outflow face (the slope stays 26° just
+       inside) the realizability limit is steady within 400 iterations (161 measured); with the face cutting the slope
+       the iteration stops at a fixed state (relative residual 0.178, checked above 0.1 at iteration 400), the known limitation of the outflow condition on sloping terrain, which the
        ``_cut`` test pins. The fixture writes the two terrain files. Label ``regression``.
    * - ``rt_steady_hill2d``
      - ERF's Neutral_Hill_2D (``Tests/Canonical_RANS/Neutral_Hill_2D/inputs_steady_hill2d``: 128 × 1 × 64, the Witch of Agnesi of

@@ -1,6 +1,6 @@
 # Steep terrain at an outflow face: a 2-D domain (2400 m x 32 m, y periodic) that ends on the steepest part of a
 # rising cos^2 ridge (crest 50 m beyond the outflow face; max slope 32 deg). terrain.file on the command line:
-# outflow_slope.xyz (the cut slope) or outflow_slope_flat.xyz (no normal slope over the last 100 m), both from
+# outflow_slope.xyz (the cut slope) or outflow_slope_flat.xyz (levelled beyond x = 2380 m, 8.2 m high), both from
 # make_terrain.py. Log-law inflow (u* 0.21 m/s, z0 0.01 m) on xlo, outflow on xhi, slip top, no gravity; the grid of
 # the Ishihara-Zhou ridge case (4 m cells, 0.5 m first layer stretched by 1.081); the limit of the realizability
 # sensor without the near-ground blending (C_r = 0.309, nu_t relaxation 1).

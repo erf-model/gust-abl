@@ -27,8 +27,8 @@ The recommended setting is the one in the case decks: `turb.realizability = 0.30
 `turb.realizability = 0`, `turb.nut_relax = 1` and `convection.hybrid_sigma_max = 0`. Bolund uses the water/land
 roughness map (`bc.surface_z0_file`, PR #59) in place of the decks' single roughness.
 
-The Kato–Launder runs of Section 5.7 used an exploratory option (`turb.production`, commit dfb0443) that was
-removed again in cf867cf because it did not change the separation; they are not repeated by the driver.
+The Kato–Launder runs of the paper used an exploratory option (`turb.production`) of a development version that was
+removed before release because it did not change the separation; they are not repeated by the driver.
 
 ## Data and acknowledgements
 Downloaded by the user (not in the repository):
@@ -52,18 +52,24 @@ Bolund data; the Askervein Hill project for the Askervein data; Takeshi Ishihara
 ridge data; and ERCOFTAC, the QNET-CFD Knowledge Base and the US EPA Fluid Modeling Facility for the RUSHIL data.
 
 ## How to run
+Prerequisites: Python 3.8 or later with numpy, scipy, matplotlib and xlrd (`ishihara_zhou.py prepare`), and an MPI
+launcher (`--mpiexec`, default `mpirun -np`; empty for a serial build).
+
 ```bash
 cmake -S . -B build-rel -DCMAKE_BUILD_TYPE=Release && cmake --build build-rel -j 8
 python3 Tests/Paper/JWEIA2026/paper_runs.py prepare --out paper-runs --wntools ~/windninja-tools \
     --iz-data ~/data/ishihara_zhou --rushil-data ~/data/rushil
 python3 Tests/Paper/JWEIA2026/paper_runs.py run --gust build-rel/gust --out paper-runs --np 8          # all groups
 python3 Tests/Paper/JWEIA2026/paper_runs.py run --gust build-rel/gust --out paper-runs --np 8 M        # main only
-python3 Tests/Paper/JWEIA2026/paper_runs.py stats --out paper-runs
+python3 Tests/Paper/JWEIA2026/paper_runs.py stats --out paper-runs --wntools ~/windninja-tools
 python3 Tests/Paper/JWEIA2026/plot_paper.py --runs paper-runs --outdir figures
 python3 Tests/Paper/JWEIA2026/plot_sitemaps.py --runs paper-runs --out figures/sitemaps.png
 python3 Tests/Paper/JWEIA2026/bolund_masts.py --runs paper-runs --wntools ~/windninja-tools
 python3 Tests/Paper/JWEIA2026/plot_hhabl.py extern_erf figures/hhabl.png \
-    "without sensor=paper-runs/runs/H_default/turb<last>" "with sensor=paper-runs/runs/H_sensor/turb<last>"
+    "GUST - CFD without sensor=$(ls -d paper-runs/runs/H_consistent/turb[0-9]* | tail -1)" \
+    "GUST - CFD with sensor=$(ls -d paper-runs/runs/H_consistent_sensor/turb[0-9]* | tail -1)"
+python3 -I Tests/Paper/JWEIA2026/hhabl_drift.py $(ls -d paper-runs/runs/H_consistent_sensor/turb[0-9]* | tail -1) \
+    extern_erf --law log_law --ustar 0.6278 --stations 0 2988 --heights 2 10
 ```
 Each run writes `paper-runs/runs/<group>_<variant>_<case>/` (deck, log, plotfiles) and, for the field sites,
 `paper-runs/samples/<run>.csv`. A run with a `done` file is skipped, so the driver can be restarted. Stalled runs
@@ -74,17 +80,17 @@ Big Southern Butte runs about half an hour.
 All runs of the paper reproduced on this code (`paper_runs.py run`, 8 ranks, 2026-10-25). Field sites: lee / all
 MAPE; wind tunnel: extent of reversed flow on the near-surface line and rms error in % of the reference velocity.
 
-| Case | Without sensor | With sensor | Limit only | Upwind, limit |
-|---|---|---|---|---|
-| Smooth ridge | none; 20 % | 42-170 m; 7 % | 41-179 m; 6 % | 54-119 m |
-| Rough ridge | 68-102 m; 23 % | 47-173 m; 15 % | 47-178 m | 51-138 m |
-| RUSHIL Hill 3 | 0.87a-0.98a; 20 % | 0.58a-1.45a; 17 % | 0.58a-1.48a | 0.62a-1.23a |
-| RUSHIL Hills 5 / 8 | none / none | none / none | none / none | none / none |
-| Askervein | 25 / 8 % | 14 / 8 % | 13 / 8 % | 14 / 8 % |
-| Bolund case 1 | 54 / 18 % | 36 / 14 % | 33 / 13 % | 44 / 15 % |
-| Bolund case 3 | 20 / 8 % | 18 / 8 % | 25 / 9 % | 10 / 6 % |
-| Bolund case 4 | 54 / 15 % | 81 / 21 % | 82 / 21 % | 61 / 16 % |
-| Big Southern Butte | not converged (r 2.2e-3) | 32 / 28 % | not converged (r 3.5e-3) | 42 / 32 % |
+| Case | Without sensor | With sensor | Limit only | Upwind, no limit | Upwind, limit |
+|---|---|---|---|---|---|
+| Smooth ridge | none; 20 % | 42-170 m; 7 % | 41-179 m; 6 % | none | 54-119 m |
+| Rough ridge | 68-102 m; 23 % | 47-173 m; 15 % | 47-178 m | 75-95 m | 51-138 m |
+| RUSHIL Hill 3 | 0.87a-0.98a; 20 % | 0.58a-1.45a; 17 % | 0.58a-1.48a | none | 0.62a-1.23a |
+| RUSHIL Hills 5 / 8 | none / none | none / none | none / none | none / none | none / none |
+| Askervein | 25 / 8 % | 14 / 8 % | 13 / 8 % | 24 / 9 % | 14 / 8 % |
+| Bolund case 1 | 54 / 18 % | 36 / 14 % | 33 / 13 % | 54 / 18 % | 44 / 15 % |
+| Bolund case 3 | 20 / 8 % | 18 / 8 % | 25 / 9 % | 28 / 10 % | 10 / 6 % |
+| Bolund case 4 | 54 / 15 % | 81 / 21 % | 82 / 21 % | 35 / 10 % | 61 / 16 % |
+| Big Southern Butte | not converged (r 2.2e-3) | 32 / 28 % | not converged (r 3.5e-3) | 38 / 30 % | 42 / 32 % |
 
 - Big Southern Butte with no normal slope at the outflow faces (`A_*_bsb_flatedge`): limit only 32 / 28 % (793
   iterations), with sensor 32 / 28 % (852; 853 on the original terrain).
@@ -93,8 +99,10 @@ MAPE; wind tunnel: extent of reversed flow on the near-surface line and rms erro
   43 %; 0.40: 68-100 m / 0.77a-1.06a / 47 %. Big Southern Butte at 0.245: not converged; at 0.346: 36 / 29 %.
 - Empty domain (consistent set-up, 3 km): U(2 m) -1.2 % and u* +1.0 % with the sensor; -1.9 % / +2.1 % at C_r = 0.346;
   nu_t -43 % and u* -18.7 % at C_r = 0.245.
-- Grids (sensor / limit only): smooth ridge 49-153, 42-170, 45-156 m / 47-166, 41-179, 45-160 m; Hill 3 0.55a-1.51a,
-  0.58a-1.45a, 0.59a-1.41a / 0.54a-1.58a, 0.58a-1.48a, 0.60a-1.42a.
+- Grids, coarse / base / fine with nested levels and the same top (sensor; limit only): smooth ridge 49-152, 42-170,
+  45-156 m; 48-164, 41-179, 45-160 m. Hill 3 0.54a-1.52a, 0.58a-1.45a, 0.59a-1.41a; 0.54a-1.59a, 0.58a-1.48a,
+  0.60a-1.42a (the fine limit-only run stops at a fixed state, r 2.6e-2; the sensor run converges). Bolund case 1 with
+  the horizontal spacing doubled / halved: lee 46 / 36 / 35 %, all 19 / 14 / 13 %.
 
 Differences from the paper's first runs (made before GUST PR #57, the ghost fill over terrain as a fixed point): the
 smooth ridge without the sensor converges (it stopped at r 1.6e-2 before), the extents of reversed flow change by at
