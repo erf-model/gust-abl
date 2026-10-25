@@ -111,13 +111,13 @@ def consistent(text):
 
 
 def refine(text, f):
-    """f = 2 (fine) or 0.5 (coarse) in x, y (not the 8 spanwise cells of the 2-D cases) and z. The vertical levels
-    nest: every coarse layer is two fine layers, and all three grids end at the same top. With stretch ratio r and
+    """f = 2 (fine) or 0.5 (coarse) in x, y (not the 8 spanwise cells of the 2-D cases) and z, systematically refined:
+    every coarse layer is two fine layers, and all three grids end at the same top (each is a separate run). With stretch ratio r and
     first layer dz0, the fine grid has r^(1/2) and dz0/(1 + r^(1/2)); the coarse grid r^2 and dz0 (1 + r)."""
     nx, ny, nz = map(int, deck_get(text, "mesh.n_cell").split())
     dz0, r = float(deck_get(text, "mesh.dz0")), float(deck_get(text, "mesh.stretch_ratio"))
     ny2 = ny if ny == 8 else int(ny * f)
-    assert f > 1 or nz % 2 == 0, "refine: the coarse grid needs an even number of layers to nest"
+    assert f > 1 or nz % 2 == 0, "refine: the coarse grid needs an even number of layers (two fine layers per coarse layer)"
     if f > 1:
         q = r ** 0.5
         dz, rr = dz0 / (1 + q), q
