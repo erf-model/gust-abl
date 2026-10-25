@@ -102,7 +102,7 @@ def prepare(a):
     # bsb.xyz (x, y from big_butte.asc's lower-left corner). The sensors on TSW and TWSW get their distance along
     # the line (the projection on Figure 14a's digitized transect, distance 0 at its south-west end); the others
     # are on no line ("-": in the statistics, not the transect plots).
-    here = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "Tests", "Real_Terrain", "WindNinja2019")
+    here = HERE                                     # the digitized Figure 14 files sit next to this script
     nocomment = lambda path: (l for l in open(path) if l[0] != "#")  # noqa: E731
     ends = {}
     for r in csv.DictReader(nocomment(os.path.join(here, "bsb_transects_fig14.csv"))):

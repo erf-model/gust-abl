@@ -169,8 +169,10 @@ new eddy viscosity is capped before the relaxation of ``turb.nut_relax``:
    \qquad S = \sqrt{2 S_{ij} S_{ij}},
 
 with :math:`w` = ``turb.nut_relax`` and :math:`\nu_t^\mathrm{old}` the stored value of the last iteration. The form
-is that of the SST limiter (Bradshaw's :math:`-\overline{uw}/k = a_1 = 0.31`); Durbin's (1996) time-scale bound gives
-:math:`\alpha/\sqrt{6} \approx 0.245` for :math:`\alpha = 0.6`. Unlike SST it acts everywhere, not only inside the
+is that of the SST limiter (Bradshaw's :math:`-\overline{uw}/k = a_1 = 0.31`). Durbin's (1996) time-scale bound is
+:math:`\nu_t \le \alpha k/(\sqrt{6}\,|S|)` with :math:`|S|^2 = S_{ij}S_{ij}`; in the :math:`S` above it is
+:math:`C_r = \alpha/\sqrt{3} \approx 0.346` for :math:`\alpha = 0.6` (0.245 = :math:`\alpha/\sqrt{6}` would be the same
+formula with Durbin's :math:`|S|` taken as this :math:`S`). Unlike SST it acts everywhere, not only inside the
 boundary layer. With the closure's relations, :math:`\nu_t S/k = C_{\mu 0}^2 \sqrt{P/\varepsilon}` in neutral flow, so the
 cap acts where :math:`P/\varepsilon > (C_r/C_{\mu 0}^2)^2`. :math:`C_r = 0.309` is 0.1 % below :math:`C_{\mu 0}^2 = 0.30936`
 for the default :math:`C_{\mu 0}`: the cap is active in an equilibrium surface layer too, where it lowers
@@ -260,6 +262,10 @@ Bolund case 4 (flow from the east, the lee over the escarpment) is slower than m
 cap. On Big Southern Butte the lee separates only on the unsmoothed terrain with a 4 m first layer
 (``Tests/Real_Terrain/WindNinja2019/inputs_bsb_srtm``: lee RMSE 2.58 m/s against 3.53 m/s on the paper-like mesh,
 with 68 m first cells and smoothed terrain).
+
+``Tests/Paper/JWEIA2026`` runs all the variants of the paper on this setting (without and with the sensor, the
+limit without the blending, first-order upwinding, the sensitivity to :math:`C_r`, :math:`\sigma_\mathrm{max}`
+and :math:`H_b`, and the grids) and draws its figures.
 
 The comparison uses data made openly available by N. Wagenbrenner (windninja-tools, the Big Southern Butte
 database and Wagenbrenner et al. 2019), T. Ishihara and Q. Zhou (the ridge wind-tunnel data) and ERCOFTAC (the
