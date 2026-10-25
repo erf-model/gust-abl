@@ -99,7 +99,7 @@ MAPE; wind tunnel: extent of reversed flow on the near-surface line and rms erro
   43 %; 0.40: 68-100 m / 0.77a-1.06a / 47 %. Big Southern Butte at 0.245: not converged; at 0.346: 36 / 29 %.
 - Empty domain (consistent set-up, 3 km): U(2 m) -1.2 % and u* +1.0 % with the sensor; -1.9 % / +2.1 % at C_r = 0.346;
   nu_t -43 % and u* -18.7 % at C_r = 0.245.
-- Grids, coarse / base / fine with nested levels and the same top (sensor; limit only): smooth ridge 49-152, 42-170,
+- Grids, coarse / base / fine, systematically refined (each layer split in two, same top) (sensor; limit only): smooth ridge 49-152, 42-170,
   45-156 m; 48-164, 41-179, 45-160 m. Hill 3 0.54a-1.52a, 0.58a-1.45a, 0.59a-1.41a; 0.54a-1.59a, 0.58a-1.48a,
   0.60a-1.42a (the fine limit-only run stops at a fixed state, r 2.6e-2; the sensor run converges). Bolund case 1 with
   the horizontal spacing doubled / halved: lee 46 / 36 / 35 %, all 19 / 14 / 13 %.
