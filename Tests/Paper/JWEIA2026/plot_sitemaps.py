@@ -6,7 +6,7 @@ direction of each case, in the coordinates of the computational domain.
 
 Terrain: RUNS/wn/bolund.xyz and bsb.xyz (x y z points on a regular grid, from paper_runs.py prepare) and the ERF
 terrain file of Askervein (extern_erf/askervein.txt: nx, ny, the x and y node lists, then z). Masts: RUNS/wn/masts.csv. Wind directions: bc.inflow_direction of the decks
-(the direction the wind blows towards, counter-clockwise from the x axis).
+(the direction the wind blows towards, counter-clockwise from the x axis), written into the script.
 """
 import argparse
 import csv
@@ -44,7 +44,7 @@ def read_erf(path):
     nx, ny = int(v[0]), int(v[1])
     xs = np.array(v[2:2 + nx]); ys = np.array(v[2 + nx:2 + nx + ny])
     z = np.array(v[2 + nx + ny:2 + nx + ny + nx * ny])
-    return xs, ys, z.reshape(ny, nx)
+    return xs, ys, z.reshape(nx, ny).T   # stored contiguous in y (ERF TerrainSurface: i*ny + j)
 
 
 def masts(site):
@@ -73,9 +73,13 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--runs", required=True, help="the --out directory of paper_runs.py")
     ap.add_argument("--out", default="sitemaps.png")
+    ap.add_argument("--bolund-out", default=None, help="Bolund map (default: bolund_map.png next to --out)")
     a = ap.parse_args()
     global R
     R = os.path.abspath(a.runs)
+    if a.bolund_out is None:
+        a.bolund_out = os.path.join(os.path.dirname(os.path.abspath(a.out)), "bolund_map.png")
+    os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
     fig, axs = plt.subplots(1, 2, figsize=(13, 5.4))
     figb, axb = plt.subplots(1, 1, figsize=(10, 5.6))
 
@@ -130,10 +134,10 @@ def main():
     figb.colorbar(cfb, ax=axb, shrink=0.75, label="terrain height (m)")
 
     figb.tight_layout()
-    figb.savefig(a.out.replace("sitemaps", "bolund_map"), dpi=150)
+    figb.savefig(a.bolund_out, dpi=150)
     fig.tight_layout()
     fig.savefig(a.out, dpi=150)
-    print(a.out, a.out.replace("sitemaps", "bolund_map"))
+    print(a.out, a.bolund_out)
 
 
 if __name__ == "__main__":

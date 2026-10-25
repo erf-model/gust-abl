@@ -3,7 +3,7 @@
 ## Purpose
 How thin first cells change the convergence of the steady iteration. A 2-D Agnesi ridge (100 m high, 250 m
 half-width, max ground slope 14.6 deg) with dx = dy = 100 m and the first layer dz1 = dx/ratio for dx/dz1 = 10 to
-5000; the layers are stretched by 1.1 to the same top of about 1.5 km. Log-law inflow (u* 0.4 m/s, z0 0.01 m), outflow,
+5000; the layers are stretched by 1.1 up to the first level at or above 1.5 km (1.5-1.65 km). Log-law inflow (u* 0.4 m/s, z0 0.01 m), outflow,
 slip top with Rayleigh damping of w above 1000 m, no gravity, the basic terrain-following mapping, and the recommended
 setting of the realizability sensor. The quantity is the number of iterations until the relative residual falls below
 1e-4. Beyond the plan.
@@ -19,6 +19,7 @@ setting of the realizability sensor. The quantity is the number of iterations un
 python3 Tests/Canonical_RANS/Aspect_Ratio_Hill_2D/aspect_ratio_sweep.py --gust build-rel/gust --out ar-runs --np 2 \
     --ratios 10 25 50 100 200 500 1000 2000 5000 --max-iterations 8000
 ```
+On 2 ranks the ratios up to 200 take a few seconds each; 1000 to 5000 take minutes to an hour each.
 The roughness runs below copy a member's `inputs` and set `bc.surface_z0` and `bc.inflow_z0` to the same value.
 
 ## Expected Results
@@ -51,6 +52,6 @@ at dx/dz1 = 500, every step reached 2000 GMRES(30) iterations at a Krylov relati
 does not support `convection.hybrid_sigma_max`.
 
 ## CTest
-`rt_aspect_ratio_hill` (label `regression`, 2 ranks, about 3 min): dx/dz1 = 10, 100 and 200 each reach r < 1e-4
+`rt_aspect_ratio_hill` (label `regression`, 2 ranks, about 10 s): dx/dz1 = 10, 100 and 200 each reach r < 1e-4
 within 400 iterations. Mutant: without `simplec.w_vnn_cap` (the w-row cap for thin cells), dx/dz1 = 10 still converges
 (266 iterations) but 100 and 200 do not reach 1e-4 within 400, and the check fails.

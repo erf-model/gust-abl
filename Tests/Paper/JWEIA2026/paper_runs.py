@@ -16,8 +16,8 @@ is given twice. A run with a `done` file is not run again. Groups (default MAHSC
      the smoothed Butte terrain
   C  C_r = 0.245, below the equilibrium value (Appendix A), with the empty domain at 0.245 in group H
   E  grid sensitivity: coarse and fine grids, with the sensor and with the limit only (Table 8)
-The Kato-Launder runs of Section 5.7 used the exploratory option turb.production of commit dfb0443, which was
-removed again (cf867cf); they are not repeated here.
+The Kato-Launder runs of the paper used an exploratory option (turb.production) of a development version that was
+removed before release; they are not repeated here.
 """
 import argparse
 import glob
@@ -85,7 +85,7 @@ def write_deck(src, keys, dst):
         if v is None:
             text = pat.sub("", text)
         elif pat.search(text):
-            text = pat.sub(f"{k} = {v}", text)
+            text = pat.sub(lambda m, k=k, v=v: f"{k} = {v}", text)
         else:
             text += f"\n{k} = {v}\n"
     open(dst, "w").write(text)
@@ -93,6 +93,8 @@ def write_deck(src, keys, dst):
 
 
 def top_height(text):
+    assert deck_get(text, "mesh.stretch_ratio") and float(deck_get(text, "mesh.stretch_ratio")) > 1, \
+        "consistent() needs a stretched mesh (mesh.stretch_ratio > 1)"
     n = int(deck_get(text, "mesh.n_cell").split()[2])
     dz0, r = float(deck_get(text, "mesh.dz0")), float(deck_get(text, "mesh.stretch_ratio"))
     return dz0 * (r ** n - 1) / (r - 1)
@@ -109,12 +111,20 @@ def consistent(text):
 
 
 def refine(text, f):
-    """f = 2 (fine) or 0.5 (coarse) in x, y (not the 8 spanwise cells of the 2-D cases) and z."""
+    """f = 2 (fine) or 0.5 (coarse) in x, y (not the 8 spanwise cells of the 2-D cases) and z. The vertical levels
+    nest: every coarse layer is two fine layers, and all three grids end at the same top. With stretch ratio r and
+    first layer dz0, the fine grid has r^(1/2) and dz0/(1 + r^(1/2)); the coarse grid r^2 and dz0 (1 + r)."""
     nx, ny, nz = map(int, deck_get(text, "mesh.n_cell").split())
     dz0, r = float(deck_get(text, "mesh.dz0")), float(deck_get(text, "mesh.stretch_ratio"))
     ny2 = ny if ny == 8 else int(ny * f)
-    return {"mesh.n_cell": f"{int(nx * f)} {ny2} {int(nz * f)}", "mesh.dz0": f"{dz0 / f:.6g}",
-            "mesh.stretch_ratio": f"{r ** (1 / f):.8f}"}
+    assert f > 1 or nz % 2 == 0, "refine: the coarse grid needs an even number of layers to nest"
+    if f > 1:
+        q = r ** 0.5
+        dz, rr = dz0 / (1 + q), q
+    else:
+        dz, rr = dz0 * (1 + r), r * r
+    return {"mesh.n_cell": f"{int(nx * f)} {ny2} {int(nz * f)}", "mesh.dz0": f"{dz:.8g}",
+            "mesh.stretch_ratio": f"{rr:.10f}"}
 
 
 def refine_h(text, f):
@@ -162,17 +172,25 @@ class Runner:
         k = dict(base)
         k.update(keys)
         k.setdefault("steady.max_iterations", str(self.a.max_iterations))
+        old = open(f"{d}/inputs").read() if os.path.exists(f"{d}/inputs") else None
         text = write_deck(deck or src, k, f"{d}/inputs")
         if extra:
-            write_deck(f"{d}/inputs", extra(text), f"{d}/inputs")
+            text = write_deck(f"{d}/inputs", extra(text), f"{d}/inputs")
+        if os.path.exists(f"{d}/done") and old is not None and old != text:
+            print(f"WARNING: {tag}: the deck differs from the one of the finished run; remove {d} to rerun", flush=True)
         if not os.path.exists(f"{d}/done"):
+            for stale in glob.glob(f"{d}/plt[0-9]*") + glob.glob(f"{d}/turb[0-9]*"):
+                subprocess.run(["rm", "-rf", stale])
             with open(f"{d}/log.txt", "w") as lg:
-                r = subprocess.run(["mpirun", "-np", str(self.a.np), os.path.abspath(self.a.gust), "inputs"], cwd=d,
+                r = subprocess.run(self.launch() + [os.path.abspath(self.a.gust), "inputs"], cwd=d,
                                    stdin=subprocess.DEVNULL, stdout=lg, stderr=subprocess.STDOUT)
             if r.returncode == 0:
                 open(f"{d}/done", "w").close()
         st = [l for l in open(f"{d}/log.txt") if re.search(r"steady after|not steady|diverged|!!!", l)]
         print(time.strftime("%H:%M"), tag, "|", st[0].strip() if st else "no verdict", "|", self.post(c, d, tag), flush=True)
+
+    def launch(self):
+        return self.a.mpiexec.split() + [str(self.a.np)] if self.a.mpiexec.strip() else []
 
     def hhabl(self):
         for tag, deck, keys in (("H_default", "inputs_hhabl_base", {}),
@@ -186,10 +204,10 @@ class Runner:
                                  {**sens(290), "turb.max_geom_lscale": "1.e6", "turb.realizability": "0.346"})):
             d = f"{self.out}/runs/{tag}"
             os.makedirs(d, exist_ok=True)
-            write_deck(f"{HERE}/{deck}", keys, f"{d}/inputs")
+            write_deck(f"{HERE}/{deck}", {**keys, "steady.max_iterations": str(self.a.max_iterations)}, f"{d}/inputs")
             if not os.path.exists(f"{d}/done"):
                 with open(f"{d}/log.txt", "w") as lg:
-                    r = subprocess.run(["mpirun", "-np", str(self.a.np), os.path.abspath(self.a.gust), "inputs"], cwd=d,
+                    r = subprocess.run(self.launch() + [os.path.abspath(self.a.gust), "inputs"], cwd=d,
                                        stdin=subprocess.DEVNULL, stdout=lg, stderr=subprocess.STDOUT)
                 if r.returncode == 0:
                     open(f"{d}/done", "w").close()
@@ -269,7 +287,8 @@ def do_stats(a):
     for pattern in ("M_*", "A_*", "S_*", "C_*", "E_*"):
         csvs = sorted(glob.glob(f"{o}/samples/{pattern}.csv"))
         if csvs:
-            subprocess.run([sys.executable, WN_PY, "stats", *csvs, "--masts", f"{o}/wn/masts.csv"])
+            env = {**os.environ, "BSB_ASC": os.path.join(a.wntools, "test_cases", "big_butte.asc")}
+            subprocess.run([sys.executable, WN_PY, "stats", *csvs, "--masts", f"{o}/wn/masts.csv"], env=env)
 
 
 def main():
@@ -285,10 +304,12 @@ def main():
     r.add_argument("--gust", required=True)
     r.add_argument("--out", required=True)
     r.add_argument("--np", type=int, default=8)
+    r.add_argument("--mpiexec", default="mpirun -np", help="launcher and its rank flag; empty for a serial build")
     r.add_argument("--max-iterations", type=int, default=4000,
                    help="stalled runs stop here (the recommended setting converges in fewer than 900)")
     s = sub.add_parser("stats")
     s.add_argument("--out", required=True)
+    s.add_argument("--wntools", required=True, help="checkout of windninja-tools (big_butte.asc for the Butte errors)")
     a = ap.parse_args()
     {"prepare": do_prepare, "run": do_run, "stats": do_stats}[a.cmd](a)
 

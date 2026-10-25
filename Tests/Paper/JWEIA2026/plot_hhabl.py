@@ -16,6 +16,8 @@ ap.add_argument("--stations", type=float, nargs="+", default=[0.0, None])
 ap.add_argument("--zmax", type=float, default=300.0)
 ap.add_argument("--klim", type=float, nargs=2, default=None, help="k axis range (m2/s2); default 0 to twice the equilibrium k")
 a = ap.parse_args()
+import os  # noqa: E402
+os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
 sys.path.insert(0, a.readerdir)
 import erf_plotfile as ep  # noqa: E402
 
@@ -39,7 +41,7 @@ for c, run in zip(colors, a.runs):
     for st, ls in zip(a.stations, ["-", ":"]):
         i = nx - 1 if st is None else min(range(nx), key=lambda i: abs(xc[i] - st))
         z, u, k = column(d, hdr, i)
-        name = ("%s, hill position" % label if abs(st) < 1e-9 else "%s, x = %.0f m" % (label, xc[i])) if st is not None else "%s, outflow" % label
+        name = ("%s, 3 km from the inflow" % label if abs(st) < 1e-9 else "%s, x = %.0f m" % (label, xc[i])) if st is not None else "%s, outflow" % label
         ax[0].plot(u, z, ls, color=c, lw=1.4, label=name)
         ax[1].plot(k, z, ls, color=c, lw=1.4, label=name)
 for x, t in zip(ax, ["$U$ (m/s)", "$k$ (m$^2$/s$^2$)"]):

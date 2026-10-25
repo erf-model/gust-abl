@@ -827,20 +827,24 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
     # sensor, dx/dz1 = 10, 100 and 200 reach a relative residual of 1e-4 within 400 iterations
     # (234, 181 and 284 measured). The full sweep up to 5000 is run by hand (README).
     set(AR_DIR ${CMAKE_CURRENT_BINARY_DIR}/run/rt_aspect_ratio_hill)
+    set(AR_GUST_ARGS "")
+    foreach(flag ${GUST_TEST_AMREX_FLAGS})
+        list(APPEND AR_GUST_ARGS "--gust-arg=${flag}")
+    endforeach()
     file(MAKE_DIRECTORY ${AR_DIR})
     if(GUST_MPI)
-        set(AR_MPIEXEC "${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG}")
+        string(JOIN " " AR_MPIEXEC ${MPIEXEC_EXECUTABLE} ${MPIEXEC_PREFLAGS} ${_extra_mpiexec} ${MPIEXEC_NUMPROC_FLAG})
     else()
         set(AR_MPIEXEC "")
     endif()
     add_test(NAME rt_aspect_ratio_hill
              COMMAND ${Python3_EXECUTABLE} ${AR_CASE}/aspect_ratio_sweep.py --gust $<TARGET_FILE:gust> --out ${AR_DIR}
-                     --np 2 --ratios 10 100 200 --max-iterations 400 --check "--mpiexec=${AR_MPIEXEC}"
+                     --np 2 --ratios 10 100 200 --max-iterations 400 --check "--mpiexec=${AR_MPIEXEC}" ${AR_GUST_ARGS}
              WORKING_DIRECTORY ${AR_DIR})
     set_tests_properties(rt_aspect_ratio_hill PROPERTIES LABELS "regression" PROCESSORS 2 TIMEOUT 900
                          ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
-    # Steep terrain at an outflow face (Canonical_RANS/Outflow_Steep_Terrain): with no normal slope at the
-    # outflow the limit alone is steady within 400 iterations (206 measured); with the face cutting the
+    # Steep terrain at an outflow face (Canonical_RANS/Outflow_Steep_Terrain): with the terrain levelled at the
+    # outflow face the limit alone is steady within 400 iterations (161 measured); with the face cutting the
     # steepest part of the slope the iteration stops at a fixed state (r = 0.178), a known limitation.
     set(OUTFLOW_TERRAIN ${CMAKE_CURRENT_BINARY_DIR}/run/outflow_steep_terrain)
     add_test(NAME outflow_steep_terrain_prepare
@@ -848,12 +852,13 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
     set_tests_properties(outflow_steep_terrain_prepare PROPERTIES LABELS "regression"
                          FIXTURES_SETUP outflow_terrain ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
     gust_add_test(NAME rt_outflow_steep_terrain_flat NP 2 LABELS "regression" FIXTURES_REQUIRED outflow_terrain
-                  PREFIX ${EXPECT_ABORT} --success "gust: steady after [0-9]+ iterations" --
+                  PREFIX ${EXPECT_ABORT} --success --timeout 600 "gust: steady after [0-9]+ iterations" --
                   COMMAND $<TARGET_FILE:gust> ${OUTFLOW_CASE}/inputs_outflow_slope
                           terrain.file=${OUTFLOW_TERRAIN}/outflow_slope_flat.xyz steady.max_iterations=400
                           ${GUST_TEST_AMREX_FLAGS})
     gust_add_test(NAME rt_outflow_steep_terrain_cut NP 2 LABELS "regression" FIXTURES_REQUIRED outflow_terrain
-                  PREFIX ${EXPECT_ABORT} --success "gust: not steady after 400 iterations" --
+                  PREFIX ${EXPECT_ABORT} --success --timeout 600 "gust: not steady after 400 iterations"
+                         "gust: it +400 cfl [^ ]+ r [1-9]\\.[0-9]+e-01" --
                   COMMAND $<TARGET_FILE:gust> ${OUTFLOW_CASE}/inputs_outflow_slope
                           terrain.file=${OUTFLOW_TERRAIN}/outflow_slope.xyz steady.max_iterations=400
                           ${GUST_TEST_AMREX_FLAGS})

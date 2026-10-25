@@ -2,7 +2,7 @@
 """Profile drift in the empty-domain ABL test (Section 5.1 of the paper), from a GUST turbulence plotfile.
 
     python3 -I hhabl_drift.py <turb plotfile> <reader dir> --law power_law --speed 8.7502 --zref 10 --alpha 0.2113
-    python3 -I hhabl_drift.py <turb plotfile> <reader dir> --law log_law --ustar 0.61726
+    python3 -I hhabl_drift.py <turb plotfile> <reader dir> --law log_law --ustar 0.6278
 
 <reader dir> is the directory of ERF's erf_plotfile.py (extern_erf/).
 
@@ -51,7 +51,7 @@ def main():
     ap.add_argument("--speed", type=float, default=8.7502)
     ap.add_argument("--zref", type=float, default=10.0)
     ap.add_argument("--alpha", type=float, default=0.2113)
-    ap.add_argument("--ustar", type=float, default=0.61726)
+    ap.add_argument("--ustar", type=float, default=0.6278)
     ap.add_argument("--z0", type=float, default=0.03)
     ap.add_argument("--kappa", type=float, default=0.41)
     ap.add_argument("--cmu0", type=float, default=0.5562)

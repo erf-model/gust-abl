@@ -13,6 +13,7 @@ import csv
 import glob
 import math
 import os
+import re
 import sys
 
 import matplotlib
@@ -45,7 +46,7 @@ SITES = {  # name: (site, case, title); samples R/samples/M_sensor_<name>.csv an
 
 def converged(tag):
     log = f"{R}/runs/{tag}/log.txt"
-    return os.path.exists(log) and "steady after" in open(log).read()
+    return os.path.exists(log) and re.search(r"^gust: steady after", open(log).read(), re.M) is not None
 
 
 def last_plt(d):
@@ -271,6 +272,7 @@ def main():
     a = ap.parse_args()
     global R, MANNING
     R, MANNING = os.path.abspath(a.runs), a.manning
+    os.makedirs(a.outdir, exist_ok=True)
     if a.what in ("all", "sites"):
         sites(a.outdir)
     if a.what in ("all", "ridge"):
