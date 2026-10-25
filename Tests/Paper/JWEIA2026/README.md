@@ -19,6 +19,7 @@ after another, the empty-domain decks, and the scripts that draw the paper's fig
 | `plot_hhabl.py` | Figure of the empty-domain profiles. |
 | `plot_sitemaps.py` | Site maps of Askervein, Big Southern Butte and Bolund with the masts and wind directions. |
 | `bolund_masts.py` | Bolund mast by mast (Appendix C): speed and k at 2 m and 5 m at every sonic mast. |
+| `flatten_outflow_edges.py` | Gives the Big Southern Butte terrain no slope normal to the outflow faces over the last 680 m (`prepare` writes `bsb_flatedge.xyz`). |
 
 The recommended setting is the one in the case decks: `turb.realizability = 0.309`, `turb.nut_relax = 0.5`,
 `convection.hybrid_sigma_max = 0.1`, `convection.hybrid_height` = 2.5 times the terrain height (100 m ridge,
@@ -70,7 +71,34 @@ stop at 4000 iterations (`--max-iterations`). The whole set is about 130 runs; m
 Big Southern Butte runs about half an hour.
 
 ## Expected Results
-EXPECTED_RESULTS
+All runs of the paper reproduced on this code (`paper_runs.py run`, 8 ranks, 2026-10-25). Field sites: lee / all
+MAPE; wind tunnel: extent of reversed flow on the near-surface line and rms error in % of the reference velocity.
+
+| Case | Without sensor | With sensor | Limit only | Upwind, limit |
+|---|---|---|---|---|
+| Smooth ridge | none; 20 % | 42-170 m; 7 % | 41-179 m; 6 % | 54-119 m |
+| Rough ridge | 68-102 m; 23 % | 47-173 m; 15 % | 47-178 m | 51-138 m |
+| RUSHIL Hill 3 | 0.87a-0.98a; 20 % | 0.58a-1.45a; 17 % | 0.58a-1.48a | 0.62a-1.23a |
+| RUSHIL Hills 5 / 8 | none / none | none / none | none / none | none / none |
+| Askervein | 25 / 8 % | 14 / 8 % | 13 / 8 % | 14 / 8 % |
+| Bolund case 1 | 54 / 18 % | 36 / 14 % | 33 / 13 % | 44 / 15 % |
+| Bolund case 3 | 20 / 8 % | 18 / 8 % | 25 / 9 % | 10 / 6 % |
+| Bolund case 4 | 54 / 15 % | 81 / 21 % | 82 / 21 % | 61 / 16 % |
+| Big Southern Butte | not converged (r 2.2e-3) | 32 / 28 % | not converged (r 3.5e-3) | 42 / 32 % |
+
+- Big Southern Butte with no normal slope at the outflow faces (`A_*_bsb_flatedge`): limit only 32 / 28 % (793
+  iterations), with sensor 32 / 28 % (852; 853 on the original terrain).
+- C_r (Appendices A, B), smooth ridge / Hill 3 / Bolund case 1 lee: 0.245: 31-279 m / 0.42a-2.13a / 2 %;
+  0.33: 47-145 m / 0.63a-1.32a / 40 %; 0.346 (Durbin): 51-130 m / 0.67a-1.23a / 43 %; 0.35: 53-127 m / 0.67a-1.21a /
+  43 %; 0.40: 68-100 m / 0.77a-1.06a / 47 %. Big Southern Butte at 0.245: not converged; at 0.346: 36 / 29 %.
+- Empty domain (consistent set-up, 3 km): U(2 m) -1.2 % and u* +1.0 % with the sensor; -1.9 % / +2.1 % at C_r = 0.346;
+  nu_t -43 % and u* -18.7 % at C_r = 0.245.
+- Grids (sensor / limit only): smooth ridge 49-153, 42-170, 45-156 m / 47-166, 41-179, 45-160 m; Hill 3 0.55a-1.51a,
+  0.58a-1.45a, 0.59a-1.41a / 0.54a-1.58a, 0.58a-1.48a, 0.60a-1.42a.
+
+Differences from the paper's first runs (made before GUST PR #57, the ghost fill over terrain as a fixed point): the
+smooth ridge without the sensor converges (it stopped at r 1.6e-2 before), the extents of reversed flow change by at
+most 1 m or 0.01a, the RMSE at the field sites by at most 0.01 m/s and the MAPE by at most one percentage point.
 
 ## CTest
 None: the runs take hours in total. The options they use are covered by the unit and regression tests of
