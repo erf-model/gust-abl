@@ -1,0 +1,55 @@
+# Thin first cells on a 2-D hill: the deck of the aspect-ratio sweep (aspect_ratio_sweep.py). An Agnesi ridge
+# 100 m high with a 250 m half-width (max ground slope 14.6 deg), 6 km x 200 m, dx = dy = 100 m, y periodic;
+# log-law inflow (u* 0.4 m/s, z0 0.01 m) on xlo, outflow on xhi, a slip top with Rayleigh damping of w above
+# 1000 m, no gravity; the recommended setting of the realizability sensor. This deck is the dx/dz1 = 10 member
+# (first layer 10 m, stretched by 1.1 to about 1.6 km); the sweep sets mesh.dz0 and the number of layers for
+# dx/dz1 = 10, 25, 50, 100, 200 and 500 and counts the iterations to a relative residual of 1e-4.
+mesh.n_cell           = 60 2 30
+mesh.prob_lo          = 0. 0. 0.
+mesh.prob_hi          = 6000. 200. 1500.
+mesh.is_periodic      = 0 1 0
+mesh.max_grid_size    = 30 2
+mesh.dz0              = 10.
+mesh.stretch_ratio    = 1.1
+
+terrain.type            = agnesi
+terrain.hill_shape      = ridge_x
+terrain.hill_height     = 100.
+terrain.hill_half_width = 250.
+terrain.smoothing       = 0
+
+bc.xlo = inflow
+bc.xhi = outflow
+bc.zlo = surface_layer
+bc.zhi = slip_wall
+bc.surface_z0       = 0.01
+bc.inflow_profile   = log_law
+bc.inflow_ustar     = 0.4
+bc.inflow_z0        = 0.01
+bc.inflow_direction = 0.
+bc.theta_profile_z  = 0.
+bc.theta_profile    = 300.
+bc.rayleigh_zdamp    = 1000.
+bc.rayleigh_dampcoef = 0.2
+bc.rayleigh_fields   = w
+
+forcing.gravity = 0.
+turb.tke_floor  = 1.e-6
+turb.max_geom_lscale = 100.
+turb.realizability   = 0.309
+turb.nut_relax       = 0.5
+convection.hybrid_sigma_max = 0.1
+convection.hybrid_height    = 250.
+simplec.w_vnn_cap = 16
+
+init.first_guess = profile
+
+steady.stage                = simplec
+steady.sweep                = lusgs
+steady.zline_sweeps         = 2
+steady.cfl_max              = 16.
+steady.residual_drop_orders = 4
+steady.max_iterations       = 8000
+
+io.write_plotfile   = 0
+io.write_checkpoint = 0
