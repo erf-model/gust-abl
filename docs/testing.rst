@@ -694,6 +694,17 @@ Current tests
        without the cap takes 2881 iterations (3983 before the Rayleigh layer ended at the mesh's top level, when it
        was not steady at 3500 either). Measured to 6 orders before that change: cap off 14154, margin 2 4142, and the
        steady states agree to 3e-8 m/s.
+   * - ``rt_aspect_ratio_hill``
+     - Thin first cells on a 2-D Agnesi ridge (``Tests/Canonical_RANS/Aspect_Ratio_Hill_2D``: 100 m high, 250 m
+       half-width, dx = 100 m, the recommended setting of the realizability sensor): ``aspect_ratio_sweep.py --check``
+       runs dx/dz1 = 10, 100 and 200 and requires a relative residual below 1e-4 within 400 iterations (234, 181 and
+       284 measured). Without ``simplec.w_vnn_cap`` dx/dz1 = 100 and 200 do not reach it. Label ``regression``.
+   * - ``outflow_steep_terrain_prepare``, ``rt_outflow_steep_terrain_flat``, ``rt_outflow_steep_terrain_cut``
+     - Steep terrain at an outflow face (``Tests/Canonical_RANS/Outflow_Steep_Terrain``): a 2-D domain ending on the
+       steepest part of a rising cos² ridge. With no slope normal to the outflow face the realizability limit is
+       steady within 400 iterations (206 measured); with the face cutting the slope the iteration stops at a fixed
+       state (relative residual 0.178), the known limitation of the outflow condition on sloping terrain, which the
+       ``_cut`` test pins. The fixture writes the two terrain files. Label ``regression``.
    * - ``rt_steady_hill2d``
      - ERF's Neutral_Hill_2D (``Tests/Canonical_RANS/Neutral_Hill_2D/inputs_steady_hill2d``: 128 × 1 × 64, the Witch of Agnesi of
        100 m and 500 m, the flat deck's sounding and forcing, Rayleigh damping of w and θ from 700 m, 16 sweeps, CFL

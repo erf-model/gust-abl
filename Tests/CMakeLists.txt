@@ -146,6 +146,8 @@ set(COLUMN_CASE         ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Neutral_Colum
 set(FLAT_CASE           ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Neutral_ABL_Flat)
 set(THIN_CELL_CASE      ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Thin_Cell_Flat)
 set(STEEP_RIDGE_CASE    ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Steep_Ridge_Thin_Cell)
+set(AR_CASE             ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Aspect_Ratio_Hill_2D)
+set(OUTFLOW_CASE        ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Outflow_Steep_Terrain)
 set(HILL2D_CASE         ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Neutral_Hill_2D)
 set(HILL3D_CASE         ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Neutral_Hill_3D)
 set(HILL3D_NEUTRAL_CASE ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Truly_Neutral_Hill_3D)
@@ -821,6 +823,41 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
                   COMMAND $<TARGET_FILE:gust> ${STEEP_RIDGE_CASE}/inputs_steep_ridge_thin_cell simplec.w_vnn_cap=16
                           simplec.w_vnn_cap_slope_margin=0 steady.max_iterations=3500 ${GUST_TEST_AMREX_FLAGS})
     set_tests_properties(rt_steep_ridge_w_vnn_cap rt_steep_ridge_w_vnn_cap_margin_off PROPERTIES TIMEOUT 600)
+    # Thin first cells on a 2-D hill (Canonical_RANS/Aspect_Ratio_Hill_2D): with the realizability
+    # sensor, dx/dz1 = 10, 100 and 200 reach a relative residual of 1e-4 within 400 iterations
+    # (234, 181 and 284 measured). The full sweep up to 5000 is run by hand (README).
+    set(AR_DIR ${CMAKE_CURRENT_BINARY_DIR}/run/rt_aspect_ratio_hill)
+    file(MAKE_DIRECTORY ${AR_DIR})
+    if(GUST_MPI)
+        set(AR_MPIEXEC "${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG}")
+    else()
+        set(AR_MPIEXEC "")
+    endif()
+    add_test(NAME rt_aspect_ratio_hill
+             COMMAND ${Python3_EXECUTABLE} ${AR_CASE}/aspect_ratio_sweep.py --gust $<TARGET_FILE:gust> --out ${AR_DIR}
+                     --np 2 --ratios 10 100 200 --max-iterations 400 --check "--mpiexec=${AR_MPIEXEC}"
+             WORKING_DIRECTORY ${AR_DIR})
+    set_tests_properties(rt_aspect_ratio_hill PROPERTIES LABELS "regression" PROCESSORS 2 TIMEOUT 900
+                         ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
+    # Steep terrain at an outflow face (Canonical_RANS/Outflow_Steep_Terrain): with no normal slope at the
+    # outflow the limit alone is steady within 400 iterations (206 measured); with the face cutting the
+    # steepest part of the slope the iteration stops at a fixed state (r = 0.178), a known limitation.
+    set(OUTFLOW_TERRAIN ${CMAKE_CURRENT_BINARY_DIR}/run/outflow_steep_terrain)
+    add_test(NAME outflow_steep_terrain_prepare
+             COMMAND ${Python3_EXECUTABLE} ${OUTFLOW_CASE}/make_terrain.py ${OUTFLOW_TERRAIN})
+    set_tests_properties(outflow_steep_terrain_prepare PROPERTIES LABELS "regression"
+                         FIXTURES_SETUP outflow_terrain ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
+    gust_add_test(NAME rt_outflow_steep_terrain_flat NP 2 LABELS "regression" FIXTURES_REQUIRED outflow_terrain
+                  PREFIX ${EXPECT_ABORT} --success "gust: steady after [0-9]+ iterations" --
+                  COMMAND $<TARGET_FILE:gust> ${OUTFLOW_CASE}/inputs_outflow_slope
+                          terrain.file=${OUTFLOW_TERRAIN}/outflow_slope_flat.xyz steady.max_iterations=400
+                          ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME rt_outflow_steep_terrain_cut NP 2 LABELS "regression" FIXTURES_REQUIRED outflow_terrain
+                  PREFIX ${EXPECT_ABORT} --success "gust: not steady after 400 iterations" --
+                  COMMAND $<TARGET_FILE:gust> ${OUTFLOW_CASE}/inputs_outflow_slope
+                          terrain.file=${OUTFLOW_TERRAIN}/outflow_slope.xyz steady.max_iterations=400
+                          ${GUST_TEST_AMREX_FLAGS})
+    set_tests_properties(rt_outflow_steep_terrain_flat rt_outflow_steep_terrain_cut PROPERTIES TIMEOUT 600)
     # ERF's Neutral_Hill_2D to steady (about 80 s on two ranks);
     # the verdict, a two-order drop of the u residual and ERF's own
     # check_hill.py --physics (extern_erf/) on the turbulence plotfile.
