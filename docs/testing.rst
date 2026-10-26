@@ -908,6 +908,11 @@ GoogleTest suite
      - ``z_phys``, ``detJ`` and nodal heights equal ERF's own output for the same 2-D hill deck (BTF, STF,
        Sullivan; STF and Sullivan bit for bit on macOS, BTF to rounding because GUST keeps the ground layer as
        given, all within 1e-13 elsewhere); STF capped at 2 of 16 levels, as ERF reports.
+   * - ``Mesh.IdwMirrorTiesAreTheLowerIndex``
+     - Audit A5 (found by Pressel): the two mirror images of a query on the diagonal of a 0.1-spaced grid tie exactly,
+       and the lower index wins, for k = 2 to 8 and both point orders. The squared distance is each square rounded,
+       then added, so no build can fuse it; with ``dx * dx + dy * dy`` contracted to an fma the 64 tied queries here
+       picked by the last bit, and a build that contracts differently picked the other point (0.23 m on Askervein).
    * - ``Mesh.IdwBucketsEqualBruteForce``, ``Mesh.TerrainAtMapCoordinates``, ``Mesh.FileTerrainSeamIsPeriodic``, ``Mesh.GroundLayerIsTheGivenSurface``, ``Mesh.TerrainThatFillsTheDomainIsRefused``, ``Mesh.QualitySlopeOfDiagonalRidge``, ``Mesh.RestartWithOtherTerrainIsRefused``, ``Mesh.QualityReportFlagsSteepTerrain``
      - The IDW bucket search picks the brute-force neighbours; results agree to 1e-13 (random
        cloud with far queries, a regular grid with exact distance ties, a tie across a bucket edge, a transect
@@ -1204,6 +1209,12 @@ GoogleTest suite
        second stage's residual switches back at iteration 11 (the window compared must lie within the second stage,
        entered at 6); every pair of switches is at
        least :math:`W` apart; the records carry each iteration's stage; one stage never switches.
+   * - ``Driver.HistoryRecordsTheResidualNorm``
+     - Audit A5: a new run records the norm (driver history format 4) and a write and a read keep it; a format-3 file
+       reads as not recorded, and a restore from it says so in the log; a norm other than 0 or 1 is refused.
+   * - ``Mesh.RestartAcceptsHeightsWithinAFewUlp``
+     - Audit A5 (U6): node heights one ulp above this build's, or ±32 ulp of the top level's height, restart, and the run
+       continues on this build's heights; ±128 ulp, 64 000 ulp and a NaN node stop it (before, any difference did).
    * - ``Driver.HistoryIsRestartableBitForBit``
      - The history written to ``<dir>/Driver`` and read back is equal field by field (records, switches with their
        reasons, accounts, the criterion's history); a two-stage run interrupted after 6 iterations and continued by a
@@ -1595,7 +1606,9 @@ GoogleTest suite
    * - ``IO.CheckpointRestartIsBitIdenticalOnANewLayout``, ``IO.CheckpointRestartRestoresNodalGhostsOnTheSameLayout``, ``IO.CheckpointWithOneGhostCellRestarts``
      - Checkpoint and restart onto another box layout, bit-identical; ghost nodes restored without overwriting
        valid nodes; a checkpoint written with one ghost cell on the solution fields (the earlier
-       layout) restarts bit-identical.
+       layout) restarts bit-identical. ``IO.CheckpointGhostImagesAreTheNeighboursValues`` (audit A5): with the state's
+       ghosts stale, every ghost image in the written file equals the neighbouring box's (or periodic image's) valid
+       value, and the state keeps its own ghosts (main wrote the stale values: about 2800 per field here).
    * - ``Reductions.*``
      - The sum gives the same bits on 1, 2 and 4 ranks and within 16 ε Σ\|x\| of the exact sum; the maximum
        handles NaN and −0. Audit A4: ``…DotCountsEachFaceOnceOnAnyLayout`` and ``…LevelSumsCountEachFaceOnceOnAnyLayout``

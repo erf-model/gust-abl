@@ -36,7 +36,9 @@ Restarting
 Set ``io.restart`` to a checkpoint directory (:doc:`howto` has a step-by-step recipe).
 
 - The mesh and terrain inputs and the floating-point precision must match the checkpoint exactly. The box layout
-  (``mesh.max_grid_size``) and the number of ranks may differ.
+  (``mesh.max_grid_size``) and the number of ranks may differ. The node heights may differ from this build's by up to
+  64 ulp of the top level's height (a checkpoint from another compiler; about 1.7e-11 m on a 1000 m deep mesh in
+  double precision, 8 mm in single); the log says so.
 - ``init.*`` keys cannot be combined with ``io.restart``: the checkpoint holds the state.
 - With grid sequencing, a restart continues level 0 only.
 - A restart with the SIMPLEC stage needs a checkpoint written by the stage. The checkpoint holds the solver history
