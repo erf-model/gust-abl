@@ -58,5 +58,28 @@ errors, and publishes ``docs/_build/html`` to GitHub Pages. Only the built HTML 
 Kestrel
 -------
 
+The hosted runners have no GPU, so the CUDA, HIP and SYCL jobs above only compile. ``tools/kestrel/nightly_gpu.sh``
+runs the smoke tests on Kestrel H100s:
+
+.. code-block:: bash
+
+   tools/kestrel/nightly_gpu.sh run      # inside a GPU allocation (salloc --gpus=4)
+   tools/kestrel/nightly_gpu.sh submit   # the same as a batch job (GUST_ACCOUNT=<allocation>)
+   tools/kestrel/nightly_gpu.sh status   # the result of the latest run
+
+The job clones ``erf-model/gust-abl`` at ``main`` (``GUST_NIGHTLY_REF`` for another branch) into
+``GUST_NIGHTLY_WORK`` (default ``/scratch/$USER/gust-nightly``), builds it with ``build_kestrel.sh gpu``, sets one
+rank per GPU (``GUST_MPIEXEC_PREFLAGS=--gpus-per-task=1``) and runs ``ctest -L smoke``. Before the tests it checks
+that every smoke run of ``gust`` carries ``amrex.the_arena_init_size=0 amrex.init_snan=1
+amrex.fpe_trap_invalid=1``. The smoke tests include the 2-D hill restart chain over terrain
+(``rt_steady_hill2d_restart_*``) and the 2-D hill with Coriolis run twice, compared at zero tolerance
+(``rt_coriolis_repeat_*``). Each run writes ``logs/<date>_<sha>/`` (``info``, ``build.log``, ``ctest.log``,
+``junit.xml``, ``status``); the newest 30 are kept (``GUST_NIGHTLY_KEEP``). ``GUST_NIGHTLY_MAIL`` mails a failed
+batch job.
+
+The job is started by ``scrontab`` or by ``cron`` on a login node, not from GitHub Actions: a self-hosted runner on
+Kestrel would need the HPC center's approval. Results are read on Kestrel (``status``) and are not reported to pull
+requests.
+
 The regression tests labelled ``physics`` (``ctest -L physics``) and the performance tests will run nightly on
 Kestrel CPU nodes and H100s once they exist.
