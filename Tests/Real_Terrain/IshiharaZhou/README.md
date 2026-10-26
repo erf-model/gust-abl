@@ -17,15 +17,16 @@ Both decks carry the recommended GUST - CFD setting (`../WindNinja2019/README.md
 
 ## Data and acknowledgements
 Downloaded by the user (not in the repository): the supplementary spreadsheets mmc1.xls–mmc4.xls (smooth and
-rough approach flow, smooth and rough ridge stations) of Ishihara, T., Zhou, Q. (2025), "Wind tunnel data of
-turbulent flows over a two-dimensional steep ridge", *Data in Brief* 63, 112260 (CC BY 4.0), from the article page.
+rough approach flow, smooth and rough ridge stations) of Ishihara, T., Zhou, T. (2025), "Wind tunnel
+measurement dataset of turbulent flow over two-dimensional ridges and three-dimensional hills with smooth and rough
+surfaces", *Data in Brief* 63, 112260, doi:10.1016/j.dib.2025.112260 (CC BY 4.0), from the article page.
 `ishihara_zhou.py prepare DATA OUTDIR` writes `ridge.xyz`, `inflow_smooth.txt`, `inflow_rough.txt` and
 `stations_*.csv`.
 
 The LES reattachment lengths quoted by `compare` are those of Liu, Z., Diao, Z., Ishihara, T. (2019), *Renewable
 Energy* 136, 968, as digitized in kynema/kynema-sgf#2036.
 
-We thank Takeshi Ishihara and Qiang Zhou for publishing the wind-tunnel data openly.
+We thank Takeshi Ishihara and Tong Zhou for publishing the wind-tunnel data openly.
 
 ## How to run
 ```bash
