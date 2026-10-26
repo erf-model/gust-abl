@@ -11,11 +11,13 @@ ROOT=$(cd "$(dirname "$0")/../../.." && pwd)
 BIN=$(cd "$1" && pwd)/gust; RUN=$(cd "$2" && pwd); c=$3; VARS=$4; NP=${5:-8}
 D=$ROOT/Tests/Real_Terrain/WindNinja2019
 T=$ROOT/Tests/Real_Terrain/WindNinja2019/windninja2019.py
+. "$D/timed_run.sh"
 case $c in
-  askervein*) terr="terrain.file=$ROOT/extern_erf/askervein.txt"; samp="--erf_terrain $ROOT/extern_erf/askervein.txt"; site=askervein; k=210; z0=0.03 ;;
-  bolund_*)   terr="terrain.file=$RUN/bolund.xyz"; samp="--terrain $RUN/bolund.xyz"; site=bolund; k=${c#bolund_}; z0=0.01 ;;
-  bsb_wn*)    terr="terrain.file=$RUN/bsb_wn.xyz"; samp="--terrain $RUN/bsb_wn.xyz"; site=bsb; k=222; z0=0.01 ;;
-  bsb|bsb_srtm) terr="terrain.file=$RUN/bsb.xyz"; samp="--terrain $RUN/bsb.xyz"; site=bsb; k=222; z0=0.01 ;;
+  askervein*) terr=("terrain.file=$ROOT/extern_erf/askervein.txt"); samp=(--erf_terrain "$ROOT/extern_erf/askervein.txt"); site=askervein; k=210; z0=0.03 ;;
+  bolund_*)   terr=("terrain.file=$RUN/bolund.xyz"); samp=(--terrain "$RUN/bolund.xyz"); site=bolund; k=${c#bolund_}; z0=0.01 ;;
+  bsb_wn*)    terr=("terrain.file=$RUN/bsb_wn.xyz"); samp=(--terrain "$RUN/bsb_wn.xyz"); site=bsb; k=222; z0=0.01 ;;
+  bsb|bsb_srtm) terr=("terrain.file=$RUN/bsb.xyz"); samp=(--terrain "$RUN/bsb.xyz"); site=bsb; k=222; z0=0.01 ;;
+  *) echo "sweep.sh: unknown case $c"; exit 1 ;;
 esac
 csvs=("$RUN/${c}_rans_van_leer.csv")
 while read -r name kv; do
@@ -36,10 +38,10 @@ while read -r name kv; do
     [ "$key" = bc.surface_z0 ] && zs=$val
   done
   if [ ! -f "$dir/done" ]; then
-    ( cd "$dir" && /usr/bin/time -l mpirun -np "$NP" "$BIN" inputs $terr < /dev/null > log.txt 2> time.txt ) && touch "$dir/done"
+    timed_run "$dir" mpirun -np "$NP" "$BIN" inputs "${terr[@]}"
   fi
-  echo "$name: $(grep -E 'steady after|not steady|diverged' "$dir/log.txt" | head -1) $(grep ' real' "$dir/time.txt" | awk '{print $1 " s"}')"
-  [ -f "$dir/done" ] && python3 "$T" sample "$dir/plt" --site $site --case $k --masts "$RUN/masts.csv" $samp --z0 "$zs" \
+  echo "$name: $(grep -E 'steady after|not steady|diverged' "$dir/log.txt" | head -1) $(awk '$1 == "real" {print $2 " s"} $2 == "real" {print $1 " s"}' "$dir/time.txt" 2> /dev/null)"
+  [ -f "$dir/done" ] && python3 "$T" sample "$dir/plt" --site $site --case $k --masts "$RUN/masts.csv" "${samp[@]}" --z0 "$zs" \
       --out "$RUN/${c}_rans__$name.csv" > /dev/null && csvs+=("$RUN/${c}_rans__$name.csv")
 done < "$VARS"
 python3 "$T" plot "${csvs[@]}" --masts "$RUN/masts.csv" --site $site --case $k \

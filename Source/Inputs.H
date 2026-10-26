@@ -103,6 +103,9 @@ struct IOInputs
     //! solver, the residuals, r) or "full" (one line with every diagnostic,
     //! the log before io.iteration_log).
     std::string iteration_log{"table"};
+    //! The converged column's table (init.first_guess = column), written on
+    //! the I/O rank; a bc.inflow_file for a later run. Not empty.
+    std::string column_guess_file{"column_guess.dat"};
 };
 
 struct Inputs

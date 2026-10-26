@@ -118,7 +118,7 @@ Inputs parse_inputs ()
         amrex::ParmParse pp("io");
         // Scalar keys take exactly one value; extra tokens are an error, not dropped.
         for (const char* key : {"plot_file", "chk_file", "restart", "write_plotfile",
-                                "write_checkpoint", "turb_plot_file", "iteration_log"}) {
+                                "write_checkpoint", "turb_plot_file", "iteration_log", "column_guess_file"}) {
             if (pp.contains(key) && pp.countval(key) != 1) {
                 in.parse_errors.emplace_back(std::string("io.") + key + " takes exactly one value");
             }
@@ -130,6 +130,7 @@ Inputs parse_inputs ()
         pp.query("write_checkpoint", in.io.write_checkpoint);
         pp.query("turb_plot_file", in.io.turb_plot_file);
         pp.query("iteration_log", in.io.iteration_log);
+        pp.query("column_guess_file", in.io.column_guess_file);
     }
 
     // A key given twice would silently take its last value.
@@ -139,7 +140,7 @@ Inputs parse_inputs ()
              {"terrain", {"type", "file", "smoothing", "gamma_m", "hill_height", "hill_half_width",
                           "hill_shape", "idw_neighbors", "idw_power", "hierarchy_passes"}},
              {"io", {"plot_file", "chk_file", "restart", "write_plotfile", "write_checkpoint", "turb_plot_file",
-                     "iteration_log"}}}) {
+                     "iteration_log", "column_guess_file"}}}) {
         amrex::ParmParse pp(ns);
         for (const auto& key : keys) {
             if (pp.countname(key) > 1) {
@@ -192,6 +193,7 @@ std::vector<std::string> validate (const Inputs& in)
 
     if (in.io.plot_file.empty()) { err.emplace_back("io.plot_file must not be empty"); }
     if (in.io.chk_file.empty())  { err.emplace_back("io.chk_file must not be empty"); }
+    if (in.io.column_guess_file.empty()) { err.emplace_back("io.column_guess_file must not be empty"); }
     if (in.io.write_plotfile != 0 && in.io.write_plotfile != 1) {
         err.emplace_back("io.write_plotfile must be 0 or 1");
     }

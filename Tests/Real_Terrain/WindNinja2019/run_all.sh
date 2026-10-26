@@ -17,17 +17,19 @@ ROOT=$(cd "$(dirname "$0")/../../.." && pwd)
 BIN=$(cd "$1" && pwd)/gust; WN=$2; RUN=$3; NP=${4:-8}
 D=$ROOT/Tests/Real_Terrain/WindNinja2019
 T=$ROOT/Tests/Real_Terrain/WindNinja2019/windninja2019.py
+. "$D/timed_run.sh"
 mkdir -p "$RUN" && RUN=$(cd "$RUN" && pwd)
 [ -f "$RUN/masts.csv" ] || python3 "$T" prepare "$WN" "$RUN"
 for c in ${CASES:-askervein bolund_270 bolund_239 bolund_90 bsb_srtm}; do
   case $c in
-    askervein*) terr="terrain.file=$ROOT/extern_erf/askervein.txt"; samp="--erf_terrain $ROOT/extern_erf/askervein.txt"; site=askervein; k=210; z0=0.03 ;;
-    bolund_*)  terr="terrain.file=$RUN/bolund.xyz"; samp="--terrain $RUN/bolund.xyz"; site=bolund; k=${c#bolund_}; z0=0.01 ;;
+    askervein*) terr=("terrain.file=$ROOT/extern_erf/askervein.txt"); samp=(--erf_terrain "$ROOT/extern_erf/askervein.txt"); site=askervein; k=210; z0=0.03 ;;
+    bolund_*)  terr=("terrain.file=$RUN/bolund.xyz"); samp=(--terrain "$RUN/bolund.xyz"); site=bolund; k=${c#bolund_}; z0=0.01 ;;
     bsb_wn*)   # the paper-like mesh; bsb_wn.xyz: windninja2019.py smooth big_butte.asc --sigma 120 --cap 2050 --soft 150
                [ -f "$RUN/bsb_wn.xyz" ] || python3 "$T" smooth "$WN/test_cases/big_butte.asc" "$RUN/bsb_wn.xyz" \
                  --sigma 120 --cap 2050 --soft 150
-               terr="terrain.file=$RUN/bsb_wn.xyz"; samp="--terrain $RUN/bsb_wn.xyz"; site=bsb; k=222; z0=0.01 ;;
-    bsb|bsb_srtm) terr="terrain.file=$RUN/bsb.xyz"; samp="--terrain $RUN/bsb.xyz"; site=bsb; k=222; z0=0.01 ;;
+               terr=("terrain.file=$RUN/bsb_wn.xyz"); samp=(--terrain "$RUN/bsb_wn.xyz"); site=bsb; k=222; z0=0.01 ;;
+    bsb|bsb_srtm) terr=("terrain.file=$RUN/bsb.xyz"); samp=(--terrain "$RUN/bsb.xyz"); site=bsb; k=222; z0=0.01 ;;
+    *) echo "$c: unknown case; skipped"; continue ;;
   esac
   # The 100 K mesh: n_cell, max_grid_size, dz0 and stretch_ratio (top unchanged).
   mesh100=""
@@ -55,10 +57,10 @@ for c in ${CASES:-askervein bolund_270 bolund_239 bolund_90 bsb_srtm}; do
       # mc_stable: WindNinja's "slightly stable" class, alpha = alpha_H/alpha_V = 0.5 (src/ninja/stability.cpp),
       # the run the paper used for its Askervein COM result.
       if [ "$r" = mc_stable ]; then echo "init.alpha_v = 0.5" >> "$dir/inputs"; else echo "init.alpha_v = 1.0" >> "$dir/inputs"; fi
-      extra=""
+      extra=()
     else
       cp "$D/inputs_$c" "$dir/inputs"
-      extra="convection.limiter=${r#rans_}"
+      extra=("convection.limiter=${r#rans_}")
       # upwind: the blend towards upwind has no effect and is refused, so its keys are dropped.
       if [ "$r" = rans_upwind ]; then
         grep -vE "^convection\.hybrid_" "$dir/inputs" > "$dir/inputs.tmp" && mv "$dir/inputs.tmp" "$dir/inputs"
@@ -71,12 +73,12 @@ for c in ${CASES:-askervein bolund_270 bolund_239 bolund_90 bsb_srtm}; do
         "$dir/inputs" > "$dir/inputs.tmp" && mv "$dir/inputs.tmp" "$dir/inputs"
     fi
     if [ ! -f "$dir/done" ]; then
-      ( cd "$dir" && /usr/bin/time -l mpirun -np "$NP" "$BIN" inputs $terr $extra \
-          < /dev/null > log.txt 2> time.txt ) && touch "$dir/done"
+      # ${extra[@]+...}: an empty array is "unbound" under set -u in bash 3.2 (macOS).
+      timed_run "$dir" mpirun -np "$NP" "$BIN" inputs "${terr[@]}" ${extra[@]+"${extra[@]}"}
       grep -E "steady after|not steady|diverged|wrote plt" "$dir/log.txt" | head -1
     fi
     if [ -f "$dir/done" ]; then
-      python3 "$T" sample "$dir/plt" --site $site --case $k --masts "$RUN/masts.csv" $samp --z0 $z0 \
+      python3 "$T" sample "$dir/plt" --site $site --case $k --masts "$RUN/masts.csv" "${samp[@]}" --z0 $z0 \
         --out "$RUN/${c}${tag}_$r.csv" && csvs+=("$RUN/${c}${tag}_$r.csv")
     fi
   done
@@ -86,6 +88,8 @@ for c in ${CASES:-askervein bolund_270 bolund_239 bolund_90 bsb_srtm}; do
        "$RUN/${pc}"_100k_*.csv "$RUN/${pc}"_stable_100k_*.csv)
   have=()
   for f in "${all[@]}"; do [ -f "$f" ] && have+=("$f"); done
-  [ ${#have[@]} -gt 0 ] && python3 "$T" plot "${have[@]}" --masts "$RUN/masts.csv" --site $site --case $k \
-    --paper "$D/wagenbrenner2019_digitized.csv" --out "$RUN/$pc.png"
+  if [ ${#have[@]} -gt 0 ]; then   # an if, so a case without samples does not end the script with status 1
+    python3 "$T" plot "${have[@]}" --masts "$RUN/masts.csv" --site $site --case $k \
+      --paper "$D/wagenbrenner2019_digitized.csv" --out "$RUN/$pc.png"
+  fi
 done

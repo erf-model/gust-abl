@@ -67,14 +67,33 @@ struct InflowProfileOptions
 //! Problems with the options, naming each (the file is not read here).
 std::vector<std::string> check_inflow_profile_options (const InflowProfileOptions& opt);
 
+//! A bc.inflow_file table: z u v theta, and k when the file has 5 columns.
+struct InflowTable
+{
+    amrex::Vector<amrex::Real> z, u, v, theta, k;   // k zero when ncol = 4
+    int ncol{0};
+};
+
+//! Parse the text of a bc.inflow_file (file names it in the messages). '#'
+//! starts a comment; blank lines are skipped; every other line holds 4 or 5
+//! numbers, the same count on every line, each token a complete number in
+//! strtod's syntax with nothing attached (a token such as "300.0K" or "1,2"
+//! is refused, not cut). A leading UTF-8 byte-order mark is skipped.
+//! Aborts naming the file and the line on a bad token, a non-finite value,
+//! heights that do not start at 0 and increase strictly, theta <= 0, k < 0,
+//! or fewer than two rows. Local: no communication.
+InflowTable parse_inflow_table (const std::string& text, const std::string& file);
+
 //! The profile, ready to evaluate on the device: the analytic kinds from
 //! their parameters, a file as a table copied to the device.
 class InflowProfile
 {
 public:
     //! Build from the options and the reference theta profile (used by the
-    //! analytic kinds). Aborts, naming bc.inflow_file, on a file that cannot
-    //! be read or is not "z u v theta [k]" with z increasing from 0.
+    //! analytic kinds). A file is read on the I/O rank and broadcast
+    //! (collective: construct on every rank), then parsed by
+    //! parse_inflow_table. Aborts, naming bc.inflow_file, on a file that
+    //! cannot be read or that parse_inflow_table refuses.
     InflowProfile (const InflowProfileOptions& opt, const ReferenceProfile& theta_ref);
     //! A tabulated profile given in memory (the converged
     //! column of ColumnGuess.H): the file kind with the table z u v theta k

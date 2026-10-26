@@ -83,7 +83,8 @@ has converged when the largest change of :math:`u, v` and :math:`k` over a step,
 after ``init.column_max_iterations`` steps, the run stops.
 
 The converged :math:`u, v, k` are then placed on the mesh by height above the local ground, exactly as the inflow
-profile is; :math:`\theta` stays the sounding. The table is written to ``column_guess.dat`` in the run directory.
+profile is; :math:`\theta` stays the sounding. The table is written to ``io.column_guess_file`` (default
+``column_guess.dat`` in the run directory), in full precision, so it reads back as a ``bc.inflow_file`` exactly.
 An inflow face keeps the case's inflow profile; the solver reconciles the two.
 
 **Requirements.** The column option needs:
@@ -164,7 +165,7 @@ stress goes with the square of the speed), and the column is solved again, until
 :math:`U(z_t)` is MOST's profile below the first cell centre and linear in :math:`\ln(z + z_0)` above. The 3-D run
 then takes that forcing. It reaches the target only if nothing holds its wind to the deck's inflow profile, so a
 target is refused with a Rayleigh layer on :math:`u, v`, a sponge or an inflow face (for an inflow case, run the
-column on a periodic deck and give its ``column_guess.dat`` as ``bc.inflow_file``), and with a stratified column
+column on a periodic deck and give its ``io.column_guess_file`` table as ``bc.inflow_file``), and with a stratified column
 over a neutral 3-D surface.
 
 **Restart.** The checkpoint holds the state, not the adjusted forcing or the column's flux, and ``init.*`` keys are
@@ -175,7 +176,7 @@ On the Bolund case 4 deck with :math:`L` = 250 m and 7.58 m/s at 5 m, the column
 (0.5085 m/s measured). That agreement mainly reflects MOST at 5 m with the chosen :math:`z_0` and target. The flux,
 :math:`q` = −0.039 K m/s, is sustained by the Rayleigh layer and has no measured counterpart.
 
-The column's :math:`\theta` goes into ``column_guess.dat`` (a ``bc.inflow_file`` for a run with the same
+The column's :math:`\theta` goes into the ``io.column_guess_file`` table (a ``bc.inflow_file`` for a run with the same
 stratification). The 3-D first guess keeps :math:`\theta` from the sounding.
 
 **When to use it.** On the 2-D and 3-D hills the column start halves the iterations (:doc:`results`). On the flat
