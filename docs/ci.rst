@@ -71,7 +71,9 @@ The job clones the repository at a branch or commit into its work directory, bui
 gpu`` and runs ``ctest -L smoke`` with one rank per GPU (``GUST_MPIEXEC_PREFLAGS=--gpus-per-task=1;--gpu-bind=none``:
 every rank sees every GPU and AMReX picks one per rank; with each rank confined to its own GPU, Cray MPICH's GPU IPC
 fails between ranks). Before the tests it checks that every smoke run of ``gust`` carries
-``amrex.the_arena_init_size=0 amrex.init_snan=1 amrex.fpe_trap_invalid=1``. The smoke tests include the 2-D hill
+``amrex.the_arena_init_size=0 amrex.init_snan=1 amrex.fpe_trap_invalid=1``. ``kestrel_dryrun`` is left out: it
+runs ``gust_refavg`` without ``srun``, which Cray MPICH refuses inside an allocation, and it tests a CPU script
+(CI runs it). The smoke tests include the 2-D hill
 restart chain over terrain (``rt_steady_hill2d_restart_*``) and the 2-D hill with Coriolis run twice, compared at
 zero tolerance (``rt_coriolis_repeat_*``). Each run writes ``logs/<date>_<sha>/`` (``info``, ``build.log``,
 ``ctest.log``, ``junit.xml``, ``status``: ``pass`` or ``fail: <step>``); a clone or fetch that fails writes

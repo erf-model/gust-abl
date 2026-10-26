@@ -669,8 +669,10 @@ Current tests
        ``init.first_guess=profile``) for 40 iterations, from empty directories, twice on the same two ranks and
        layout: the plotfiles and the turbulence plotfiles (residual fields, wall state) identical at zero tolerance.
        The Coriolis coupling's level mean of the other residual is a fixed-order sum since audit A4 (#60); before,
-       the faces were added atomically, in an order that can change between runs on a GPU. On a CPU two runs agree
-       either way: the test is for the nightly H100 job (:doc:`ci`). Labels ``regression;smoke``.
+       the faces were added atomically, in an order that can change between runs on a GPU: with that sum put back,
+       5 of 5 pairs differed on Kestrel's H100s (up to 3.9e-13 relative in v, at nearly every point). On a CPU two
+       runs agree either way (no OpenMP; two ranks' sums add in a fixed order): the test is for the nightly H100 job
+       (:doc:`ci`). Labels ``regression;smoke``.
    * - ``rt_steady_neutral_flat``
      - The application on ERF's Neutral_ABL_Flat (``Tests/Canonical_RANS/Neutral_ABL_Flat/inputs_steady_neutral_flat``: 8 × 8 × 64,
        geostrophic wind 10 m/s at latitude 90°, f = 1e-4 1/s, the sounding's inversion from 700 m, slip top with
