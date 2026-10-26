@@ -532,7 +532,6 @@ void Closure::read_checkpoint (const std::string& dir, const amrex::BoxArray& ba
     // data last, as the state's restart does.
     m_nut_prev.ParallelCopy(src, 0, 0, 1, amrex::IntVect(1), amrex::IntVect(1), geom.periodicity());
     m_nut_prev.ParallelCopy(src, 0, 0, 1, amrex::IntVect(0), amrex::IntVect(0), geom.periodicity());
-    (void)geom;
 }
 
 void Closure::freeze_switches (const State& q, const amrex::MultiFab& dist_in, const Roughness& rough,

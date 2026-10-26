@@ -1,6 +1,7 @@
 #include "TurbulenceOutput.H"
 
 #include "CVFluxes.H"
+#include "Closure_K.H"
 #include "Reductions.H"
 
 #include <AMReX_ParallelDescriptor.H>
@@ -67,8 +68,10 @@ std::string write_turbulence_plotfile (const std::string& prefix, const State& q
             o(i, j, k, 9) = eps(i, j, k);
             o(i, j, k, 10) = amrex::Real(1);
             o(i, j, k, 11) = r;
-            o(i, j, k, 12) = (Cmu0 + amrex::Real(0.108) * r) / (amrex::Real(1) + amrex::Real(0.308) * r + amrex::Real(0.00837) * r * r);
-            o(i, j, k, 13) = Cmu0 / (amrex::Real(1) + amrex::Real(0.277) * r);
+            amrex::Real cmu = 0, cmu_prime = 0;
+            closure::stability_functions(r, Cmu0, cmu, cmu_prime);
+            o(i, j, k, 12) = cmu;
+            o(i, j, k, 13) = cmu_prime;
             o(i, j, k, 14) = (has_us && k == klo) ? us(i, j, klo) : amrex::Real(0);
             o(i, j, k, 15) = eighth * (z(i, j, k) + z(i + 1, j, k) + z(i, j + 1, k) + z(i + 1, j + 1, k)
                                        + z(i, j, k + 1) + z(i + 1, j, k + 1) + z(i, j + 1, k + 1) + z(i + 1, j + 1, k + 1));
