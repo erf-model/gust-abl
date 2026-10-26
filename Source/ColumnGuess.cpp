@@ -174,7 +174,7 @@ std::vector<std::string> check_column_guess (const InitOptions& iopt, const Stea
         for (int o = 0; o < 6; ++o) {
             if (bin.face[o] == FaceType::inflow) {
                 err.emplace_back("init.column_target_u, init.column_target_v with an inflow face: the face keeps the deck's inflow "
-                                 "profile; run the column on a periodic deck and give its column_guess.dat as bc.inflow_file");
+                                 "profile; run the column on a periodic deck and give its table (io.column_guess_file) as bc.inflow_file");
                 break;
             }
         }
@@ -682,17 +682,24 @@ ColumnGuessResult run_column_guess (const Inputs& in, const InitOptions& iopt, c
     res.wall_seconds = amrex::second() - t0;
     // The table, for inspection, when asked for.
     if (!table_file.empty() && amrex::ParallelDescriptor::IOProcessor()) {
+        // %.17g: the table reads back as bc.inflow_file to the last bit (double and single).
         std::FILE* fh = std::fopen(table_file.c_str(), "w");
-        if (fh != nullptr) {
+        bool ok = fh != nullptr;
+        if (ok) {
             std::fprintf(fh, "# the converged column (init.first_guess = column): z u v theta k; u* %.6e m/s, %d steps; "
                          "surface heat flux %.6e K m/s, 1/L %.6e 1/m, surface theta %.6f K\n",
                          static_cast<double>(res.ustar), res.iterations, static_cast<double>(res.heat_flux),
                          static_cast<double>(res.inv_L), static_cast<double>(res.theta_surface));
             for (amrex::Long i = 0; i < res.z.size(); ++i) {
-                std::fprintf(fh, "%.6f %.9e %.9e %.6f %.9e\n", static_cast<double>(res.z[i]), static_cast<double>(res.u[i]),
+                std::fprintf(fh, "%.17g %.17g %.17g %.17g %.17g\n", static_cast<double>(res.z[i]), static_cast<double>(res.u[i]),
                              static_cast<double>(res.v[i]), static_cast<double>(res.theta[i]), static_cast<double>(res.tke[i]));
             }
-            std::fclose(fh);
+            ok = std::ferror(fh) == 0;
+            ok = (std::fclose(fh) == 0) && ok;
+        }
+        if (!ok) {
+            amrex::Print() << "WARNING: io.column_guess_file = " << table_file
+                           << ": the column table could not be written; the run goes on without it\n";
         }
     }
     return res;

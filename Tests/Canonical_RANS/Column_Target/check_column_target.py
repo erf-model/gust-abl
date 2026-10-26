@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run GUST with a column target wind and check that the 3-D run keeps it.
 
-    check_column_target.py --target U --height Z --z0 Z0 [--mol L] -- COMMAND [ARGS ...]
+    check_column_target.py --target U --height Z --z0 Z0 [--mol L] [--table FILE] -- COMMAND [ARGS ...]
 
 Runs COMMAND (the application on Tests/Canonical_RANS/Column_Target/inputs_column_target) and checks:
   * the column reached the target ("target wind reached" in its output) and the log lists the restart inputs
@@ -12,7 +12,10 @@ Runs COMMAND (the application on Tests/Canonical_RANS/Column_Target/inputs_colum
     the column's), and its direction along x to 1e-3 rad;
   * with --mol L: the 3-D surface's Obukhov length, -u*^3 theta0 / (kappa g q) with the mean u* of the turbulence
     plotfile's surf_hist.dat and the flux q the run took from the column, is L to 2 % (theta0 = 300 K,
-    g = 9.81 m/s^2, kappa = 0.41).
+    g = 9.81 m/s^2, kappa = 0.41);
+  * with --table FILE (the run's io.column_guess_file): the file is written, every data line holds the five
+    numbers z u v theta k with z from 0 increasing, and the column's speed at --height, interpolated as above,
+    is the target to 2e-4 (the column stops at |R - 1| < 1e-4); a table left by an earlier run is deleted first.
 Prints one row per check; the exit code is the verdict.
 """
 import math
@@ -28,9 +31,13 @@ import erf_plotfile  # noqa: E402
 
 def main(argv):
     opts = {"--target": None, "--height": None, "--z0": None, "--mol": 0.0}
+    table = None
     i = 1
     while i < len(argv) and argv[i] != "--":
-        if argv[i] in opts and i + 1 < len(argv):
+        if argv[i] == "--table" and i + 1 < len(argv):
+            table = argv[i + 1]
+            i += 2
+        elif argv[i] in opts and i + 1 < len(argv):
             opts[argv[i]] = float(argv[i + 1])
             i += 2
         else:
@@ -38,6 +45,8 @@ def main(argv):
     if any(v is None for v in opts.values()) or i >= len(argv):
         raise SystemExit(__doc__)
     cmd = argv[i + 1:]
+    if table is not None and os.path.exists(table):
+        os.remove(table)   # a table left by an earlier run must not pass the checks
     print("check_column_target: running", " ".join(cmd))
     run = subprocess.run(cmd, check=False, capture_output=True, text=True)
     sys.stdout.write(run.stdout)
@@ -76,6 +85,29 @@ def main(argv):
     v = (1 - t) * prof["v"][k] + t * prof["v"][k + 1]
     check("3-D speed at the target height vs target", math.hypot(u, v), opts["--target"], 5e-3, "rel")
     check("3-D direction at the target height (rad)", math.atan2(v, u), 0.0, 1e-3, "abs")
+    if table is not None:
+        check("io.column_guess_file written", 1.0 if os.path.isfile(table) else 0.0, 1.0, 0.0, "abs")
+        rows = []
+        if os.path.isfile(table):
+            with open(table) as fh:
+                for ln in fh:
+                    ln = ln.split("#")[0].split()
+                    if ln:
+                        rows.append([float(x) for x in ln])
+        good = len(rows) > 1 and all(len(r) == 5 for r in rows) and rows[0][0] == 0.0 \
+            and all(rows[j + 1][0] > rows[j][0] for j in range(len(rows) - 1))
+        check("table: rows of z u v theta k, z from 0 increasing", 1.0 if good else 0.0, 1.0, 0.0, "abs")
+        if good:
+            zc = [r[0] for r in rows]
+            below = [j for j in range(1, len(zc) - 1) if zc[j] <= zt]
+            if not below:
+                raise SystemExit("check_column_target: --height is below the table's first cell centre")
+            kc = max(below)
+            tc = (math.log(zt + z0) - math.log(zc[kc] + z0)) / (math.log(zc[kc + 1] + z0) - math.log(zc[kc] + z0))
+            uc = (1 - tc) * rows[kc][1] + tc * rows[kc + 1][1]
+            vc = (1 - tc) * rows[kc][2] + tc * rows[kc + 1][2]
+            # The column stops its target loop at |R - 1| < 1e-4 (ColumnGuess.cpp).
+            check("table: column speed at the target height vs target", math.hypot(uc, vc), opts["--target"], 2e-4, "rel")
     if opts["--mol"] != 0:
         q = None
         for ln in out.splitlines():

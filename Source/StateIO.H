@@ -35,6 +35,14 @@ std::string write_checkpoint (const std::string& prefix, State& state,
 //! checkpoint may come from a different box layout or rank count.
 void read_checkpoint (const std::string& dir, State& state, const MeshInputs& mesh);
 
+//! True when the checkpoint directory a write would create, target, is the
+//! existing directory restart, however either path is spelled (relative or
+//! absolute, "./", trailing or doubled separators, symbolic links, letter
+//! case on a case-insensitive file system): std::filesystem::equivalent on
+//! the two paths. False when either does not exist or cannot be examined.
+//! Local (no communication); call it on the I/O rank and broadcast.
+bool same_directory (const std::string& target, const std::string& restart);
+
 } // namespace gust
 
 #endif

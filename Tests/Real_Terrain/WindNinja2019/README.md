@@ -16,6 +16,8 @@ consistent) and GUST - CFD (steady RANS) next to the observations and the paper'
 | `bolund_z0_map.py` | The Bolund roughness map for `bc.surface_z0_file` from `bolund.xyz`: 0.0003 m over water (terrain at or below the 0.75 m water level), 0.015 m over land, land for x > 327 m (the blind comparison's values and rules, Bolund_Validation.pdf). |
 | `windninja2019.py` | `prepare` (masts and terrain from windninja-tools), `smooth` (the paper-like Butte terrain), `sample` (speed-up at the masts and along the transects), `plot` (the paper's figures), `stats` (windward / ridge / lee RMSE, bias and MAPE). |
 | `run_all.sh` | Runs the cases one at a time (GUST - Fast and GUST - CFD), samples and plots them. |
+| `timed_run.sh` | The timing helper both drivers source: `log.txt`, `err.txt`, `time.txt`, `done`. |
+| `test_timed_run.sh` | CTest `wn2019_timed_run`: the helper, and `sweep.sh` with stub `mpirun`, `gust` and `python3`. |
 | `sweep.sh`, `sweep_variants.txt` | One-change variants of a case (a file of `name key=value ...` lines). |
 | `wagenbrenner2019_digitized.csv` | The paper's Figures 8, 12 and 15, digitized (figure, panel, series, x, y). |
 | `bsb_observed_fig15.csv` | The Butte observations of Figure 15 (speed-up and error-bar ends along TSW and TWSW). |
@@ -77,7 +79,11 @@ python3 -I Tests/Real_Terrain/WindNinja2019/bolund_z0_map.py wn2019-runs/bolund.
 mesh), so the 5 m samples do not depend on it.
 
 `run_all.sh` writes one directory per run, `<case>_<mode>.csv` samples and `<case>.png` plots in the run
-directory. Runs are sequential (one case on the machine at a time).
+directory. Runs are sequential (one case on the machine at a time). Each run directory holds `log.txt` (the
+solver's output), `err.txt` (its error output), `time.txt` (one line, `real <seconds>`, from bash's `time`, the
+same on Linux and macOS) and `done` after a successful run; a failed run prints its exit status. Both drivers
+source `timed_run.sh`; `test_timed_run.sh` (CTest `wn2019_timed_run`) checks it and runs `sweep.sh` with stubs
+on a path with a space.
 
 ## Expected Results
 With the recommended setting, on 8 ranks of an Apple M2 Pro laptop (not idle; indicative):
