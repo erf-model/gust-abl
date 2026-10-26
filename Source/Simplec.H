@@ -252,6 +252,7 @@ private:
     SurfaceState m_ss;
     PredictorFields m_pf;
     SimplecWorkspace m_w;
+    ResidualWorkspace m_rws;    //!< the residual's scratch
     SimplecIterationInfo m_info;
     std::vector<std::string> m_names;
     std::vector<MonitorSpec> m_specs;

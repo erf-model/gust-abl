@@ -461,8 +461,9 @@ void SimplecStage::iterate (State& q, const amrex::MultiFab& dtau)
     check_operator_field("SimplecStage::iterate", "dtau", dtau, Loc::cell, m_mesh, 0);
     // 1. Ghosts and the wall state at q.
     m_in.bc->fill_ghosts(q, m_in.surface, m_in.buoyancy, false, m_in.surface != nullptr ? &m_ss : nullptr);
-    // 2. The residual (the closure's fields at q).
-    residual(q, m_in, m_mesh, m_geom, m_R, m_in.closure != nullptr ? &m_cf : nullptr);
+    // 2. The residual (the closure's fields at q; the wall state of step 1).
+    residual(q, m_in, m_mesh, m_geom, m_R, m_in.closure != nullptr ? &m_cf : nullptr,
+             m_in.surface != nullptr ? &m_ss : nullptr, &m_rws);
     compute_norms(q);
     // The upwind blend for the next residual, from the cap at q (frozen once r < hybrid_freeze).
     if (!m_sigma.empty() && !m_sigma_frozen) {

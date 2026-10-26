@@ -130,7 +130,18 @@ void velocity_divergence (const amrex::MultiFab& u, const amrex::MultiFab& v, co
                           const amrex::MultiFab& z_nd, const Mesh& mesh, const amrex::Geometry& geom,
                           amrex::MultiFab& div)
 {
-    amrex::MultiFab omega(w.boxArray(), w.DistributionMap(), 1, 0);
+    amrex::MultiFab omega;
+    velocity_divergence(u, v, w, z_nd, mesh, geom, div, omega);
+}
+
+void velocity_divergence (const amrex::MultiFab& u, const amrex::MultiFab& v, const amrex::MultiFab& w,
+                          const amrex::MultiFab& z_nd, const Mesh& mesh, const amrex::Geometry& geom,
+                          amrex::MultiFab& div, amrex::MultiFab& omega)
+{
+    if (omega.empty()) { omega.define(w.boxArray(), w.DistributionMap(), 1, 0); }
+    if (omega.boxArray() != w.boxArray() || omega.DistributionMap() != w.DistributionMap() || omega.nGrow() != 0) {
+        amrex::Abort("gust: velocity_divergence: omega is not on w's layout without ghosts");
+    }
     omega_from_w(u, v, w, z_nd, mesh, geom, omega, 0);
     face_divergence(mesh, geom, {&u, &v, &omega}, div);
 }

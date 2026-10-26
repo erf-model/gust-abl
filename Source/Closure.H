@@ -134,6 +134,14 @@ struct ClosureFields
     [[nodiscard]] bool empty () const { return nu.empty(); }
 };
 
+//! Scratch fields of Closure::evaluate (defined on first use; a caller that
+//! evaluates often keeps one per layout, ResidualWorkspace in Residual.H).
+struct ClosureScratch
+{
+    amrex::MultiFab N2, S2, N2g, cap;
+    amrex::iMultiFab dec;
+};
+
 //! The vertical height of every cell centre above its column's ground (the
 //! node-mean height minus the node-mean ground), on the valid cells and one
 //! ghost cell, from the mesh's nodes (one ghost node). dist: cell-centred,
@@ -150,9 +158,11 @@ public:
     //! distance dist (cell-centred, one ghost cell) and the roughness z0 of
     //! the ground (0 without a surface layer; a Real is a uniform z0, a
     //! Roughness with a map gives each column its own, SurfaceRoughness.H).
-    //! f is defined here if empty.
+    //! f is defined here if empty. scratch (null: local fields) holds the
+    //! intermediate fields; it must be empty or on q's layout.
     void evaluate (const State& q, const amrex::MultiFab& dist, const Roughness& z0, const BuoyancyOptions& buoyancy,
-                   const Mesh& mesh, const amrex::Geometry& geom, ClosureFields& f) const;
+                   const Mesh& mesh, const amrex::Geometry& geom, ClosureFields& f,
+                   ClosureScratch* scratch = nullptr) const;
 
     //! Abort unless dist + z0 > 0 at every cell, the ghost cell included
     //! (l_g = kappa (d + z0) divides). Once per level, where the wall

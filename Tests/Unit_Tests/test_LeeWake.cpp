@@ -677,7 +677,7 @@ TEST (LeeWake, ConfidenceStop)
         if (cs.conf > 0) {
             // reference 1 (the first residual): threshold min(1e-6, 1e-3 x 1)
             ASSERT_EQ(stage->last_threshold.size(), 1u) << tag;
-            EXPECT_NEAR(stage->last_threshold[0], 1e-6, 1e-18) << tag;
+            EXPECT_EQ(stage->last_threshold[0], static_cast<amrex::Real>(1e-6)) << tag;   // exact in either precision
         } else {
             EXPECT_TRUE(stage->last_threshold.empty()) << tag;   // off: never asked
             EXPECT_EQ(d.confidence_share(), -1) << tag;
@@ -758,7 +758,7 @@ TEST (LeeWake, SimplecConfidenceCountsTheConvergedCells)
         const double share_want = 1 - bad / double(R.p.boxArray().numPts());
         amrex::Real share = -1, height = -1;
         ASSERT_TRUE(stage.confidence(thr, share, height));
-        EXPECT_NEAR(share, share_want, 1e-12) << "pass " << pass;
+        EXPECT_NEAR(share, share_want, tol(1e-12, 1e-7)) << "pass " << pass;
         EXPECT_NEAR(height, top, tol(1e-12, 1e-4) * (top + 1)) << "pass " << pass;
         if (pass == 0) {
             EXPECT_GT(share, 0) << "pass 0";
