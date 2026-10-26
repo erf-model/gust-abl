@@ -91,8 +91,12 @@ run)
     fi
     mkdir -p "$work/logs"
     # One run at a time in the work directory (a batch job and a run by hand).
-    exec 9> "$work/.lock"
-    if ! flock -n 9; then echo "another run holds $work/.lock" >&2; exit 3; fi
+    # Kestrel has flock; where it is missing (macOS, for the dry run) there is
+    # no lock.
+    if command -v flock > /dev/null; then
+        exec 9> "$work/.lock"
+        if ! flock -n 9; then echo "another run holds $work/.lock" >&2; exit 3; fi
+    fi
     # A clone or fetch that fails still writes a log, so status does not show
     # the previous night.
     fetch_failed () {

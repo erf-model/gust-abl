@@ -77,8 +77,8 @@ runs ``gust_refavg`` without ``srun``, which Cray MPICH refuses inside an alloca
 restart chain over terrain (``rt_steady_hill2d_restart_*``) and the 2-D hill with Coriolis run twice, compared at
 zero tolerance (``rt_coriolis_repeat_*``). Each run writes ``logs/<date>_<sha>/`` (``info``, ``build.log``,
 ``ctest.log``, ``junit.xml``, ``status``: ``pass`` or ``fail: <step>``); a clone or fetch that fails writes
-``logs/<date>_nofetch/`` with ``fail: fetch``. One run at a time holds the work directory (a lock, and
-``--dependency=singleton`` for batch jobs).
+``logs/<date>_nofetch/`` with ``fail: fetch``. One run at a time holds the work directory (``flock`` where it exists, as on
+Kestrel, and ``--dependency=singleton`` for batch jobs).
 
 .. list-table::
    :header-rows: 1
