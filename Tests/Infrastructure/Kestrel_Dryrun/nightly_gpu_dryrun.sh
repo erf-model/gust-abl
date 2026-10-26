@@ -72,9 +72,11 @@ cat > "$work/tests_bad.json" <<EOF
 EOF
 
 # On Kestrel module (and ml) are exported shell functions, which a script
-# finds before the stub on PATH: a real `module reset` would unload the
-# loaded modules of the caller (ctest on a GPU node).
+# finds before the stub on PATH, and every bash script defines them again
+# from BASH_ENV (Lmod's init): a real `module reset` would unload the loaded
+# modules of the caller (ctest on a GPU node).
 unset -f module ml 2>/dev/null || true
+unset BASH_ENV
 # The job's own inputs from the caller's environment would change what it does.
 unset GUST_BUILD_JOBS GUST_NIGHTLY_REPO GUST_NIGHTLY_REF GUST_NIGHTLY_GPUS GUST_NIGHTLY_KEEP GUST_NIGHTLY_MAIL GUST_ACCOUNT
 export PATH="$bin:$PATH" STUB_LOG="$work/stublog" GUST_NIGHTLY_WORK="$work/nightly" SLURM_CPUS_ON_NODE=32
@@ -107,6 +109,7 @@ grep -q "git -C $work/nightly/gust-abl remote set-url origin https://github.com/
 grep -q -- "-L smoke --output-on-failure --output-junit $latest/junit.xml" "$STUB_LOG/ctest.log" \
     || grep -q -- "-L smoke --output-on-failure --output-junit $(readlink "$latest")/junit.xml" "$STUB_LOG/ctest.log" \
     || fail "ctest -L smoke with a JUnit file not run"
+grep -qF -- "-E ^kestrel_dryrun$" "$STUB_LOG/ctest.log" || fail "kestrel_dryrun not left out"
 grep -q "1 smoke runs of gust, 0 without the GPU flags" "$latest/flags_check.log" || fail "flag check did not count the run"
 n=$(cd "$work/nightly/logs" && ls -1d 20*_* | wc -l)
 [ "$n" -eq 2 ] || fail "$n run logs kept, expected 2"

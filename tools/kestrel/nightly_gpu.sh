@@ -149,7 +149,10 @@ sys.exit(1 if bad or not runs else 0)
 PY
 
     echo "ctest      $(stamp)" >> "$log/info"
-    ctest --test-dir "$build" -L smoke --output-on-failure --output-junit "$log/junit.xml" \
+    # kestrel_dryrun (erf_references.sh with stubs) runs gust_refavg without
+    # srun, which Cray MPICH refuses inside an allocation (PMI2_Job_GetId); it
+    # tests a CPU script and runs in CI.
+    ctest --test-dir "$build" -L smoke --output-on-failure --output-junit "$log/junit.xml" -E '^kestrel_dryrun$' \
         > "$log/ctest.log" 2>&1 || { tail -n 40 "$log/ctest.log"; finish "fail: tests"; }
     echo "finished   $(stamp)" >> "$log/info"
     finish pass

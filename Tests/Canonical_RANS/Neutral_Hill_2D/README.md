@@ -26,7 +26,8 @@ continued to 10 from the checkpoint against 10 straight, bit for bit (8.5e-4 wit
 step, 1.5e-12 with a fill that is not a fixed point). `rt_coriolis_repeat_first`, `rt_coriolis_repeat_second`,
 `rt_coriolis_repeat_plt_matches`, `rt_coriolis_repeat_turb_matches` (label `regression;smoke`):
 `inputs_steady_hill2d_restart` (Coriolis on) for 40 iterations, twice on the same two ranks, the plotfiles and turbulence plotfiles identical at zero
-tolerance. It guards the fixed-order Coriolis level mean (#60) on GPUs, where it runs in the nightly H100 job.
+tolerance. It guards the fixed-order Coriolis level mean (#60) on GPUs, where it runs in the nightly H100 job: with
+the pre-#60 atomic sum, 5 of 5 pairs differed on the H100s.
 
 ## Expected Results
 - ERF's checks: the wall distance against the exact distance to the ridge, finite fields, k >= 0, the length-scale
