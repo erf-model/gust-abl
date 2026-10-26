@@ -452,6 +452,14 @@ TEST(InflowProfile, FileTokensAreParsedStrictly)
     refused("0 0 0 300\n100 6 2 1e400\n", "line 2 holds a value that is not finite");
     refused("0 0 0 300\n", "needs at least two rows");
     refused("0 0 0 300\n100 6 2 300 0.1\n", "line 2 has a different number of columns");
+    refused("0 0 0 300\n100 6 2 3.0D+02\n", "line 2: '3.0D+02' is not a number");   // a Fortran exponent
+    // A UTF-8 byte-order mark before a comment line (Windows editors) is skipped.
+    EXPECT_EQ(gust::parse_inflow_table("\xEF\xBB\xBF# z u v theta\n0 0 0 300\n10 1 0 300\n", "bom.txt").z.size(), 2);
+#ifdef AMREX_USE_FLOAT
+    // Checked as the run's Real: beyond the float range, and two heights that round to one float.
+    refused("0 0 0 300\n100 6 2 1e39\n", "line 2 holds a value that is not finite");
+    refused("0 0 0 300\n100 6 2 300\n100.000001 6 2 300\n", "heights must increase strictly (line 3)");
+#endif
 
     // Through the constructor: a token refused on every rank, and a file that cannot be opened.
     const std::string fname = "ut_inflow_strict.txt";

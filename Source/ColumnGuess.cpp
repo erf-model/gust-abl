@@ -174,7 +174,7 @@ std::vector<std::string> check_column_guess (const InitOptions& iopt, const Stea
         for (int o = 0; o < 6; ++o) {
             if (bin.face[o] == FaceType::inflow) {
                 err.emplace_back("init.column_target_u, init.column_target_v with an inflow face: the face keeps the deck's inflow "
-                                 "profile; run the column on a periodic deck and give its column_guess.dat as bc.inflow_file");
+                                 "profile; run the column on a periodic deck and give its table (io.column_guess_file) as bc.inflow_file");
                 break;
             }
         }

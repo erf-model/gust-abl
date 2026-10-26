@@ -51,7 +51,9 @@ InflowTable parse_inflow_table (const std::string& text, const std::string& file
 {
     const std::string where = "gust: bc.inflow_file = " + file + ": ";
     InflowTable tab;
-    std::istringstream is(text);
+    // A UTF-8 byte-order mark (Windows editors) is not part of the table.
+    const std::size_t start = (text.compare(0, 3, "\xEF\xBB\xBF") == 0) ? 3 : 0;
+    std::istringstream is(text.substr(start));
     std::string line;
     int lineno = 0;
     while (std::getline(is, line)) {
@@ -66,6 +68,7 @@ InflowTable parse_inflow_table (const std::string& text, const std::string& file
             const std::size_t end = line.find_first_of(ws, pos);
             const std::string tok = line.substr(pos, end == std::string::npos ? std::string::npos : end - pos);
             char* stop = nullptr;
+            // strtod reads in the C locale (nothing in GUST calls setlocale), as the stream parser did.
             const double x = std::strtod(tok.c_str(), &stop);
             if (stop == tok.c_str() || *stop != '\0') {
                 amrex::Abort(where + "line " + std::to_string(lineno) + ": '" + tok + "' is not a number");
@@ -81,28 +84,33 @@ InflowTable parse_inflow_table (const std::string& text, const std::string& file
         if (static_cast<int>(vals.size()) != tab.ncol) {
             amrex::Abort(where + "line " + std::to_string(lineno) + " has a different number of columns than the first row");
         }
+        // The checks on the values as amrex::Real, the type the run uses: in
+        // single precision a double beyond the float range would overflow in
+        // the cast, and two heights may round to one float.
+        std::vector<amrex::Real> r;
         for (double y : vals) {
-            if (!std::isfinite(y)) {
+            if (!std::isfinite(y) || std::abs(y) > static_cast<double>(std::numeric_limits<amrex::Real>::max())) {
                 amrex::Abort(where + "line " + std::to_string(lineno) + " holds a value that is not finite");
             }
+            r.push_back(static_cast<amrex::Real>(y));
         }
-        if (!tab.z.empty() && !(vals[0] > static_cast<double>(tab.z.back()))) {
+        if (!tab.z.empty() && !(r[0] > tab.z.back())) {
             amrex::Abort(where + "heights must increase strictly (line " + std::to_string(lineno) + ")");
         }
-        if (tab.z.empty() && vals[0] != 0) {
+        if (tab.z.empty() && r[0] != 0) {
             amrex::Abort(where + "the first height must be 0 (the ground)");
         }
-        if (vals[3] <= 0) {
+        if (r[3] <= 0) {
             amrex::Abort(where + "theta must be > 0 (line " + std::to_string(lineno) + ")");
         }
-        if (tab.ncol == 5 && vals[4] < 0) {
+        if (tab.ncol == 5 && r[4] < 0) {
             amrex::Abort(where + "k must be >= 0 (line " + std::to_string(lineno) + ")");
         }
-        tab.z.push_back(static_cast<amrex::Real>(vals[0]));
-        tab.u.push_back(static_cast<amrex::Real>(vals[1]));
-        tab.v.push_back(static_cast<amrex::Real>(vals[2]));
-        tab.theta.push_back(static_cast<amrex::Real>(vals[3]));
-        tab.k.push_back(static_cast<amrex::Real>(tab.ncol == 5 ? vals[4] : 0.0));
+        tab.z.push_back(r[0]);
+        tab.u.push_back(r[1]);
+        tab.v.push_back(r[2]);
+        tab.theta.push_back(r[3]);
+        tab.k.push_back(tab.ncol == 5 ? r[4] : amrex::Real(0));
     }
     if (tab.z.size() < 2) { amrex::Abort(where + "needs at least two rows"); }
     return tab;
@@ -139,7 +147,7 @@ InflowProfile::InflowProfile (const InflowProfileOptions& opt, const ReferencePr
     const int root = amrex::ParallelDescriptor::IOProcessorNumber();
     amrex::ParallelDescriptor::Bcast(&readable, 1, root);
     if (readable == 0) { amrex::Abort("gust: bc.inflow_file = " + opt.file + ": cannot be opened"); }
-    long n = static_cast<long>(text.size());
+    amrex::Long n = static_cast<amrex::Long>(text.size());
     amrex::ParallelDescriptor::Bcast(&n, 1, root);
     text.resize(static_cast<std::size_t>(n));
     if (n > 0) { amrex::ParallelDescriptor::Bcast(text.data(), static_cast<std::size_t>(n), root); }

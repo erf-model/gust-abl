@@ -866,7 +866,10 @@ Current tests
        ``real <seconds>`` to ``time.txt``, the command's error output to ``err.txt``, returns its exit status and
        writes ``done`` only on success; an argument with spaces stays whole; ``sweep.sh`` run with stub
        ``mpirun``, ``gust`` and ``python3`` on a run directory with a space passes the terrain file whole and
-       reports the time; neither driver calls ``/usr/bin/time``. Six one-line mutants each fail it.
+       reports the time; ``run_all.sh`` with the same stubs runs an mc case (no extra argument, the empty array
+       bash 3.2 calls unbound unless spelled ``${extra[@]+…}``) and a rans case with exactly the expected
+       arguments, and skips an unknown case; neither driver calls ``/usr/bin/time``. Eight one-line mutants each
+       fail it.
 
 In a build without MPI (``GUST_MPI=OFF``, as in the Windows CI job) every test runs on one rank, so
 ``unit_np2`` and ``unit_np4`` repeat ``unit_np1`` and ``smoke_restart_matches`` does not change the rank count.
@@ -1636,9 +1639,11 @@ GoogleTest suite
      - Audit A10 (P3): ``./``, trailing and doubled separators, an absolute path, ``..`` and a symbolic link all
        name the restart directory; another directory, and one that does not exist yet, do not.
    * - ``InflowProfile.FileTokensAreParsedStrictly``
-     - Audit A10 (P4): comments, tabs, Windows line ends and a hex float are read; ``300.0K``, a fifth token
-       ``junk``, ``0,0,0,300``, NaN and 1e400 are refused with the file and line (before, the stream parser kept
-       the numbers before a bad token); the constructor refuses on every rank and names a file it cannot open.
+     - Audit A10 (P4): comments, tabs, Windows line ends, a UTF-8 byte-order mark and a hex float are read;
+       ``300.0K``, a fifth token ``junk``, ``0,0,0,300``, ``3.0D+02``, NaN and 1e400 are refused with the file
+       and line (before, the stream parser kept the numbers before a bad token); in single precision 1e39 and two
+       heights that round to one float are refused (the checks run on the Real values); the constructor refuses
+       on every rank and names a file it cannot open.
    * - ``ColumnStability.TableReadsBackExactly``
      - Audit A10 (P2): the column table (``io.column_guess_file``) parsed as a ``bc.inflow_file`` gives the
        column's z, u, v, θ and k bit for bit (before, z and θ had six decimals); a table that cannot be written
