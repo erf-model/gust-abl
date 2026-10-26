@@ -142,9 +142,11 @@ case "$(readlink "$latest")" in *_nofetch) ;; *) fail "latest does not point to 
 n=$(cd "$work/nightly/logs" && ls -1d 20*_* | wc -l)
 [ "$n" -eq 2 ] || fail "$n run logs kept after a failure, expected 2"
 
-# A second run while one holds the lock is refused.
-set +e; (flock 9; "$script" run > "$work/out9" 2>&1) 9> "$work/nightly/.lock"; rc=$?; set -e
-[ "$rc" -eq 3 ] && grep -q "another run holds" "$work/out9" || fail "a concurrent run was not refused (exit $rc)"
+# A second run while one holds the lock is refused (where flock exists; macOS has none).
+if command -v flock > /dev/null; then
+    set +e; (flock 9; "$script" run > "$work/out9" 2>&1) 9> "$work/nightly/.lock"; rc=$?; set -e
+    [ "$rc" -eq 3 ] && grep -q "another run holds" "$work/out9" || fail "a concurrent run was not refused (exit $rc)"
+fi
 
 # submit.
 set +e; env -u GUST_ACCOUNT "$script" submit > "$work/out5" 2>&1; rc=$?; set -e
