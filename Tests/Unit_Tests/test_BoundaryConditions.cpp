@@ -502,6 +502,111 @@ TEST(BoundaryFill, InflowFollowsTheGroundHeight)
 }
 
 // ---------------------------------------------------------------------------
+// Over ground that slopes through an outflow face the ghost cells are flat
+// across the face (the ghost node columns take the face node's height) and
+// hold copies of u, v, w; the transport fluxes computed there are not the
+// edge cell's. With bc.outflow_transport = mirror, outflow_transport makes
+// each ghost cell the mirror image of its edge cell (tangential fluxes and
+// Omega mirrored, the normal flux continued linearly through the face), so
+// its divergence equals the edge cell's, whatever the ground does along or
+// across the face, and the face point's control volume (half in each) has
+// the edge cell's net flux. The velocities and their ghosts are untouched.
+// With from_velocity (up to v1.0.0) the ghost divergence is off by O(1)
+// here (about d(z_x u)/dz and the copied normal flux). All four lateral faces
+// outflow over a ground sloping in x and y whose slopes change along and
+// across the faces (lo and hi faces, the corners' neighbours), a non-uniform
+// flow with w not tangent to the ground; then the homogeneous fill; then x
+// outflow with y periodic (the x ghosts over the periodic y ghost rows).
+TEST(BoundaryFill, OutflowGhostCellsMirrorTheEdgeCells)
+{
+    // y periodic: the ground's y dependence has the domain's period; x outflow on both sides, y periodic.
+    const auto ground = [] (double x, double y) { return 80 + 0.4 * x * (1 + 0.2 * std::sin(2 * M_PI * y / 800)) + 10 * std::cos(2 * M_PI * y / 800); };
+    for (const int pery : {0, 1}) {
+        PCase c;
+        c.in.mesh.n_cell = amrex::IntVect(16, 12, 8);
+        c.in.mesh.prob_hi = {1000, 800, 1500};
+        c.in.mesh.is_periodic = {0, pery, 0};
+        c.in.mesh.max_grid_size = {8, 8};
+        c.in.terrain.smoothing = 0;
+        c.make(ground);
+        const auto fl = gust::trtest::make_flow(c, 0);
+        const auto dxi = c.geom.InvCellSizeArray();
+        for (const bool homogeneous : {false, true}) {
+            for (const bool mirror : {true, false}) {
+                gust::State q;
+                define_state(q, c);
+                const amrex::Array<amrex::MultiFab*, 3> vel{&q.u, &q.v, &q.w};
+                for (int d = 0; d < 3; ++d) {
+                    gust::trtest::fill_loc(*vel[d], gust::velocity_loc(d), c, [&] (double x, double y, double z) { return 3 + fl.vel(d, x, y, z); });
+                }
+                q.theta.setVal(300);
+                q.tke.setVal(0.1);
+                q.p.setVal(0);
+                const FaceType yt = pery ? FaceType::periodic : FaceType::outflow;
+                BoundaryInputs in = lateral_inputs(FaceType::outflow, FaceType::outflow, yt, yt, FaceType::slip_wall, FaceType::slip_wall);
+                in.outflow_mirror_transport = mirror;
+                BoundaryConditions bc(in, c.geom, c.mesh, kNoCoriolis);
+                bc.fill_ghosts(q, nullptr, kBuoy, homogeneous);
+                amrex::Array<amrex::MultiFab, 3> v0;
+                for (int d = 0; d < 3; ++d) {
+                    v0[d].define(vel[d]->boxArray(), vel[d]->DistributionMap(), 1, vel[d]->nGrow());
+                    amrex::MultiFab::Copy(v0[d], *vel[d], 0, 0, 1, vel[d]->nGrow());
+                }
+                amrex::Array<amrex::MultiFab, 3> F;
+                gust::transport_fluxes(q.u, q.v, q.w, q.z_phys_nd, c.mesh, c.geom, F);
+                bc.outflow_transport(F);
+                for (int d = 0; d < 3; ++d) {   // the velocities and their ghosts untouched
+                    amrex::MultiFab::Subtract(v0[d], *vel[d], 0, 0, 1, vel[d]->nGrow());
+                    EXPECT_EQ(v0[d].norminf(0, vel[d]->nGrow()), 0) << d;
+                }
+                const int nx = 16, ny = 12, nz = 8;
+                double worst = 0, scale = 0;
+                for (amrex::MFIter mfi(q.p, false); mfi.isValid(); ++mfi) {
+                    const auto fx = host_copy(F[0], mfi), fy = host_copy(F[1], mfi), fz = host_copy(F[2], mfi);
+                    const auto div = [&] (int i, int j, int k) {
+                        return (double(fx(amrex::IntVect(i + 1, j, k))) - fx(amrex::IntVect(i, j, k))) * dxi[0]
+                             + (double(fy(amrex::IntVect(i, j + 1, k))) - fy(amrex::IntVect(i, j, k))) * dxi[1]
+                             + (double(fz(amrex::IntVect(i, j, k + 1))) - fz(amrex::IntVect(i, j, k))) * dxi[2];
+                    };
+                    const auto check = [&] (amrex::IntVect g, amrex::IntVect e) {
+                        worst = std::max(worst, std::abs(div(g[0], g[1], g[2]) - div(e[0], e[1], e[2])));
+                        scale = std::max(scale, std::abs(div(e[0], e[1], e[2])));
+                    };
+                    const amrex::Box vb = mfi.validbox();
+                    for (int k = 0; k < nz; ++k) {
+                        for (int j = vb.smallEnd(1); j <= vb.bigEnd(1); ++j) {
+                            if (vb.smallEnd(0) == 0) { check({-1, j, k}, {0, j, k}); }
+                            if (vb.bigEnd(0) == nx - 1) { check({nx, j, k}, {nx - 1, j, k}); }
+                        }
+                        for (int i = vb.smallEnd(0); i <= vb.bigEnd(0) && pery == 0; ++i) {
+                            if (vb.smallEnd(1) == 0) { check({i, -1, k}, {i, 0, k}); }
+                            if (vb.bigEnd(1) == ny - 1) { check({i, ny, k}, {i, ny - 1, k}); }
+                        }
+                        if (pery == 1) {   // the x ghosts over the periodic y ghost rows
+                            for (const int jg : {-1, ny}) {
+                                if (jg == -1 && vb.smallEnd(1) != 0) { continue; }
+                                if (jg == ny && vb.bigEnd(1) != ny - 1) { continue; }
+                                if (vb.smallEnd(0) == 0) { check({-1, jg, k}, {0, jg, k}); }
+                                if (vb.bigEnd(0) == nx - 1) { check({nx, jg, k}, {nx - 1, jg, k}); }
+                            }
+                        }
+                    }
+                }
+                amrex::ParallelDescriptor::ReduceRealMax(worst);
+                amrex::ParallelDescriptor::ReduceRealMax(scale);
+                const std::string tag = std::string(mirror ? "mirror" : "from_velocity") + (homogeneous ? ", homogeneous" : "")
+                                      + (pery ? ", y periodic" : "");
+                if (mirror) {
+                    EXPECT_LT(worst, tol(1e-12, 1e-4) * scale) << tag << ": largest edge divergence " << scale;
+                } else {
+                    EXPECT_GT(worst, 0.1 * scale) << tag << ": largest edge divergence " << scale;
+                }
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Ghost rules per face type, on the flat mesh with x and y non-periodic:
 // outflow (even; p odd), slip wall (normal 0, tangential even), no-slip wall
 // (normal 0, tangential odd), geostrophic top (u, v held at u_g, v_g),
@@ -1045,7 +1150,7 @@ TEST(BoundaryInputs, KeysAreReadAndChecked)
         "bc.theta_profile_z = 0 500\nbc.theta_profile = 290 295\nbc.zhi_theta_grad = 0.003\n"
         "bc.rayleigh_zdamp = 400\nbc.rayleigh_dampcoef = 0.1\nbc.sponge_width = 100\nbc.sponge_strength = 0.05\n"
         "bc.surface_z0 = 0.3\nbc.surface_zref = 12\nbc.surface_stability = heat_flux\nbc.surface_heat_flux = 0.02\nbc.surface_wall_k = source\n"
-        "bc.surface_denominator_floor = one\n";
+        "bc.surface_denominator_floor = one\nbc.outflow_transport = from_velocity\n";
     const std::string fname = "ut_bc_inputs_tmp";
     if (amrex::ParallelDescriptor::IOProcessor()) {
         std::ofstream os(fname);
@@ -1066,11 +1171,13 @@ TEST(BoundaryInputs, KeysAreReadAndChecked)
         for (const char* k : {"xlo", "xhi", "ylo", "yhi", "zlo", "zhi", "inflow_profile", "inflow_speed", "inflow_zref", "inflow_alpha",
                               "inflow_direction", "theta_profile_z", "theta_profile", "zhi_theta_grad", "rayleigh_zdamp", "rayleigh_dampcoef",
                               "sponge_width", "sponge_strength", "surface_z0", "surface_zref", "surface_stability", "surface_heat_flux",
-                              "surface_wall_k", "surface_denominator_floor", "inflow_tke_length"}) {
+                              "surface_wall_k", "surface_denominator_floor", "inflow_tke_length", "outflow_transport"}) {
             while (pp.remove(k) > 0) {}
         }
     }
     EXPECT_EQ(in.inflow.length, InflowProfileOptions::Length::unbounded);
+    EXPECT_FALSE(in.outflow_mirror_transport);
+    EXPECT_TRUE(BoundaryInputs{}.outflow_mirror_transport);   // mirror by default
     EXPECT_EQ(in.face[0], FaceType::inflow);
     EXPECT_EQ(in.face[3], FaceType::outflow);
     EXPECT_EQ(in.face[1], FaceType::slip_wall);
@@ -1159,6 +1266,23 @@ TEST(BoundaryInputs, KeysAreReadAndChecked)
     const auto errl = gust::check_boundary_inputs(y, geom, kNoCoriolis);
     ASSERT_EQ(errl.size(), 1u);
     EXPECT_NE(errl.front().find("bc.inflow_tke_length has no effect without an inflow face"), std::string::npos) << errl.front();
+    // bc.outflow_transport takes mirror or from_velocity; the reader aborts on any other name, naming the key.
+    {
+        amrex::ParmParse pp("bc");
+        pp.add("outflow_transport", std::string("copy"));
+        try {
+            gust::read_boundary_inputs();
+            ADD_FAILURE() << "bc.outflow_transport = copy was accepted";
+        } catch (const std::runtime_error& e) {
+            EXPECT_NE(std::string(e.what()).find("bc.outflow_transport = copy: must be mirror or from_velocity"), std::string::npos) << e.what();
+        }
+        while (pp.remove("outflow_transport") > 0) {}
+    }
+    // bc.outflow_transport without an outflow face (y has none).
+    y.given = {"outflow_transport"};
+    const auto erw = gust::check_boundary_inputs(y, geom, kNoCoriolis);
+    ASSERT_EQ(erw.size(), 1u);
+    EXPECT_NE(erw.front().find("bc.outflow_transport has no effect without an outflow face"), std::string::npos) << erw.front();
     EXPECT_THROW(gust::face_type_from_name("open", "bc.xlo"), std::runtime_error);
     const PCase pc = mesh_over(0, 0, flat);
     EXPECT_THROW(BoundaryConditions(y, geom, pc.mesh, kNoCoriolis), std::runtime_error);

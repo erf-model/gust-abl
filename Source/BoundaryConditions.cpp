@@ -150,7 +150,7 @@ BoundaryInputs read_boundary_inputs ()
                           "inflow_speed", "inflow_zref", "inflow_alpha", "inflow_direction", "inflow_file", "inflow_tke_length",
                           "theta_profile_z", "theta_profile", "zhi_theta_grad", "rayleigh_zdamp",
                           "rayleigh_dampcoef", "rayleigh_fields", "rayleigh_height", "sponge_width", "sponge_strength",
-                          "xlo_wall_velocity", "xhi_wall_velocity", "ylo_wall_velocity", "yhi_wall_velocity",
+                          "outflow_transport", "xlo_wall_velocity", "xhi_wall_velocity", "ylo_wall_velocity", "yhi_wall_velocity",
                           "zlo_wall_velocity", "zhi_wall_velocity"};
     std::vector<std::string> errs;
     for (const char* key : keys) {
@@ -217,6 +217,12 @@ BoundaryInputs read_boundary_inputs ()
             if (rh == "absolute") { in.rayleigh_above_ground = false; }
             else if (rh == "above_ground") { in.rayleigh_above_ground = true; }
             else { amrex::Abort("gust: bc.rayleigh_height = " + rh + ": must be absolute or above_ground"); }
+        }
+        std::string transport = "mirror";
+        if (pp.query("outflow_transport", transport)) {
+            if (transport == "mirror") { in.outflow_mirror_transport = true; }
+            else if (transport == "from_velocity") { in.outflow_mirror_transport = false; }
+            else { amrex::Abort("gust: bc.outflow_transport = " + transport + ": must be mirror or from_velocity"); }
         }
         std::vector<std::string> names;
         if (pp.queryarr("rayleigh_fields", names)) {
@@ -355,6 +361,9 @@ std::vector<std::string> check_boundary_inputs (const BoundaryInputs& in, const 
         err.emplace_back("bc.sponge_strength has no effect without bc.sponge_width > 0");
     } else if (in.sponge_width > 0 && !(in.sponge_strength > 0)) {
         err.emplace_back("bc.sponge_width > 0 needs bc.sponge_strength > 0");
+    }
+    if (given("outflow_transport") && !any_outflow) {
+        err.emplace_back("bc.outflow_transport has no effect without an outflow face");
     }
     return err;
 }
@@ -593,6 +602,54 @@ void ground_gradients (const SurfaceState& ss, const SurfaceLayerOptions& surfac
 }
 
 } // namespace
+
+void BoundaryConditions::outflow_transport (amrex::Array<amrex::MultiFab, AMREX_SPACEDIM>& F) const
+{
+    if (!m_in.outflow_mirror_transport) { return; }
+    const amrex::Box& dom = m_geom.Domain();
+    // x faces, then y faces over the x ghosts they wrote (the corners).
+    for (int d = 0; d < 2; ++d) {
+        for (const bool lo : {true, false}) {
+            if (m_in.face[amrex::Orientation(d, lo ? amrex::Orientation::low : amrex::Orientation::high)] != FaceType::outflow) {
+                continue;
+            }
+            const int sh = lo ? 1 : -1;   // from the ghost towards the inside
+            const int ex = (d == 0) ? 1 : 0, ey = (d == 1) ? 1 : 0;
+            for (int c = 0; c < AMREX_SPACEDIM; ++c) {
+                amrex::MultiFab& mf = F[c];
+                // The normal flux has its face f on the boundary: the ghost faces continue it
+                // linearly through the face value, F(f + m) = 2 F(f) - F(f - m) (m counted
+                // outwards). The others (cell-centred along d) mirror the cells inside: ghost
+                // layer L takes the cell L - 1 inside the face, F(g) = F(g + (2 L - 1) sh).
+                const bool normal = (c == d);
+                const int face = lo ? dom.smallEnd(d) : dom.bigEnd(d) + 1;   // nodal index of f (normal flux only)
+                for (amrex::MFIter mfi(mf, false); mfi.isValid(); ++mfi) {
+                    const amrex::Box vb = mfi.validbox();
+                    if (!touches(vb, dom, d, lo)) { continue; }
+                    const auto f = mf.array(mfi);
+                    for (int layer = 1; layer <= mf.nGrow(); ++layer) {
+                        amrex::Box gb = ghost_slab(vb, dom, m_geom, d, lo, layer, mf.nGrow());
+                        gb &= mfi.fabbox();
+                        if (gb.isEmpty()) { continue; }
+                        if (normal) {
+                            amrex::ParallelFor(gb, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+                            {
+                                const int ie = ex ? face : i, je = ey ? face : j;
+                                f(i, j, k) = 2 * f(ie, je, k) - f(ex ? 2 * face - i : i, ey ? 2 * face - j : j, k);
+                            });
+                        } else {
+                            const int m = sh * (2 * layer - 1);   // ghost layer L mirrors the cell L - 1 inside the face
+                            amrex::ParallelFor(gb, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+                            {
+                                f(i, j, k) = f(i + ex * m, j + ey * m, k);
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 
 void BoundaryConditions::fill_ghosts (State& q, const SurfaceLayerOptions* surface_opt, const BuoyancyOptions& buoyancy,
                                       bool homogeneous, SurfaceState* surface_out) const

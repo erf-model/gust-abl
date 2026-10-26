@@ -139,6 +139,7 @@ void SimplecPreconditioner::setup (const State& q, const amrex::MultiFab* dtau)
         }
     }
     transport_fluxes(m_q0.u, m_q0.v, m_q0.w, m_z, m_mesh, m_geom, m_F0);
+    m_in.bc->outflow_transport(m_F0);
     face_dtau(m_dtau, m_mesh, m_geom, m_w.dtau_faces);
     const amrex::Array<const amrex::MultiFab*, 3> F0{&m_F0[0], &m_F0[1], &m_F0[2]};
     convection(Loc::cell, m_q0.theta, F0, m_in.theta, m_mesh, m_geom, m_conv0);
@@ -198,6 +199,7 @@ void SimplecPreconditioner::apply (NewtonVector& dq, const NewtonVector& r)
     amrex::MultiFab::Saxpy(m_qn.w, sigma, m_d.w, 0, 0, 1, 0);
     m_in.bc->fill_ghosts(m_qn, m_in.surface, m_in.buoyancy, false, nullptr);
     transport_fluxes(m_qn.u, m_qn.v, m_qn.w, m_z, m_mesh, m_geom, m_w.transport);
+    m_in.bc->outflow_transport(m_w.transport);
     const amrex::Array<const amrex::MultiFab*, 3> F1{&m_w.transport[0], &m_w.transport[1], &m_w.transport[2]};
     if (m_w.conv1.empty()) { m_w.conv1.define(m_conv0.boxArray(), m_conv0.DistributionMap(), 1, 0); }
     convection(Loc::cell, m_qn.theta, F1, m_in.theta, m_mesh, m_geom, m_w.conv1);

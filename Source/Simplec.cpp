@@ -486,6 +486,7 @@ void SimplecStage::iterate (State& q, const amrex::MultiFab& dtau)
     }
     // 3. The momentum predictor.
     transport_fluxes(q.u, q.v, q.w, m_z, m_mesh, m_geom, m_w.transport);
+    m_in.bc->outflow_transport(m_w.transport);
     const amrex::Array<const amrex::MultiFab*, 3> F{&m_w.transport[0], &m_w.transport[1], &m_w.transport[2]};
     face_dtau(dtau, m_mesh, m_geom, m_w.dtau_faces);
     const SurfaceState* ss = (m_in.surface != nullptr) ? &m_ss : nullptr;
@@ -507,6 +508,7 @@ void SimplecStage::iterate (State& q, const amrex::MultiFab& dtau)
     convection(Loc::cell, q.theta, F, m_in.theta, m_mesh, m_geom, m_w.conv0);
     m_in.bc->fill_ghosts(q, m_in.surface, m_in.buoyancy, false, nullptr);
     transport_fluxes(q.u, q.v, q.w, m_z, m_mesh, m_geom, m_w.transport);
+    m_in.bc->outflow_transport(m_w.transport);
     convection(Loc::cell, q.theta, F, m_in.theta, m_mesh, m_geom, m_w.conv1);
     amrex::MultiFab::Subtract(m_w.conv1, m_w.conv0, 0, 0, 1, 0);
     amrex::MultiFab::Add(m_R.theta, m_w.conv1, 0, 0, 1, 0);
