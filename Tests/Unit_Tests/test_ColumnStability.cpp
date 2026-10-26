@@ -7,12 +7,16 @@
 #include "ColumnGuess.H"
 #include "ERF_MOSTUtils.H"
 #include "Initializer.H"
+#include "InflowProfile.H"
 #include "SurfaceLayer.H"
 #include "TransportTestHelpers.H"
 
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <cstdio>
+#include <fstream>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -467,4 +471,46 @@ TEST(ColumnStability, RibBoundInputs)
     EXPECT_TRUE(mentions(gust::check_column_guess(c.io, c.so, c.fopt, c.bin, c.surf, true), "init.column_rib_max has no effect"));
     c.io.column_mol = 500;
     EXPECT_TRUE(gust::check_column_guess(c.io, c.so, c.fopt, c.bin, c.surf, true).empty());
+}
+
+// io.column_guess_file (audit A10, P2): the table reads back as a
+// bc.inflow_file to the last bit (%.17g; before, z and theta had 6 decimals,
+// so the table did not give back the column). A table that cannot be written
+// leaves the run going, with a warning.
+TEST(ColumnStability, TableReadsBackExactly)
+{
+    // A stable column (theta evolves) on layers of 63.3/64 m: z and theta need
+    // more than six decimals, so a short format would not read back exactly.
+    Column c;
+    c.in.mesh.prob_hi = {256, 256, amrex::Real(63.3)};
+    c.io.column_stability = CS::heat_flux;
+    c.surf.stability = gust::SurfaceLayerOptions::Stability::heat_flux;
+    c.surf.heat_flux = amrex::Real(-0.005);
+    const std::string fname = "ut_column_table.dat";
+    const gust::ColumnGuessResult r = gust::run_column_guess(c.in, c.io, c.so, c.bin, c.surf, true, c.copt, c.fopt, fname);
+    amrex::ParallelDescriptor::Barrier();
+    std::string text;
+    {
+        std::ifstream is(fname);
+        ASSERT_TRUE(is.good());
+        std::ostringstream ss;
+        ss << is.rdbuf();
+        text = ss.str();
+    }
+    const gust::InflowTable t = gust::parse_inflow_table(text, fname);
+    ASSERT_TRUE(r.steady);
+    ASSERT_NE(r.theta[1], r.theta.back());   // theta is not the uniform sounding
+    ASSERT_EQ(t.ncol, 5);
+    ASSERT_EQ(t.z.size(), r.z.size());
+    for (std::size_t i = 0; i < r.z.size(); ++i) {
+        EXPECT_EQ(t.z[i], r.z[i]) << i;
+        EXPECT_EQ(t.u[i], r.u[i]) << i;
+        EXPECT_EQ(t.v[i], r.v[i]) << i;
+        EXPECT_EQ(t.theta[i], r.theta[i]) << i;
+        EXPECT_EQ(t.k[i], r.tke[i]) << i;
+    }
+    amrex::ParallelDescriptor::Barrier();
+    if (amrex::ParallelDescriptor::IOProcessor()) { std::remove(fname.c_str()); }
+    EXPECT_NO_THROW(gust::run_column_guess(c.in, c.io, c.so, c.bin, c.surf, true, c.copt, c.fopt,
+                                           "ut_no_such_dir/column.dat"));
 }

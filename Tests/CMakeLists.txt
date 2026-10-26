@@ -466,6 +466,12 @@ gust_add_test(NAME abort_restart_overwrite NP 1 LABELS "regression;smoke" RUN_DI
                      "io\\.chk_file = smoke_chk would overwrite io\\.restart = smoke_chk00000" --
               COMMAND $<TARGET_FILE:gust> ${SMOKE_CASE}/inputs_abort_restart_overwrite
                       ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_restart_overwrite_spelled NP 1 LABELS "regression;smoke" RUN_DIR ${SMOKE_DIR}
+              FIXTURES_REQUIRED smoke
+              PREFIX ${EXPECT_ABORT}
+                     "io\\.chk_file = smoke_chk would overwrite io\\.restart = \\./smoke_chk00000/" --
+              COMMAND $<TARGET_FILE:gust> ${SMOKE_CASE}/inputs_abort_restart_overwrite_spelled
+                      ${GUST_TEST_AMREX_FLAGS})
 
 # --- Mesh ---------------------------------------------------------------------
 set(CHECK_MESH ${Python3_EXECUTABLE} ${SUPPORT}/check_mesh.py)
@@ -788,9 +794,15 @@ gust_add_test(NAME rt_column_target NP 1 LABELS "regression"
               COMMAND $<TARGET_FILE:gust> ${COLUMN_TARGET_CASE}/inputs_column_target ${GUST_TEST_AMREX_FLAGS})
 gust_add_test(NAME rt_column_target_mol NP 1 LABELS "regression"
               PREFIX ${Python3_EXECUTABLE} ${COLUMN_TARGET_CASE}/check_column_target.py --target 8 --height 10 --z0 0.1
-                     --mol 1000 --
+                     --mol 1000 --table column_target_mol_table.dat --
               COMMAND $<TARGET_FILE:gust> ${COLUMN_TARGET_CASE}/inputs_column_target init.column_mol=1000
-                      bc.surface_stability=heat_flux ${GUST_TEST_AMREX_FLAGS})
+                      bc.surface_stability=heat_flux io.column_guess_file=column_target_mol_table.dat
+                      ${GUST_TEST_AMREX_FLAGS})
+# io.column_guess_file without the column guess has no effect: refused, the key named.
+gust_add_test(NAME abort_column_guess_file_no_column NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT} "io\\.column_guess_file has no effect without init\\.first_guess = column" --
+              COMMAND $<TARGET_FILE:gust> ${HILL3D_NEUTRAL_CASE}/inputs_steady_hill3d_neutral
+                      io.column_guess_file=x.dat ${GUST_TEST_AMREX_FLAGS})
 # ERF's Neutral_ABL_Flat to steady (about 13 s on two ranks); ERF's own
 # check_neutral.py --physics on the turbulence plotfile (extern_erf/
 # check_neutral.py). Regression label, not smoke (the run time).
@@ -1248,6 +1260,11 @@ if(NOT WIN32)
                 $<TARGET_FILE:gust_refavg> ${SMOKE_DIR}/smoke_plt00000
                 ${CMAKE_CURRENT_BINARY_DIR}/run/kestrel_dryrun)
     set_tests_properties(kestrel_dryrun PROPERTIES LABELS "regression;smoke" FIXTURES_REQUIRED smoke)
+    # The WindNinja2019 drivers' timing helper (Tests/Real_Terrain/WindNinja2019/timed_run.sh) and sweep.sh
+    # with stub mpirun, gust and python3, on a path with a space (bash scripts: not on Windows).
+    add_test(NAME wn2019_timed_run
+             COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/Real_Terrain/WindNinja2019/test_timed_run.sh)
+    set_tests_properties(wn2019_timed_run PROPERTIES LABELS unit)
 endif()
 
 # The plotfile reader of the check scripts (extern_erf/erf_plotfile.py, a

@@ -2,7 +2,7 @@
 
 ## Purpose
 A short run of the application on two ranks, then a restart from its checkpoint on three ranks and another box
-layout. The restart must continue the run bit for bit. Two further decks restart from the same checkpoint with a
+layout. The restart must continue the run bit for bit. Three further decks restart from the same checkpoint with a
 mistake and must stop.
 
 ## Files
@@ -12,12 +12,13 @@ mistake and must stop.
 | `inputs_restart` | Restarts from `smoke_chk00000`; writes `restart_plt00000`. |
 | `inputs_abort_restart_mesh` | Restart with a different `mesh.n_cell`: must stop. |
 | `inputs_abort_restart_overwrite` | `io.chk_file` that would overwrite the restart checkpoint: must stop. |
+| `inputs_abort_restart_overwrite_spelled` | The same, with `io.restart = ./smoke_chk00000/`: must stop (the guard asks the file system). |
 
 Check script: `Supporting_Files/expect_abort.py` (shared), which runs a command and requires the given messages.
 
 ## CTest
 `smoke_clean`, `smoke_run`, `smoke_restart`, `smoke_restart_matches`, `abort_restart_mesh`,
-`abort_restart_overwrite`. All share the run directory `<build>/Tests/run/smoke`, which the reference-archive
+`abort_restart_overwrite`, `abort_restart_overwrite_spelled`. All share the run directory `<build>/Tests/run/smoke`, which the reference-archive
 and Kestrel cases also read.
 
 ## Expected Results
@@ -25,7 +26,7 @@ and Kestrel cases also read.
   plotfile comparison alone cannot tell a restart from a fresh start).
 - `smoke_plt00000` and `restart_plt00000` are identical under `amrex_fcompare` at zero tolerance
   (`--allow_diff_grids`, since the layouts differ).
-- The two abort decks stop with the input named.
+- The three abort decks stop with the input named.
 
 ## How to run
 ```bash
