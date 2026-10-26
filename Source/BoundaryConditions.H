@@ -10,7 +10,9 @@
 //   periodic       (Periodic)      the geometry's periodic directions, and only those
 //   inflow         (Inflow)        every field takes the inflow profile (InflowProfile.H)
 //                                  at its height above the ground; p' zero gradient
-//   outflow        (Outflow)       zero gradient; p' = 0 on the face
+//   outflow        (Outflow)       zero gradient; p' = 0 on the face; the ghost cells'
+//                                  transport fluxes mirror the cells inside
+//                                  (bc.outflow_transport = mirror, outflow_transport)
 //   slip_wall      (SlipWall)      normal velocity 0; tangential velocity, theta and
 //                                  k zero gradient (at the top theta's gradient is
 //                                  bc.zhi_theta_grad instead); p' zero gradient
@@ -117,6 +119,12 @@ struct BoundaryInputs
     //! absolute (ERF) or above the local ground (a layer that follows a
     //! tall ridge).
     bool rayleigh_above_ground{false};
+    //! bc.outflow_transport: the transport fluxes of the ghost cells outside
+    //! an outflow face are the mirror image of the edge cells' (mirror, the
+    //! default; outflow_transport), or computed from the ghosts' own
+    //! velocities and flat geometry (from_velocity, the only choice up to
+    //! v1.0.0).
+    bool outflow_mirror_transport{true};
     //! Sponge: width (m, > 0 enables) and strength (1/s, >= 0).
     amrex::Real sponge_width{0};
     amrex::Real sponge_strength{0};
@@ -173,6 +181,22 @@ public:
     //! gradients 0; no surface state is needed).
     void fill_ghosts (State& q, const SurfaceLayerOptions* surface_opt, const BuoyancyOptions& buoyancy,
                       bool homogeneous = false, SurfaceState* surface_out = nullptr) const;
+
+    //! bc.outflow_transport = mirror: overwrite the ghost faces of the
+    //! transport fluxes F (MassFlux.H transport_fluxes: a_x u, a_y v and Omega
+    //! = w - z_x u - z_y v, one ghost layer) outside each outflow face so that
+    //! each ghost cell is the mirror image of the cell inside it: the
+    //! tangential fluxes and Omega mirror the cells inside, and the normal
+    //! flux continues linearly through its value on the boundary face f,
+    //! F(f + m) = 2 F(f) - F(f - m), m counted outwards. A ghost cell then
+    //! has the edge cell's divergence (in index space), and the
+    //! face point's control volume (half in the ghost cell) the edge cell's
+    //! net flux. The ghost node columns take the face node's height (Mesh.H),
+    //! so the fluxes computed from the copied velocities in a ghost cell over
+    //! a sloping face have a vertical flux of about z_x u that the domain does
+    //! not have. x faces first, then y faces (the corners). Nothing with
+    //! bc.outflow_transport = from_velocity. Call after transport_fluxes.
+    void outflow_transport (amrex::Array<amrex::MultiFab, AMREX_SPACEDIM>& F) const;
 
     //! The Dirichlet rows of the residual: R = q - V on the face points of
     //! the normal velocities (V = 0 when homogeneous).

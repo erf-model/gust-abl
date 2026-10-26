@@ -825,7 +825,7 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
     set_tests_properties(rt_steep_ridge_w_vnn_cap rt_steep_ridge_w_vnn_cap_margin_off PROPERTIES TIMEOUT 600)
     # Thin first cells on a 2-D hill (Canonical_RANS/Aspect_Ratio_Hill_2D): with the realizability
     # sensor, dx/dz1 = 10, 100 and 200 reach a relative residual of 1e-4 within 400 iterations
-    # (234, 181 and 284 measured). The full sweep up to 5000 is run by hand (README).
+    # (173, 161 and 284 measured). The full sweep up to 5000 is run by hand (README).
     set(AR_DIR ${CMAKE_CURRENT_BINARY_DIR}/run/rt_aspect_ratio_hill)
     set(AR_GUST_ARGS "")
     foreach(flag ${GUST_TEST_AMREX_FLAGS})
@@ -844,8 +844,10 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
     set_tests_properties(rt_aspect_ratio_hill PROPERTIES LABELS "regression" PROCESSORS 2 TIMEOUT 900
                          ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
     # Steep terrain at an outflow face (Canonical_RANS/Outflow_Steep_Terrain): with the terrain levelled at the
-    # outflow face the limit alone is steady within 400 iterations (161 measured); with the face cutting the
-    # steepest part of the slope the iteration stops at a fixed state (r = 0.178), a known limitation.
+    # outflow face the limit alone is steady within 400 iterations (162 measured); with the face cutting the
+    # steepest part of the slope it is steady too with the ghost cells' transport fluxes mirrored from the cells
+    # inside (bc.outflow_transport = mirror, 148 measured), and with bc.outflow_transport = from_velocity (up to
+    # v1.0.0) it alternates between two states (r = 0.176): the old behaviour, still reachable, against the new.
     set(OUTFLOW_TERRAIN ${CMAKE_CURRENT_BINARY_DIR}/run/outflow_steep_terrain)
     add_test(NAME outflow_steep_terrain_prepare
              COMMAND ${Python3_EXECUTABLE} ${OUTFLOW_CASE}/make_terrain.py ${OUTFLOW_TERRAIN})
@@ -857,12 +859,18 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
                           terrain.file=${OUTFLOW_TERRAIN}/outflow_slope_flat.xyz steady.max_iterations=400
                           ${GUST_TEST_AMREX_FLAGS})
     gust_add_test(NAME rt_outflow_steep_terrain_cut NP 2 LABELS "regression" FIXTURES_REQUIRED outflow_terrain
-                  PREFIX ${EXPECT_ABORT} --success --timeout 600 "gust: not steady after 400 iterations"
-                         "gust: it +400 cfl [^ ]+ r [1-9]\\.[0-9]+e-01" --
+                  PREFIX ${EXPECT_ABORT} --success --timeout 600 "gust: steady after [0-9]+ iterations" --
                   COMMAND $<TARGET_FILE:gust> ${OUTFLOW_CASE}/inputs_outflow_slope
                           terrain.file=${OUTFLOW_TERRAIN}/outflow_slope.xyz steady.max_iterations=400
                           ${GUST_TEST_AMREX_FLAGS})
-    set_tests_properties(rt_outflow_steep_terrain_flat rt_outflow_steep_terrain_cut PROPERTIES TIMEOUT 600)
+    gust_add_test(NAME rt_outflow_steep_terrain_from_velocity NP 2 LABELS "regression" FIXTURES_REQUIRED outflow_terrain
+                  PREFIX ${EXPECT_ABORT} --success --timeout 600 "gust: not steady after 400 iterations"
+                         "gust: it +400 cfl [^ ]+ r [1-9]\\.[0-9]+e-01" --
+                  COMMAND $<TARGET_FILE:gust> ${OUTFLOW_CASE}/inputs_outflow_slope
+                          terrain.file=${OUTFLOW_TERRAIN}/outflow_slope.xyz bc.outflow_transport=from_velocity
+                          steady.max_iterations=400 ${GUST_TEST_AMREX_FLAGS})
+    set_tests_properties(rt_outflow_steep_terrain_flat rt_outflow_steep_terrain_cut rt_outflow_steep_terrain_from_velocity
+                         PROPERTIES TIMEOUT 600)
     # ERF's Neutral_Hill_2D to steady (about 80 s on two ranks);
     # the verdict, a two-order drop of the u residual and ERF's own
     # check_hill.py --physics (extern_erf/) on the turbulence plotfile.

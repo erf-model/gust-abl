@@ -177,6 +177,7 @@ void residual (const State& q, const ResidualInputs& in, const Mesh& mesh, const
     const FaceMean mean = face_mean_of(in);
     amrex::Array<amrex::MultiFab, AMREX_SPACEDIM> F;
     transport_fluxes(q.u, q.v, q.w, z, mesh, geom, F);
+    if (in.bc != nullptr) { in.bc->outflow_transport(F); }
     const amrex::Array<const amrex::MultiFab*, 3> Fp{&F[0], &F[1], &F[2]};
 
     // Momentum: C - D + G p - S.
@@ -260,6 +261,7 @@ void line_jacobian (const State& q, const ResidualInputs& in, Equation eq, int d
 {
     amrex::Array<amrex::MultiFab, AMREX_SPACEDIM> F;
     transport_fluxes(q.u, q.v, q.w, q.z_phys_nd, mesh, geom, F);
+    if (in.bc != nullptr) { in.bc->outflow_transport(F); }
     SurfaceState ss;
     const bool wall = (in.surface != nullptr && eq != Equation::w);
     if (wall) { compute_surface_state(q, *in.surface, in.buoyancy, mesh, geom, ss); }

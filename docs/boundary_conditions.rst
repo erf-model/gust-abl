@@ -53,6 +53,57 @@ contravariant velocity :math:`\Omega` (:doc:`terrain_coordinates`), not :math:`w
 
 which gives :math:`\Omega = 0`. Over flat ground :math:`w_\mathrm{face} = 0`.
 
+**Outflow faces: the transport fluxes of the ghost cells.** The ``outflow`` fill copies :math:`u, v, w, \theta, k`
+along the grid line into the ghost cells outside the face. The ghost node columns take the face node's height, so a
+ghost cell is flat across the face (along the face it keeps the face line's slope). Convection uses the transport
+fluxes :math:`F_x = a_x u`, :math:`F_y = a_y v` and :math:`\Omega = w - z_x \bar u - z_y \bar v` (MassFlux.H), and
+the control volume of the face-point velocity reaches half a cell into the ghost cell, so it reads the ghost cell's
+fluxes. By default (``bc.outflow_transport = mirror``) the ghost cell is given the edge cell's fluxes as a mirror
+image through the face:
+
+.. math::
+
+   \Omega_{e+m} = \Omega_{e-m+1}, \qquad F_{t,\,e+m} = F_{t,\,e-m+1}, \qquad
+   F_{n,\,f+m} = 2\,F_{n,\,f} - F_{n,\,f-m}, \qquad m = 1, 2, \dots
+
+- :math:`e`: the last cell inside the face; :math:`e + m`: the :math:`m`-th ghost cell outside it (counted outwards,
+  so towards lower indices on a low face), at the same level and position along the face; :math:`e - m + 1`: its
+  mirror image inside.
+- :math:`F_t`: the tangential flux (:math:`F_y` on an x face, :math:`F_x` on a y face), at cell positions along the
+  normal; :math:`F_n`: the normal flux, on the faces :math:`f` (the boundary face) and :math:`f \pm m`.
+- :math:`a_x, a_y`: the area factors of the x- and y-faces (Mesh.H); :math:`z_x, z_y`: the slopes of a z-face, from
+  its four nodes;
+  :math:`\bar u, \bar v`: the means of the four :math:`u` (:math:`v`) points around it.
+
+Each ghost cell then has its edge cell's divergence (in index space), whatever the ground does along or across the
+face, and the face-point control volume, half in each, has the edge cell's net flux: for a mass-consistent field the
+face-point rows are like interior rows. The velocity ghosts are not changed, so the
+strain rate, the diffusion and the closure at the face see the same values as before.
+
+With ``bc.outflow_transport = from_velocity`` (the only choice up to v1.0.0) the fluxes are computed from the copied
+velocities and the ghost cell's own geometry. These terms then differ from the edge cell's:
+
+- :math:`\Omega_g - \Omega_e \approx z_{x,e}\,\bar u_e` on an x face (plus the difference of the along-face slopes
+  times :math:`\bar v`): a vertical flux where the face cuts a slope.
+- :math:`F_{n,f+1} \approx F_{n,f-1}` (the copied normal velocity), so the ghost cell's normal divergence is minus the
+  edge cell's.
+- In 3-D the tangential flux, through the flat ghost cell's area factors (a smaller term).
+
+The face-point control volume then has a net flux the implicit diagonal (:math:`a_P = \sum a_\mathrm{nb}`) does not
+hold. Where it is an outflow (a face cutting a rising slope) the true diagonal is larger, the face-point rows
+overshoot and the iteration alternates between two states (``Tests/Canonical_RANS/Outflow_Steep_Terrain``: relative
+residual 0.176 with ``from_velocity``, steady in 148 iterations with ``mirror``). Mirroring :math:`\Omega` alone
+removes that flux but leaves the normal-flux term: on ``Aspect_Ratio_Hill_2D`` (dx/dz1 = 100, a slope of 5e-4 at the
+face) the spanwise velocity residual then decayed slowly at the face column (546 iterations, against 181 with
+``from_velocity`` and 161 with the full mirror). The cause of that slow mode was not isolated; the full mirror,
+which makes the face-point control volume consistent, does not show it.
+
+The two choices differ over flat ground too (the normal flux), by little: on ``Askervein_210`` the 10 m speeds change
+by at most 7e-6 (relative). With backflow through the face (or an edge cell that slows the flow by more than two
+thirds) the extrapolated normal flux turns the outer half of the face-point control volume into an inflow; the rows
+stay well posed (upwind weights), but a zero-gradient outflow is not meant for backflow with either choice. A restart from a checkpoint written with v1.0.0 continues with ``mirror``; give
+``bc.outflow_transport = from_velocity`` to continue the old run unchanged.
+
 Wall model
 ----------
 
