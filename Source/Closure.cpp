@@ -384,7 +384,7 @@ void Closure::check_wall_distance (const amrex::MultiFab& dist_in, const Roughne
 
 void Closure::evaluate (const State& q, const amrex::MultiFab& dist_in, const Roughness& rough,
                         const BuoyancyOptions& buoyancy, const Mesh& mesh, const amrex::Geometry& geom,
-                        ClosureFields& f) const
+                        ClosureFields& f, ClosureScratch* scratch) const
 {
     const char* op = "Closure::evaluate";
     check_operator_field(op, "tke", q.tke, Loc::cell, mesh, 2);
@@ -410,18 +410,25 @@ void Closure::evaluate (const State& q, const amrex::MultiFab& dist_in, const Ro
 
     // N^2 as the theta equation sees it (P_b, the heat flux's buoyancy sink)
     // and, gated, as the length and Rt see it (the same field without the gate).
-    amrex::MultiFab N2, S2, N2g;
+    ClosureScratch local;
+    ClosureScratch& sc = (scratch != nullptr) ? *scratch : local;
+    amrex::MultiFab& N2 = sc.N2;
+    amrex::MultiFab& S2 = sc.S2;
+    amrex::MultiFab& N2g = sc.N2g;
+    if (!N2.empty() && (N2.boxArray() != q.p.boxArray() || N2.DistributionMap() != q.p.DistributionMap())) {
+        amrex::Abort(std::string("gust: ") + op + ": the scratch fields are not on q's layout");
+    }
     stratification_and_strain(q, buoyancy, geom, N2, S2);
     if (m_opt.ri_gate > 0) {
-        N2g.define(N2.boxArray(), N2.DistributionMap(), 1, N2.nGrow());
+        if (N2g.empty()) { N2g.define(N2.boxArray(), N2.DistributionMap(), 1, N2.nGrow()); }
         amrex::MultiFab::Copy(N2g, N2, 0, 0, 1, N2.nGrow());
         gate_stratification(N2g, S2, m_opt.ri_gate);
     }
     const amrex::MultiFab& N2c = (m_opt.ri_gate > 0) ? N2g : N2;
     // The nu_t cap (ClosureWake.H): the largest Real without turb.realizability, so min(nu_t, cap) = nu_t.
-    amrex::MultiFab cap;
+    amrex::MultiFab& cap = sc.cap;
     nut_cap_field(q, S2, m_opt, m_c, cap);
-    amrex::iMultiFab dec;
+    amrex::iMultiFab& dec = sc.dec;
     decide(q, N2c, dist, z0, dec);
     const ClosureConstants c = m_c;
     const amrex::Real nu_mol = m_opt.nu_molecular, alpha_mol = m_opt.alpha_molecular, inv_sigma = 1 / m_opt.sigma_k;
@@ -547,7 +554,11 @@ void Closure::freeze_switches (const State& q, const amrex::MultiFab& dist_in, c
 void Closure::decide (const State& q, const amrex::MultiFab& N2, const amrex::MultiFab& dist, amrex::Real z0,
                       amrex::iMultiFab& out) const
 {
-    out.define(q.p.boxArray(), q.p.DistributionMap(), 1, 1);
+    if (out.empty() || out.boxArray() != q.p.boxArray() || out.DistributionMap() != q.p.DistributionMap()
+        || out.nComp() != 1 || out.nGrow() != 1) {
+        out.clear();
+        out.define(q.p.boxArray(), q.p.DistributionMap(), 1, 1);
+    }
     out.setVal(0);
     if (!frozen()) {
         live_decisions(q.tke, N2, dist, z0, m_c, out);

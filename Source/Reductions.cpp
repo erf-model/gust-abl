@@ -153,6 +153,36 @@ amrex::Long local_not_positive (const amrex::MultiFab& mf, int ngrow)
 
 } // namespace
 
+amrex::Long count_bit_differences (const amrex::MultiFab& a, const amrex::MultiFab& b, const amrex::IntVect& ngrow)
+{
+    AMREX_ALWAYS_ASSERT_WITH_MESSAGE(a.boxArray() == b.boxArray() && a.DistributionMap() == b.DistributionMap()
+                                     && a.nComp() == b.nComp(), "count_bit_differences: a and b are not on one layout");
+    AMREX_ALWAYS_ASSERT_WITH_MESSAGE(a.nGrowVect().allGE(ngrow) && b.nGrowVect().allGE(ngrow),
+                                     "count_bit_differences: the fields have fewer ghost layers than asked");
+    using Bits = std::conditional_t<sizeof(amrex::Real) == 8, std::uint64_t, std::uint32_t>;
+    static_assert(sizeof(Bits) == sizeof(amrex::Real));
+    const int nc = a.nComp();
+    amrex::ReduceOps<amrex::ReduceOpSum> op;
+    amrex::ReduceData<amrex::Long> data(op);
+    for (amrex::MFIter mfi(a, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
+        const amrex::Box bx = mfi.growntilebox(ngrow);
+        const auto x = a.const_array(mfi);
+        const auto y = b.const_array(mfi);
+        op.eval(bx, data, [=] AMREX_GPU_DEVICE (int i, int j, int k) -> amrex::GpuTuple<amrex::Long>
+        {
+            amrex::Long n = 0;
+            for (int c = 0; c < nc; ++c) {
+                // Integer compare of the bit patterns: no floating-point compare sees a NaN.
+                n += (std::bit_cast<Bits>(x(i, j, k, c)) != std::bit_cast<Bits>(y(i, j, k, c))) ? 1 : 0;
+            }
+            return {n};
+        });
+    }
+    amrex::Long n = amrex::get<0>(data.value(op));
+    amrex::ParallelDescriptor::ReduceLongSum(n);
+    return n;
+}
+
 std::vector<amrex::Long> count_not_positive (const std::vector<const amrex::MultiFab*>& fields, bool allow_zero,
                                              int ngrow)
 {

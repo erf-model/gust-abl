@@ -211,7 +211,8 @@ void NewtonStage::run_norms (State& q)
     m_in.bc->fill_ghosts(q, m_in.surface, m_in.buoyancy, false, m_in.surface != nullptr ? &m_ss : nullptr);
     const bool frozen = (m_closure != nullptr && m_closure->frozen());
     if (frozen) { m_closure->thaw(); }   // the run's own (live) decisions
-    residual(q, m_in, m_mesh, m_geom, m_R, m_in.closure != nullptr ? &m_cf : nullptr);
+    residual(q, m_in, m_mesh, m_geom, m_R, m_in.closure != nullptr ? &m_cf : nullptr,
+             m_in.surface != nullptr ? &m_ss : nullptr, &m_rws);
     if (frozen) {
         const FreezeScope scope = m_closure->freeze_scope();
         m_closure->restore_switches(m_saved, scope, q.p.boxArray(), q.p.DistributionMap(), m_geom);

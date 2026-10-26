@@ -4,6 +4,7 @@
 #include "ImplicitOperator.H"
 #include "BoundaryConditions.H"
 #include "MassFlux.H"
+#include "Reductions.H"
 
 #include <AMReX_iMultiFab.H>
 
@@ -36,6 +37,14 @@ amrex::Vector<const amrex::MultiFab*> ResidualFields::fields () const
     return {&u, &v, &w, &p, &theta, &tke};
 }
 
+void ResidualWorkspace::use_layout (const amrex::BoxArray& ba, const amrex::DistributionMapping& dm)
+{
+    if (m_ba == ba && m_dm == dm) { return; }
+    *this = ResidualWorkspace();
+    m_ba = ba;
+    m_dm = dm;
+}
+
 namespace {
 
 void check_diffusivities (const char* op, const ResidualInputs& in)
@@ -61,10 +70,36 @@ FaceMean face_mean_of (const ResidualInputs& in)
 
 //! Evaluate the closure at q into f (the surface layer's z0 or map, or 0).
 void evaluate_closure (const State& q, const ResidualInputs& in, const Mesh& mesh, const amrex::Geometry& geom,
-                       ClosureFields& f)
+                       ClosureFields& f, ClosureScratch* scratch = nullptr)
 {
-    in.closure->evaluate(q, *in.wall_distance, ground_roughness(in.surface), in.buoyancy, mesh, geom, f);
+    in.closure->evaluate(q, *in.wall_distance, ground_roughness(in.surface), in.buoyancy, mesh, geom, f, scratch);
 }
+
+#ifdef GUST_DEBUG_CHECKS
+//! Abort unless the caller's wall state is the one computed from q, bit for
+//! bit (ghost columns included).
+void require_surface_state_of (const State& q, const ResidualInputs& in, const Mesh& mesh, const amrex::Geometry& geom,
+                               const SurfaceState& given)
+{
+    SurfaceState fresh;
+    compute_surface_state(q, *in.surface, in.buoyancy, mesh, geom, fresh);
+    const char* names[] = {"ustar", "speed", "zref", "d0", "inv_L", "tau", "drag", "kwall", "area"};
+    const amrex::MultiFab* a[] = {&fresh.ustar, &fresh.speed, &fresh.zref, &fresh.d0, &fresh.inv_L,
+                                  &fresh.tau, &fresh.drag, &fresh.kwall, &fresh.area};
+    const amrex::MultiFab* b[] = {&given.ustar, &given.speed, &given.zref, &given.d0, &given.inv_L,
+                                  &given.tau, &given.drag, &given.kwall, &given.area};
+    for (int n = 0; n < 9; ++n) {
+        if (b[n]->boxArray() != a[n]->boxArray() || b[n]->DistributionMap() != a[n]->DistributionMap()) {
+            amrex::Abort(std::string("gust: residual: the given surface state is not on q's layout (") + names[n] + ")");
+        }
+        const amrex::Long diff = count_bit_differences(*a[n], *b[n], amrex::IntVect(1, 1, 0));
+        if (diff > 0) {
+            amrex::Abort(std::string("gust: residual: the given surface state is not q's: ") + names[n] + " differs at "
+                         + std::to_string(diff) + " points");
+        }
+    }
+}
+#endif
 
 void check_inputs (const char* op, const ResidualInputs& in)
 {
@@ -157,25 +192,33 @@ amrex::Vector<const amrex::MultiFab*> solution_fields (const State& q)
 } // namespace
 
 void residual (const State& q, const ResidualInputs& in, const Mesh& mesh, const amrex::Geometry& geom,
-               ResidualFields& R, ClosureFields* fields)
+               ResidualFields& R, ClosureFields* fields, const SurfaceState* surface, ResidualWorkspace* ws)
 {
     check_inputs("residual", in);
     if (R.u.empty()) { R.define(q.p.boxArray(), q.p.DistributionMap()); }
+    if (R.p.boxArray() != q.p.boxArray() || R.p.DistributionMap() != q.p.DistributionMap()) {
+        amrex::Abort("gust: residual: R is not on q's layout");
+    }
+    if (surface != nullptr && in.surface == nullptr) {
+        amrex::Abort("gust: residual: a surface state is given without a wall model (ResidualInputs::surface)");
+    }
     const amrex::MultiFab& z = q.z_phys_nd;
+    ResidualWorkspace local;
+    ResidualWorkspace& w = (ws != nullptr) ? *ws : local;
+    w.use_layout(q.p.boxArray(), q.p.DistributionMap());
     // The diffusivities: given, or the closure's at q.
-    ClosureFields local_fields;
-    ClosureFields* cf = (fields != nullptr) ? fields : &local_fields;
+    ClosureFields* cf = (fields != nullptr) ? fields : &w.cf;
     const amrex::MultiFab* nu = in.nu;
     const amrex::MultiFab* gamma_theta = in.gamma_theta;
     const amrex::MultiFab* gamma_tke = in.gamma_tke;
     if (in.closure != nullptr) {
-        evaluate_closure(q, in, mesh, geom, *cf);
+        evaluate_closure(q, in, mesh, geom, *cf, &w.closure);
         nu = &cf->nu;
         gamma_theta = &cf->gamma_theta;
         gamma_tke = &cf->gamma_tke;
     }
     const FaceMean mean = face_mean_of(in);
-    amrex::Array<amrex::MultiFab, AMREX_SPACEDIM> F;
+    amrex::Array<amrex::MultiFab, AMREX_SPACEDIM>& F = w.F;
     transport_fluxes(q.u, q.v, q.w, z, mesh, geom, F);
     if (in.bc != nullptr) { in.bc->outflow_transport(F); }
     const amrex::Array<const amrex::MultiFab*, 3> Fp{&F[0], &F[1], &F[2]};
@@ -183,27 +226,38 @@ void residual (const State& q, const ResidualInputs& in, const Mesh& mesh, const
     // Momentum: C - D + G p - S.
     const amrex::Array<const amrex::MultiFab*, 3> vel{&q.u, &q.v, &q.w};
     const amrex::Array<amrex::MultiFab*, 3> Rm{&R.u, &R.v, &R.w};
-    amrex::Array<amrex::MultiFab, 3> tmp;
+    amrex::Array<amrex::MultiFab, 3>& tmp = w.tmp;
     for (int c = 0; c < 3; ++c) {
-        convection(velocity_loc(c), *vel[c], Fp, in.momentum, mesh, geom, *Rm[c]);
-        tmp[c].define(Rm[c]->boxArray(), Rm[c]->DistributionMap(), 1, 0);
+        auto& Gc = w.Gc[static_cast<int>(velocity_loc(c))];
+        convection(velocity_loc(c), *vel[c], Fp, in.momentum, mesh, geom, *Rm[c], Gc);
+        if (tmp[c].empty()) { tmp[c].define(Rm[c]->boxArray(), Rm[c]->DistributionMap(), 1, 0); }
         if (in.hybrid_sigma != nullptr) {
             ConvectionOptions up = in.momentum;
             up.limiter = Limiter::upwind;
-            convection(velocity_loc(c), *vel[c], Fp, up, mesh, geom, tmp[c]);
+            convection(velocity_loc(c), *vel[c], Fp, up, mesh, geom, tmp[c], Gc);
             blend_towards_upwind(static_cast<int>(velocity_loc(c)), *in.hybrid_sigma, tmp[c], *Rm[c]);
         }
     }
     // Diffusion as fluxes, so the wall model can set the ground fluxes.
-    amrex::Array<amrex::Array<amrex::MultiFab, 3>, 3> Gm;
-    amrex::Array<amrex::MultiFab, 3> Gt, Gk;
+    auto& Gm = w.Gm;
+    auto& Gt = w.Gt;
+    auto& Gk = w.Gk;
     momentum_diffusive_fluxes(vel, *nu, z, mesh, geom, Gm, mean);
     scalar_diffusive_fluxes(q.theta, *gamma_theta, z, mesh, geom, Gt, mean);
     scalar_diffusive_fluxes(q.tke, *gamma_tke, z, mesh, geom, Gk, mean);
-    SurfaceState ss;
+    // The wall state: the caller's (from its ghost fill of q), or computed
+    // here. A state that read the top w face is computed again: the fill
+    // writes that face after the wall model (SurfaceState::reads_top_face).
+    const SurfaceState* ssp = (surface != nullptr && !surface->reads_top_face) ? surface : nullptr;
     if (in.surface != nullptr) {
-        compute_surface_state(q, *in.surface, in.buoyancy, mesh, geom, ss);
-        set_ground_fluxes(ss, *in.surface, Gm[0][2], Gm[1][2], Gt[2], Gk[2]);
+        if (ssp == nullptr) {
+            compute_surface_state(q, *in.surface, in.buoyancy, mesh, geom, w.ss);
+            ssp = &w.ss;
+        }
+#ifdef GUST_DEBUG_CHECKS
+        else { require_surface_state_of(q, in, mesh, geom, *ssp); }
+#endif
+        set_ground_fluxes(*ssp, *in.surface, Gm[0][2], Gm[1][2], Gt[2], Gk[2]);
     }
     for (int c = 0; c < 3; ++c) {
         flux_divergence(velocity_loc(c), Gm[c], mesh, geom, tmp[c]);
@@ -211,22 +265,25 @@ void residual (const State& q, const ResidualInputs& in, const Mesh& mesh, const
     }
     pressure_gradient(q.p, z, mesh, geom, {&tmp[0], &tmp[1], &tmp[2]});
     for (int c = 0; c < 3; ++c) { amrex::MultiFab::Add(*Rm[c], tmp[c], 0, 0, 1, 0); }
-    amrex::MultiFab theta_ref(q.p.boxArray(), q.p.DistributionMap(), 1, 1);
+    amrex::MultiFab& theta_ref = w.theta_ref;
+    if (theta_ref.empty()) { theta_ref.define(q.p.boxArray(), q.p.DistributionMap(), 1, 1); }
     fill_theta_ref(in.theta_ref, z, theta_ref);
     subtract_buoyancy(q.theta, theta_ref, in.buoyancy, mesh, R.w);
     subtract_coriolis(q.u, q.v, q.w, in.coriolis, mesh, R.u, R.v, R.w);
     subtract_pressure_gradient(in.pressure_gradient, mesh, R.u, R.v, R.w);
 
     // Continuity.
-    velocity_divergence(q.u, q.v, q.w, z, mesh, geom, R.p);
+    velocity_divergence(q.u, q.v, q.w, z, mesh, geom, R.p, w.omega);
 
     // Scalars: C - D.
-    amrex::MultiFab d(q.p.boxArray(), q.p.DistributionMap(), 1, 0);
-    convection(Loc::cell, q.theta, Fp, in.theta, mesh, geom, R.theta);
+    amrex::MultiFab& d = w.d;
+    if (d.empty()) { d.define(q.p.boxArray(), q.p.DistributionMap(), 1, 0); }
+    auto& Gcc = w.Gc[static_cast<int>(Loc::cell)];
+    convection(Loc::cell, q.theta, Fp, in.theta, mesh, geom, R.theta, Gcc);
     if (in.hybrid_sigma != nullptr) {
         ConvectionOptions up = in.theta;
         up.limiter = Limiter::upwind;
-        convection(Loc::cell, q.theta, Fp, up, mesh, geom, d);
+        convection(Loc::cell, q.theta, Fp, up, mesh, geom, d, Gcc);
         blend_towards_upwind(0, *in.hybrid_sigma, d, R.theta);
     }
     flux_divergence(Loc::cell, Gt, mesh, geom, d);
@@ -234,7 +291,7 @@ void residual (const State& q, const ResidualInputs& in, const Mesh& mesh, const
     ConvectionOptions kopt;
     kopt.limiter = Limiter::upwind;
     kopt.bounded = true;
-    convection(Loc::cell, q.tke, Fp, kopt, mesh, geom, R.tke);
+    convection(Loc::cell, q.tke, Fp, kopt, mesh, geom, R.tke, Gcc);
     flux_divergence(Loc::cell, Gk, mesh, geom, d);
     amrex::MultiFab::Subtract(R.tke, d, 0, 0, 1, 0);
     if (in.closure != nullptr) {
@@ -243,7 +300,7 @@ void residual (const State& q, const ResidualInputs& in, const Mesh& mesh, const
         amrex::MultiFab::Subtract(R.tke, cf->Pb, 0, 0, 1, 0);
         amrex::MultiFab::Add(R.tke, cf->eps, 0, 0, 1, 0);
     }
-    if (in.surface != nullptr) { apply_wall_k(ss, *in.surface, q.tke, R.tke); }
+    if (in.surface != nullptr) { apply_wall_k(*ssp, *in.surface, q.tke, R.tke); }
     if (in.bc != nullptr) {
         in.bc->add_damping(q, R);
         in.bc->apply_rows(q, R);
@@ -324,7 +381,8 @@ void line_jacobian (const amrex::Array<const amrex::MultiFab*, AMREX_SPACEDIM>& 
 }
 
 amrex::Real jvp (const State& q, const State& v, const ResidualInputs& in, const Mesh& mesh,
-                 const amrex::Geometry& geom, ResidualFields& Jv, const ResidualFields* R0, bool refill)
+                 const amrex::Geometry& geom, ResidualFields& Jv, const ResidualFields* R0, bool refill,
+                 ResidualWorkspace* ws)
 {
     if (refill && in.bc == nullptr) {
         amrex::Abort("gust: jvp: refill needs ResidualInputs::bc (the ghost fill of q + eps v)");
@@ -339,8 +397,12 @@ amrex::Real jvp (const State& q, const State& v, const ResidualInputs& in, const
         }
     }
     check_inputs("jvp", in);
+    ResidualWorkspace local;
+    ResidualWorkspace& w = (ws != nullptr) ? *ws : local;
+    w.use_layout(q.p.boxArray(), q.p.DistributionMap());
     const amrex::Periodicity per = geom.periodicity();
-    amrex::MultiFab theta_ref(q.p.boxArray(), q.p.DistributionMap(), 1, 0);
+    amrex::MultiFab& theta_ref = w.jvp_theta_ref;
+    if (theta_ref.empty()) { theta_ref.define(q.p.boxArray(), q.p.DistributionMap(), 1, 0); }
     fill_theta_ref(in.theta_ref, q.z_phys_nd, theta_ref);
     const auto& js = in.jvp_scales;
     const amrex::Real scale[6] = {js.velocity, js.velocity, js.velocity, js.pressure, js.theta, js.tke};
@@ -374,20 +436,24 @@ amrex::Real jvp (const State& q, const State& v, const ResidualInputs& in, const
     const double rms_v = std::sqrt(sums[1] / sums[2]);
     const double eps = static_cast<double>(js.step) * (1 + mean_q) / rms_v;
 
-    ResidualFields base;
     if (R0 == nullptr) {
-        residual(q, in, mesh, geom, base);
-        R0 = &base;
+        residual(q, in, mesh, geom, w.base, nullptr, nullptr, &w);
+        R0 = &w.base;
     }
-    State qp;
-    qp.define(q.p.boxArray(), q.p.DistributionMap());
+    State& qp = w.qp;
+    if (qp.p.empty()) { qp.define(q.p.boxArray(), q.p.DistributionMap()); }
     amrex::MultiFab::Copy(qp.z_phys_nd, q.z_phys_nd, 0, 0, 1, q.z_phys_nd.nGrow());
     const amrex::Vector<amrex::MultiFab*> pf{&qp.u, &qp.v, &qp.w, &qp.p, &qp.theta, &qp.tke};
     for (int n = 0; n < static_cast<int>(qf.size()); ++n) {
         amrex::MultiFab::LinComb(*pf[n], 1, *qf[n], 0, static_cast<amrex::Real>(eps), *vf[n], 0, 0, 1, qf[n]->nGrow());
     }
-    if (refill) { in.bc->fill_ghosts(qp, in.surface, in.buoyancy); }
-    residual(qp, in, mesh, geom, Jv);
+    // The refill's wall state goes to the residual (which computes its own when it read the top w face).
+    const SurfaceState* ss = nullptr;
+    if (refill) {
+        in.bc->fill_ghosts(qp, in.surface, in.buoyancy, false, in.surface != nullptr ? &w.ss : nullptr);
+        if (in.surface != nullptr) { ss = &w.ss; }
+    }
+    residual(qp, in, mesh, geom, Jv, nullptr, ss, &w);
     auto jf = Jv.fields();
     const auto rf = R0->fields();
     for (int n = 0; n < static_cast<int>(jf.size()); ++n) {

@@ -199,6 +199,31 @@ TEST (Reductions, CountNotPositiveFindsEveryBadPoint)
     EXPECT_NO_THROW(gust::require_positive("op_x", {"field_b"}, {&b}, true));
 }
 
+// count_bit_differences compares bit patterns: +0 and -0 differ, a NaN
+// equals the same NaN, a NaN differs from a number; every component counts,
+// and ghost cells only up to ngrow. a against itself: 0.
+TEST (Reductions, CountBitDifferencesComparesBitPatterns)
+{
+    const auto ba = gust::make_box_array(reduction_mesh());
+    const amrex::DistributionMapping dm(ba);
+    amrex::MultiFab a(ba, dm, 2, 1), b(ba, dm, 2, 1);
+    a.setVal(1.5);
+    b.setVal(1.5);
+    const amrex::Real nan = std::numeric_limits<amrex::Real>::quiet_NaN();
+    set_point(a, amrex::IntVect(3, 4, 5), nan, false);
+    set_point(b, amrex::IntVect(3, 4, 5), nan, false);   // same NaN: equal
+    set_point(a, amrex::IntVect(1, 1, 1), 0.0, false);
+    set_point(b, amrex::IntVect(1, 1, 1), -0.0, false);  // +0 vs -0: differ
+    set_point(a, amrex::IntVect(23, 19, 15), nan, false); // NaN vs 1.5: differ
+    set_point(b, amrex::IntVect(-1, 0, 0), 2.0, true);   // a ghost cell
+    EXPECT_EQ(gust::count_bit_differences(a, a, amrex::IntVect(1)), 0);
+    EXPECT_EQ(gust::count_bit_differences(a, b, amrex::IntVect(0)), 2);
+    EXPECT_EQ(gust::count_bit_differences(a, b, amrex::IntVect(1)), 3);
+    // The second component: a point there counts once more.
+    b.setVal(amrex::Real(1.75), 1, 1, 0);
+    EXPECT_EQ(gust::count_bit_differences(a, b, amrex::IntVect(0)), 2 + ba.numPts());
+}
+
 TEST (Reductions, SumRejectsFaceData)
 {
     const auto ba = gust::make_box_array(reduction_mesh());

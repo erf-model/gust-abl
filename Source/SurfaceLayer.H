@@ -172,6 +172,12 @@ struct SurfaceState
     amrex::MultiFab drag;    //!< u*^2 |A| / U (m/s): tau = drag U_t
     amrex::MultiFab kwall;   //!< k_w (m^2/s^2)
     amrex::MultiFab area;    //!< |A| = sqrt(1 + z_x^2 + z_y^2)
+    //! Some column's reference interval ends at the top cell, so the state
+    //! read the top w face (a z_ref between the last two cell centres, or a
+    //! mesh of two layers). The ghost fill writes that face after the wall
+    //! model, so then the fill's state need not be that of the filled state
+    //! (residual() computes its own; Residual.H). The same on every rank.
+    bool reads_top_face{false};
 };
 
 //! Compute the surface layer from the state's velocity (two ghost cells

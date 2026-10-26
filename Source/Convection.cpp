@@ -138,6 +138,13 @@ void convection (Loc loc, const amrex::MultiFab& q, const amrex::Array<const amr
                  const ConvectionOptions& opt, const Mesh& mesh, const amrex::Geometry& geom, amrex::MultiFab& out)
 {
     amrex::Array<amrex::MultiFab, AMREX_SPACEDIM> G;
+    convection(loc, q, F, opt, mesh, geom, out, G);
+}
+
+void convection (Loc loc, const amrex::MultiFab& q, const amrex::Array<const amrex::MultiFab*, AMREX_SPACEDIM>& F,
+                 const ConvectionOptions& opt, const Mesh& mesh, const amrex::Geometry& geom, amrex::MultiFab& out,
+                 amrex::Array<amrex::MultiFab, AMREX_SPACEDIM>& G)
+{
     convective_fluxes(loc, q, F, opt, mesh, G);
     flux_divergence(loc, G, mesh, geom, out);
     if (opt.bounded) { subtract_transport_divergence(loc, q, F, mesh, geom, out); }

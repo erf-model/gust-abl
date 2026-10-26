@@ -191,9 +191,10 @@ void NewtonVector::define (const amrex::BoxArray& ba, const amrex::DistributionM
 }
 
 NewtonOperator::NewtonOperator (const State& q, const ResidualFields& R0, const ResidualInputs& in, const Mesh& mesh,
-                                const amrex::Geometry& geom, const amrex::MultiFab* dtau, NewtonPreconditioner* pc)
+                                const amrex::Geometry& geom, const amrex::MultiFab* dtau, NewtonPreconditioner* pc,
+                                ResidualWorkspace* ws)
     : m_q(q), m_R0(R0), m_in(in), m_mesh(mesh), m_geom(geom), m_pc(pc),
-      m_ba(q.p.boxArray()), m_dm(q.p.DistributionMap())
+      m_ba(q.p.boxArray()), m_dm(q.p.DistributionMap()), m_ws(ws != nullptr ? ws : &m_own_ws)
 {
     if (in.bc == nullptr) {
         amrex::Abort("gust: NewtonOperator: ResidualInputs::bc is null (the perturbation's homogeneous ghost fill needs the boundary conditions)");
@@ -247,7 +248,7 @@ void NewtonOperator::apply (NewtonVector& Ax, const NewtonVector& x)
         d.mult(m_s[f], 0, 1, 0);
     }
     m_in.bc->fill_ghosts(m_dq, m_in.surface, m_in.buoyancy, true);
-    const amrex::Real eps = jvp(m_q, m_dq, m_in, m_mesh, m_geom, m_Jv, &m_R0, true);
+    const amrex::Real eps = jvp(m_q, m_dq, m_in, m_mesh, m_geom, m_Jv, &m_R0, true, m_ws);
     if (eps > 0) {
         m_eps_min = (m_eps_min > 0) ? std::min(m_eps_min, eps) : eps;
         m_eps_max = std::max(m_eps_max, eps);
@@ -428,24 +429,24 @@ NewtonKrylov::NewtonKrylov (const NewtonOptions& opt, const ResidualInputs& in, 
     }
 }
 
-void NewtonKrylov::base_residual (const State& q, ResidualFields& R0) const
+void NewtonKrylov::fill_and_base_residual (State& q, ResidualFields& R0) const
 {
-    // R0 = R(fill(q)), the base point of every jvp (which refills q + eps dq).
-    // q's ghosts are filled and the fill is a fixed point (the wall model
-    // reads no value the fill writes), so R(fill(q)) is R(q) bit for bit.
-    residual(q, m_in, m_mesh, m_geom, R0);
+    // R0 = R(fill(q)), the base point of every jvp (which refills q + eps dq),
+    // with the wall state of that fill (residual() computes its own when the
+    // state read the top w face, SurfaceState::reads_top_face).
+    m_in.bc->fill_ghosts(q, m_in.surface, m_in.buoyancy, false, m_in.surface != nullptr ? &m_ss : nullptr);
+    residual(q, m_in, m_mesh, m_geom, R0, nullptr, m_in.surface != nullptr ? &m_ss : nullptr, &m_ws);
 }
 
 NewtonStepInfo NewtonKrylov::solve (State& q, const amrex::MultiFab* dtau, NewtonPreconditioner* pc,
                                     const std::function<void (const NewtonOperator&, const NewtonVector&)>& use)
 {
-    m_in.bc->fill_ghosts(q, m_in.surface, m_in.buoyancy);
     ResidualFields R0;
-    base_residual(q, R0);
+    fill_and_base_residual(q, R0);
 
     NewtonStepInfo info;
     {
-        NewtonOperator op(q, R0, m_in, m_mesh, m_geom, dtau, pc);
+        NewtonOperator op(q, R0, m_in, m_mesh, m_geom, dtau, pc, &m_ws);
         if (pc != nullptr) { pc->setup(q, dtau); }
         NewtonVector b = op.makeVecRHS();
         NewtonVector x = op.makeVecLHS();
@@ -516,10 +517,9 @@ NewtonStepInfo NewtonKrylov::direction (State& q, const amrex::MultiFab* dtau, S
 
 amrex::Real NewtonKrylov::residual_norm (State& q)
 {
-    m_in.bc->fill_ghosts(q, m_in.surface, m_in.buoyancy);
     ResidualFields R0;
-    base_residual(q, R0);
-    NewtonOperator op(q, R0, m_in, m_mesh, m_geom, nullptr);
+    fill_and_base_residual(q, R0);
+    NewtonOperator op(q, R0, m_in, m_mesh, m_geom, nullptr, nullptr, &m_ws);
     NewtonVector b = op.makeVecRHS();
     op.rhs(R0, b);
     const amrex::Real r = op.norm2(b);
