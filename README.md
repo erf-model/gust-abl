@@ -1,7 +1,7 @@
 # GUST
 
-[![CI](https://github.com/hgopalan/gust-abl/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/hgopalan/gust-abl/actions/workflows/ci.yml)
-[![Docs](https://github.com/hgopalan/gust-abl/actions/workflows/docs.yml/badge.svg?branch=main)](https://github.com/hgopalan/gust-abl/actions/workflows/docs.yml)
+[![CI](https://github.com/erf-model/gust-abl/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/erf-model/gust-abl/actions/workflows/ci.yml)
+[![Docs](https://github.com/erf-model/gust-abl/actions/workflows/docs.yml/badge.svg?branch=main)](https://github.com/erf-model/gust-abl/actions/workflows/docs.yml)
 
 **GUST** (Grid-sequenced Unified Steady Terrain solver) computes steady wind fields over complex terrain. It is a
 steady Reynolds-averaged Navier–Stokes (RANS) solver for the atmospheric boundary layer, built on
@@ -30,7 +30,7 @@ Poisson operator, the surface layer), and its initializer builds on
 ## Quick start
 
 ```bash
-git clone --recursive https://github.com/hgopalan/gust-abl.git
+git clone --recursive https://github.com/erf-model/gust-abl.git
 cd gust-abl
 cmake -S . -B build-rel -DCMAKE_BUILD_TYPE=Release
 cmake --build build-rel -j 8
@@ -38,7 +38,7 @@ ctest --test-dir build-rel -L unit --output-on-failure
 mpirun -n 2 build-rel/gust Tests/Infrastructure/Smoke_Restart/inputs_smoke
 ```
 
-The [tutorials](https://hgopalan.github.io/gust-abl/) walk through a single column, a flat boundary layer, a hill
+The [tutorials](https://erf-model.github.io/gust-abl/) walk through a single column, a flat boundary layer, a hill
 and Askervein Hill.
 
 ## Platforms
@@ -53,11 +53,11 @@ and Askervein Hill.
 | Intel SYCL (Linux) | compiled |
 
 Hosted CI runners have no GPUs, so the GPU builds are compiled but not yet run (see the
-[CI page](https://hgopalan.github.io/gust-abl/ci.html)).
+[CI page](https://erf-model.github.io/gust-abl/ci.html)).
 
 ## Documentation
 
-The full documentation is at <https://hgopalan.github.io/gust-abl/>: building and running, every input with its
+The full documentation is at <https://erf-model.github.io/gust-abl/>: building and running, every input with its
 range, the governing equations, discretization and solution algorithm, test cases and results. The sources are
 in [`docs/`](docs/); to build them locally:
 

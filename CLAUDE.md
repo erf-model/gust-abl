@@ -1,9 +1,9 @@
 # CLAUDE.md — GUST
 
 Rules for working on **GUST** (Grid-sequenced Unified Steady Terrain solver; called ablsteady until October 2026;
-repository `hgopalan/gust-abl`, formerly `ablsteadyrans`), a stand-alone AMReX steady RANS solver for the
-atmospheric boundary layer. This is the subset of the multi-code rules (written for ERF, AMR-Wind and related codes)
-that applies here, plus what is specific to this repository.
+repository `erf-model/gust-abl`, formerly `hgopalan/gust-abl` and `ablsteadyrans`), a stand-alone AMReX steady RANS
+solver for the atmospheric boundary layer. This is the subset of the multi-code rules (written for ERF, AMR-Wind and
+related codes) that applies here, plus what is specific to this repository.
 
 - Development plan: `ablsteady_plan_rev6.md` (4 phases, 36 sub-phases, one PR each). Tests beyond the plan are
   welcome (mark them "beyond the plan"); variations from the plan go in a "Variations from the plan" list in the
