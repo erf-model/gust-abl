@@ -179,7 +179,9 @@ void Mesh::check_restart (const Inputs& in, const amrex::Geometry& geom, amrex::
     // Valid nodes only, within restart_height_tolerance: another compiler
     // (or a GPU build) may contract the multiply-adds of the mesh build
     // differently and land a few ulp away; different inputs move nodes by
-    // far more. !(d <= tol) also refuses a NaN on either side.
+    // far more. A NaN on either side is refused too, by d != d: quiet (an
+    // ordered comparison such as d <= tol raises the invalid flag on a NaN,
+    // which the GCC CI traps), and d > tol is then not evaluated.
     const amrex::Real tol = restart_height_tolerance(m_zlevels.back());
     amrex::Real maxdiff = 0;
     long nbad = 0;
@@ -191,7 +193,7 @@ void Mesh::check_restart (const Inputs& in, const amrex::Geometry& geom, amrex::
         amrex::ReduceData<amrex::Real, long> data(op);
         op.eval(bx, data, [=] AMREX_GPU_DEVICE (int i, int j, int k) -> amrex::GpuTuple<amrex::Real, long> {
             const amrex::Real d = std::abs(a(i, j, k) - b(i, j, k));
-            const bool bad = !(d <= tol);   // also NaN
+            const bool bad = (d != d) || d > tol;
             return {bad ? amrex::Real(0) : d, bad ? 1L : 0L};
         });
         const auto v = data.value();
