@@ -1327,6 +1327,15 @@ add_test(NAME input_reference_current
          WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
 set_tests_properties(input_reference_current PROPERTIES LABELS unit
                      ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
+# GUST_OMP was removed (audit A11; GUST runs MPI, not OpenMP): a configure
+# with -DGUST_OMP=ON stops at the top-level check, before AMReX is configured.
+# The parent's generator and compilers, so the child reaches the check.
+add_test(NAME cmake_gust_omp_refused
+         COMMAND ${CMAKE_COMMAND} -S ${PROJECT_SOURCE_DIR} -B ${CMAKE_CURRENT_BINARY_DIR}/run/cmake_gust_omp_refused
+                 -G "${CMAKE_GENERATOR}" "-DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}"
+                 "-DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}" -DGUST_OMP=ON)
+set_tests_properties(cmake_gust_omp_refused PROPERTIES LABELS unit
+                     PASS_REGULAR_EXPRESSION "GUST_OMP was removed")
 # The check's own tests, on a throw-away docs/ and Source/.
 add_test(NAME input_reference_selftest
          COMMAND ${Python3_EXECUTABLE} -m unittest -v test_input_reference

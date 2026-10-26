@@ -26,6 +26,8 @@ set(GUST_SOURCES
     SurfaceRoughness.cpp
     InflowProfile.cpp
     BoundaryConditions.cpp
+    BoundaryDamping.cpp
+    BoundaryInputs.cpp
     Closure.cpp
     ClosureWake.cpp
     HybridConvection.cpp

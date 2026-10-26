@@ -95,6 +95,9 @@ namespace gust {
 //! them, as velocity_divergence does). omega, when given, receives Omega_c
 //! on the coarse z-faces (defined here if empty, no ghost cells). Aborts,
 //! naming the argument, on a wrong level or layout.
+//! Test-only: grid sequencing goes coarse to fine (prolong_state), so
+//! the solver never restricts; the transfer unit tests keep it as the
+//! reference restriction that prolong_fields is checked against.
 void restrict_state (const MeshHierarchy& h, int lf, const State& fine, int lc, State& coarse,
                      amrex::MultiFab* omega = nullptr);
 

@@ -4,7 +4,9 @@ Boundary conditions
 The computational domain is a box with six faces: west and east (``xlo``, ``xhi``), south and north (``ylo``,
 ``yhi``), the ground (``zlo``) and the top (``zhi``). Each face gets one boundary type. The typical ABL setup is
 periodic sides, a rough ground described by a wall model, and a slip top. The boundary types are ERF's. The code is
-in ``Source/BoundaryConditions``, ``Source/InflowProfile`` and ``Source/SurfaceLayer``; the inputs are in the ``bc``
+in ``Source/BoundaryConditions`` (the fills and Dirichlet rows), ``Source/BoundaryInputs`` (the ``bc`` reader and its
+checks), ``Source/BoundaryDamping`` (the damping layers), ``Source/InflowProfile`` and ``Source/SurfaceLayer``; the
+inputs are in the ``bc``
 namespace (:doc:`inputs`).
 
 Boundary types
