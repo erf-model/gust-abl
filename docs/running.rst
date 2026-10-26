@@ -16,8 +16,8 @@ What a run does
 #. **Build the mesh** and print its quality report (:doc:`terrain_coordinates`).
 #. **Build the initial field** (:doc:`initial_conditions`), or read it from a checkpoint (``io.restart``).
 #. **Solve** with the SIMPLEC stage when ``steady.stage = simplec`` (:doc:`solution_algorithm`), until the
-   convergence criteria are met or ``steady.max_iterations`` is reached. One log line is printed per iteration for
-   the first ten, then every tenth.
+   convergence criteria are met or ``steady.max_iterations`` is reached. One row of the iteration log is printed per
+   iteration for the first ten, then every tenth (:doc:`output`).
 #. **Write the output**: a plotfile, the turbulence plotfile if ``io.turb_plot_file`` is set, and a checkpoint
    (:doc:`output`).
 
