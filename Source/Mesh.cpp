@@ -110,6 +110,7 @@ void Mesh::define (const amrex::BoxArray& ba, const amrex::DistributionMapping& 
     az.define(amrex::convert(ba, IntVect(0, 0, 1)), dm, 1, 1);
     z_cc.define(ba, dm, 1, 1);
     for (auto* mf : {&detJ, &ax, &ay, &az, &z_cc}) { mf->setVal(0.0); }
+    m_min_detJ = 0;   // the minimum of the zeroed detJ, until make_metrics
 }
 
 void Mesh::build (const Inputs& in, const amrex::Geometry& geom, amrex::MultiFab& z_phys_nd)
@@ -222,6 +223,7 @@ void Mesh::check_restart (const Inputs& in, const amrex::Geometry& geom, amrex::
 void Mesh::make_metrics (const amrex::Geometry& geom, amrex::MultiFab& z_phys_nd)
 {
     make_J(geom, z_phys_nd, detJ);
+    m_min_detJ = detJ.min(0);
     make_areas(geom, z_phys_nd, ax, ay, az);
     make_zcc(geom, z_phys_nd, z_cc);
 }

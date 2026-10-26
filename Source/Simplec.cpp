@@ -84,19 +84,12 @@ SimplecOptions read_simplec_options ()
 namespace {
 
 //! beta = 1/d where d > 0 (keep = 1), beta = 1 and keep = 0 where d = 0.
-//! Aborts on a negative or non-finite d.
-void face_coefficients (const char* what, const amrex::MultiFab& d, amrex::MultiFab& beta, amrex::MultiFab& keep)
+//! d is finite and >= 0 (pressure_correction checks it).
+void face_coefficients (const amrex::MultiFab& d, amrex::MultiFab& beta, amrex::MultiFab& keep)
 {
     if (beta.empty()) {
         beta.define(d.boxArray(), d.DistributionMap(), 1, 0);
         keep.define(d.boxArray(), d.DistributionMap(), 1, 0);
-    }
-    {
-        const amrex::Real lo = d.min(0);   // collective: every rank aborts together
-        if (std::isnan(lo) || !(lo >= 0) || !std::isfinite(d.max(0))) {
-            amrex::Abort(std::string("gust: pressure_correction: the SIMPLEC denominator ") + what
-                         + " must be finite and >= 0 everywhere");
-        }
     }
     for (amrex::MFIter mfi(beta, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
         const amrex::Box bx = mfi.tilebox();
@@ -161,9 +154,12 @@ PressureCorrectionResult pressure_correction (State& q, const PredictorFields& d
         const amrex::MultiFab* areas[3] = {&mesh.ax, &mesh.ay, &mesh.az};
         for (int c = 0; c < 3; ++c) { w.F[c].define(areas[c]->boxArray(), dm, 1, 0); }
     }
-    face_coefficients("d_u", d.d_u, w.beta_x, w.keep_x);
-    face_coefficients("d_v", d.d_v, w.beta_y, w.keep_y);
-    face_coefficients("d_w", d.d_w, w.beta_z, w.keep_z);
+    // The three denominators in one all-reduce.
+    require_positive("pressure_correction", {"the SIMPLEC denominator d_u", "the SIMPLEC denominator d_v",
+                                             "the SIMPLEC denominator d_w"}, {&d.d_u, &d.d_v, &d.d_w}, true);
+    face_coefficients(d.d_u, w.beta_x, w.keep_x);
+    face_coefficients(d.d_v, w.beta_y, w.keep_y);
+    face_coefficients(d.d_w, w.beta_z, w.keep_z);
 
     velocity_divergence(q.u, q.v, q.w, z, mesh, geom, w.rhs);
     res.divergence_before = w.rhs.norm0();
@@ -171,8 +167,8 @@ PressureCorrectionResult pressure_correction (State& q, const PredictorFields& d
     // The scale of the divergence, U / h, for the net-source check.
     amrex::Real speed = amrex::max(q.u.norm0(0, 0, false), q.v.norm0(0, 0, false), q.w.norm0(0, 0, false));
     amrex::ParallelDescriptor::ReduceRealMax(speed);
-    // The thinnest layer, J dzeta (J > 0 in the domain).
-    const amrex::Real dz_min = mesh.detJ.min(0) * geom.CellSize(2);
+    // The thinnest layer, J dzeta (J > 0 in the domain; the mesh keeps its minimum).
+    const amrex::Real dz_min = mesh.min_detJ() * geom.CellSize(2);
     const amrex::Real inv_h = geom.InvCellSize(0) + geom.InvCellSize(1) + amrex::Real(1) / dz_min;
 
     FaceCoeffs coeffs;
@@ -232,12 +228,10 @@ ScalarSweepResult scalar_sweep (Equation eq, amrex::MultiFab& field, const amrex
     check_operator_field(op, "R", R_eq, Loc::cell, mesh, 0);
     check_operator_field(op, "dtau", dtau, Loc::cell, mesh, 0);
     if (std::isnan(floor) || !(floor >= 0)) { amrex::Abort("gust: scalar_sweep: the floor must be >= 0"); }
-    {
-        const amrex::Real lo = dtau.min(0);
-        if (std::isnan(lo) || !(lo > 0) || !std::isfinite(dtau.max(0))) {
-            amrex::Abort("gust: scalar_sweep: dtau must be finite and > 0 everywhere");
-        }
-    }
+#ifdef GUST_DEBUG_CHECKS
+    // The callers checked it once per iteration (face_dtau) or per setup (the preconditioner).
+    require_positive(op, {"dtau"}, {&dtau}, false);
+#endif
     ScalarSweepResult res;
     implicit_rows(F, z_nd, in, eq, mesh, geom, w.A, surface, fields);
     const amrex::BoxArray& ba = field.boxArray();

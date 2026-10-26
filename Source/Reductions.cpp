@@ -5,8 +5,12 @@
 #include <AMReX_GpuContainers.H>
 #include <AMReX_ParallelDescriptor.H>
 
+#include <bit>
+#include <cstdint>
 #include <limits>
 #include <memory>
+#include <string>
+#include <type_traits>
 #include <vector>
 
 namespace gust {
@@ -55,6 +59,48 @@ amrex::Real deterministic_sum (const amrex::MultiFab& mf, int comp)
     return total;
 }
 
+double box_dot (const amrex::MultiFab& a, int acomp, const amrex::MultiFab& b, int bcomp, const amrex::iMultiFab* owner,
+                const amrex::MFIter& mfi)
+{
+    // mfi may iterate over another index type (the cells); the field's own box of the same index.
+    const amrex::Box bx = amrex::convert(mfi.validbox(), a.ixType());
+    const int klo = bx.smallEnd(2);
+    const int khi = bx.bigEnd(2);
+    amrex::Box cols = bx;
+    cols.setBig(2, klo);
+    const auto npts = static_cast<std::size_t>(cols.numPts());
+    amrex::Gpu::DeviceVector<double> colsum(npts);
+    double* cs = colsum.data();
+    const auto lo = amrex::lbound(cols);
+    const auto len = amrex::length(cols);
+    const auto aa = a.const_array(mfi, acomp);
+    const auto ba = b.const_array(mfi, bcomp);
+    if (owner != nullptr) {
+        const auto m = owner->const_array(mfi);
+        amrex::ParallelFor(cols, [=] AMREX_GPU_DEVICE (int i, int j, int k0) noexcept
+        {
+            double s = 0;
+            for (int k = klo; k <= khi; ++k) {
+                if (m(i, j, k) != 0) { s += static_cast<double>(aa(i, j, k)) * static_cast<double>(ba(i, j, k)); }
+            }
+            cs[(i - lo.x) + (j - lo.y) * len.x + (k0 - lo.z) * len.x * len.y] = s;
+        });
+    } else {
+        amrex::ParallelFor(cols, [=] AMREX_GPU_DEVICE (int i, int j, int k0) noexcept
+        {
+            double s = 0;
+            for (int k = klo; k <= khi; ++k) { s += static_cast<double>(aa(i, j, k)) * static_cast<double>(ba(i, j, k)); }
+            cs[(i - lo.x) + (j - lo.y) * len.x + (k0 - lo.z) * len.x * len.y] = s;
+        });
+    }
+    amrex::Vector<double> h(npts);
+    amrex::Gpu::copyAsync(amrex::Gpu::deviceToHost, colsum.begin(), colsum.end(), h.begin());
+    amrex::Gpu::streamSynchronize();
+    double s = 0;
+    for (const double x : h) { s += x; }
+    return s;
+}
+
 double deterministic_dot (const amrex::MultiFab& a, int acomp, const amrex::MultiFab& b, int bcomp,
                           const amrex::iMultiFab* owner)
 {
@@ -63,47 +109,79 @@ double deterministic_dot (const amrex::MultiFab& a, int acomp, const amrex::Mult
     const int nboxes = static_cast<int>(a.boxArray().size());
     amrex::Vector<double> box_sum(nboxes, 0.0);
     for (amrex::MFIter mfi(a, false); mfi.isValid(); ++mfi) {
-        const amrex::Box bx = mfi.validbox();
-        const int klo = bx.smallEnd(2);
-        const int khi = bx.bigEnd(2);
-        amrex::Box cols = bx;
-        cols.setBig(2, klo);
-        const auto npts = static_cast<std::size_t>(cols.numPts());
-        amrex::Gpu::DeviceVector<double> colsum(npts);
-        double* cs = colsum.data();
-        const auto lo = amrex::lbound(cols);
-        const auto len = amrex::length(cols);
-        const auto aa = a.const_array(mfi, acomp);
-        const auto ba = b.const_array(mfi, bcomp);
-        if (owner != nullptr) {
-            const auto m = owner->const_array(mfi);
-            amrex::ParallelFor(cols, [=] AMREX_GPU_DEVICE (int i, int j, int k0) noexcept
-            {
-                double s = 0;
-                for (int k = klo; k <= khi; ++k) {
-                    if (m(i, j, k) != 0) { s += static_cast<double>(aa(i, j, k)) * static_cast<double>(ba(i, j, k)); }
-                }
-                cs[(i - lo.x) + (j - lo.y) * len.x + (k0 - lo.z) * len.x * len.y] = s;
-            });
-        } else {
-            amrex::ParallelFor(cols, [=] AMREX_GPU_DEVICE (int i, int j, int k0) noexcept
-            {
-                double s = 0;
-                for (int k = klo; k <= khi; ++k) { s += static_cast<double>(aa(i, j, k)) * static_cast<double>(ba(i, j, k)); }
-                cs[(i - lo.x) + (j - lo.y) * len.x + (k0 - lo.z) * len.x * len.y] = s;
-            });
-        }
-        amrex::Vector<double> h(npts);
-        amrex::Gpu::copyAsync(amrex::Gpu::deviceToHost, colsum.begin(), colsum.end(), h.begin());
-        amrex::Gpu::streamSynchronize();
-        double s = 0;
-        for (const double x : h) { s += x; }
-        box_sum[mfi.index()] = s;
+        box_sum[mfi.index()] = box_dot(a, acomp, b, bcomp, owner, mfi);
     }
     amrex::ParallelDescriptor::ReduceRealSum(box_sum.dataPtr(), nboxes);
     double total = 0;
     for (const double x : box_sum) { total += x; }
     return total;
+}
+
+namespace {
+
+//! The local count of count_not_positive for one field (no communication).
+//! AllowZero a template argument: no option branch in the kernel.
+template <bool AllowZero>
+amrex::Long local_not_positive (const amrex::MultiFab& mf, int ngrow)
+{
+    // The IEEE 754 layout of amrex::Real: the sign bit and the exponent mask.
+    using Bits = std::conditional_t<sizeof(amrex::Real) == 8, std::uint64_t, std::uint32_t>;
+    static_assert(sizeof(Bits) == sizeof(amrex::Real));
+    constexpr Bits kSign = Bits(1) << (8 * sizeof(Bits) - 1);
+    constexpr Bits kExp = (sizeof(Bits) == 8) ? Bits(0x7ff0000000000000ULL) : Bits(0x7f800000UL);
+    amrex::ReduceOps<amrex::ReduceOpSum> op;
+    amrex::ReduceData<amrex::Long> data(op);
+    for (amrex::MFIter mfi(mf, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
+        const amrex::Box bx = mfi.growntilebox(ngrow);
+        const auto a = mf.const_array(mfi);
+        op.eval(bx, data, [=] AMREX_GPU_DEVICE (int i, int j, int k) -> amrex::GpuTuple<amrex::Long>
+        {
+            // From the bit pattern, integer operations only: no floating-point
+            // compare ever sees a NaN, so nothing raises FE_INVALID (trapped in
+            // CI). GCC's std::isinf is an ordered compare, evaluated even when
+            // isnan is already true.
+            const auto bits = std::bit_cast<Bits>(a(i, j, k));
+            const Bits mag = bits & ~kSign;
+            const bool zero = mag == 0;                            // +0 or -0
+            bool bad = mag >= kExp || ((bits & kSign) != 0 && !zero);   // NaN, +-inf, or negative
+            if constexpr (!AllowZero) { bad = bad || zero; }
+            return {bad ? amrex::Long(1) : amrex::Long(0)};
+        });
+    }
+    return amrex::get<0>(data.value(op));
+}
+
+} // namespace
+
+std::vector<amrex::Long> count_not_positive (const std::vector<const amrex::MultiFab*>& fields, bool allow_zero,
+                                             int ngrow)
+{
+    std::vector<amrex::Long> n;
+    for (const amrex::MultiFab* mf : fields) {
+        AMREX_ALWAYS_ASSERT_WITH_MESSAGE(mf->nGrowVect().allGE(amrex::IntVect(ngrow)),
+                                         "count_not_positive: the field has fewer ghost layers than asked");
+        n.push_back(allow_zero ? local_not_positive<true>(*mf, ngrow) : local_not_positive<false>(*mf, ngrow));
+    }
+    if (!n.empty()) { amrex::ParallelDescriptor::ReduceLongSum(n.data(), static_cast<int>(n.size())); }
+    return n;
+}
+
+void require_positive (const char* op, const std::vector<std::string>& names,
+                       const std::vector<const amrex::MultiFab*>& fields, bool allow_zero, int ngrow)
+{
+    AMREX_ALWAYS_ASSERT_WITH_MESSAGE(names.size() == fields.size(), "require_positive: one name per field");
+    const std::vector<amrex::Long> n = count_not_positive(fields, allow_zero, ngrow);
+    std::string bad;
+    amrex::Long total = 0;
+    for (std::size_t i = 0; i < n.size(); ++i) {
+        if (n[i] == 0) { continue; }
+        bad += (bad.empty() ? "" : ", ") + names[i];
+        total += n[i];
+    }
+    if (total != 0) {
+        amrex::Abort(std::string("gust: ") + op + ": " + bad + " must be finite and " + (allow_zero ? ">= 0" : "> 0")
+                     + " everywhere (" + std::to_string(total) + " points are not)");
+    }
 }
 
 std::vector<double> deterministic_level_sums (const amrex::MultiFab& mf, int comp, const amrex::iMultiFab& owner,
