@@ -676,6 +676,11 @@
 # io.turb_plot_file =    # none
 #     Prefix of the turbulence plotfile with ERF's variable names (docs/output.rst). Needs the SIMPLEC stage.
 #
+# io.iteration_log = table
+#     table or full: the per-iteration log (docs/output.rst). table: aligned columns (iteration, CFL, line solver,
+#     the u, v, w, tke, theta and p residuals, r). full: one gust: it line per row with every diagnostic (the log
+#     before this input).
+#
 # io.restart =    # none
 #     Checkpoint directory to restart from (docs/running.rst).
 

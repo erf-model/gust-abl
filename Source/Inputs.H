@@ -99,6 +99,10 @@ struct IOInputs
     //! Prefix of the turbulence diagnostics plotfile with ERF's variable
     //! names (TurbulenceOutput.H); empty: none. Needs steady.stage = simplec.
     std::string turb_plot_file;
+    //! The per-iteration log: "table" (aligned columns: iteration, CFL, line
+    //! solver, the residuals, r) or "full" (one line with every diagnostic,
+    //! the log before io.iteration_log).
+    std::string iteration_log{"table"};
 };
 
 struct Inputs

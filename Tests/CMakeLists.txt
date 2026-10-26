@@ -337,7 +337,7 @@ gust_add_test(NAME rt_steady_hill2d_newton NP 2 LABELS "regression;smoke" RUN_DI
               PREFIX ${EXPECT_ABORT} --success
                      "switching from stage simplec to newton: relative residual"
                      "gust: steady after (1[89][0-9][0-9]|2[01][0-9][0-9]) iterations"
-                     "gust: it [0-9]+ newton r"
+                     "(?m)^ +[0-9]+ +\\S+  newton "
                      "!switching from stage newton to simplec" --
               COMMAND $<TARGET_FILE:gust> ${HILL2D_CASE}/inputs_steady_hill2d_newton ${GUST_TEST_AMREX_FLAGS})
 # The LU-SGS overlap against the coarse levels' boxes: overlap 3 fits level 0's
@@ -382,18 +382,39 @@ gust_add_test(NAME rt_sequencing_z0map NP 2 LABELS "regression;smoke"
 # the CFL level 1 ended with (steady.cfl_max = 4 after its 150 iterations).
 gust_add_test(NAME rt_sequencing_hold_kept NP 2 LABELS "regression;smoke"
               PREFIX ${EXPECT_ABORT} --success "every level holds steady\\.cfl0 for the reference iterations"
-                     "gust: it 1 cfl 1\\.000e\\+00 r 1\\.000e\\+00" "gust: it 3 cfl 1\\.000e\\+00 r 1\\.000e\\+00" --
+                     "  Iter        CFL  Line solver      u-res      v-res      w-res    tke-res  theta-res      p-res          r"
+                     "(?m)^ +1  1\\.000e\\+00  [a-z]+ +([0-9.e+-]+ +){6}1\\.000e\\+00"
+                     "(?m)^ +3  1\\.000e\\+00  [a-z]+ +([0-9.e+-]+ +){6}1\\.000e\\+00" "!gust: it " --
               COMMAND $<TARGET_FILE:gust> ${HILL3D_NEUTRAL_CASE}/inputs_sequencing_restart steady.max_iterations=3
                       init.first_guess=profile steady.sequencing_hold=1 ${GUST_TEST_AMREX_FLAGS})
+# The same run with io.iteration_log = full: the one-line log of before the
+# table (every diagnostic on a "gust: it" line), and no table header.
+gust_add_test(NAME rt_iteration_log_full NP 2 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT} --success "every level holds steady\\.cfl0 for the reference iterations"
+                     "gust: it 1 cfl 1\\.000e\\+00 r 1\\.000e\\+00 res " "gust: it 3 cfl 1\\.000e\\+00 r 1\\.000e\\+00 res "
+                     "gust: level 1: it 1 cfl " " poisson [0-9]+ div " "!Line solver" --
+              COMMAND $<TARGET_FILE:gust> ${HILL3D_NEUTRAL_CASE}/inputs_sequencing_restart steady.max_iterations=3
+                      init.first_guess=profile steady.sequencing_hold=1 io.iteration_log=full ${GUST_TEST_AMREX_FLAGS})
+# With steady.confidence a table row adds the confidence share and height after r.
+gust_add_test(NAME rt_iteration_table_confidence NP 2 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT} --success
+                     "(?m)^ +15  [0-9.e+-]+  zjacobi .*  confidence [0-9]\\.[0-9]{3}e[+-][0-9]{2} zmax [0-9]\\.[0-9]{3}e[+-][0-9]{2}" --
+              COMMAND $<TARGET_FILE:gust> ${HILL3D_NEUTRAL_CASE}/inputs_sequencing_restart steady.max_iterations=15
+                      init.first_guess=profile steady.confidence=0.95 ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_iteration_log_value NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT} "io\\.iteration_log must be table or full \\(got 'pretty'\\)" --
+              COMMAND $<TARGET_FILE:gust> ${HILL3D_NEUTRAL_CASE}/inputs_steady_hill3d_neutral
+                      io.iteration_log=pretty ${GUST_TEST_AMREX_FLAGS})
 gust_add_test(NAME rt_sequencing_hold_released NP 2 LABELS "regression;smoke"
               PREFIX ${EXPECT_ABORT} --success "the seeded levels without the reference hold"
-                     "gust: it 1 cfl 1\\.000e\\+00 r [1-9]\\.[0-9]+e-0[1-9]" "!gust: it 2 cfl 1\\.000e\\+00"
-                     "gust: it 2 cfl [1-9]\\.[0-9]+e\\+00 r [1-9]\\.[0-9]+e-0[1-9]" --
+                     "(?m)^ +1  1\\.000e\\+00  [a-z]+ +([0-9.e+-]+ +){6}[1-9]\\.[0-9]+e-0[1-9]" "!(?m)^ +2  1\\.000e\\+00 "
+                     "(?m)^ +2  [1-9]\\.[0-9]+e\\+00  [a-z]+ +([0-9.e+-]+ +){6}[1-9]\\.[0-9]+e-0[1-9]" --
               COMMAND $<TARGET_FILE:gust> ${HILL3D_NEUTRAL_CASE}/inputs_sequencing_restart steady.max_iterations=3
                       init.first_guess=profile ${GUST_TEST_AMREX_FLAGS})
 gust_add_test(NAME rt_sequencing_cfl_previous NP 2 LABELS "regression;smoke"
               PREFIX ${EXPECT_ABORT} --success "starting at the previous level's CFL"
-                     "gust: level 1: it 150 cfl 4\\.000e\\+00" "gust: it 1 cfl 4\\.000e\\+00 r [1-9]\\.[0-9]+e-0[1-9]" --
+                     "(?m)^level 1: +150  4\\.000e\\+00 "
+                     "(?m)^ +1  4\\.000e\\+00  [a-z]+ +([0-9.e+-]+ +){6}[1-9]\\.[0-9]+e-0[1-9]" --
               COMMAND $<TARGET_FILE:gust> ${HILL3D_NEUTRAL_CASE}/inputs_sequencing_restart steady.max_iterations=150
                       init.first_guess=profile steady.sequencing_cfl_start=previous ${GUST_TEST_AMREX_FLAGS})
 # simplec.w_vnn_cap over terrain above the tested aspect ratio: without the
@@ -704,6 +725,21 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
                   PREFIX ${Python3_EXECUTABLE} ${COLUMN_CASE}/check_steady_column.py
                          --ustar 0.35 --z0 0.1 --force 1.225e-4 --height 1000 --dz 15.625 --orders 6 --
                   COMMAND $<TARGET_FILE:gust> ${COLUMN_CASE}/inputs_steady_column ${GUST_TEST_AMREX_FLAGS})
+    # The iteration table's columns (io.iteration_log = table) on the flat ABL,
+    # whose second row has all six residuals non-zero and distinct: the row
+    # pins which residual sits in which column (u, v, w, tke, theta, p), the
+    # line solver and r = 1 of the reference hold. Row 1 has w = p = 0. The
+    # values are those of the "full" line (res in the order u v w p theta tke)
+    # on main at 438ad71; p to three digits (it is small after one
+    # iteration). Only the early rows are pinned: the iteration count of the
+    # verdict may move with the compiler's multiply-adds. About 15 s on two
+    # ranks.
+    gust_add_test(NAME rt_iteration_table_columns NP 2 LABELS "regression"
+                  PREFIX ${EXPECT_ABORT} --success "gust: steady after [0-9]+ iterations"
+                         "(?m)^     1  1\\.000e\\+00  zjacobi      2\\.630e-03  3\\.099e-03  0\\.000e\\+00  4\\.308e\\+00  2\\.688e-03  0\\.000e\\+00  1\\.000e\\+00"
+                         "(?m)^     2  1\\.000e\\+00  zjacobi      2\\.562e-03  3\\.072e-03  1\\.382e-03  2\\.536e\\+00  1\\.206e-03  7\\.6[0-9][0-9]e-06  1\\.000e\\+00" --
+                  COMMAND $<TARGET_FILE:gust> ${FLAT_CASE}/inputs_steady_neutral_flat io.write_plotfile=0 io.write_checkpoint=0
+                          ${GUST_TEST_AMREX_FLAGS})
     # The column with turb.kappa and turb.Cmu0 off their defaults: the wall
     # model and the inflow profile take the closure's constants, so the first
     # cell is on the wall law with kappa = 0.40 and the wall k is u*^2/0.55^2.
@@ -865,7 +901,7 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
                           ${GUST_TEST_AMREX_FLAGS})
     gust_add_test(NAME rt_outflow_steep_terrain_from_velocity NP 2 LABELS "regression" FIXTURES_REQUIRED outflow_terrain
                   PREFIX ${EXPECT_ABORT} --success --timeout 600 "gust: not steady after 400 iterations"
-                         "gust: it +400 cfl [^ ]+ r [1-9]\\.[0-9]+e-01" --
+                         "(?m)^ +400  \\S+  [a-z]+ +([0-9.e+-]+ +){6}[1-9]\\.[0-9]+e-01" --
                   COMMAND $<TARGET_FILE:gust> ${OUTFLOW_CASE}/inputs_outflow_slope
                           terrain.file=${OUTFLOW_TERRAIN}/outflow_slope.xyz bc.outflow_transport=from_velocity
                           steady.max_iterations=400 ${GUST_TEST_AMREX_FLAGS})

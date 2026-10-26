@@ -118,7 +118,7 @@ Inputs parse_inputs ()
         amrex::ParmParse pp("io");
         // Scalar keys take exactly one value; extra tokens are an error, not dropped.
         for (const char* key : {"plot_file", "chk_file", "restart", "write_plotfile",
-                                "write_checkpoint", "turb_plot_file"}) {
+                                "write_checkpoint", "turb_plot_file", "iteration_log"}) {
             if (pp.contains(key) && pp.countval(key) != 1) {
                 in.parse_errors.emplace_back(std::string("io.") + key + " takes exactly one value");
             }
@@ -129,6 +129,7 @@ Inputs parse_inputs ()
         pp.query("write_plotfile", in.io.write_plotfile);
         pp.query("write_checkpoint", in.io.write_checkpoint);
         pp.query("turb_plot_file", in.io.turb_plot_file);
+        pp.query("iteration_log", in.io.iteration_log);
     }
 
     // A key given twice would silently take its last value.
@@ -137,7 +138,8 @@ Inputs parse_inputs ()
                        "stretch_ratio", "zlevels_file", "hierarchy_levels"}},
              {"terrain", {"type", "file", "smoothing", "gamma_m", "hill_height", "hill_half_width",
                           "hill_shape", "idw_neighbors", "idw_power", "hierarchy_passes"}},
-             {"io", {"plot_file", "chk_file", "restart", "write_plotfile", "write_checkpoint", "turb_plot_file"}}}) {
+             {"io", {"plot_file", "chk_file", "restart", "write_plotfile", "write_checkpoint", "turb_plot_file",
+                     "iteration_log"}}}) {
         amrex::ParmParse pp(ns);
         for (const auto& key : keys) {
             if (pp.countname(key) > 1) {
@@ -195,6 +197,9 @@ std::vector<std::string> validate (const Inputs& in)
     }
     if (in.io.write_checkpoint != 0 && in.io.write_checkpoint != 1) {
         err.emplace_back("io.write_checkpoint must be 0 or 1");
+    }
+    if (in.io.iteration_log != "table" && in.io.iteration_log != "full") {
+        err.emplace_back("io.iteration_log must be table or full (got '" + in.io.iteration_log + "')");
     }
 
     // Vertical grid. The node heights start at the ground of a flat mesh,
