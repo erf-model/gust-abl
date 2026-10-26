@@ -168,6 +168,7 @@ TEST (Inputs, RangeChecksNameTheInput)
         {"mesh.max_grid_size", [] (gust::Inputs& in) { in.mesh.max_grid_size[1] = 0; }},
         {"io.plot_file",       [] (gust::Inputs& in) { in.io.plot_file.clear(); }},
         {"io.chk_file",        [] (gust::Inputs& in) { in.io.chk_file.clear(); }},
+        {"io.column_guess_file must not be empty", [] (gust::Inputs& in) { in.io.column_guess_file.clear(); }},
         {"io.write_plotfile",  [] (gust::Inputs& in) { in.io.write_plotfile = 2; }},
         {"io.write_checkpoint", [] (gust::Inputs& in) { in.io.write_checkpoint = -1; }},
         {"mesh.prob_lo: the z value must be 0", [] (gust::Inputs& in) { in.mesh.prob_lo[2] = 10; }},

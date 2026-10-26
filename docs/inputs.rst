@@ -439,6 +439,9 @@ Quick reference
    * - ``io.turb_plot_file``
      - none
      - Prefix of the turbulence plotfile
+   * - ``io.column_guess_file``
+     - ``column_guess.dat``
+     - File of the converged column's table
    * - ``io.restart``
      - none
      - Checkpoint to restart from
@@ -662,7 +665,8 @@ types, the inflow profile and the sounding; the other keys act in the SIMPLEC st
    * - ``bc.inflow_file``
      - none
      - Required with ``file``: rows of ``z u v theta [k]`` (4 or 5 columns, at least 2 rows), z increasing from
-       0, θ > 0, k ≥ 0.
+       0, θ > 0, k ≥ 0. ``#`` starts a comment. Every token must be a whole number (``300.0K`` or ``1,2`` stops the
+       run with the file and line named). Read on the I/O rank and broadcast.
    * - ``bc.inflow_tke_length``
      - ``closure``
      - ``closure`` or ``unbounded``: the length :math:`l` of the equilibrium :math:`k` and :math:`\nu_t`
@@ -1186,9 +1190,15 @@ otherwise.
    * - ``io.turb_plot_file``
      - none
      - Prefix of the turbulence plotfile with ERF's variable names (:doc:`output`). Needs the SIMPLEC stage.
+   * - ``io.column_guess_file``
+     - ``column_guess.dat``
+     - Not empty. The file the converged column's table (``z u v theta k``, full precision) is written to, on the
+       I/O rank; it reads back as a ``bc.inflow_file``. A table that cannot be written gives a warning, not a stop.
+       Refused without ``init.first_guess = column`` (no effect).
    * - ``io.restart``
      - none
-     - Checkpoint directory to restart from (:doc:`running`).
+     - Checkpoint directory to restart from (:doc:`running`). A run that would write a checkpoint into this
+       directory (``io.chk_file`` and the step give the same directory, however the paths are spelled) stops.
 
 ``refavg`` (reference-averaging tool)
 -------------------------------------

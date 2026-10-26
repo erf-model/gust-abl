@@ -421,6 +421,58 @@ TEST(InflowProfile, FileTableWithAndWithoutK)
     if (amrex::ParallelDescriptor::IOProcessor()) { std::remove(fname.c_str()); }
 }
 
+// bc.inflow_file is parsed token by token (audit A10, P4): '#' comments, tabs
+// and Windows line ends are accepted; a token that is not a whole number is
+// refused with the file and the line, where the stream parser before stopped
+// at it and kept the numbers read so far ("300.0K" read as 300, a fifth token
+// "junk" dropped). The file is read on the I/O rank and broadcast.
+TEST(InflowProfile, FileTokensAreParsedStrictly)
+{
+    const gust::InflowTable t = gust::parse_inflow_table("# z u v theta\r\n0\t0 0 300\r\n\r\n100 6.5e0 -2 0x1.2cp+8 # hex\r\n",
+                                                         "t.txt");
+    ASSERT_EQ(t.ncol, 4);
+    ASSERT_EQ(t.z.size(), 2);
+    EXPECT_EQ(t.z[1], 100);
+    EXPECT_EQ(t.u[1], amrex::Real(6.5));
+    EXPECT_EQ(t.v[1], -2);
+    EXPECT_EQ(t.theta[1], 300);
+    EXPECT_EQ(t.k[1], 0);
+    const auto refused = [] (const std::string& text, const std::string& what) {
+        try {
+            gust::parse_inflow_table(text, "bad.txt");
+            ADD_FAILURE() << "accepted: " << text;
+        } catch (const std::runtime_error& e) {
+            EXPECT_NE(std::string(e.what()).find("bc.inflow_file = bad.txt: " + what), std::string::npos) << e.what();
+        }
+    };
+    refused("0 0 0 300\n100 6 2 300.0K\n", "line 2: '300.0K' is not a number");
+    refused("0 0 0 300 junk\n100 6 2 300\n", "line 1: 'junk' is not a number");
+    refused("0,0,0,300\n100,6,2,300\n", "line 1: '0,0,0,300' is not a number");
+    refused("0 0 0 300\n100 6 2 nan\n", "line 2 holds a value that is not finite");
+    refused("0 0 0 300\n100 6 2 1e400\n", "line 2 holds a value that is not finite");
+    refused("0 0 0 300\n", "needs at least two rows");
+    refused("0 0 0 300\n100 6 2 300 0.1\n", "line 2 has a different number of columns");
+
+    // Through the constructor: a token refused on every rank, and a file that cannot be opened.
+    const std::string fname = "ut_inflow_strict.txt";
+    if (amrex::ParallelDescriptor::IOProcessor()) {
+        std::ofstream os(fname);
+        os << "0 0 0 300\n100 6 2 300.0K\n";
+    }
+    amrex::ParallelDescriptor::Barrier();
+    gust::ReferenceProfile tref;
+    tref.z = {0};
+    tref.theta = {300};
+    InflowProfileOptions opt;
+    opt.kind = InflowProfileOptions::Kind::file;
+    opt.file = fname;
+    EXPECT_THROW(gust::InflowProfile(opt, tref), std::runtime_error);
+    opt.file = "ut_inflow_missing.txt";
+    EXPECT_THROW(gust::InflowProfile(opt, tref), std::runtime_error);
+    amrex::ParallelDescriptor::Barrier();
+    if (amrex::ParallelDescriptor::IOProcessor()) { std::remove(fname.c_str()); }
+}
+
 // ---------------------------------------------------------------------------
 // Inflow by height above the ground over a sloping inlet: the x
 // faces are inflow and outflow, the ground a ridge whose height varies along

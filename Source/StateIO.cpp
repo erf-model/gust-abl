@@ -9,6 +9,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 
@@ -224,6 +225,13 @@ void read_checkpoint (const std::string& dir, State& state, const MeshInputs& me
         }
         dst.ParallelCopy(src, 0, 0, dst.nComp(), 0, 0);
     }
+}
+
+bool same_directory (const std::string& target, const std::string& restart)
+{
+    std::error_code ec;
+    const bool same = std::filesystem::equivalent(target, restart, ec);
+    return !ec && same;
 }
 
 } // namespace gust

@@ -12,6 +12,7 @@
 
 #include <gtest/gtest.h>
 
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 
@@ -315,3 +316,35 @@ TEST (IO, CheckpointRestartRestoresNodalGhostsOnTheSameLayout)
 }
 
 } // namespace
+
+// The checkpoint-overwrite guard asks the file system whether two paths name
+// one directory (audit A10, P3): "./", trailing and doubled separators, an
+// absolute path and a symbolic link all name the restart directory; another
+// directory, or one that does not exist, does not. Before, the guard compared
+// the strings after stripping trailing '/' only.
+TEST (IO, SameDirectoryAsksTheFileSystem)
+{
+    namespace fs = std::filesystem;
+    const std::string base = "ut_same_dir";
+    if (amrex::ParallelDescriptor::IOProcessor()) {
+        fs::remove_all(base);
+        fs::create_directories(base + "/chk00040");
+        fs::create_directories(base + "/chk00041");
+        std::error_code ec;
+        fs::create_directory_symlink("chk00040", base + "/link00040", ec);
+    }
+    amrex::ParallelDescriptor::Barrier();
+    const std::string chk = base + "/chk00040";
+    EXPECT_TRUE(gust::same_directory(chk, chk));
+    EXPECT_TRUE(gust::same_directory(chk, "./" + chk));
+    EXPECT_TRUE(gust::same_directory(chk, chk + "/"));
+    EXPECT_TRUE(gust::same_directory(chk, base + "//chk00040//"));
+    EXPECT_TRUE(gust::same_directory(chk, fs::absolute(chk).string()));
+    EXPECT_TRUE(gust::same_directory(chk, base + "/../" + base + "/chk00040"));
+    if (fs::is_symlink(base + "/link00040")) { EXPECT_TRUE(gust::same_directory(chk, base + "/link00040")); }
+    EXPECT_FALSE(gust::same_directory(chk, base + "/chk00041"));
+    EXPECT_FALSE(gust::same_directory(base + "/chk00042", chk));   // the target does not exist yet
+    EXPECT_FALSE(gust::same_directory(chk, base + "/missing"));
+    amrex::ParallelDescriptor::Barrier();
+    if (amrex::ParallelDescriptor::IOProcessor()) { fs::remove_all(base); }
+}

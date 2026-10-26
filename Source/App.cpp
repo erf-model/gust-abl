@@ -156,6 +156,9 @@ void run ()
         err.emplace_back("init.first_guess and io.restart are exclusive (a restart keeps its state)");
     }
     for (const auto& e : check_column_guess(iopt, sopt, fopt, bin, surf, surface_layer)) { err.push_back(e); }
+    if (amrex::ParmParse("io").contains("column_guess_file") && iopt.first_guess != InitOptions::FirstGuess::column) {
+        err.emplace_back("io.column_guess_file has no effect without init.first_guess = column");
+    }
     for (const auto& e : check_stable_functions(iopt, surf, surface_layer)) { err.push_back(e); }
     if (!err.empty()) {
         std::string all = "gust: invalid inputs:";
@@ -198,7 +201,8 @@ void run ()
             // guess alone (init.projection = 0). With grid sequencing the
             // initializer runs on the coarsest level instead.
             if (iopt.first_guess == InitOptions::FirstGuess::column) {
-                const ColumnGuessResult cg = run_column_guess(in, iopt, sopt, bin, surf, surface_layer, copt, fopt, "column_guess.dat");
+                const ColumnGuessResult cg = run_column_guess(in, iopt, sopt, bin, surf, surface_layer, copt, fopt,
+                                                            in.io.column_guess_file);
                 char cl[512];
                 std::snprintf(cl, sizeof(cl), "gust: column guess: converged after %d steps in %d columns (%.3f s), %d levels, "
                               "u* %.4f m/s, u %.4f v %.4f m/s at the top\n", cg.iterations, cg.columns, cg.wall_seconds,
@@ -276,11 +280,16 @@ void run ()
     }
     // Writing a checkpoint of the same name as the one read would move it to
     // <name>.old.NNNN: refused (checked at the final step, after the solve).
+    // The file system decides whether the two paths name one directory
+    // (same_directory), on the I/O rank; every rank takes its answer.
     auto check_overwrite = [&] {
         if (!restart || in.io.write_checkpoint != 1) { return; }
-        std::string from = in.io.restart;
-        while (from.size() > 1 && from.back() == '/') { from.pop_back(); }
-        if (amrex::Concatenate(in.io.chk_file, state.step, 5) == from) {
+        int same = 0;
+        if (amrex::ParallelDescriptor::IOProcessor()) {
+            same = same_directory(amrex::Concatenate(in.io.chk_file, state.step, 5), in.io.restart) ? 1 : 0;
+        }
+        amrex::ParallelDescriptor::Bcast(&same, 1, amrex::ParallelDescriptor::IOProcessorNumber());
+        if (same != 0) {
             amrex::Abort("gust: io.chk_file = " + in.io.chk_file + " would overwrite io.restart = "
                          + in.io.restart + "; choose another io.chk_file or set io.write_checkpoint = 0");
         }

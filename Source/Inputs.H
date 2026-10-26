@@ -99,6 +99,9 @@ struct IOInputs
     //! Prefix of the turbulence diagnostics plotfile with ERF's variable
     //! names (TurbulenceOutput.H); empty: none. Needs steady.stage = simplec.
     std::string turb_plot_file;
+    //! The converged column's table (init.first_guess = column), written on
+    //! the I/O rank; a bc.inflow_file for a later run. Not empty.
+    std::string column_guess_file{"column_guess.dat"};
 };
 
 struct Inputs
