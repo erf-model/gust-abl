@@ -439,6 +439,9 @@ Quick reference
    * - ``io.turb_plot_file``
      - none
      - Prefix of the turbulence plotfile
+   * - ``io.iteration_log``
+     - ``table``
+     - Layout of the per-iteration log
    * - ``io.column_guess_file``
      - ``column_guess.dat``
      - File of the converged column's table
@@ -1190,6 +1193,11 @@ otherwise.
    * - ``io.turb_plot_file``
      - none
      - Prefix of the turbulence plotfile with ERF's variable names (:doc:`output`). Needs the SIMPLEC stage.
+   * - ``io.iteration_log``
+     - ``table``
+     - ``table`` or ``full``: the per-iteration log (:doc:`output`). ``table``: aligned columns (iteration, CFL,
+       line solver, the u, v, w, tke, theta and p residuals, r). ``full``: one ``gust: it`` line per row with
+       every diagnostic (the log before this input).
    * - ``io.column_guess_file``
      - ``column_guess.dat``
      - Not empty. The file the converged column's table (``z u v theta k``, full precision) is written to, on the

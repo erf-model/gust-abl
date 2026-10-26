@@ -110,39 +110,43 @@ The log starts with the mesh and the initial field:
    gust: SIMPLEC stage: 2 zjacobi sweeps, pressure gmres_mlmg reltol 0.001, alpha_p 1, w_vnn_cap off, cfl0 1, cfl_max 50
 
 Over flat ground the initial profile already conserves mass, so the initializer needs no Poisson iterations. Then
-the solver prints one line per iteration (the first ten, then every tenth):
+the solver prints one table row per iteration (the first ten, then every tenth) under a header it repeats every
+20 rows:
 
 .. code-block:: text
 
-   gust: it 300 cfl 5.000e+01 r 1.935e-02 res 9.669e-05 0.000e+00 0.000e+00 0.000e+00 0.000e+00 1.352e-03 mon 6.937e+00 2.165e-01 3.362e-01 poisson 0 ...
+     Iter        CFL  Line solver      u-res      v-res      w-res    tke-res  theta-res      p-res          r
+   ------  ---------  -----------  ---------  ---------  ---------  ---------  ---------  ---------  ---------
+      300  5.000e+01  zjacobi      9.669e-05  0.000e+00  0.000e+00  1.352e-03  0.000e+00  0.000e+00  1.935e-02
 
 .. list-table::
    :header-rows: 1
    :widths: 20 80
 
-   * - Field
+   * - Column
      - Meaning
-   * - ``it``
+   * - ``Iter``
      - Iteration number.
-   * - ``cfl``
-     - Current CFL number. It grows from ``steady.cfl0`` to ``steady.cfl_max`` as the residual falls.
+   * - ``CFL``
+     - Current CFL number. It grows from ``steady.cfl0`` to ``steady.cfl_max`` as the residual falls (on a Newton
+       row: the continuation step's CFL).
+   * - ``Line solver``
+     - The z-line solver of the sweeps (``steady.sweep``: ``zjacobi`` or ``lusgs``); ``newton`` on a Newton step.
+   * - ``u-res`` … ``p-res``
+     - Scaled residuals of :math:`u, v, w, k, \theta, p`. The column has no :math:`v, w, \theta, p` imbalance, so
+       those are 0.
    * - ``r``
      - Largest residual relative to its reference value.
-   * - ``res``
-     - Scaled residuals of :math:`u, v, w, p, \theta, k`. The column has no :math:`v, w, p, \theta` imbalance, so
-       those are 0.
-   * - ``mon``
-     - Monitors: the largest wind speed, the mean TKE and the mean friction velocity :math:`u_*`.
-   * - ``poisson``, ``div``
-     - Iterations of the pressure Poisson solve, and the divergence before and after the correction.
-   * - ``clipped``
-     - Cells where :math:`k` was raised to its floor.
+
+``io.iteration_log = full`` prints instead one ``gust: it`` line per row that also has the monitors (largest wind
+speed, mean TKE, mean friction velocity :math:`u_*`), the Poisson iterations, the divergence before and after the
+correction and the cells where :math:`k` was raised to its floor (:doc:`output`).
 
 The run ends with the verdict:
 
 .. code-block:: text
 
-   gust: it 2231 cfl 5.000e+01 r 1.373e-07 res 6.863e-10 ... mon 7.228e+00 2.375e-01 3.500e-01 ...
+     2231  5.000e+01  zjacobi      6.863e-10  0.000e+00  0.000e+00  9.990e-09  0.000e+00  0.000e+00  1.373e-07
    gust: steady after 2231 iterations (2231 over the run)
    gust: stage account: 2231 iterations, 3.459247747 s, 0 AU
    gust: wrote steady_column_plt02231

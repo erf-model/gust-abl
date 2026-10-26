@@ -265,8 +265,16 @@ LevelSolver::LevelSolver (const RunSetup& s, const Mesh& mesh, const amrex::Geom
     m_driver = std::make_unique<Driver>(s.sopt, std::move(stages), mesh, geom, &m_stage->nu());
 }
 
-void print_iteration (const Driver& driver, const SimplecStage& stage, bool last, const std::string& label,
-                      const NewtonStage* newton)
+IterationLog iteration_log (const std::string& name)
+{
+    return name == "full" ? IterationLog::full : IterationLog::table;
+}
+
+namespace {
+
+//! The old "gust: it ..." line (io.iteration_log = full).
+void print_full (const Driver& driver, const SimplecStage& stage, bool last, const std::string& label,
+                 const NewtonStage* newton)
 {
     const DriverHistory& h = driver.history();
     const IterationRecord& r = h.records.back();
@@ -308,6 +316,87 @@ void print_iteration (const Driver& driver, const SimplecStage& stage, bool last
     amrex::Print() << line << "\n";
 }
 
+//! The columns of a table row after the line solver, in the residuals' names.
+const char* const kTableResiduals[] = {"u", "v", "w", "tke", "theta", "p"};
+
+std::string table_cell (double x)
+{
+    char b[32];
+    std::snprintf(b, sizeof(b), "  %9.3e", x);
+    return b;
+}
+
+//! text padded with spaces to width: on the left (right-aligned) or, with
+//! left_align, on the right.
+std::string table_text (const std::string& text, std::size_t width, bool left_align = false)
+{
+    const std::string pad(text.size() < width ? width - text.size() : 0, ' ');
+    return left_align ? text + pad : pad + text;
+}
+
+} // namespace
+
+void IterationPrinter::print (const Driver& driver, const SimplecStage& stage, bool last, const std::string& label,
+                              const NewtonStage* newton)
+{
+    if (m_style == IterationLog::full) {
+        print_full(driver, stage, last, label, newton);
+        return;
+    }
+    const DriverHistory& h = driver.history();
+    const IterationRecord& r = h.records.back();
+    const bool newton_row = newton != nullptr && r.stage == 1;
+    if (!newton_row && !(r.iteration < 10 || r.iteration % 10 == 9 || last)) { return; }
+
+    if (m_rows % kHeaderRows == 0) {
+        std::string head = label + table_text("Iter", 6) + "  " + table_text("CFL", 9) + "  "
+                         + table_text("Line solver", 11, true);
+        std::string rule = label + "------  ---------  -----------";
+        for (const char* name : kTableResiduals) {
+            head += "  " + table_text(std::string(name) + "-res", 9);
+            rule += "  ---------";
+        }
+        head += "  " + table_text("r", 9);
+        rule += "  ---------";
+        amrex::Print() << head << "\n" << rule << "\n";
+    }
+    ++m_rows;
+
+    std::string notes;   // a Newton step's outcome, after r
+    std::string cfl = table_cell(double(r.cfl));
+    if (newton_row) {
+        const auto& recs = newton->continuation().records();
+        int attempts = 0, gmres = 0;
+        for (std::size_t n = newton->first_record(); n < recs.size(); ++n) {   // this iteration's attempts
+            ++attempts;
+            gmres += recs[n].gmres_iterations;
+        }
+        cfl = "  " + table_text("-", 9);   // the continuation step's CFL, "-" without a step
+        if (newton->converged()) {
+            notes = "  converged: no step";
+        } else if (attempts > 0) {
+            const ContinuationRecord& c = recs.back();
+            cfl = c.infinite ? "  " + table_text("inf", 9) : table_cell(double(c.cfl));
+            notes = "  |R| " + fmt(double(c.residual)) + " -> " + fmt(double(c.residual_new)) + " lambda "
+                    + fmt(double(c.lambda)) + " attempts " + std::to_string(attempts) + " gmres " + std::to_string(gmres)
+                    + (newton->last_status() == ContinuationStatus::failed ? " FAILED" : "");
+        }
+    }
+    const char* solver = newton_row ? "newton" : sweep_name(stage.line_sweep().kind);
+    std::string row = label + table_text(std::to_string(r.iteration + 1), 6) + cfl + "  " + table_text(solver, 11, true);
+    const std::vector<std::string>& names = stage.residual_names();
+    for (const char* name : kTableResiduals) {
+        const auto it = std::find(names.begin(), names.end(), name);
+        const auto n = static_cast<std::size_t>(it - names.begin());
+        row += (it != names.end() && n < r.residuals.size()) ? table_cell(double(r.residuals[n])) : "  " + table_text("-", 9);
+    }
+    if (!newton_row && driver.confidence_share() >= 0) {   // steady.confidence
+        notes += "  confidence " + fmt(double(driver.confidence_share())) + " zmax " + fmt(double(driver.confidence_height()));
+    }
+    row += table_cell(double(r.relative_residual)) + notes;
+    amrex::Print() << row << "\n";
+}
+
 // ---------------------------------------------------------------------------
 std::vector<LevelSummary> sequence_coarse_levels (const MeshHierarchy& h, const RunSetup& setup, const SequencingOptions& seq,
                                                   const InitOptions& iopt, const InflowProfile* column,
@@ -345,12 +434,13 @@ std::vector<LevelSummary> sequence_coarse_levels (const MeshHierarchy& h, const 
         }
         coarse.reset();
         Driver& driver = ls.driver();
+        IterationPrinter log(setup.log);   // a header per level
         if (!ref.empty()) { start_seeded(driver, ref, seq, cfl_prev); }
         const SteadyParams& strict = setup.sopt.criterion;
         while (static_cast<int>(driver.history().records.size()) < setup.sopt.max_iterations) {
             const SteadyVerdict v = driver.step(*ql);
             if (v.status == SteadyStatus::Diverged) {
-                print_iteration(driver, ls.stage(), true, label);
+                log.print(driver, ls.stage(), true, label);
                 std::string reasons;
                 for (const auto& r : v.reasons) { reasons += "\n  " + r; }
                 amrex::Abort("gust: grid sequencing: level " + std::to_string(l) + " diverged" + reasons);
@@ -363,7 +453,7 @@ std::vector<LevelSummary> sequence_coarse_levels (const MeshHierarchy& h, const 
             }
             const bool last = !s.stop.empty()
                               || static_cast<int>(driver.history().records.size()) >= setup.sopt.max_iterations;
-            print_iteration(driver, ls.stage(), last, label);
+            log.print(driver, ls.stage(), last, label);
             if (!s.stop.empty()) { break; }
         }
         if (s.stop.empty()) { s.stop = "steady.max_iterations"; }

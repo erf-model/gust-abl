@@ -2,7 +2,35 @@ Output files
 ============
 
 A run writes up to three kinds of output at the end: a plotfile with the solution, a plotfile with the turbulence
-fields, and a checkpoint for restarting.
+fields, and a checkpoint for restarting. While it runs it prints the iteration log.
+
+Iteration log
+-------------
+
+The solver prints a row for the first ten iterations, then every tenth, and the last; in the Newton stage every
+step. With ``io.iteration_log = table`` (the default) the rows are aligned columns under a header that is repeated
+every 20 rows:
+
+.. code-block:: text
+
+     Iter        CFL  Line solver      u-res      v-res      w-res    tke-res  theta-res      p-res          r
+   ------  ---------  -----------  ---------  ---------  ---------  ---------  ---------  ---------  ---------
+        1  1.000e+00  zjacobi      4.997e-03  0.000e+00  0.000e+00  9.271e-02  0.000e+00  0.000e+00  1.000e+00
+        2  1.000e+00  zjacobi      1.453e-03  0.000e+00  0.000e+00  3.119e-02  0.000e+00  0.000e+00  1.000e+00
+
+``Iter`` is the iteration, ``CFL`` the pseudo-time CFL number and ``Line solver`` the z-line solver of the sweeps
+(``steady.sweep``). The six residual columns are the scaled residual norms of :math:`u, v, w, k, \theta` and
+:math:`p`. ``r`` is the largest residual over its reference (1 during the reference hold); it drives the CFL ramp
+and the stage switch, while the steady criterion tests each residual against ``steady.residual_tol`` and
+``steady.residual_drop_orders``. On the coarse levels of grid sequencing each row starts with ``level l:``. A
+Newton row names ``newton`` as its line solver, gives the continuation step's CFL (``-`` when it took no step) and
+adds the step's outcome after ``r`` (the residual before and after, the line-search factor, the attempts and the
+GMRES iterations, ``FAILED`` for a failed step). With ``steady.confidence`` a SIMPLEC row adds after ``r`` the
+share of the cells that meet the residual criterion and the height of the highest one that does not.
+
+``io.iteration_log = full`` prints the log of earlier versions: one ``gust: it`` line per row with the CFL, ``r``, the
+residuals in the order :math:`u, v, w, p, \theta, k`, the monitors, the Poisson iterations, the divergence before
+and after the correction, the clipped :math:`k` cells and, with ``steady.confidence``, the confidence share and height.
 
 Plotfile
 --------
