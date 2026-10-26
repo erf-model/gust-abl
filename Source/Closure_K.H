@@ -114,6 +114,19 @@ Switches switches_for (amrex::Real k, amrex::Real N2, amrex::Real l_g, const Clo
     return s;
 }
 
+//! Axell and Liungman's stability functions (Eq. 31, 32) at the smoothed Rt:
+//!   cmu  = (Cmu0 + 0.108 Rt) / (1 + 0.308 Rt + 0.00837 Rt^2),
+//!   cmu' = Cmu0 / (1 + 0.277 Rt).
+//! The closure kernel and the turbulence plotfile both call it.
+template <class T>
+AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
+void stability_functions (const T& Rt, amrex::Real Cmu0, T& cmu, T& cmu_prime) noexcept
+{
+    const T one(amrex::Real(1));
+    cmu = (T(Cmu0) + T(amrex::Real(0.108)) * Rt) / (one + T(amrex::Real(0.308)) * Rt + T(amrex::Real(0.00837)) * Rt * Rt);
+    cmu_prime = T(Cmu0) / (one + T(amrex::Real(0.277)) * Rt);
+}
+
 //! Everything the closure gives at one point.
 template <class T>
 struct Point
@@ -154,9 +167,7 @@ Point<T> closure_point (T k, amrex::Real N2, amrex::Real S2, amrex::Real l_g, co
     // Richardson number from the final length, smoothed.
     p.Rt = smooth_Rt(p.L * p.L * T(N2) / (p.k * T(c.Cmu0_pow3) * T(c.Cmu0_pow3)), s.smooth_Rt, c.Rt_crit, c.Rt_min);
     // Stability functions (Eq. 31, 32).
-    p.cmu = (T(c.Cmu0) + T(amrex::Real(0.108)) * p.Rt)
-            / (one + T(amrex::Real(0.308)) * p.Rt + T(amrex::Real(0.00837)) * p.Rt * p.Rt);
-    p.cmu_prime = T(c.Cmu0) / (one + T(amrex::Real(0.277)) * p.Rt);
+    stability_functions(p.Rt, c.Cmu0, p.cmu, p.cmu_prime);
     // Eddy viscosity and diffusivity, as ERF composes them.
     p.nut = p.cmu * dual::sqrt(p.k) * p.L;
     p.nut_prime = p.cmu_prime / p.cmu * p.nut;

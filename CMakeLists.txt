@@ -30,12 +30,26 @@ endif()
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
 option(GUST_MPI                "Build with MPI"                                   ON)
-option(GUST_OMP                "Build with OpenMP"                                OFF)
 option(GUST_FFT                "Build AMReX FFT (required by the Poisson layer)"   ON)
 option(GUST_HYPRE              "Build AMReX with hypre (optional preconditioner)" OFF)
 option(GUST_TESTING            "AMReX_TESTING + assertions (SNaN fills, as GPU CI)" OFF)
 option(GUST_USE_INTERNAL_AMREX "Use the AMReX git submodule"                      ON)
 option(GUST_ENABLE_TESTS       "Build the unit tests and register all tests"      ON)
+
+# GUST runs flat MPI (and GPUs), never OpenMP threads: its own loops have no
+# OpenMP regions. GUST_OMP was removed (audit A11); it set AMReX_OMP, which
+# threaded only AMReX's internal loops. An OFF left in an existing build
+# directory's cache is dropped; ON stops, after dropping it from the cache so
+# the next configure without it goes through.
+# The same for its old name ABLSTEADY_OMP (see the aliases below).
+if(GUST_OMP OR ABLSTEADY_OMP)
+    unset(GUST_OMP CACHE)
+    unset(ABLSTEADY_OMP CACHE)
+    message(FATAL_ERROR "GUST_OMP was removed: GUST runs MPI (and GPUs), not OpenMP. "
+                        "It is now dropped from this build directory; configure again without it.")
+endif()
+unset(GUST_OMP CACHE)
+unset(ABLSTEADY_OMP CACHE)
 
 set(GUST_PRECISION DOUBLE CACHE STRING "Floating-point precision: DOUBLE or SINGLE")
 set_property(CACHE GUST_PRECISION PROPERTY STRINGS DOUBLE SINGLE)
@@ -56,7 +70,7 @@ set(GUST_MPIEXEC_PREFLAGS "" CACHE STRING "Extra mpiexec flags for the tests")
 # a warning, and is then removed from the cache. If both names are given, the
 # old one's value is used. (message(DEPRECATION) would be silent on a second
 # configure: AMReX sets CMAKE_WARN_DEPRECATED=OFF in the cache.)
-foreach(opt MPI OMP FFT HYPRE TESTING USE_INTERNAL_AMREX ENABLE_TESTS
+foreach(opt MPI FFT HYPRE TESTING USE_INTERNAL_AMREX ENABLE_TESTS
             PRECISION GPU_BACKEND MPIEXEC_PREFLAGS)
     if(DEFINED ABLSTEADY_${opt})
         message(WARNING "ABLSTEADY_${opt} is deprecated; use GUST_${opt}")
@@ -93,7 +107,7 @@ if(GUST_USE_INTERNAL_AMREX)
     set(AMReX_SPACEDIM       3)
     set(AMReX_PRECISION      ${GUST_PRECISION})
     set(AMReX_MPI            ${GUST_MPI})
-    set(AMReX_OMP            ${GUST_OMP})
+    set(AMReX_OMP            OFF)
     set(AMReX_FFT            ${GUST_FFT})
     set(AMReX_HYPRE          ${GUST_HYPRE})
     set(AMReX_GPU_BACKEND    ${GUST_GPU_BACKEND})
@@ -115,6 +129,11 @@ if(GUST_USE_INTERNAL_AMREX)
     list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/external/amrex/Tools/CMake)
 else()
     find_package(AMReX REQUIRED 3D ${GUST_PRECISION} FFT)
+    if(AMReX_OMP_FOUND)
+        message(FATAL_ERROR "The AMReX found in ${AMReX_DIR} was built with OpenMP (AMReX_OMP=ON). "
+                            "GUST runs MPI (and GPUs), not OpenMP: use an AMReX built with AMReX_OMP=OFF, "
+                            "or the submodule (GUST_USE_INTERNAL_AMREX=ON).")
+    endif()
 endif()
 
 # MSVC: M_PI and friends need _USE_MATH_DEFINES; NOMINMAX keeps <windows.h>

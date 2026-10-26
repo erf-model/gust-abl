@@ -41,9 +41,6 @@ An option outside its allowed values stops the configuration.
    * - ``GUST_MPI``
      - ``ON``
      - Build with MPI.
-   * - ``GUST_OMP``
-     - ``OFF``
-     - Build with OpenMP.
    * - ``GUST_PRECISION``
      - ``DOUBLE``
      - ``DOUBLE`` or ``SINGLE``. The steady stop needs double precision; single precision is kept compiling only.
@@ -76,6 +73,10 @@ An option outside its allowed values stops the configuration.
 
 The options were called ``ABLSTEADY_*`` before the rename to GUST (October 2026). The old names still work: each
 sets its ``GUST_*`` option and prints a warning.
+
+GUST runs MPI (and GPUs), not OpenMP. The ``GUST_OMP`` option was removed (October 2026): ``-DGUST_OMP=ON`` (or
+``ABLSTEADY_OMP=ON``) stops the configuration and drops the option from the build directory, so the next configure
+without it goes through; ``OFF`` is ignored. An external AMReX built with OpenMP is refused.
 
 Windows
 -------
