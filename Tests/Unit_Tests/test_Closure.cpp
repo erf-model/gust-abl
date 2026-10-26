@@ -10,9 +10,11 @@
 #include "MassFlux.H"
 #include "Reductions.H"
 #include "Residual.H"
+#include "TurbulenceOutput.H"
 #include "TransportTestHelpers.H"
 
 #include <AMReX_FileSystem.H>
+#include <AMReX_PlotFileUtil.H>
 #include <AMReX_ParmParse.H>
 #include <AMReX_Print.H>
 
@@ -564,6 +566,63 @@ TEST(Closure, FieldsMatchClosedForms)
     }
     std::feclearexcept(FE_ALL_EXCEPT);
     amrex::setFPExcept(prev_fpe);
+}
+
+// ---------------------------------------------------------------------------
+// The turbulence plotfile's cmu and cmu_prime are ERF's AL01 stability
+// functions of its own Rt, to 4 ulp, in a stable and an unstable layer
+// (audit A11, I6: the plotfile and the kernel share stability_functions).
+TEST(Closure, TurbulencePlotfileStabilityFunctionsAreErfs)
+{
+    PCase c = make_mesh(8, 8, 8, 0, false);
+    ClosureOptions opt;
+    gust::Closure closure(opt);
+    const gust::BuoyancyOptions buoy;
+    const std::string dir = "closure_turb_plot_" + std::to_string(amrex::ParallelDescriptor::NProcs()) + "_";
+    for (const double gamma : {0.004, -0.004}) {
+        gust::State q;
+        define_state(q, c);
+        gust::trtest::fill_loc(q.u, Loc::xface, c, [&] (double, double, double z) { return 0.02 * z; });
+        q.v.setVal(0.0);
+        q.w.setVal(0.0);
+        q.p.setVal(0.0);
+        gust::trtest::fill_loc(q.theta, Loc::cell, c, [&] (double, double, double z) { return 300 + gamma * z; });
+        q.tke.setVal(amrex::Real(0.4));
+        amrex::MultiFab dist;
+        gust::height_above_ground(q.z_phys_nd, dist);
+        gust::ClosureFields f;
+        closure.evaluate(q, dist, amrex::Real(0.1), buoy, c.mesh, c.geom, f);
+        const std::string name = gust::write_turbulence_plotfile(dir, q, f, dist, nullptr, opt, c.geom);
+        amrex::PlotFileData pf(name);
+        const amrex::MultiFab rt = pf.get(0, "Rt"), cm = pf.get(0, "cmu"), cmp = pf.get(0, "cmu_prime");
+        // To 4 ulp: the plotfile kernel and the host reference are compiled in
+        // different translation units (a GPU kernel too), and a compiler may
+        // contract either to FMA (6e-14 apart measured on arm64). A wrong
+        // constant or column is off by 1e-3 or more.
+        const auto same = [] (amrex::Real x, amrex::Real y) {
+            return std::abs(x - y) <= 4 * std::numeric_limits<amrex::Real>::epsilon() * std::abs(y);
+        };
+        // Counted on every rank and all-reduced: the rank that prints may own no box.
+        int nonzero = 0, bad = 0, cells = 0;
+        for (amrex::MFIter mfi(rt, false); mfi.isValid(); ++mfi) {
+            const auto r = host_copy(rt, mfi), a = host_copy(cm, mfi), b = host_copy(cmp, mfi);
+            amrex::LoopOnCpu(mfi.validbox(), [&] (int i, int j, int k) {
+                const amrex::IntVect iv(i, j, k);
+                bad += same(a(iv), AL01::cmu(r(iv), opt.Cmu0)) ? 0 : 1;
+                bad += same(b(iv), AL01::cmu_prime(r(iv), opt.Cmu0)) ? 0 : 1;
+                nonzero += (r(iv) != 0) ? 1 : 0;
+                ++cells;
+            });
+        }
+        amrex::ParallelDescriptor::ReduceIntSum(nonzero);
+        amrex::ParallelDescriptor::ReduceIntSum(bad);
+        amrex::ParallelDescriptor::ReduceIntSum(cells);
+        EXPECT_EQ(cells, 8 * 8 * 8);
+        EXPECT_EQ(bad, 0) << "gamma " << gamma;
+        EXPECT_GT(nonzero, 0) << "Rt = 0 everywhere would not test the functions";
+        amrex::ParallelDescriptor::Barrier();
+        if (amrex::ParallelDescriptor::IOProcessor()) { amrex::FileSystem::RemoveAll(name); }
+    }
 }
 
 // ---------------------------------------------------------------------------

@@ -108,7 +108,7 @@ struct LineSweepOptions
 //! order, one per box, pass and wavefront plane (n_x + n_y - 1 for a swept
 //! region of n_x x n_y columns) in the diagonal order. The tests read it to
 //! check which kernels an option reaches.
-std::uint64_t& line_sweep_launches () noexcept;
+std::uint64_t line_sweep_launches () noexcept;
 
 //! The names of the options ("zjacobi", "lusgs"; "lagged", "zero";
 //! "sequential", "diagonal").

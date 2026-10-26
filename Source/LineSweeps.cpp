@@ -8,6 +8,7 @@
 #include <AMReX_GpuLaunch.H>
 
 #include <algorithm>
+#include <atomic>
 #include <limits>
 #include <string>
 
@@ -25,7 +26,8 @@ amrex::IntVect loc_type (Loc loc)
     }
 }
 
-std::uint64_t g_launches = 0;
+// Atomic so that a count from any host thread stays exact (GUST itself runs one thread per rank).
+std::atomic<std::uint64_t> g_launches{0};
 
 using CArr = amrex::Array4<amrex::Real const>;
 using MArr = amrex::Array4<amrex::Real>;
@@ -306,7 +308,7 @@ amrex::Real lusgs_zero (Loc loc, const amrex::MultiFab& A, const amrex::MultiFab
 
 } // namespace
 
-std::uint64_t& line_sweep_launches () noexcept { return g_launches; }
+std::uint64_t line_sweep_launches () noexcept { return g_launches.load(std::memory_order_relaxed); }
 
 const char* sweep_name (SweepKind kind) noexcept { return kind == SweepKind::lusgs ? "lusgs" : "zjacobi"; }
 const char* line_ghosts_name (LineGhosts g) noexcept { return g == LineGhosts::zero ? "zero" : "lagged"; }

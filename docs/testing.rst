@@ -829,6 +829,9 @@ Current tests
        1e-4 %). Label ``nightly``; double only.
    * - ``drift_check_selftest``
      - The ``extern_erf`` drift check on a throw-away ERF repository (:doc:`extraction`).
+   * - ``cmake_gust_omp_refused``
+     - A configure with ``-DGUST_OMP=ON`` (with the parent build's generator and compilers) stops at the top-level
+       check with "GUST_OMP was removed": GUST runs MPI and GPUs, not OpenMP (audit A11). Label ``unit``.
    * - ``input_reference_current``, ``input_reference_selftest``
      - ``tools/input_reference.py --check``: ``Tests/inputs_reference`` is what ``--write`` gives from the
        detailed tables of :doc:`inputs`; every table row names a key and no key appears twice; the quick-reference
@@ -1062,6 +1065,11 @@ GoogleTest suite
      - ``closure_point`` equals ERF's composition of the copied AL01 relations (``ComputeTurbulentViscosityRANS``,
        ρ = 1) bit for bit on 20 000 random (k, N², d): L, ε, R_t, c_μ, c_μ', ν_t, ν_t', across the neutral, stable,
        unstable, smoothed and floored cases (each exercised).
+   * - ``Closure.TurbulencePlotfileStabilityFunctionsAreErfs``
+     - The turbulence plotfile's ``cmu`` and ``cmu_prime`` equal ERF's AL01 ``cmu`` and ``cmu_prime`` of the plotted
+       ``Rt``, in a stable and an unstable layer (R_t ≠ 0 checked), to 4 ulp (the plotfile kernel and the reference
+       are compiled apart and may contract to FMA differently). The plotfile and the closure share
+       ``closure::stability_functions`` (audit A11). Mismatches are counted on every rank and all-reduced.
    * - ``Closure.MatchesKynemaKLAxellWhereTheyCoincide``
      - Kynema's ``KLAxell`` (transcribed) where the formulations coincide (neutral, z = d, λ = 30 m, no z₀, ρ = 1):
        L, ν_t, ε and P_s to 1e-12.
