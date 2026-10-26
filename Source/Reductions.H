@@ -57,6 +57,11 @@ std::vector<amrex::Long> count_not_positive (const std::vector<const amrex::Mult
 void require_positive (const char* op, const std::vector<std::string>& names,
                        const std::vector<const amrex::MultiFab*>& fields, bool allow_zero, int ngrow = 0);
 
+//! The number of points (each box grown by ngrow, every component) where a
+//! and b differ in their bit patterns (+0 and -0 differ, a NaN equals the
+//! same NaN). a and b on one layout. Collective: the all-reduced count.
+amrex::Long count_bit_differences (const amrex::MultiFab& a, const amrex::MultiFab& b, const amrex::IntVect& ngrow);
+
 // GUST_DEBUG_CHECKS: set in Debug builds and builds with AMReX assertions
 // (CMake GUST_TESTING, the CI Debug job). It guards the checks of an
 // operator's input that its callers in the solver already made where the

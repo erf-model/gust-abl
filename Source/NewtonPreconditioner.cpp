@@ -122,7 +122,7 @@ void SimplecPreconditioner::setup (const State& q, const amrex::MultiFab* dtau)
     copy_state(m_q0, q);
     SurfaceState* ss = (m_in.surface != nullptr) ? &m_ss : nullptr;
     m_in.bc->fill_ghosts(m_q0, m_in.surface, m_in.buoyancy, false, ss);
-    if (m_in.closure != nullptr) { residual(m_q0, m_in, m_mesh, m_geom, m_R, &m_cf); }
+    if (m_in.closure != nullptr) { residual(m_q0, m_in, m_mesh, m_geom, m_R, &m_cf, ss, &m_rws); }
     m_used_inf = (dtau == nullptr);
     if (dtau != nullptr) {
         check_operator_field("SimplecPreconditioner::setup", "dtau", *dtau, Loc::cell, m_mesh, 0);

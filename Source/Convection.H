@@ -81,6 +81,11 @@ void convective_fluxes (Loc loc, const amrex::MultiFab& q, const amrex::Array<co
 //! out = C(q), or the bounded form when opt.bounded (aborts on invalid options).
 void convection (Loc loc, const amrex::MultiFab& q, const amrex::Array<const amrex::MultiFab*, AMREX_SPACEDIM>& F,
                  const ConvectionOptions& opt, const Mesh& mesh, const amrex::Geometry& geom, amrex::MultiFab& out);
+//! The same with the convective fluxes in G (empty, or defined at loc on the
+//! mesh's layout by an earlier call): a caller that evaluates often keeps G.
+void convection (Loc loc, const amrex::MultiFab& q, const amrex::Array<const amrex::MultiFab*, AMREX_SPACEDIM>& F,
+                 const ConvectionOptions& opt, const Mesh& mesh, const amrex::Geometry& geom, amrex::MultiFab& out,
+                 amrex::Array<amrex::MultiFab, AMREX_SPACEDIM>& G);
 
 //! out -= q C(1): turns C(q) into the bounded form (C(1) is the divergence
 //! of the transport fluxes over the control volume of q).
