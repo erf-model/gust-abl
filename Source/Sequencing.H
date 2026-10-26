@@ -134,6 +134,12 @@ struct LooseStop
 LooseStop loose_stop (const SteadyHistory& h, const SteadyParams& p, const std::vector<MonitorSpec>& monitors,
                       const SequencingOptions& opt, int hold_iterations);
 
+//! io.iteration_log: the layout of the per-iteration log.
+enum class IterationLog { table, full };
+
+//! io.iteration_log's value ("table" or "full"; validate checked it).
+IterationLog iteration_log (const std::string& name);
+
 //! The run's inputs a level's solver is built from (the application's).
 struct RunSetup
 {
@@ -151,6 +157,7 @@ struct RunSetup
     SteadyOptions sopt;
     //! The Newton stage's (steady.stage = simplec_newton; level 0 only).
     NewtonStageOptions newton;
+    IterationLog log{IterationLog::table};   //!< io.iteration_log
 };
 
 //! The SIMPLEC stage and its driver on one level's mesh, with the level's
@@ -197,12 +204,34 @@ private:
     std::unique_ptr<Driver> m_driver;
 };
 
-//! One log line per iteration (the first ten, then every tenth, and the
-//! last), prefixed with label.
-//! In the Newton stage (newton set, the record's stage 1) the line gives
-//! the continuation step instead of SIMPLEC's pieces.
-void print_iteration (const Driver& driver, const SimplecStage& stage, bool last, const std::string& label = "",
-                      const NewtonStage* newton = nullptr);
+//! The per-iteration log of one driver run. A row for the first ten
+//! iterations, then every tenth, and the last (every Newton step), prefixed
+//! with label.
+//! table: aligned columns (iteration, CFL, line solver, the u, v, w, tke,
+//! theta and p residuals, r) under a header the printer repeats every
+//! kHeaderRows rows; a Newton row names "newton" as its line solver, gives
+//! the continuation step's CFL ("-" without a step) and adds the step's
+//! outcome after r.
+//! full: one "gust: it ..." line with every diagnostic (the monitors, the
+//! Poisson iterations, the divergence, the clipped cells, the confidence;
+//! for a Newton step the continuation's attempts and GMRES iterations).
+class IterationPrinter
+{
+public:
+    static constexpr int kHeaderRows = 20;
+
+    explicit IterationPrinter (IterationLog style) noexcept : m_style(style) {}
+
+    //! The row of the driver's last record, if it is one to print.
+    //! In the Newton stage (newton set, the record's stage 1) the row gives
+    //! the continuation step instead of SIMPLEC's pieces.
+    void print (const Driver& driver, const SimplecStage& stage, bool last, const std::string& label = "",
+                const NewtonStage* newton = nullptr);
+
+private:
+    IterationLog m_style;
+    int m_rows{0};   //!< table rows printed so far
+};
 
 //! What sequencing did on one level.
 struct LevelSummary

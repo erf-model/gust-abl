@@ -75,7 +75,7 @@ The run ends with
 
 .. code-block:: text
 
-   gust: it 2840 cfl 2.000e+00 r 6.816e-03 res 1.793e-05 6.202e-06 5.720e-06 6.324e-08 7.754e-06 1.488e-05 mon 1.114e+01 1.346e-01 3.774e-01 ...
+     2840  2.000e+00  zjacobi      1.793e-05  6.202e-06  5.720e-06  1.488e-05  7.754e-06  6.324e-08  6.816e-03
    gust: steady after 2840 iterations (2840 over the run)
 
 Unlike tutorial 1, all six residuals are non-zero: the Coriolis force couples :math:`u` and :math:`v`, and the
