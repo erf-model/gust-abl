@@ -229,6 +229,8 @@ public:
     void note_relative_residual (amrex::Real r) override { m_r = r; }
     //! The blend field sigma (empty without convection.hybrid_sigma_max).
     [[nodiscard]] const amrex::MultiFab& hybrid_sigma () const { return m_sigma; }
+    //! The line solver of every sweep (steady.sweep and steady.line_*).
+    [[nodiscard]] const LineSweepOptions& line_sweep () const { return m_sweep; }
 
 private:
     void compute_norms (const State& q);
