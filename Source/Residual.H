@@ -18,7 +18,8 @@
 // face fluxes, so that with a wall model (ResidualInputs::surface,
 // SurfaceLayer.H) the ground faces carry the wall stress, the surface heat
 // flux and no k flux, and the first cells' k rows are the wall-k rows; the
-// surface layer is computed from q on every call. The closure sources of k
+// surface layer is computed from q, or taken from the caller's ghost fill of
+// q (the same state, unless it read the top w face: Residual below). The closure sources of k
 // (production, buoyancy, dissipation) and the boundary conditions come from
 // Closure.H and BoundaryConditions.H; the residual reads the state's ghost
 // cells (two layers), which the caller fills, and leaves the boundary rows
@@ -127,11 +128,48 @@ struct ResidualInputs
     const BoundaryConditions* bc{nullptr};
 };
 
+//! Scratch fields of residual() and jvp, kept between calls so that a
+//! caller that evaluates often (the stages, the Newton core and its
+//! preconditioner) allocates them once per layout. Defined on first use; a
+//! call on another BoxArray or DistributionMapping redefines them. Every
+//! field is written before it is read in each call, so a workspace gives the
+//! same bits as fresh fields. One workspace serves one evaluation at a time.
+struct ResidualWorkspace
+{
+    amrex::Array<amrex::MultiFab, AMREX_SPACEDIM> F;            //!< transport fluxes
+    amrex::Array<amrex::MultiFab, 3> tmp;                       //!< momentum terms per component
+    amrex::Array<amrex::Array<amrex::MultiFab, AMREX_SPACEDIM>, 3> Gm;   //!< momentum diffusive fluxes
+    amrex::Array<amrex::MultiFab, AMREX_SPACEDIM> Gt, Gk;       //!< theta and k diffusive fluxes
+    //! Convective fluxes, one set per location, indexed by the Loc value (cell 0, x 1, y 2, z 4; the rest stay empty).
+    amrex::Array<amrex::Array<amrex::MultiFab, AMREX_SPACEDIM>, 8> Gc;
+    amrex::MultiFab theta_ref, d, omega;
+    SurfaceState ss;              //!< the wall state, when the caller gives none
+    ClosureFields cf;             //!< the closure's fields, when the caller gives none
+    ClosureScratch closure;
+    State qp;                     //!< jvp: q + eps v
+    ResidualFields base;          //!< jvp: R(q), when the caller gives none
+    amrex::MultiFab jvp_theta_ref;
+    //! Clear every field when (ba, dm) differ from the layout of the last call.
+    void use_layout (const amrex::BoxArray& ba, const amrex::DistributionMapping& dm);
+private:
+    amrex::BoxArray m_ba;
+    amrex::DistributionMapping m_dm;
+};
+
 //! R(q). q's ghost cells must be filled (two layers: MUSCL). Aborts, naming
 //! the input, on missing fields or invalid options. With a closure, fields
 //! (when given) receives what it evaluated at q.
+//! surface (with a wall model; null: computed here): the wall state of q,
+//! as BoundaryConditions::fill_ghosts returns it when it fills q's ghosts.
+//! The wall model reads no value the fill writes, so that state is the one
+//! residual() would compute; debug builds (GUST_DEBUG_CHECKS) compute it
+//! again and abort on any difference. The exception, a state that read the
+//! top w face (SurfaceState::reads_top_face, a z_ref in the top interval),
+//! is not used: residual() computes its own.
+//! ws (null: fields local to the call): the scratch fields.
 void residual (const State& q, const ResidualInputs& in, const Mesh& mesh, const amrex::Geometry& geom,
-               ResidualFields& R, ClosureFields* fields = nullptr);
+               ResidualFields& R, ClosureFields* fields = nullptr, const SurfaceState* surface = nullptr,
+               ResidualWorkspace* ws = nullptr);
 
 //! The fields with an implicit-side operator.
 enum class Equation { u, v, w, theta, tke };
@@ -185,10 +223,13 @@ void line_jacobian (const amrex::Array<const amrex::MultiFab*, AMREX_SPACEDIM>& 
 //! ghosts plus eps times v's. The fill is nonlinear in q where the wall law
 //! sets the ground gradient, so only the refill differentiates it; the
 //! Newton core (Newton.H) uses it. Without refill, v's ghosts (the
-//! homogeneous fill) give the Jacobian with that gradient frozen.
+//! homogeneous fill) give the Jacobian with that gradient frozen. With
+//! refill, the wall state of that fill goes to the residual.
+//! ws (null: fields local to the call): the scratch fields, q + eps v
+//! included.
 amrex::Real jvp (const State& q, const State& v, const ResidualInputs& in, const Mesh& mesh,
                  const amrex::Geometry& geom, ResidualFields& Jv, const ResidualFields* R0 = nullptr,
-                 bool refill = false);
+                 bool refill = false, ResidualWorkspace* ws = nullptr);
 
 } // namespace gust
 

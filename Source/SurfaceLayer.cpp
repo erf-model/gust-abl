@@ -66,8 +66,10 @@ void tangential_wind (amrex::Array4<amrex::Real const> const& u, amrex::Array4<a
 // cell's own centre u and v (exact for a flow along a uniform slope; the
 // cell's w faces are not read). The fill writes the ground w face and the u, v
 // ghosts after the wall model, so the wall model reads no value the fill
-// writes, and the fill is a fixed point. Over flat ground the vertical part is
-// projected out either way.
+// writes, and the fill is a fixed point; except when a reference interval is
+// the top one, whose upper cell reads the top w face (SurfaceState::
+// reads_top_face). Over flat ground the vertical part is projected out
+// either way.
 AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
 void tangential_wind_ground (amrex::Array4<amrex::Real const> const& u, amrex::Array4<amrex::Real const> const& v,
                              int i, int j, int k, amrex::Real zx, amrex::Real zy, const amrex::Real n[3],
@@ -374,10 +376,16 @@ void compute_surface_state (const State& q, const SurfaceLayerOptions& opt, cons
     }
 
     // A given z_ref must lie on every valid column, between the highest
-    // first-centre height and the lowest last-centre height.
+    // first-centre height and the lowest last-centre height. The lowest
+    // centre below the last one, over every column the state holds (the
+    // ghost columns too: the ground fluxes read them), tells whether some
+    // column's reference interval is the top one (reads_top_face).
+    s.reads_top_face = (nz == 2);
     if (opt.zref > 0) {
         amrex::ReduceOps<amrex::ReduceOpMax, amrex::ReduceOpMin> ops;
         amrex::ReduceData<amrex::Real, amrex::Real> data(ops);
+        amrex::ReduceOps<amrex::ReduceOpMin> ops_top;
+        amrex::ReduceData<amrex::Real> data_top(ops_top);
         for (amrex::MFIter mfi(mesh.detJ, false); mfi.isValid(); ++mfi) {
             amrex::Box bx = mfi.validbox();
             bx.setBig(2, bx.smallEnd(2));
@@ -386,11 +394,20 @@ void compute_surface_state (const State& q, const SurfaceLayerOptions& opt, cons
                 const Column h{z, i, j, klo};
                 return {h(0), h(nz - 1)};
             });
+            ops_top.eval(amrex::grow(bx, amrex::IntVect(1, 1, 0)), data_top,
+                         [=] AMREX_GPU_DEVICE (int i, int j, int) -> amrex::GpuTuple<amrex::Real> {
+                const Column h{z, i, j, klo};
+                return {h(nz - 2)};
+            });
         }
         const auto r = data.value();
-        amrex::Real lo = amrex::get<0>(r), hi = amrex::get<1>(r);
+        amrex::Real lo = amrex::get<0>(r);
+        amrex::Real lims[2] = {amrex::get<1>(r), amrex::get<0>(data_top.value())};
         amrex::ParallelAllReduce::Max(lo, amrex::ParallelDescriptor::Communicator());
-        amrex::ParallelAllReduce::Min(hi, amrex::ParallelDescriptor::Communicator());
+        amrex::ParallelAllReduce::Min(lims, 2, amrex::ParallelDescriptor::Communicator());
+        const amrex::Real hi = lims[0];
+        // reference_interval: z_ref >= h(nz - 2) on some column gives that column the top interval.
+        s.reads_top_face = s.reads_top_face || (opt.zref >= lims[1]);
         if (!(opt.zref >= lo && opt.zref <= hi)) {
             amrex::Abort("gust: surface layer zref = " + std::to_string(opt.zref)
                          + " m must lie between the first and last cell-centre heights above the ground of every column ("

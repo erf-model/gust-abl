@@ -170,9 +170,16 @@ public:
 
     //! dtau: cell-centred on the mesh's layout (> 0), or null for plain
     //! Newton. pc: null for the identity. Aborts without in.bc (the
-    //! perturbation's ghost fill needs it).
+    //! perturbation's ghost fill needs it). ws: jvp's scratch (null: the
+    //! operator's own, kept for its lifetime).
     NewtonOperator (const State& q, const ResidualFields& R0, const ResidualInputs& in, const Mesh& mesh,
-                    const amrex::Geometry& geom, const amrex::MultiFab* dtau, NewtonPreconditioner* pc = nullptr);
+                    const amrex::Geometry& geom, const amrex::MultiFab* dtau, NewtonPreconditioner* pc = nullptr,
+                    ResidualWorkspace* ws = nullptr);
+    //! Not copied or moved: m_ws may point at the operator's own workspace.
+    NewtonOperator (const NewtonOperator&) = delete;
+    NewtonOperator (NewtonOperator&&) = delete;
+    NewtonOperator& operator= (const NewtonOperator&) = delete;
+    NewtonOperator& operator= (NewtonOperator&&) = delete;
 
     // The amrex::GMRES interface.
     void apply (NewtonVector& Ax, const NewtonVector& x);
@@ -221,6 +228,8 @@ private:
     amrex::Array<std::unique_ptr<amrex::iMultiFab>, 3> m_owner;
     State m_dq;              //!< S x with ghost cells, apply's work field
     ResidualFields m_Jv;     //!< jvp's output
+    ResidualWorkspace m_own_ws;
+    ResidualWorkspace* m_ws; //!< jvp's scratch: the caller's or m_own_ws
     NewtonVector m_pr, m_pz; //!< the hook's physical-unit work vectors (with a hook only)
     int m_jvp_calls{0};
     amrex::Real m_eps_min{0}, m_eps_max{0};
@@ -309,8 +318,9 @@ public:
     [[nodiscard]] const ResidualInputs& residual_inputs () const { return m_in; }
 
 private:
-    //! R0 = R(fill(q)) = R(q) (q's ghost cells already filled; the fill is a fixed point).
-    void base_residual (const State& q, ResidualFields& R0) const;
+    //! fill(q), then R0 = R(q) with the wall state of that fill (one call, so
+    //! the residual never gets the wall state of another state).
+    void fill_and_base_residual (State& q, ResidualFields& R0) const;
     //! fill(q), R0, the GMRES solve; use(op, x) when the update is usable.
     NewtonStepInfo solve (State& q, const amrex::MultiFab* dtau, NewtonPreconditioner* pc,
                           const std::function<void (const NewtonOperator&, const NewtonVector&)>& use);
@@ -323,6 +333,10 @@ private:
     KrylovMemory m_mem;
     NewtonStepInfo m_last;
     int m_verbose{1};
+    //! The wall state of the last fill_and_base_residual, and the scratch of the residual
+    //! and of every jvp (one evaluation at a time).
+    mutable SurfaceState m_ss;
+    mutable ResidualWorkspace m_ws;
 };
 
 } // namespace gust

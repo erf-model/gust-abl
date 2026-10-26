@@ -174,6 +174,7 @@ private:
     ResidualFields m_R;         //!< -r for the predictor and the sweeps (and R(q) in setup)
     ClosureFields m_cf;
     SurfaceState m_ss;
+    ResidualWorkspace m_rws;    //!< setup's residual scratch
     PredictorFields m_pf;
     SimplecWorkspace m_w;
     amrex::Array<amrex::MultiFab, AMREX_SPACEDIM> m_F0;   //!< the transport at q

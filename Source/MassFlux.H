@@ -70,6 +70,10 @@ void transport_fluxes (const amrex::MultiFab& u, const amrex::MultiFab& v, const
 void velocity_divergence (const amrex::MultiFab& u, const amrex::MultiFab& v, const amrex::MultiFab& w,
                           const amrex::MultiFab& z_nd, const Mesh& mesh, const amrex::Geometry& geom,
                           amrex::MultiFab& div);
+//! The same with Omega in omega (empty, or on w's layout without ghosts).
+void velocity_divergence (const amrex::MultiFab& u, const amrex::MultiFab& v, const amrex::MultiFab& w,
+                          const amrex::MultiFab& z_nd, const Mesh& mesh, const amrex::Geometry& geom,
+                          amrex::MultiFab& div, amrex::MultiFab& omega);
 
 //! Gp[d] = (G p)_d on the valid d-faces; p needs one ghost cell filled.
 void pressure_gradient (const amrex::MultiFab& p, const amrex::MultiFab& z_nd, const Mesh& mesh,

@@ -155,6 +155,7 @@ private:
     amrex::iMultiFab m_saved;    //!< the frozen decisions, for the live evaluation of run_norms
     ResidualFields m_R;
     SurfaceState m_ss;
+    ResidualWorkspace m_rws;     //!< run_norms' residual scratch
     std::vector<std::string> m_names;
     std::vector<MonitorSpec> m_specs;
     std::vector<amrex::Real> m_res, m_mon;
