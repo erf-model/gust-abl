@@ -702,6 +702,35 @@ TEST (Mesh, MetricsEqualErf)
     EXPECT_EQ(stf.mesh.quality().stf_capped_levels, 2);
 }
 
+// The mesh keeps the smallest detJ when it makes its metrics (the pressure
+// correction reads it every iteration; audit A7): after build, adopt and a
+// restart check, the kept value is the field's minimum to the last bit. On
+// flat ground it is the first layer over the computational spacing, 40/100.
+TEST (Mesh, KeepsTheSmallestJacobian)
+{
+    MeshCase flat = hill3d(1);
+    flat.in.terrain.type = "flat";
+    flat.make();
+    flat.mesh.build(flat.in, flat.geom, flat.z);
+    EXPECT_NEAR(flat.mesh.min_detJ(), 0.4, 1e-6);
+
+    MeshCase s = hill3d(1);
+    s.mesh.build(s.in, s.geom, s.z);
+    const amrex::Real m = s.mesh.detJ.min(0);
+    EXPECT_EQ(s.mesh.min_detJ(), m);
+    EXPECT_LT(m, flat.mesh.min_detJ());   // the hill squeezes the first layer
+    s.mesh.check_restart(s.in, s.geom, s.z);
+    EXPECT_EQ(s.mesh.min_detJ(), m);
+
+    gust::Mesh other;
+    other.define(s.ba, s.dm);
+    amrex::MultiFab z2(s.z.boxArray(), s.dm, 1, s.z.nGrowVect());
+    amrex::MultiFab::Copy(z2, s.z, 0, 0, 1, s.z.nGrowVect());
+    other.adopt(s.mesh, s.geom, z2);
+    EXPECT_EQ(other.min_detJ(), other.detJ.min(0));
+    EXPECT_EQ(other.min_detJ(), m);
+}
+
 // A restart with changed terrain inputs is refused.
 TEST (Mesh, RestartWithOtherTerrainIsRefused)
 {

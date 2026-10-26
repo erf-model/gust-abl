@@ -33,12 +33,10 @@ void face_dtau (const amrex::MultiFab& dtau_cc, const Mesh& mesh, const amrex::G
 {
     const char* op = "face_dtau";
     check_operator_field(op, "dtau_cc", dtau_cc, Loc::cell, mesh, 0);
-    {
-        const amrex::Real lo = dtau_cc.min(0);   // collective: every rank aborts together
-        if (std::isnan(lo) || !(lo > 0) || !std::isfinite(dtau_cc.max(0))) {
-            amrex::Abort("gust: face_dtau: dtau_cc must be finite and > 0 everywhere");
-        }
-    }
+    // The check of the pseudo-time step for the whole iteration (one
+    // all-reduce): momentum_predictor and scalar_sweep repeat it in debug
+    // builds only (GUST_DEBUG_CHECKS). The faces are minima or copies of it.
+    require_positive("face_dtau", "dtau_cc", {&dtau_cc}, false);
     const amrex::MultiFab* areas[3] = {&mesh.ax, &mesh.ay, &mesh.az};
     for (int d = 0; d < 3; ++d) {
         if (dtau_faces[d].empty()) { dtau_faces[d].define(areas[d]->boxArray(), mesh.detJ.DistributionMap(), 1, 0); }
@@ -152,12 +150,10 @@ MomentumPredictorResult momentum_predictor (State& q, const ResidualFields& R,
     check_operator_field(op, "dtau_x", dtau_faces[0], Loc::xface, mesh, 0);
     check_operator_field(op, "dtau_y", dtau_faces[1], Loc::yface, mesh, 0);
     check_operator_field(op, "dtau_z", dtau_faces[2], Loc::zface, mesh, 0);
-    for (int d = 0; d < 3; ++d) {
-        const amrex::Real lo = dtau_faces[d].min(0);
-        if (std::isnan(lo) || !(lo > 0) || !std::isfinite(dtau_faces[d].max(0))) {
-            amrex::Abort("gust: momentum_predictor: dtau_faces must be finite and > 0 everywhere");
-        }
-    }
+#ifdef GUST_DEBUG_CHECKS
+    // face_dtau checked the cell values these come from.
+    require_positive(op, "dtau_faces", {&dtau_faces[0], &dtau_faces[1], &dtau_faces[2]}, false);
+#endif
     if (in.bc == nullptr && (in.buoyancy.gravity > 0 || (in.coriolis.enabled && coriolis_parameter(in.coriolis) != 0))) {
         amrex::Abort("gust: momentum_predictor: the point-implicit buoyancy and rotation need the boundary conditions "
                      "(the Dirichlet rows they skip); give in.bc, or gravity 0 and Coriolis off");

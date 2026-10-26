@@ -1066,6 +1066,10 @@ GoogleTest suite
    * - ``Closure.InputsAreReadAndChecked``
      - Every ``turb`` key is read into its field and the constants follow (the floor, C_μ0³); each invalid value is
        refused with its key named, and the constructor refuses it before forming the constants.
+   * - ``Closure.WallDistanceIsCheckedOnce``
+     - Audit A7: :math:`d + z_0 > 0` is checked once per level, where the wall distance is made, the ghost cells
+       included: a zero ghost distance is refused with :math:`z_0 = 0` and accepted with 0.1, −0.1 with 0.1 is
+       refused. ``evaluate`` repeats the check only in debug builds (``GUST_TESTING``).
    * - ``Closure.FaceMeanIsLogarithmicAcrossVerticalPairsOnly``, ``Closure.LogarithmicFaceMeanReproducesTheLogLawFlux``, ``Closure.ResidualWithClosureIsTheResidualWithItsFields``, ``Closure.RelaxationCheckpointAndFrozenSwitches``
      - The logarithmic mean against (a − b)/ln(a/b) on random pairs (1e-14), equal values, zero,
        continuity across its series switch; on a log-law column the logarithmic face mean gives the wall flux u*² at
@@ -1219,6 +1223,10 @@ GoogleTest suite
    * - ``Mesh.RestartAcceptsHeightsWithinAFewUlp``
      - Audit A5 (U6): node heights one ulp above this build's, or ±32 ulp of the top level's height, restart, and the run
        continues on this build's heights; ±128 ulp, 64 000 ulp and a NaN node stop it (before, any difference did).
+   * - ``Mesh.KeepsTheSmallestJacobian``
+     - Audit A7: the mesh keeps the smallest :math:`J` when it makes its metrics (the pressure correction reads it
+       every iteration). After ``build``, a restart check and ``adopt`` it equals the field's minimum bit for bit;
+       on flat ground it is the first layer over the computational spacing, 40/100.
    * - ``Driver.HistoryIsRestartableBitForBit``
      - The history written to ``<dir>/Driver`` and read back is equal field by field (records, switches with their
        reasons, accounts, the criterion's history); a two-stage run interrupted after 6 iterations and continued by a
@@ -1264,7 +1272,8 @@ GoogleTest suite
    * - ``Predictor.FaceStepRefusalsAndRankIndependence``
      - ``face_dtau`` is the mean of the two cells, the one cell at a wall, the ground and the top,
        and the periodic image across the seam; one sweep's change is the whole correction; ``sweeps < 1``, a
-       non-positive step and wrong layouts are refused.
+       non-positive step (one NaN cell on one rank too) and wrong layouts are refused. A non-positive step at the
+       faces is refused by the predictor in debug builds only (audit A7: ``face_dtau`` checked the cells).
    * - ``Predictor.DirichletRowsAreSetExactly``
      - With boundary conditions (inflow at xlo, outflow at xhi, slip ground and top), the Dirichlet
        rows (the inflow face of u, the ground and top faces of w) have :math:`a_P = 1`, :math:`d = 0`, and one
@@ -1348,7 +1357,8 @@ GoogleTest suite
        Albada limiter), the value counts; the
        stage's refusals (sweeps < 1,
        no boundary conditions, a closure not the inputs', :math:`\alpha_p` out of range, a negative or non-finite
-       SIMPLEC denominator, a non-positive step, a scalar sweep of a velocity, a negative floor).
+       SIMPLEC denominator, a scalar sweep of a velocity, a negative floor; a non-positive step in debug builds
+       only, audit A7).
    * - ``Simplec.WallKRowsAreFolded``
      - The wall-k rows folded into the implicit rows: with a surface layer the first cells' k
        rows are, for ``bc.surface_wall_k = dirichlet``, the diagonal :math:`\max(u_*, u_{*,\min})/d_0` alone with
@@ -1619,7 +1629,10 @@ GoogleTest suite
        on an x-face field, x periodic and not, three layouts, the boxes on their ranks and in reverse: the same bits
        for both rank maps and the exact sum over the distinct faces to 1e-13. ``…ResidualRmsDoesNotDependOnTheLayout``:
        ``stage_norms`` gives the same six norms on the three layouts to 1e-13, and for u the exact RMS (before, a
-       box-seam face and both copies of a periodic face counted twice).
+       box-seam face and both copies of a periodic face counted twice). Audit A7:
+       ``…CountNotPositiveFindsEveryBadPoint``: the validity check counts a NaN, ±∞, a negative denormal and the two
+       zeros planted in different boxes (so on different ranks), zeros only when they are not allowed (−0 is zero),
+       a ghost cell only when asked; every rank gets the full count; the count raises no invalid-operation trap.
    * - ``Newton.JvpEpsSweepAgainstQuadraticResidual``
      - On a residual that is exactly quadratic in q (upwind convection, Coriolis, slip walls), the analytic :math:`Jv`
        and :math:`B(v,v)` from central differences; the sweep of ``steady.newton_fd_eps_scale`` from 1e-2 to 3.2e-12

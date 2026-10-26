@@ -2,6 +2,7 @@
 
 #include "CVFluxes.H"
 #include "ClosureWake.H"
+#include "Reductions.H"
 #include "Stencil_K.H"
 
 #include <AMReX_ParallelDescriptor.H>
@@ -85,6 +86,17 @@ const amrex::MultiFab& length_distance (const char* op, const amrex::MultiFab& d
 }
 
 //! The decisions at the state, encoded, on the closure's cells: out(k, N2).
+//! l_g = kappa (d + z0) must be positive everywhere the kernels run (1/l_g^2):
+//! dist as length_distance returns it, z0 the uniform part.
+void require_length_distance (const char* op, const amrex::MultiFab& dist, amrex::Real z0)
+{
+    const amrex::Real lo = dist.min(0, 1);   // collective: every rank aborts together
+    if (!(lo + z0 > 0)) {
+        amrex::Abort(std::string("gust: ") + op + ": the wall distance plus z0 must be > 0 at every cell (min "
+                     + std::to_string(lo) + " + " + std::to_string(z0) + ")");
+    }
+}
+
 void live_decisions (const amrex::MultiFab& tke, const amrex::MultiFab& N2, const amrex::MultiFab& dist, amrex::Real z0,
                      const ClosureConstants& c, amrex::iMultiFab& out)
 {
@@ -362,6 +374,14 @@ void Closure::stratification (const State& q, const BuoyancyOptions& buoyancy, c
     if (m_opt.ri_gate > 0) { gate_stratification(N2, S2, m_opt.ri_gate); }
 }
 
+void Closure::check_wall_distance (const amrex::MultiFab& dist_in, const Roughness& rough) const
+{
+    const char* op = "Closure::check_wall_distance";
+    amrex::Real z0 = 0;
+    const amrex::MultiFab& dist = length_distance(op, dist_in, rough, m_dz, m_dz_of, z0);
+    require_length_distance(op, dist, z0);
+}
+
 void Closure::evaluate (const State& q, const amrex::MultiFab& dist_in, const Roughness& rough,
                         const BuoyancyOptions& buoyancy, const Mesh& mesh, const amrex::Geometry& geom,
                         ClosureFields& f) const
@@ -376,11 +396,10 @@ void Closure::evaluate (const State& q, const amrex::MultiFab& dist_in, const Ro
         amrex::Abort(std::string("gust: ") + op + ": z0 = " + std::to_string(z0) + " must be finite and >= 0");
     }
     for (const auto& e : check_buoyancy_options(buoyancy)) { amrex::Abort(std::string("gust: ") + op + ": " + e); }
-    // l_g = kappa (d + z0) must be positive everywhere the kernels run (1/l_g^2).
-    if (!(dist.min(0, 1) + z0 > 0)) {
-        amrex::Abort(std::string("gust: ") + op + ": the wall distance plus z0 must be > 0 at every cell (min "
-                     + std::to_string(dist.min(0, 1)) + " + " + std::to_string(z0) + ")");
-    }
+#ifdef GUST_DEBUG_CHECKS
+    // Checked once per level where the distance is made (check_wall_distance).
+    require_length_distance(op, dist, z0);
+#endif
     if (f.empty()) { f.define(q.p.boxArray(), q.p.DistributionMap()); }
     check_operator_field(op, "nu", f.nu, Loc::cell, mesh, 1);
     if (has_history()) { check_operator_field(op, "history", m_nut_prev, Loc::cell, mesh, 1); }

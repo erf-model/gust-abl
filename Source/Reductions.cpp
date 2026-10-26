@@ -3,10 +3,12 @@
 #include <AMReX.H>
 #include <AMReX_FArrayBox.H>
 #include <AMReX_GpuContainers.H>
+#include <AMReX_Math.H>
 #include <AMReX_ParallelDescriptor.H>
 
 #include <limits>
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace gust {
@@ -55,6 +57,48 @@ amrex::Real deterministic_sum (const amrex::MultiFab& mf, int comp)
     return total;
 }
 
+double box_dot (const amrex::MultiFab& a, int acomp, const amrex::MultiFab& b, int bcomp, const amrex::iMultiFab* owner,
+                const amrex::MFIter& mfi)
+{
+    // mfi may iterate over another index type (the cells); the field's own box of the same index.
+    const amrex::Box bx = amrex::convert(mfi.validbox(), a.ixType());
+    const int klo = bx.smallEnd(2);
+    const int khi = bx.bigEnd(2);
+    amrex::Box cols = bx;
+    cols.setBig(2, klo);
+    const auto npts = static_cast<std::size_t>(cols.numPts());
+    amrex::Gpu::DeviceVector<double> colsum(npts);
+    double* cs = colsum.data();
+    const auto lo = amrex::lbound(cols);
+    const auto len = amrex::length(cols);
+    const auto aa = a.const_array(mfi, acomp);
+    const auto ba = b.const_array(mfi, bcomp);
+    if (owner != nullptr) {
+        const auto m = owner->const_array(mfi);
+        amrex::ParallelFor(cols, [=] AMREX_GPU_DEVICE (int i, int j, int k0) noexcept
+        {
+            double s = 0;
+            for (int k = klo; k <= khi; ++k) {
+                if (m(i, j, k) != 0) { s += static_cast<double>(aa(i, j, k)) * static_cast<double>(ba(i, j, k)); }
+            }
+            cs[(i - lo.x) + (j - lo.y) * len.x + (k0 - lo.z) * len.x * len.y] = s;
+        });
+    } else {
+        amrex::ParallelFor(cols, [=] AMREX_GPU_DEVICE (int i, int j, int k0) noexcept
+        {
+            double s = 0;
+            for (int k = klo; k <= khi; ++k) { s += static_cast<double>(aa(i, j, k)) * static_cast<double>(ba(i, j, k)); }
+            cs[(i - lo.x) + (j - lo.y) * len.x + (k0 - lo.z) * len.x * len.y] = s;
+        });
+    }
+    amrex::Vector<double> h(npts);
+    amrex::Gpu::copyAsync(amrex::Gpu::deviceToHost, colsum.begin(), colsum.end(), h.begin());
+    amrex::Gpu::streamSynchronize();
+    double s = 0;
+    for (const double x : h) { s += x; }
+    return s;
+}
+
 double deterministic_dot (const amrex::MultiFab& a, int acomp, const amrex::MultiFab& b, int bcomp,
                           const amrex::iMultiFab* owner)
 {
@@ -63,47 +107,62 @@ double deterministic_dot (const amrex::MultiFab& a, int acomp, const amrex::Mult
     const int nboxes = static_cast<int>(a.boxArray().size());
     amrex::Vector<double> box_sum(nboxes, 0.0);
     for (amrex::MFIter mfi(a, false); mfi.isValid(); ++mfi) {
-        const amrex::Box bx = mfi.validbox();
-        const int klo = bx.smallEnd(2);
-        const int khi = bx.bigEnd(2);
-        amrex::Box cols = bx;
-        cols.setBig(2, klo);
-        const auto npts = static_cast<std::size_t>(cols.numPts());
-        amrex::Gpu::DeviceVector<double> colsum(npts);
-        double* cs = colsum.data();
-        const auto lo = amrex::lbound(cols);
-        const auto len = amrex::length(cols);
-        const auto aa = a.const_array(mfi, acomp);
-        const auto ba = b.const_array(mfi, bcomp);
-        if (owner != nullptr) {
-            const auto m = owner->const_array(mfi);
-            amrex::ParallelFor(cols, [=] AMREX_GPU_DEVICE (int i, int j, int k0) noexcept
-            {
-                double s = 0;
-                for (int k = klo; k <= khi; ++k) {
-                    if (m(i, j, k) != 0) { s += static_cast<double>(aa(i, j, k)) * static_cast<double>(ba(i, j, k)); }
-                }
-                cs[(i - lo.x) + (j - lo.y) * len.x + (k0 - lo.z) * len.x * len.y] = s;
-            });
-        } else {
-            amrex::ParallelFor(cols, [=] AMREX_GPU_DEVICE (int i, int j, int k0) noexcept
-            {
-                double s = 0;
-                for (int k = klo; k <= khi; ++k) { s += static_cast<double>(aa(i, j, k)) * static_cast<double>(ba(i, j, k)); }
-                cs[(i - lo.x) + (j - lo.y) * len.x + (k0 - lo.z) * len.x * len.y] = s;
-            });
-        }
-        amrex::Vector<double> h(npts);
-        amrex::Gpu::copyAsync(amrex::Gpu::deviceToHost, colsum.begin(), colsum.end(), h.begin());
-        amrex::Gpu::streamSynchronize();
-        double s = 0;
-        for (const double x : h) { s += x; }
-        box_sum[mfi.index()] = s;
+        box_sum[mfi.index()] = box_dot(a, acomp, b, bcomp, owner, mfi);
     }
     amrex::ParallelDescriptor::ReduceRealSum(box_sum.dataPtr(), nboxes);
     double total = 0;
     for (const double x : box_sum) { total += x; }
     return total;
+}
+
+namespace {
+
+//! The local count of count_not_positive for one field (no communication).
+//! AllowZero a template argument: no option branch in the kernel.
+template <bool AllowZero>
+amrex::Long local_not_positive (const amrex::MultiFab& mf, int ngrow)
+{
+    amrex::ReduceOps<amrex::ReduceOpSum> op;
+    amrex::ReduceData<amrex::Long> data(op);
+    for (amrex::MFIter mfi(mf, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
+        const amrex::Box bx = mfi.growntilebox(ngrow);
+        const auto a = mf.const_array(mfi);
+        op.eval(bx, data, [=] AMREX_GPU_DEVICE (int i, int j, int k) -> amrex::GpuTuple<amrex::Long>
+        {
+            const amrex::Real x = a(i, j, k);
+            // Quiet tests only: an ordered compare with a NaN raises FE_INVALID
+            // (trapped in CI), even after an isnan test the compiler may not
+            // branch on. The sign from copysign; -0 is not negative.
+            const bool negative = amrex::Math::copysign(amrex::Real(1), x) < 0 && x != 0;
+            bool bad = amrex::Math::isnan(x) || amrex::Math::isinf(x) || negative;
+            if constexpr (!AllowZero) { bad = bad || x == 0; }
+            return {bad ? amrex::Long(1) : amrex::Long(0)};
+        });
+    }
+    return amrex::get<0>(data.value(op));
+}
+
+} // namespace
+
+amrex::Long count_not_positive (const std::vector<const amrex::MultiFab*>& fields, bool allow_zero, int ngrow)
+{
+    amrex::Long n = 0;
+    for (const amrex::MultiFab* mf : fields) {
+        AMREX_ALWAYS_ASSERT_WITH_MESSAGE(mf->nGrow() >= ngrow, "count_not_positive: the field has fewer ghost layers than asked");
+        n += allow_zero ? local_not_positive<true>(*mf, ngrow) : local_not_positive<false>(*mf, ngrow);
+    }
+    amrex::ParallelDescriptor::ReduceLongSum(n);
+    return n;
+}
+
+void require_positive (const char* op, const std::string& what, const std::vector<const amrex::MultiFab*>& fields,
+                       bool allow_zero, int ngrow)
+{
+    const amrex::Long n = count_not_positive(fields, allow_zero, ngrow);
+    if (n != 0) {
+        amrex::Abort(std::string("gust: ") + op + ": " + what + " must be finite and " + (allow_zero ? ">= 0" : "> 0")
+                     + " everywhere (" + std::to_string(n) + " points are not)");
+    }
 }
 
 std::vector<double> deterministic_level_sums (const amrex::MultiFab& mf, int comp, const amrex::iMultiFab& owner,
