@@ -437,6 +437,23 @@ TEST(Closure, InputsAreReadAndChecked)
 // ERF's composition of the copied relations (erf_point) at those N^2 and S^2,
 // for a stable and an unstable gamma; the lateral ghost ring equals the
 // periodic image's value.
+namespace {
+
+// Writes v into the ghost cell (0, 0, -1) below the ground, in the box that
+// holds the cell (0, 0, 0). A free function: CUDA does not allow a device
+// lambda in a TEST body (a private member).
+void set_ghost_below_origin (amrex::MultiFab& mf, amrex::Real v)
+{
+    for (amrex::MFIter mfi(mf, false); mfi.isValid(); ++mfi) {
+        if (!mfi.validbox().contains(amrex::IntVect(0, 0, 0))) { continue; }
+        const auto d = mf.array(mfi);
+        amrex::ParallelFor(amrex::Box(amrex::IntVect(0, 0, -1), amrex::IntVect(0, 0, -1)),
+                           [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept { d(i, j, k) = v; });
+    }
+}
+
+} // namespace
+
 // The wall distance plus z0 is checked once per level where it is made
 // (Sequencing), the ghost cells included, not at every evaluation (audit
 // A7, I3); evaluate() repeats the check in debug builds only.
@@ -450,14 +467,7 @@ TEST(Closure, WallDistanceIsCheckedOnce)
     gust::height_above_ground(q.z_phys_nd, dist);
     EXPECT_NO_THROW(closure.check_wall_distance(dist, amrex::Real(0)));
     // one ghost cell below the ground, on whichever rank holds it
-    const auto set_ghost = [&] (amrex::Real v) {
-        for (amrex::MFIter mfi(dist, false); mfi.isValid(); ++mfi) {
-            if (!mfi.validbox().contains(amrex::IntVect(0, 0, 0))) { continue; }
-            const auto d = dist.array(mfi);
-            amrex::ParallelFor(amrex::Box(amrex::IntVect(0, 0, -1), amrex::IntVect(0, 0, -1)),
-                               [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept { d(i, j, k) = v; });
-        }
-    };
+    const auto set_ghost = [&] (amrex::Real v) { set_ghost_below_origin(dist, v); };
     set_ghost(0);
     EXPECT_THROW(closure.check_wall_distance(dist, amrex::Real(0)), std::runtime_error);
     EXPECT_NO_THROW(closure.check_wall_distance(dist, amrex::Real(0.1)));
