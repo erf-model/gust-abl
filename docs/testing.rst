@@ -1357,7 +1357,7 @@ GoogleTest suite
        Albada limiter), the value counts; the
        stage's refusals (sweeps < 1,
        no boundary conditions, a closure not the inputs', :math:`\alpha_p` out of range, a negative or non-finite
-       SIMPLEC denominator, a scalar sweep of a velocity, a negative floor; a non-positive step in debug builds
+       SIMPLEC denominator, each of the three named in the message, a scalar sweep of a velocity, a negative floor; a non-positive step in debug builds
        only, audit A7).
    * - ``Simplec.WallKRowsAreFolded``
      - The wall-k rows folded into the implicit rows: with a surface layer the first cells' k
@@ -1632,7 +1632,8 @@ GoogleTest suite
        box-seam face and both copies of a periodic face counted twice). Audit A7:
        ``…CountNotPositiveFindsEveryBadPoint``: the validity check counts a NaN, ±∞, a negative denormal and the two
        zeros planted in different boxes (so on different ranks), zeros only when they are not allowed (−0 is zero),
-       a ghost cell only when asked; every rank gets the full count; the count raises no invalid-operation trap.
+       a ghost cell only when asked; every rank gets the full count per field, and the refusal names only the
+       fields that fail; the count raises no invalid-operation trap.
    * - ``Newton.JvpEpsSweepAgainstQuadraticResidual``
      - On a residual that is exactly quadratic in q (upwind convection, Coriolis, slip walls), the analytic :math:`Jv`
        and :math:`B(v,v)` from central differences; the sweep of ``steady.newton_fd_eps_scale`` from 1e-2 to 3.2e-12

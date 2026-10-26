@@ -17,6 +17,7 @@
 #include <stdexcept>
 #include <string>
 #include <type_traits>
+#include <vector>
 
 namespace {
 
@@ -157,7 +158,12 @@ TEST (Reductions, CountNotPositiveFindsEveryBadPoint)
     amrex::MultiFab a(ba, dm, 1, 1), b(ba, dm, 1, 1);
     a.setVal(1.0);
     b.setVal(amrex::Real(1.0e-30));
-    EXPECT_EQ(gust::count_not_positive({&a, &b}, false, 1), 0);
+    const auto count = [&] (const std::vector<const amrex::MultiFab*>& f, bool allow_zero, int ng) {
+        const std::vector<amrex::Long> n = gust::count_not_positive(f, allow_zero, ng);
+        EXPECT_EQ(n.size(), f.size());
+        return n;
+    };
+    EXPECT_EQ(count({&a, &b}, false, 1), (std::vector<amrex::Long>{0, 0}));
     const amrex::Real inf = std::numeric_limits<amrex::Real>::infinity();
     const amrex::Real nan = std::numeric_limits<amrex::Real>::quiet_NaN();
     set_point(a, amrex::IntVect(0, 0, 0), nan, false);
@@ -168,22 +174,29 @@ TEST (Reductions, CountNotPositiveFindsEveryBadPoint)
     set_point(b, amrex::IntVect(9, 9, 9), -0.0, false);
     set_point(b, amrex::IntVect(-1, 4, 4), -1.0, true);   // a ghost cell outside the domain
     // > 0: the NaN, both infinities, the negative, both zeros; ghosts only with ngrow = 1
-    EXPECT_EQ(gust::count_not_positive({&a, &b}, false, 0), 6);
-    EXPECT_EQ(gust::count_not_positive({&a, &b}, false, 1), 7);
+    EXPECT_EQ(count({&a, &b}, false, 0), (std::vector<amrex::Long>{4, 2}));
+    EXPECT_EQ(count({&a, &b}, false, 1), (std::vector<amrex::Long>{4, 3}));
     // >= 0: the zeros pass
-    EXPECT_EQ(gust::count_not_positive({&a, &b}, true, 0), 4);
-    EXPECT_EQ(gust::count_not_positive({&a, &b}, true, 1), 5);
-    EXPECT_EQ(gust::count_not_positive({&b}, true, 0), 0);
-    EXPECT_EQ(gust::count_not_positive({&b}, false, 0), 2);
-    // require_positive refuses on every rank, naming the operator and the field
+    EXPECT_EQ(count({&a, &b}, true, 0), (std::vector<amrex::Long>{4, 0}));
+    EXPECT_EQ(count({&a, &b}, true, 1), (std::vector<amrex::Long>{4, 1}));
+    EXPECT_EQ(count({&b}, true, 0), (std::vector<amrex::Long>{0}));
+    EXPECT_EQ(count({&b}, false, 0), (std::vector<amrex::Long>{2}));
+    // require_positive refuses on every rank, naming the operator and the failing fields only
     try {
-        gust::require_positive("op_x", "field_y", {&b}, false);
-        ADD_FAILURE() << "require_positive accepted two zeros";
+        gust::require_positive("op_x", {"field_a", "field_b"}, {&a, &b}, true);
+        ADD_FAILURE() << "require_positive accepted a NaN";
     } catch (const std::runtime_error& e) {
-        EXPECT_NE(std::string(e.what()).find("gust: op_x: field_y must be finite and > 0 everywhere (2 points are not)"),
+        EXPECT_NE(std::string(e.what()).find("gust: op_x: field_a must be finite and >= 0 everywhere (4 points are not)"),
                   std::string::npos) << e.what();
     }
-    EXPECT_NO_THROW(gust::require_positive("op_x", "field_y", {&b}, true));
+    try {
+        gust::require_positive("op_x", {"field_a", "field_b"}, {&a, &b}, false);
+        ADD_FAILURE() << "require_positive accepted a NaN";
+    } catch (const std::runtime_error& e) {
+        EXPECT_NE(std::string(e.what()).find("gust: op_x: field_a, field_b must be finite and > 0 everywhere (6 points are not)"),
+                  std::string::npos) << e.what();
+    }
+    EXPECT_NO_THROW(gust::require_positive("op_x", {"field_b"}, {&b}, true));
 }
 
 TEST (Reductions, SumRejectsFaceData)

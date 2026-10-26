@@ -27,6 +27,7 @@
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <string>
 #include <memory>
 #include <random>
 #include <tuple>
@@ -1363,6 +1364,18 @@ TEST (Simplec, InputReadersAndRefusals)
         gust::SimplecWorkspace w;
         EXPECT_THROW(gust::pressure_correction(q, pf, solver, pbc, 1.0, c.mesh, c.geom, w), std::runtime_error);
         pf.d_u.setVal(1.0);
+        // each of the three is checked, and the message names the one that fails
+        for (amrex::MultiFab* bad : {&pf.d_v, &pf.d_w}) {
+            bad->setVal(std::numeric_limits<amrex::Real>::infinity());
+            try {
+                gust::pressure_correction(q, pf, solver, pbc, 1.0, c.mesh, c.geom, w);
+                ADD_FAILURE() << "an infinite SIMPLEC denominator was accepted";
+            } catch (const std::runtime_error& e) {
+                const std::string name = (bad == &pf.d_v) ? "denominator d_v must" : "denominator d_w must";
+                EXPECT_NE(std::string(e.what()).find(name), std::string::npos) << e.what();
+            }
+            bad->setVal(1.0);
+        }
         EXPECT_THROW(gust::pressure_correction(q, pf, solver, pbc, 0.0, c.mesh, c.geom, w), std::runtime_error);
         amrex::MultiFab dtau(c.ba, c.dm, 1, 0), R(c.ba, c.dm, 1, 0);
         R.setVal(0.0);

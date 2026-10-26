@@ -35,8 +35,8 @@ void face_dtau (const amrex::MultiFab& dtau_cc, const Mesh& mesh, const amrex::G
     check_operator_field(op, "dtau_cc", dtau_cc, Loc::cell, mesh, 0);
     // The check of the pseudo-time step for the whole iteration (one
     // all-reduce): momentum_predictor and scalar_sweep repeat it in debug
-    // builds only (GUST_DEBUG_CHECKS). The faces are minima or copies of it.
-    require_positive("face_dtau", "dtau_cc", {&dtau_cc}, false);
+    // builds only (GUST_DEBUG_CHECKS). The faces are means or copies of it.
+    require_positive("face_dtau", {"dtau_cc"}, {&dtau_cc}, false);
     const amrex::MultiFab* areas[3] = {&mesh.ax, &mesh.ay, &mesh.az};
     for (int d = 0; d < 3; ++d) {
         if (dtau_faces[d].empty()) { dtau_faces[d].define(areas[d]->boxArray(), mesh.detJ.DistributionMap(), 1, 0); }
@@ -152,7 +152,7 @@ MomentumPredictorResult momentum_predictor (State& q, const ResidualFields& R,
     check_operator_field(op, "dtau_z", dtau_faces[2], Loc::zface, mesh, 0);
 #ifdef GUST_DEBUG_CHECKS
     // face_dtau checked the cell values these come from.
-    require_positive(op, "dtau_faces", {&dtau_faces[0], &dtau_faces[1], &dtau_faces[2]}, false);
+    require_positive(op, {"dtau_x", "dtau_y", "dtau_z"}, {&dtau_faces[0], &dtau_faces[1], &dtau_faces[2]}, false);
 #endif
     if (in.bc == nullptr && (in.buoyancy.gravity > 0 || (in.coriolis.enabled && coriolis_parameter(in.coriolis) != 0))) {
         amrex::Abort("gust: momentum_predictor: the point-implicit buoyancy and rotation need the boundary conditions "

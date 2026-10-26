@@ -155,7 +155,8 @@ PressureCorrectionResult pressure_correction (State& q, const PredictorFields& d
         for (int c = 0; c < 3; ++c) { w.F[c].define(areas[c]->boxArray(), dm, 1, 0); }
     }
     // The three denominators in one all-reduce.
-    require_positive("pressure_correction", "the SIMPLEC denominator (d_u, d_v, d_w)", {&d.d_u, &d.d_v, &d.d_w}, true);
+    require_positive("pressure_correction", {"the SIMPLEC denominator d_u", "the SIMPLEC denominator d_v",
+                                             "the SIMPLEC denominator d_w"}, {&d.d_u, &d.d_v, &d.d_w}, true);
     face_coefficients(d.d_u, w.beta_x, w.keep_x);
     face_coefficients(d.d_v, w.beta_y, w.keep_y);
     face_coefficients(d.d_w, w.beta_z, w.keep_z);
@@ -229,7 +230,7 @@ ScalarSweepResult scalar_sweep (Equation eq, amrex::MultiFab& field, const amrex
     if (std::isnan(floor) || !(floor >= 0)) { amrex::Abort("gust: scalar_sweep: the floor must be >= 0"); }
 #ifdef GUST_DEBUG_CHECKS
     // The callers checked it once per iteration (face_dtau) or per setup (the preconditioner).
-    require_positive(op, "dtau", {&dtau}, false);
+    require_positive(op, {"dtau"}, {&dtau}, false);
 #endif
     ScalarSweepResult res;
     implicit_rows(F, z_nd, in, eq, mesh, geom, w.A, surface, fields);

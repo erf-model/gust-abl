@@ -40,19 +40,22 @@ double deterministic_dot (const amrex::MultiFab& a, int acomp, const amrex::Mult
 double box_dot (const amrex::MultiFab& a, int acomp, const amrex::MultiFab& b, int bcomp, const amrex::iMultiFab* owner,
                 const amrex::MFIter& mfi);
 
-//! The number of points of component 0 of the fields, over the valid region
-//! and ngrow ghost layers, that are NaN, infinite, or not > 0 (allow_zero:
-//! < 0). One fused pass per field and one all-reduce for the list, so every
-//! rank gets the same count (call it on every rank). The validity check of
-//! a field produced every iteration (the pseudo-time step, the SIMPLEC
-//! denominators): it replaces a min and a max, two all-reduces, per field.
-amrex::Long count_not_positive (const std::vector<const amrex::MultiFab*>& fields, bool allow_zero, int ngrow = 0);
+//! For each field, the number of points of component 0, over the valid
+//! region and ngrow ghost layers, that are NaN, infinite, or not > 0
+//! (allow_zero: < 0). One fused pass per field and one all-reduce for the
+//! list, so every rank gets the same counts (call it on every rank). A point
+//! held by two boxes (a ghost, a shared face) counts once per box. The
+//! validity check of a field produced every iteration (the pseudo-time step,
+//! the SIMPLEC denominators): it replaces a min and a max, two all-reduces,
+//! per field.
+std::vector<amrex::Long> count_not_positive (const std::vector<const amrex::MultiFab*>& fields, bool allow_zero,
+                                             int ngrow = 0);
 
-//! Abort with "gust: <op>: <what> must be finite and > 0 everywhere" (allow_zero:
-//! ">= 0") unless count_not_positive finds no point. Collective: every rank
-//! aborts together.
-void require_positive (const char* op, const std::string& what, const std::vector<const amrex::MultiFab*>& fields,
-                       bool allow_zero, int ngrow = 0);
+//! Abort with "gust: <op>: <names of the failing fields> must be finite and
+//! > 0 everywhere" (allow_zero: ">= 0") unless count_not_positive finds no
+//! point; names[i] names fields[i]. Collective: every rank aborts together.
+void require_positive (const char* op, const std::vector<std::string>& names,
+                       const std::vector<const amrex::MultiFab*>& fields, bool allow_zero, int ngrow = 0);
 
 // GUST_DEBUG_CHECKS: set in Debug builds and builds with AMReX assertions
 // (CMake GUST_TESTING, the CI Debug job). It guards the checks of an
