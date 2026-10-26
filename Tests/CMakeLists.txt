@@ -828,21 +828,27 @@ gust_add_test(NAME rt_steady_hill2d_restart_matches NP 1 LABELS "regression;smok
 # mean added every face atomically into one address per level, an order that
 # can change from run to run on a GPU. On a CPU two runs are identical either
 # way; the test is there for the nightly H100 job (tools/kestrel/nightly_gpu.sh),
-# which runs every smoke test. 40 iterations.
+# which runs every smoke test. 40 iterations, from inputs_steady_hill2d_restart
+# (inputs_steady_hill2d without the iteration cap; the same Coriolis case).
 set(CRP_DIR ${CMAKE_CURRENT_BINARY_DIR}/run/rt_coriolis_repeat)
-gust_add_test(NAME rt_coriolis_repeat_first NP 2 LABELS "regression;smoke" RUN_DIR ${CRP_DIR}/first
-              FIXTURES_SETUP coriolis_repeat_first
-              COMMAND $<TARGET_FILE:gust> ${HILL2D_CASE}/inputs_steady_hill2d steady.max_iterations=40
-                      ${GUST_TEST_AMREX_FLAGS})
-gust_add_test(NAME rt_coriolis_repeat_second NP 2 LABELS "regression;smoke" RUN_DIR ${CRP_DIR}/second
-              FIXTURES_SETUP coriolis_repeat_second
-              COMMAND $<TARGET_FILE:gust> ${HILL2D_CASE}/inputs_steady_hill2d steady.max_iterations=40
-                      ${GUST_TEST_AMREX_FLAGS})
+# Both run directories start empty (as smoke_clean).
+add_test(NAME rt_coriolis_repeat_clean
+         COMMAND ${Python3_EXECUTABLE} -c
+                 "import shutil, os, sys; shutil.rmtree(sys.argv[1], ignore_errors=True); [os.makedirs(os.path.join(sys.argv[1], d)) for d in ('first', 'second')]"
+                 ${CRP_DIR})
+set_tests_properties(rt_coriolis_repeat_clean PROPERTIES LABELS "regression;smoke" FIXTURES_SETUP coriolis_repeat_clean)
+foreach(run first second)
+    gust_add_test(NAME rt_coriolis_repeat_${run} NP 2 LABELS "regression;smoke" RUN_DIR ${CRP_DIR}/${run}
+                  FIXTURES_REQUIRED coriolis_repeat_clean FIXTURES_SETUP coriolis_repeat_${run}
+                  COMMAND $<TARGET_FILE:gust> ${HILL2D_CASE}/inputs_steady_hill2d_restart steady.max_iterations=40
+                          init.first_guess=profile io.turb_plot_file=steady_hill2d_restart_turb
+                          ${GUST_TEST_AMREX_FLAGS})
+endforeach()
 foreach(kind plt turb)
     gust_add_test(NAME rt_coriolis_repeat_${kind}_matches NP 1 LABELS "regression;smoke" RUN_DIR ${CRP_DIR}
                   FIXTURES_REQUIRED coriolis_repeat_first coriolis_repeat_second
-                  COMMAND ${FCOMPARE} --rel_tol 0 --abs_tol 0 first/steady_hill2d_${kind}00040
-                          second/steady_hill2d_${kind}00040)
+                  COMMAND ${FCOMPARE} --rel_tol 0 --abs_tol 0 first/steady_hill2d_restart_${kind}00040
+                          second/steady_hill2d_restart_${kind}00040)
 endforeach()
 # The column's target wind carried into the 3-D run (init.column_target_*), neutral and with a
 # stable column (L = 1000 m) whose flux and theta the run takes (bc.surface_stability = heat_flux). The 3-D wind at

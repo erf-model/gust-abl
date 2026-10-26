@@ -665,7 +665,8 @@ Current tests
        a fill that is not a fixed point (before the wall model took the ground cell's w from the no-flux rule), by
        1.5e-12. Both fail the test. Labels ``regression;smoke``, about 1.5 s on two ranks.
    * - ``rt_coriolis_repeat_first``, ``…_second``, ``…_plt_matches``, ``…_turb_matches``
-     - The 2-D hill with Coriolis (``inputs_steady_hill2d``) for 40 iterations, twice on the same two ranks and
+     - The 2-D hill with Coriolis (``inputs_steady_hill2d_restart``, ``steady.max_iterations=40``,
+       ``init.first_guess=profile``) for 40 iterations, from empty directories, twice on the same two ranks and
        layout: the plotfiles and the turbulence plotfiles (residual fields, wall state) identical at zero tolerance.
        The Coriolis coupling's level mean of the other residual is a fixed-order sum since audit A4 (#60); before,
        the faces were added atomically, in an order that can change between runs on a GPU. On a CPU two runs agree
@@ -873,10 +874,12 @@ Current tests
    * - ``kestrel_nightly_dryrun``
      - Not registered on Windows. ``tools/kestrel/nightly_gpu.sh`` with stub ``git``, ``module``, ``sbatch``,
        ``srun``, ``cmake`` and ``ctest``: refused outside an allocation; a passing run builds with ``build_kestrel.sh
-       gpu``, sets ``--gpus-per-task=1``, runs ``ctest -L smoke`` with a JUnit file, writes ``pass`` and keeps the newest
-       ``GUST_NIGHTLY_KEEP`` logs; a smoke run of ``gust`` without the GPU runtime flags stops the job before the tests;
-       failing tests give ``fail: tests`` and exit 1; ``submit`` needs ``GUST_ACCOUNT`` and requests the GPUs; a bad
-       ``GUST_NIGHTLY_GPUS`` is refused. Eight one-line mutants each fail it. Label ``unit``.
+       gpu``, sets ``--gpus-per-task=1;--gpu-bind=none``, runs ``ctest -L smoke`` with a JUnit file, writes ``pass``
+       and keeps the newest ``GUST_NIGHTLY_KEEP`` logs; a smoke run of ``gust`` without the GPU runtime flags stops the
+       job before the tests; failing tests give ``fail: tests`` and exit 1; a failed fetch gives ``fail: fetch`` in a
+       new log, pruned as well; a second run while one holds the lock is refused; ``submit`` needs ``GUST_ACCOUNT``
+       and writes a singleton login-shell job that requests the GPUs; a ``GUST_NIGHTLY_GPUS`` other than 3 or 4 is
+       refused. Twelve one-line mutants each fail it. Label ``unit``.
    * - ``wn2019_timed_run``
      - Not registered on Windows. Audit A10 (P1): the WindNinja2019 drivers' ``timed_run.sh`` writes one line
        ``real <seconds>`` to ``time.txt``, the command's error output to ``err.txt``, returns its exit status and
