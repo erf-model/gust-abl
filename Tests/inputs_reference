@@ -214,8 +214,9 @@
 #
 # bc.inflow_file =    # none
 #     Required with file: rows of z u v theta [k] (4 or 5 columns, at least 2 rows), z increasing from 0, θ > 0, k ≥
-#     0. # starts a comment. Every token must be a whole number (300.0K or 1,2 stops the run with the file and line
-#     named). Read on the I/O rank and broadcast.
+#     0. # starts a comment. Every token must be a complete number with nothing attached (300.0K, 1.0D+00 or 1,2
+#     stops the run with the file and line named); a UTF-8 byte-order mark is skipped. Read on the I/O rank and
+#     broadcast.
 #
 # bc.inflow_tke_length = closure
 #     closure or unbounded: the length l of the equilibrium k and ν_t (docs/boundary_conditions.rst). closure: the

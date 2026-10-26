@@ -29,7 +29,7 @@ ctest --test-dir <build> -R "^rt_column_target"
 - Stable: the 3-D surface's Obukhov length, from its mean u* and the flux it took, is 1000 m to 2 %.
   Measured: 1001 m.
 - Stable: the run names its column table (`io.column_guess_file = column_target_mol_table.dat`); the file holds
-  rows of `z u v theta k` from z = 0, and the column's speed at 10 m is 8 m/s to 1e-3.
+  rows of `z u v theta k` from z = 0, and the column's speed at 10 m is 8 m/s to 2e-4 (the column stops at |R - 1| < 1e-4).
 - The runs do not reach the steady verdict in 1500 iterations: they start from the converged column, so the
   residuals' reference is already small and six orders of drop are out of reach. The wind is steady to the
   tolerance checked.

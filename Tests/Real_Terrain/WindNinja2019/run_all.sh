@@ -88,6 +88,8 @@ for c in ${CASES:-askervein bolund_270 bolund_239 bolund_90 bsb_srtm}; do
        "$RUN/${pc}"_100k_*.csv "$RUN/${pc}"_stable_100k_*.csv)
   have=()
   for f in "${all[@]}"; do [ -f "$f" ] && have+=("$f"); done
-  [ ${#have[@]} -gt 0 ] && python3 "$T" plot "${have[@]}" --masts "$RUN/masts.csv" --site $site --case $k \
-    --paper "$D/wagenbrenner2019_digitized.csv" --out "$RUN/$pc.png"
+  if [ ${#have[@]} -gt 0 ]; then   # an if, so a case without samples does not end the script with status 1
+    python3 "$T" plot "${have[@]}" --masts "$RUN/masts.csv" --site $site --case $k \
+      --paper "$D/wagenbrenner2019_digitized.csv" --out "$RUN/$pc.png"
+  fi
 done

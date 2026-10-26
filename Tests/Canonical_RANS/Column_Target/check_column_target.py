@@ -15,7 +15,7 @@ Runs COMMAND (the application on Tests/Canonical_RANS/Column_Target/inputs_colum
     g = 9.81 m/s^2, kappa = 0.41);
   * with --table FILE (the run's io.column_guess_file): the file is written, every data line holds the five
     numbers z u v theta k with z from 0 increasing, and the column's speed at --height, interpolated as above,
-    is the target to 1e-3 (the column itself reached it).
+    is the target to 2e-4 (the column stops at |R - 1| < 1e-4); a table left by an earlier run is deleted first.
 Prints one row per check; the exit code is the verdict.
 """
 import math
@@ -45,6 +45,8 @@ def main(argv):
     if any(v is None for v in opts.values()) or i >= len(argv):
         raise SystemExit(__doc__)
     cmd = argv[i + 1:]
+    if table is not None and os.path.exists(table):
+        os.remove(table)   # a table left by an earlier run must not pass the checks
     print("check_column_target: running", " ".join(cmd))
     run = subprocess.run(cmd, check=False, capture_output=True, text=True)
     sys.stdout.write(run.stdout)
@@ -97,11 +99,15 @@ def main(argv):
         check("table: rows of z u v theta k, z from 0 increasing", 1.0 if good else 0.0, 1.0, 0.0, "abs")
         if good:
             zc = [r[0] for r in rows]
-            kc = max(j for j in range(1, len(zc) - 1) if zc[j] <= zt)
+            below = [j for j in range(1, len(zc) - 1) if zc[j] <= zt]
+            if not below:
+                raise SystemExit("check_column_target: --height is below the table's first cell centre")
+            kc = max(below)
             tc = (math.log(zt + z0) - math.log(zc[kc] + z0)) / (math.log(zc[kc + 1] + z0) - math.log(zc[kc] + z0))
             uc = (1 - tc) * rows[kc][1] + tc * rows[kc + 1][1]
             vc = (1 - tc) * rows[kc][2] + tc * rows[kc + 1][2]
-            check("table: column speed at the target height vs target", math.hypot(uc, vc), opts["--target"], 1e-3, "rel")
+            # The column stops its target loop at |R - 1| < 1e-4 (ColumnGuess.cpp).
+            check("table: column speed at the target height vs target", math.hypot(uc, vc), opts["--target"], 2e-4, "rel")
     if opts["--mol"] != 0:
         q = None
         for ln in out.splitlines():

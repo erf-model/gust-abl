@@ -492,17 +492,17 @@ TEST(ColumnStability, TableReadsBackExactly)
     std::string text;
     {
         std::ifstream is(fname);
-        ASSERT_TRUE(is.good());
+        EXPECT_TRUE(is.good());   // EXPECT: every rank reaches the barrier below
         std::ostringstream ss;
         ss << is.rdbuf();
         text = ss.str();
     }
-    const gust::InflowTable t = gust::parse_inflow_table(text, fname);
-    ASSERT_TRUE(r.steady);
-    ASSERT_NE(r.theta[1], r.theta.back());   // theta is not the uniform sounding
-    ASSERT_EQ(t.ncol, 5);
-    ASSERT_EQ(t.z.size(), r.z.size());
-    for (std::size_t i = 0; i < r.z.size(); ++i) {
+    EXPECT_TRUE(r.steady);
+    EXPECT_NE(r.theta[1], r.theta.back());   // theta is not the uniform sounding
+    const gust::InflowTable t = text.empty() ? gust::InflowTable{} : gust::parse_inflow_table(text, fname);
+    EXPECT_EQ(t.ncol, 5);
+    EXPECT_EQ(t.z.size(), r.z.size());
+    for (std::size_t i = 0; i < r.z.size() && i < t.z.size(); ++i) {
         EXPECT_EQ(t.z[i], r.z[i]) << i;
         EXPECT_EQ(t.u[i], r.u[i]) << i;
         EXPECT_EQ(t.v[i], r.v[i]) << i;

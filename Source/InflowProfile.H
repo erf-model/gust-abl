@@ -76,8 +76,9 @@ struct InflowTable
 
 //! Parse the text of a bc.inflow_file (file names it in the messages). '#'
 //! starts a comment; blank lines are skipped; every other line holds 4 or 5
-//! numbers, the same count on every line, each token a whole number in
-//! strtod's syntax (a token such as "300.0K" or "1,2" is refused, not cut).
+//! numbers, the same count on every line, each token a complete number in
+//! strtod's syntax with nothing attached (a token such as "300.0K" or "1,2"
+//! is refused, not cut). A leading UTF-8 byte-order mark is skipped.
 //! Aborts naming the file and the line on a bad token, a non-finite value,
 //! heights that do not start at 0 and increase strictly, theta <= 0, k < 0,
 //! or fewer than two rows. Local: no communication.

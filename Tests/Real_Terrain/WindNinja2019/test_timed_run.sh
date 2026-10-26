@@ -42,6 +42,20 @@ grep -qx "terrain.file=$run/bolund.xyz" "$v/args.txt" || fail "the terrain argum
 [ -f "$v/done" ] || fail "sweep.sh: done missing"
 echo "$out" | grep -qE "^v1: gust: steady after 5 iterations [0-9]+\.[0-9]+ s$" || fail "sweep.sh summary: $out"
 
+# run_all.sh end to end with the same stubs: an mc run (no extra argument: the empty array under set -u, which
+# bash 3.2 calls unbound unless spelled ${extra[@]+...}), a rans run (convection.limiter added) and an unknown
+# case, skipped.
+out=$(PATH="$stub:$PATH" CASES="nope bolund_270" MODES="mc rans" bash "$D/run_all.sh" "$tmp/build" "$tmp/wntools" "$run" 2 2>&1) \
+  || fail "run_all.sh failed: $out"
+echo "$out" | grep -q "^nope: unknown case; skipped" || fail "run_all.sh did not skip the unknown case: $out"
+mc="$run/bolund_270_mc"; rans="$run/bolund_270_rans_van_leer"
+[ -f "$mc/done" ] && [ -f "$rans/done" ] || fail "run_all.sh: done missing"
+[ "$(cat "$mc/args.txt")" = "$(printf 'inputs\nterrain.file=%s/bolund.xyz' "$run")" ] \
+  || fail "run_all.sh mc arguments: $(cat "$mc/args.txt")"
+[ "$(cat "$rans/args.txt")" = "$(printf 'inputs\nterrain.file=%s/bolund.xyz\nconvection.limiter=van_leer' "$run")" ] \
+  || fail "run_all.sh rans arguments: $(cat "$rans/args.txt")"
+grep -qE '^real [0-9]+\.[0-9]+$' "$mc/time.txt" || fail "run_all.sh: time.txt is not 'real <s>'"
+
 for s in run_all.sh sweep.sh; do
   bash -n "$D/$s" || fail "$s does not parse"
   if grep -q "/usr/bin/time" "$D/$s"; then fail "$s still calls /usr/bin/time"; fi

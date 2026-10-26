@@ -40,7 +40,7 @@ while read -r name kv; do
   if [ ! -f "$dir/done" ]; then
     timed_run "$dir" mpirun -np "$NP" "$BIN" inputs "${terr[@]}"
   fi
-  echo "$name: $(grep -E 'steady after|not steady|diverged' "$dir/log.txt" | head -1) $(awk '$1 == "real" {print $2 " s"}' "$dir/time.txt" 2> /dev/null)"
+  echo "$name: $(grep -E 'steady after|not steady|diverged' "$dir/log.txt" | head -1) $(awk '$1 == "real" {print $2 " s"} $2 == "real" {print $1 " s"}' "$dir/time.txt" 2> /dev/null)"
   [ -f "$dir/done" ] && python3 "$T" sample "$dir/plt" --site $site --case $k --masts "$RUN/masts.csv" "${samp[@]}" --z0 "$zs" \
       --out "$RUN/${c}_rans__$name.csv" > /dev/null && csvs+=("$RUN/${c}_rans__$name.csv")
 done < "$VARS"
