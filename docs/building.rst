@@ -17,7 +17,7 @@ Quick start
 
 .. code-block:: bash
 
-   git clone --recursive https://github.com/hgopalan/gust-abl.git
+   git clone --recursive https://github.com/erf-model/gust-abl.git
    cd gust-abl
    cmake -S . -B build-rel -DCMAKE_BUILD_TYPE=Release
    cmake --build build-rel -j 8
@@ -92,7 +92,7 @@ clone. From a "Developer PowerShell for VS":
    $env:VCPKG_ROOT = "$HOME/vcpkg"
    & $env:VCPKG_ROOT/vcpkg install fftw3:x64-windows
 
-   git clone --recursive https://github.com/hgopalan/gust-abl.git
+   git clone --recursive https://github.com/erf-model/gust-abl.git
    cd gust-abl
    cmake -S . -B build-rel -G Ninja -DCMAKE_BUILD_TYPE=Release `
      -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
