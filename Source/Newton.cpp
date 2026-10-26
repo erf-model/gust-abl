@@ -2,9 +2,9 @@
 
 #include "BoundaryConditions.H"
 #include "Predictor.H"
+#include "Reductions.H"
 
 #include <AMReX_GMRES.H>
-#include <AMReX_GpuContainers.H>
 #include <AMReX_ParallelDescriptor.H>
 #include <AMReX_ParmParse.H>
 #include <AMReX_Print.H>
@@ -110,51 +110,6 @@ void inverse_dtau (amrex::MultiFab& inv, const amrex::MultiFab& dtau, const amre
             });
         }
     }
-}
-
-//! The sum over the owned points of a box of a * b, in double: one thread
-//! per (i, j) column adds its k values in order, the host adds the columns
-//! in storage order. The same bits for the same box whatever the rank.
-double box_dot (const amrex::MultiFab& a, const amrex::MultiFab& b, const amrex::iMultiFab* owner,
-                const amrex::MFIter& mfi)
-{
-    // mfi iterates over the cells; the field's own (face) box of the same index.
-    const amrex::Box bx = amrex::convert(mfi.validbox(), a.ixType());
-    const int klo = bx.smallEnd(2);
-    const int khi = bx.bigEnd(2);
-    amrex::Box cols = bx;
-    cols.setBig(2, klo);
-    const auto npts = static_cast<std::size_t>(cols.numPts());
-    amrex::Gpu::DeviceVector<double> colsum(npts);
-    double* cs = colsum.data();
-    const auto lo = amrex::lbound(cols);
-    const auto len = amrex::length(cols);
-    const auto aa = a.const_array(mfi);
-    const auto ba = b.const_array(mfi);
-    if (owner != nullptr) {
-        const auto m = owner->const_array(mfi);
-        amrex::ParallelFor(cols, [=] AMREX_GPU_DEVICE (int i, int j, int k0) noexcept
-        {
-            double s = 0;
-            for (int k = klo; k <= khi; ++k) {
-                if (m(i, j, k) != 0) { s += static_cast<double>(aa(i, j, k)) * static_cast<double>(ba(i, j, k)); }
-            }
-            cs[(i - lo.x) + (j - lo.y) * len.x + (k0 - lo.z) * len.x * len.y] = s;
-        });
-    } else {
-        amrex::ParallelFor(cols, [=] AMREX_GPU_DEVICE (int i, int j, int k0) noexcept
-        {
-            double s = 0;
-            for (int k = klo; k <= khi; ++k) { s += static_cast<double>(aa(i, j, k)) * static_cast<double>(ba(i, j, k)); }
-            cs[(i - lo.x) + (j - lo.y) * len.x + (k0 - lo.z) * len.x * len.y] = s;
-        });
-    }
-    amrex::Vector<double> h(npts);
-    amrex::Gpu::copyAsync(amrex::Gpu::deviceToHost, colsum.begin(), colsum.end(), h.begin());
-    amrex::Gpu::streamSynchronize();
-    double s = 0;
-    for (const double x : h) { s += x; }
-    return s;
 }
 
 } // namespace
@@ -372,7 +327,7 @@ NewtonOperator::RT NewtonOperator::dotProduct (const NewtonVector& a, const Newt
     for (amrex::MFIter mfi(a.f[nf_p], false); mfi.isValid(); ++mfi) {
         double s = 0;
         for (int f = 0; f < n_newton_fields; ++f) {
-            s += box_dot(a.f[f], b.f[f], (f < 3) ? m_owner[f].get() : nullptr, mfi);
+            s += box_dot(a.f[f], 0, b.f[f], 0, (f < 3) ? m_owner[f].get() : nullptr, mfi);
         }
         box_sum[mfi.index()] = s;
     }

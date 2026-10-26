@@ -7,7 +7,9 @@
 #include "MassFlux.H"
 #include "MassFlux_K.H"
 #include "Predictor.H"
+#include "Reductions.H"
 #include "Residual.H"
+#include "TestHelpers.H"
 #include "TransportTestHelpers.H"
 
 #include <AMReX_ParallelDescriptor.H>
@@ -652,11 +654,20 @@ TEST (Predictor, FaceStepRefusalsAndRankIndependence)
     EXPECT_THROW(gust::face_dtau(zero, c.mesh, c.geom, dfz), std::runtime_error);
     zero.setVal(std::numeric_limits<amrex::Real>::infinity());
     EXPECT_THROW(gust::face_dtau(zero, c.mesh, c.geom, dfz), std::runtime_error);
+    // a single bad cell (one rank holds it) is refused on every rank
+    amrex::MultiFab one(c.ba, c.dm, 1, 0);
+    amrex::MultiFab::Copy(one, dtau, 0, 0, 1, 0);
+    const amrex::Box last = c.ba[c.ba.size() - 1];
+    gust::test::set_one_nan(one, last.bigEnd());
+    EXPECT_THROW(gust::face_dtau(one, c.mesh, c.geom, dfz), std::runtime_error);
+#ifdef GUST_DEBUG_CHECKS
+    // At the faces in debug builds only: face_dtau checked the cells they come from (Reductions.H).
     amrex::Array<amrex::MultiFab, 3> dfn;
     gust::face_dtau(dtau, c.mesh, c.geom, dfn);
     dfn[1].setVal(amrex::Real(-1));
     EXPECT_THROW(gust::momentum_predictor(q, pr.R, {&pr.F[0], &pr.F[1], &pr.F[2]}, co.in, dfn, c.mesh, c.geom, 2, ap),
                  std::runtime_error);
+#endif
 }
 
 // ---------------------------------------------------------------------------

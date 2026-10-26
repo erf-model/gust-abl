@@ -14,7 +14,10 @@
 #include <cstring>
 #include <limits>
 #include <memory>
+#include <stdexcept>
+#include <string>
 #include <type_traits>
+#include <vector>
 
 namespace {
 
@@ -123,6 +126,77 @@ TEST (Reductions, MaxReportsNaNAndPositiveZero)
     mf.setVal(-1.0);
     gust::test::set_one_nan(mf, amrex::IntVect(17, 3, 9));
     EXPECT_TRUE(std::isnan(gust::global_max(mf, 0)));
+}
+
+namespace {
+
+//! Write v at the point iv of whichever box holds it in its valid region
+//! (ghost = false), or in its first ghost layer outside the domain (ghost = true).
+void set_point (amrex::MultiFab& mf, const amrex::IntVect& iv, amrex::Real v, bool ghost)
+{
+    for (amrex::MFIter mfi(mf, false); mfi.isValid(); ++mfi) {
+        const amrex::Box vb = mfi.validbox();
+        if (ghost ? !(amrex::grow(vb, 1).contains(iv) && !vb.contains(iv)) : !vb.contains(iv)) { continue; }
+        const auto a = mf.array(mfi);
+        amrex::ParallelFor(amrex::Box(iv, iv), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept { a(i, j, k) = v; });
+        if (ghost) { break; }   // one box's ghost only
+    }
+}
+
+} // namespace
+
+// The validity check that replaced a min and a max per field (audit A7, I3):
+// every NaN, infinity and negative value is counted, zero only when zero is
+// not allowed (-0 counts as zero), ghost layers only when asked, and every
+// rank gets the full count. The bad points sit in different boxes, so on 2
+// and 4 ranks they are on different ranks. No ordered compare touches the
+// NaN: on Linux the invalid trap is on, and the count must not raise it.
+TEST (Reductions, CountNotPositiveFindsEveryBadPoint)
+{
+    const auto ba = gust::make_box_array(reduction_mesh());
+    const amrex::DistributionMapping dm(ba);
+    amrex::MultiFab a(ba, dm, 1, 1), b(ba, dm, 1, 1);
+    a.setVal(1.0);
+    b.setVal(amrex::Real(1.0e-30));
+    const auto count = [&] (const std::vector<const amrex::MultiFab*>& f, bool allow_zero, int ng) {
+        const std::vector<amrex::Long> n = gust::count_not_positive(f, allow_zero, ng);
+        EXPECT_EQ(n.size(), f.size());
+        return n;
+    };
+    EXPECT_EQ(count({&a, &b}, false, 1), (std::vector<amrex::Long>{0, 0}));
+    const amrex::Real inf = std::numeric_limits<amrex::Real>::infinity();
+    const amrex::Real nan = std::numeric_limits<amrex::Real>::quiet_NaN();
+    set_point(a, amrex::IntVect(0, 0, 0), nan, false);
+    set_point(a, amrex::IntVect(23, 19, 15), inf, false);
+    set_point(a, amrex::IntVect(12, 10, 3), -inf, false);
+    set_point(a, amrex::IntVect(5, 17, 8), -std::numeric_limits<amrex::Real>::denorm_min(), false);
+    set_point(b, amrex::IntVect(20, 2, 11), 0.0, false);
+    set_point(b, amrex::IntVect(9, 9, 9), -0.0, false);
+    set_point(b, amrex::IntVect(-1, 4, 4), -1.0, true);   // a ghost cell outside the domain
+    // > 0: the NaN, both infinities, the negative, both zeros; ghosts only with ngrow = 1
+    EXPECT_EQ(count({&a, &b}, false, 0), (std::vector<amrex::Long>{4, 2}));
+    EXPECT_EQ(count({&a, &b}, false, 1), (std::vector<amrex::Long>{4, 3}));
+    // >= 0: the zeros pass
+    EXPECT_EQ(count({&a, &b}, true, 0), (std::vector<amrex::Long>{4, 0}));
+    EXPECT_EQ(count({&a, &b}, true, 1), (std::vector<amrex::Long>{4, 1}));
+    EXPECT_EQ(count({&b}, true, 0), (std::vector<amrex::Long>{0}));
+    EXPECT_EQ(count({&b}, false, 0), (std::vector<amrex::Long>{2}));
+    // require_positive refuses on every rank, naming the operator and the failing fields only
+    try {
+        gust::require_positive("op_x", {"field_a", "field_b"}, {&a, &b}, true);
+        ADD_FAILURE() << "require_positive accepted a NaN";
+    } catch (const std::runtime_error& e) {
+        EXPECT_NE(std::string(e.what()).find("gust: op_x: field_a must be finite and >= 0 everywhere (4 points are not)"),
+                  std::string::npos) << e.what();
+    }
+    try {
+        gust::require_positive("op_x", {"field_a", "field_b"}, {&a, &b}, false);
+        ADD_FAILURE() << "require_positive accepted a NaN";
+    } catch (const std::runtime_error& e) {
+        EXPECT_NE(std::string(e.what()).find("gust: op_x: field_a, field_b must be finite and > 0 everywhere (6 points are not)"),
+                  std::string::npos) << e.what();
+    }
+    EXPECT_NO_THROW(gust::require_positive("op_x", {"field_b"}, {&b}, true));
 }
 
 TEST (Reductions, SumRejectsFaceData)

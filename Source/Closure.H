@@ -154,6 +154,12 @@ public:
     void evaluate (const State& q, const amrex::MultiFab& dist, const Roughness& z0, const BuoyancyOptions& buoyancy,
                    const Mesh& mesh, const amrex::Geometry& geom, ClosureFields& f) const;
 
+    //! Abort unless dist + z0 > 0 at every cell, the ghost cell included
+    //! (l_g = kappa (d + z0) divides). Once per level, where the wall
+    //! distance is made: evaluate() repeats it in debug builds only
+    //! (GUST_DEBUG_CHECKS, Reductions.H).
+    void check_wall_distance (const amrex::MultiFab& dist, const Roughness& z0) const;
+
     //! Store f.nut as the relaxation history (nut_relax < 1 blends with it).
     void accept (const ClosureFields& f);
     [[nodiscard]] bool has_history () const { return !m_nut_prev.empty(); }
