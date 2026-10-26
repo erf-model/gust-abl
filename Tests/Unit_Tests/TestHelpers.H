@@ -89,8 +89,9 @@ inline void set_one_nan (amrex::MultiFab& mf, const amrex::IntVect& iv)
 //! NaN: AMReX's plotfile writer takes each box's min and max for the header,
 //! and comparisons with a NaN raise FE_INVALID, which amrex.fpe_trap_invalid=1
 //! traps (gcc orders the compare; clang's min/max happens not to raise). The
-//! code under test never needs this (it checks for NaN with isnan, which does
-//! not raise). AMReX's trap control covers glibc and Apple x86-64/arm64.
+//! code under test checks for NaN quietly first (isnan, or x != x), but a
+//! compiler may still evaluate an ordered comparison of the same value
+//! without a branch (clang, Mesh::check_restart's height check). AMReX's trap control covers glibc and Apple x86-64/arm64.
 class ScopedNoInvalidTrap
 {
 public:

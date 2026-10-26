@@ -179,9 +179,10 @@ void Mesh::check_restart (const Inputs& in, const amrex::Geometry& geom, amrex::
     // Valid nodes only, within restart_height_tolerance: another compiler
     // (or a GPU build) may contract the multiply-adds of the mesh build
     // differently and land a few ulp away; different inputs move nodes by
-    // far more. A NaN on either side is refused too, by d != d: quiet (an
-    // ordered comparison such as d <= tol raises the invalid flag on a NaN,
-    // which the GCC CI traps), and d > tol is then not evaluated.
+    // far more. A NaN on either side is refused too, by d != d, a quiet
+    // comparison. The ordered d > tol may still be evaluated for it without a
+    // branch (clang), which raises the invalid flag: a run with
+    // amrex.fpe_trap_invalid = 1 then stops there instead of at the message.
     const amrex::Real tol = restart_height_tolerance(m_zlevels.back());
     amrex::Real maxdiff = 0;
     long nbad = 0;
