@@ -145,7 +145,14 @@ double IdwInterpolator::operator() (double xq, double yq) const
         for (const int p : m_bucket[static_cast<std::size_t>(bj) * m_nx + bi]) {
             const double dx = m_pts.x[p] - xq;
             const double dy = m_pts.y[p] - yq;
-            cand.emplace_back(dx * dx + dy * dy, p);
+            // Each square rounded on its own, then added: symmetric in dx and
+            // dy, and no compiler can fuse it (dx * dx + dy * dy may become
+            // fma(dx, dx, dy * dy) or fma(dy, dy, dx * dx)). Two points at the
+            // same distance then tie exactly and the lower index wins, in
+            // every build (audit A5: on a regular grid of points the 6th and
+            // 7th neighbours tie, and the two contractions chose different
+            // ones, 0.23 m apart on Askervein).
+            cand.emplace_back(std::fma(dx, dx, 0.0) + std::fma(dy, dy, 0.0), p);
         }
     };
     for (int r = 0;; ++r) {

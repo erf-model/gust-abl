@@ -27,8 +27,9 @@ const char* const kKeys[] = {"residual_tol", "residual_drop_orders", "residual_r
                              "newton_preconditioner", "switch_monitor_tol", "newton_fallback_failures",
                              "newton_cfl_max", "confidence", "confidence_height"};
 
-// 2: the reference hold; 3: the residual scale height (versions 1 and 2 still read)
-constexpr int kDriverVersion = 3;
+// 2: the reference hold; 3: the residual scale height; 4: the residual norm
+// definition (versions 1 to 3 still read)
+constexpr int kDriverVersion = 4;
 const char* const kDriverMagic = "gust-driver";
 
 std::string hexfloat (double x)
@@ -270,6 +271,7 @@ Driver::Driver (const SteadyOptions& opt, std::vector<std::unique_ptr<Stage>> st
     m_h.accounts.resize(m_stages.size());
     m_h.cfl = opt.cfl0;
     m_h.scale_height = residual_scale_height(m_mesh, m_geom);
+    m_h.norm = 1;
 }
 
 void Driver::seed_reference (const std::vector<amrex::Real>& ref)
@@ -549,6 +551,17 @@ void Driver::restore (const DriverHistory& h_in, State& q)
                        << " m; rescaled by " << fmt(double(f)) << " to H = " << fmt(double(H_new)) << " m\n";
     }
     hs.scale_height = H_new;
+    // The norm cannot be converted: the old one counted a box-seam face and
+    // both copies of a periodic face twice, a weight that depends on where
+    // the residual sits. A history that does not record it (format 1 to 3)
+    // was written before #60, or by main between #60 and format 4.
+    if (h.norm != 1) {
+        amrex::Print() << "gust: restart: the history does not record its residual norm (driver history format "
+                       << "1 to 3). If it was written before #60, its reference and residuals count box-seam and "
+                       << "periodic faces twice, so they differ slightly from this run's norms and the restarted run "
+                       << "is not the run it was; if written after #60, nothing changes\n";
+    }
+    hs.norm = 1;
     m_criterion.restore(hs.criterion);   // checks its own sizes
     m_h = hs;
     // The options may have changed across the restart: the CFL continues
@@ -640,6 +653,7 @@ void write_driver_history (const std::string& dir, const DriverHistory& h)
     os << "state " << h.stage << " " << hexfloat(static_cast<double>(h.cfl)) << " " << h.below_count << " " << h.last_switch << "\n";
     os << "hold " << h.hold << "\n";
     os << "scale_height " << hexfloat(static_cast<double>(h.scale_height)) << "\n";
+    os << "norm " << h.norm << "\n";
     os << "accounts " << h.accounts.size() << "\n";
     for (const auto& a : h.accounts) {
         os << a.iterations << " " << hexfloat(a.wall_seconds) << " " << hexfloat(a.au) << "\n";
@@ -713,6 +727,11 @@ DriverHistory read_driver_history (const std::string& dir)
         h.scale_height = static_cast<amrex::Real>(read_double(is, dir, "scale_height"));
         if (!std::isfinite(h.scale_height) || !(h.scale_height > 0)) { history_error(dir, "corrupt: scale_height must be > 0"); }
     }   // versions 1 and 2: 0, prob_hi z - prob_lo z (Driver::restore)
+    if (version >= 4) {
+        expect(is, dir, "norm");
+        h.norm = read_int(is, dir, "norm");
+        if (h.norm != 0 && h.norm != 1) { history_error(dir, "corrupt: norm must be 0 or 1"); }
+    }   // versions 1 to 3: 0, not recorded (Driver::restore)
     expect(is, dir, "accounts");
     const int na = read_count(is, dir, "the account count", bytes);
     if (na < 1) { history_error(dir, "corrupt: no accounts"); }

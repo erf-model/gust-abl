@@ -106,8 +106,24 @@ std::string write_checkpoint (const std::string& prefix, State& state, const Mes
         os << "\n";
     }
 
+    // The solution fields with their ghost images refreshed: the solver
+    // leaves some images stale between fills (theta and k after their
+    // sweeps), and a reader of the ghosts would take them. The restart reads
+    // valid data only. A copy, so the running state is not touched (a run
+    // that writes a checkpoint and goes on stays bit for bit the run without
+    // it). The node heights are written as they are (their ghost nodes are
+    // the terrain's, read back on restart).
+    const amrex::Periodicity period = make_geometry(mesh).periodicity();
     for (auto& f : state.fields()) {
-        amrex::VisMF::Write(*f.mf, amrex::MultiFabFileFullPrefix(0, name, "Level_", f.name));
+        const std::string file = amrex::MultiFabFileFullPrefix(0, name, "Level_", f.name);
+        if (f.mf == &state.z_phys_nd) {
+            amrex::VisMF::Write(*f.mf, file);
+            continue;
+        }
+        amrex::MultiFab out(f.mf->boxArray(), f.mf->DistributionMap(), f.mf->nComp(), f.mf->nGrowVect());
+        amrex::MultiFab::Copy(out, *f.mf, 0, 0, f.mf->nComp(), f.mf->nGrowVect());
+        out.FillBoundary(period);
+        amrex::VisMF::Write(out, file);
     }
     return name;
 }

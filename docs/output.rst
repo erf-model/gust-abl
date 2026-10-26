@@ -55,14 +55,18 @@ Checkpoint
 ----------
 
 ``<io.chk_file>NNNNN`` holds a text ``Header`` and every field with its ghost cells: two for the solution fields,
-one for the node heights. (Older checkpoints with one ghost layer restart unchanged, since only valid values are read
-back.)
+one for the node heights. A solution field's ghost cells that stand for another box's cells (or a periodic image)
+hold that box's valid values, refreshed as the file is written; the running state is not changed. (Older
+checkpoints with one ghost layer restart unchanged, since only valid values are read back.)
 
 The ``Header`` starts with ``gust-checkpoint`` and lists the format version, the bytes per real (8 or 4), the step, the mesh (``n_cell``, and
 ``prob_lo`` and ``prob_hi`` in hexadecimal floating point so they read back exactly), ``is_periodic`` and the
 BoxArray. The fields are ``u v w`` (faces), ``p theta tke`` (cell centres) and ``z_phys_nd`` (nodes).
 
-A restart restores every valid value exactly, and the ghost nodes of ``z_phys_nd``, which come from the terrain.
+A restart restores every valid value exactly. The node heights are rebuilt from the mesh and terrain inputs and
+compared with the checkpoint's: a difference beyond 64 ulp of the top level's height stops the run, naming
+``io.restart`` (a changed mesh or terrain input); a smaller one, as from another compiler that contracts the mesh
+build's multiply-adds differently, is reported in the log, and the run continues on the rebuilt heights.
 The restart fills the other ghost cells before the first step, whose local :math:`\Delta\tau` reads them. With the SIMPLEC stage the checkpoint also holds the driver history
 (``Driver``, :doc:`solution_algorithm`) and the closure's :math:`\nu_t` history (``Level_0/closure_nut``, :doc:`turbulence_model`).
 

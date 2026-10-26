@@ -37,13 +37,17 @@ struct HillRun
     gust::State q;
     static constexpr double kPi = 3.14159265358979323846;
     static constexpr double Lx = 1000, Ly = 125, H = 500;
+    //! rank_map: the boxes' ranks (another run's, so the two compare bit for
+    //! bit through the Poisson solve's rank partial sums); the default
+    //! distribution otherwise.
     HillRun (double lapse, int nx, int nz, int max_grid, double ri_gate = 0, Limiter lim = Limiter::van_leer,
-             gust::StageKind stage = gust::StageKind::simplec)
+             gust::StageKind stage = gust::StageKind::simplec, const amrex::DistributionMapping* rank_map = nullptr)
     {
         c.in.mesh.n_cell = amrex::IntVect(nx, 2, nz);
         c.in.mesh.prob_hi = {amrex::Real(Lx), amrex::Real(Ly), amrex::Real(H)};
         c.in.mesh.is_periodic = {1, 1, 0};
         c.in.mesh.max_grid_size = {max_grid, max_grid};
+        if (rank_map != nullptr) { c.pmap = rank_map->ProcessorMap(); }
         c.make([] (double x, double) { return 20 * (1 - std::cos(2 * kPi * x / Lx)); });
         c.z.FillBoundary(c.geom.periodicity());
         c.mesh.build_from_ground(c.in, c.geom, c.z);

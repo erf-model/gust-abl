@@ -40,7 +40,10 @@ iterations:
 - The run stops if it would overwrite the checkpoint it read. Change ``io.chk_file`` if needed.
 - A restarted run reproduces the uninterrupted run bit for bit on the same ranks and box layout, over flat ground and
   over terrain. A checkpoint written before audit A2 (October 2026) restarts too; over terrain the continued run then
-  follows the current wall model (:doc:`boundary_conditions`), so it is not the run the checkpoint came from.
+  follows the current wall model (:doc:`boundary_conditions`), so it is not the run the checkpoint came from. The
+  same holds for a checkpoint written before audit A4 (#60): its residual reference counts box-seam and periodic
+  faces twice. A driver history of format 1 to 3 does not record its norm (main wrote format 3 both before and
+  after #60), and the restart says so in the log; format 4 records it.
 
 Use your own terrain
 --------------------
