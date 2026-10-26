@@ -335,6 +335,7 @@ void run ()
         setup.simplec = simplec;
         setup.sopt = sopt;
         setup.newton = newton_opt;
+        setup.log = iteration_log(in.io.iteration_log);
         LevelSolver level0(setup, mesh, geom, state.z_phys_nd, ba, dm, "", newton);
         NewtonStage* newton_stage = level0.newton_stage();
         const BoundaryConditions& bc = level0.bc;
@@ -398,6 +399,7 @@ void run ()
                            << " have no effect; the checkpoint keeps level 0's reference hold)\n";
         }
         SteadyVerdict v = driver.verdict();
+        IterationPrinter log(setup.log);
         int done = 0;
         while (static_cast<int>(driver.history().records.size()) < sopt.max_iterations) {
             v = driver.step(state);
@@ -405,7 +407,7 @@ void run ()
             ++state.step;
             const bool last = (v.status != SteadyStatus::NotSteady
                                || static_cast<int>(driver.history().records.size()) >= sopt.max_iterations);
-            print_iteration(driver, simplec_stage, last, "", newton_stage);
+            log.print(driver, simplec_stage, last, "", newton_stage);
             if (v.status != SteadyStatus::NotSteady) { break; }
         }
         const char* status = (v.status == SteadyStatus::Steady) ? "steady"

@@ -629,8 +629,8 @@ steady when
 The stop is not tried during the reference hold. Its limits: the residual of the cells that do not meet the
 threshold is not bounded (1 % of cells at 100 times the threshold give a norm 10 times the threshold), and the
 monitors are global, so a limit cycle confined to a few cells that does not move them can be declared steady. The
-iteration line prints the share and the height of the highest unconverged cell, and a run stopped this way names
-the stop in its verdict. The SIMPLEC stage computes it; the stop does not act during the Newton stage. A stop by
+iteration log prints the share and the height of the highest unconverged cell (after ``r`` in the table), and a run
+stopped this way names the stop in its verdict. The SIMPLEC stage computes it; the stop does not act during the Newton stage. A stop by
 confidence is not recorded in the checkpoint (a restart from it iterates again).
 
 Stage switching, restart and reproducibility

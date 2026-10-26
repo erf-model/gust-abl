@@ -43,7 +43,10 @@ def write_deck(dst, ratio, max_it):
 
 def first_below(log, target):
     for line in open(log):
-        m = re.match(r"gust: it\s+(\d+)\s+cfl\s+\S+\s+r\s+(\S+)", line)
+        # A table row (io.iteration_log = table): iteration, CFL, line solver, six residuals, r.
+        m = re.match(r"\s*(\d+)\s+\S+\s+[a-z]+(?:\s+\S+){6}\s+(\S+)", line)
+        # The "gust: it" line (io.iteration_log = full).
+        m = m or re.match(r"gust: it\s+(\d+)\s+cfl\s+\S+\s+r\s+(\S+)", line)
         if m and float(m.group(2)) < target:
             return int(m.group(1))
     return None
