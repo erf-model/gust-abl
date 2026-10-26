@@ -697,14 +697,18 @@ Current tests
    * - ``rt_aspect_ratio_hill``
      - Thin first cells on a 2-D Agnesi ridge (``Tests/Canonical_RANS/Aspect_Ratio_Hill_2D``: 100 m high, 250 m
        half-width, dx = 100 m, the recommended setting of the realizability sensor): ``aspect_ratio_sweep.py --check``
-       runs dx/dz1 = 10, 100 and 200 and requires a relative residual below 1e-4 within 400 iterations (234, 181 and
+       runs dx/dz1 = 10, 100 and 200 and requires a relative residual below 1e-4 within 400 iterations (173, 161 and
        284 measured). Without ``simplec.w_vnn_cap`` dx/dz1 = 100 and 200 do not reach it. Label ``regression``.
-   * - ``outflow_steep_terrain_prepare``, ``rt_outflow_steep_terrain_flat``, ``rt_outflow_steep_terrain_cut``
+   * - ``outflow_steep_terrain_prepare``, ``rt_outflow_steep_terrain_flat``, ``rt_outflow_steep_terrain_cut``,
+       ``rt_outflow_steep_terrain_from_velocity``
      - Steep terrain at an outflow face (``Tests/Canonical_RANS/Outflow_Steep_Terrain``): a 2-D domain ending on the
        steepest part of a rising cos² ridge. With the terrain levelled at the outflow face (the slope stays 26° just
-       inside) the realizability limit is steady within 400 iterations (161 measured); with the face cutting the slope
-       the iteration stops at a fixed state (relative residual 0.178, checked above 0.1 at iteration 400), the known limitation of the outflow condition on sloping terrain, which the
-       ``_cut`` test pins. The fixture writes the two terrain files. Label ``regression``.
+       inside) the realizability limit is steady within 400 iterations (162 measured); with the face cutting the slope
+       it is steady too (148 measured), the ghost cells' transport fluxes being the mirror image of the cells inside
+       (``bc.outflow_transport = mirror``, :doc:`boundary_conditions`). ``_from_velocity`` keeps the condition up to
+       v1.0.0 reachable: with ``bc.outflow_transport = from_velocity`` the cut slope alternates between two states
+       (relative residual 0.176, checked above 0.1 at iteration 400); it is the mutant of ``_cut``. The fixture writes
+       the two terrain files. Label ``regression``.
    * - ``rt_steady_hill2d``
      - ERF's Neutral_Hill_2D (``Tests/Canonical_RANS/Neutral_Hill_2D/inputs_steady_hill2d``: 128 × 1 × 64, the Witch of Agnesi of
        100 m and 500 m, the flat deck's sounding and forcing, Rayleigh damping of w and θ from 700 m, 16 sweeps, CFL
