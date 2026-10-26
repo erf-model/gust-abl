@@ -598,7 +598,8 @@ TEST(NewtonPreconditioner, ContinuationIdentityVersusSimplec)
     EXPECT_TRUE(ra.converged);
     EXPECT_TRUE(rb.converged);
     EXPECT_EQ(ra.steps, 8);
-    EXPECT_NEAR(static_cast<double>(pa.records().front().residual), 11.343, 1e-3);   // 11.328 before audit A2
+    // 11.328 before audit A2; 11.343 with bc.outflow_transport = from_velocity (v1.0.0)
+    EXPECT_NEAR(static_cast<double>(pa.records().front().residual), 11.344, 1e-3);
     EXPECT_LE(rb.steps, ra.steps);
     int ia = 0, ib = 0;
     for (const auto& r : pa.records()) { ia += r.gmres_iterations; }

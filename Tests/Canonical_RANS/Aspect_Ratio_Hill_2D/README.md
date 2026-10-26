@@ -28,7 +28,12 @@ Iterations to r < 1e-4 with z0 = 0.01 m (2 ranks, 2026-10-25):
 | dx/dz1 | 10 | 25 | 50 | 100 | 200 | 500 | 1000 | 2000 | 5000 |
 |---|---|---|---|---|---|---|---|---|---|
 | dz1 (m) | 10 | 4 | 2 | 1 | 0.5 | 0.2 | 0.1 | 0.05 | 0.02 |
-| Iterations | 234 | 183 | 189 | 181 | 284 | 855 | 2509 | 5480 | not converged |
+| Iterations | 173 | 165 | 159 | 161 | 284 | 856 | 2509 | 5480 | not converged |
+| Iterations, `bc.outflow_transport = from_velocity` (v1.0.0) | 234 | 183 | 189 | 181 | 284 | 855 | | | |
+
+The ratios up to 500 were run again with the outflow face's ghost transport mirrored (`bc.outflow_transport =
+mirror`, the default after v1.0.0; the ridge leaves a slope of about 5e-4 at the face); 1000 to 5000 and the tables
+below were measured with v1.0.0.
 
 The largest cell aspect ratio in the mesh is about 6 % above the nominal ratio (terrain-following compression).
 

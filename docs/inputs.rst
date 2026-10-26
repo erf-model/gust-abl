@@ -193,6 +193,9 @@ Quick reference
    * - ``bc.sponge_width``, ``bc.sponge_strength``
      - ``0``, ``0``
      - Side sponge width (m) and strength (1/s)
+   * - ``bc.outflow_transport``
+     - ``mirror``
+     - Transport fluxes of the ghost cells outside outflow faces
    * - ``bc.surface_z0``
      - 0.1 m
      - Ground roughness length
@@ -694,6 +697,13 @@ types, the inflow profile and the sounding; the other keys act in the SIMPLEC st
    * - ``bc.sponge_strength``
      - ``0``
      - Finite, ≥ 0 (1/s); needs ``bc.sponge_width`` > 0.
+   * - ``bc.outflow_transport``
+     - ``mirror``
+     - ``mirror`` or ``from_velocity``; needs an ``outflow`` face. ``mirror``: each ghost cell outside an outflow face
+       has the transport fluxes of the cell inside it, mirrored through the face (the normal flux continued linearly
+       through its face value), so it has that cell's divergence. ``from_velocity``: the fluxes are computed from the
+       ghost cells' copied velocities and their own geometry, the only choice up to v1.0.0. The velocity ghosts are the
+       same either way (:doc:`boundary_conditions`).
    * - ``bc.surface_z0``
      - 0.1 m
      - Finite, > 0. Roughness length of the wall model. The ``bc.surface_*`` keys need ``bc.zlo = surface_layer``.
