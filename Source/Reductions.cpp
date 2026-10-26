@@ -144,24 +144,34 @@ amrex::Long local_not_positive (const amrex::MultiFab& mf, int ngrow)
 
 } // namespace
 
-amrex::Long count_not_positive (const std::vector<const amrex::MultiFab*>& fields, bool allow_zero, int ngrow)
+std::vector<amrex::Long> count_not_positive (const std::vector<const amrex::MultiFab*>& fields, bool allow_zero,
+                                             int ngrow)
 {
-    amrex::Long n = 0;
+    std::vector<amrex::Long> n;
     for (const amrex::MultiFab* mf : fields) {
-        AMREX_ALWAYS_ASSERT_WITH_MESSAGE(mf->nGrow() >= ngrow, "count_not_positive: the field has fewer ghost layers than asked");
-        n += allow_zero ? local_not_positive<true>(*mf, ngrow) : local_not_positive<false>(*mf, ngrow);
+        AMREX_ALWAYS_ASSERT_WITH_MESSAGE(mf->nGrowVect().allGE(amrex::IntVect(ngrow)),
+                                         "count_not_positive: the field has fewer ghost layers than asked");
+        n.push_back(allow_zero ? local_not_positive<true>(*mf, ngrow) : local_not_positive<false>(*mf, ngrow));
     }
-    amrex::ParallelDescriptor::ReduceLongSum(n);
+    if (!n.empty()) { amrex::ParallelDescriptor::ReduceLongSum(n.data(), static_cast<int>(n.size())); }
     return n;
 }
 
-void require_positive (const char* op, const std::string& what, const std::vector<const amrex::MultiFab*>& fields,
-                       bool allow_zero, int ngrow)
+void require_positive (const char* op, const std::vector<std::string>& names,
+                       const std::vector<const amrex::MultiFab*>& fields, bool allow_zero, int ngrow)
 {
-    const amrex::Long n = count_not_positive(fields, allow_zero, ngrow);
-    if (n != 0) {
-        amrex::Abort(std::string("gust: ") + op + ": " + what + " must be finite and " + (allow_zero ? ">= 0" : "> 0")
-                     + " everywhere (" + std::to_string(n) + " points are not)");
+    AMREX_ALWAYS_ASSERT_WITH_MESSAGE(names.size() == fields.size(), "require_positive: one name per field");
+    const std::vector<amrex::Long> n = count_not_positive(fields, allow_zero, ngrow);
+    std::string bad;
+    amrex::Long total = 0;
+    for (std::size_t i = 0; i < n.size(); ++i) {
+        if (n[i] == 0) { continue; }
+        bad += (bad.empty() ? "" : ", ") + names[i];
+        total += n[i];
+    }
+    if (total != 0) {
+        amrex::Abort(std::string("gust: ") + op + ": " + bad + " must be finite and " + (allow_zero ? ">= 0" : "> 0")
+                     + " everywhere (" + std::to_string(total) + " points are not)");
     }
 }
 

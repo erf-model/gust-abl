@@ -85,7 +85,6 @@ const amrex::MultiFab& length_distance (const char* op, const amrex::MultiFab& d
     return out;
 }
 
-//! The decisions at the state, encoded, on the closure's cells: out(k, N2).
 //! l_g = kappa (d + z0) must be positive everywhere the kernels run (1/l_g^2):
 //! dist as length_distance returns it, z0 the uniform part.
 void require_length_distance (const char* op, const amrex::MultiFab& dist, amrex::Real z0)
@@ -97,6 +96,7 @@ void require_length_distance (const char* op, const amrex::MultiFab& dist, amrex
     }
 }
 
+//! The decisions at the state, encoded, on the closure's cells: out(k, N2).
 void live_decisions (const amrex::MultiFab& tke, const amrex::MultiFab& N2, const amrex::MultiFab& dist, amrex::Real z0,
                      const ClosureConstants& c, amrex::iMultiFab& out)
 {
