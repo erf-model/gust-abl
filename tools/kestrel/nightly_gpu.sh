@@ -16,23 +16,29 @@
 #   GUST_NIGHTLY_WORK   work directory (default /scratch/$USER/gust-nightly)
 #   GUST_NIGHTLY_REPO   repository to test (default https://github.com/erf-model/gust-abl.git)
 #   GUST_NIGHTLY_REF    branch or commit (default main)
-#   GUST_NIGHTLY_GPUS   GPUs to request (default 4; the smoke tests use up to 3 ranks)
+#   GUST_NIGHTLY_GPUS   GPUs to request, 3 or 4 (default 4; the smoke tests use up to 3 ranks)
 #   GUST_NIGHTLY_MAIL   mail address for a failed job (submit only; optional)
-#   GUST_NIGHTLY_KEEP   number of run logs kept (default 30)
+#   GUST_NIGHTLY_KEEP   number of run logs kept, failed runs included (default 30)
+#   GUST_BUILD_JOBS     parallel build jobs (default SLURM_CPUS_ON_NODE, else 16)
 #
 # The job clones the repository into its work directory and builds with the
 # build scripts of that checkout; the copy this script is started from is not
 # changed. The build
 # directory is kept between nights (an incremental build after the first).
 # Each run writes $work/logs/<date>_<sha>/ with build.log, ctest.log,
-# junit.xml and status ("pass" or "fail: <step>"); $work/logs/latest points
-# to it. Exit status 0 only when every smoke test passed.
+# junit.xml and status ("pass" or "fail: <step>"; a clone or fetch that
+# fails writes $work/logs/<date>_nofetch/ with "fail: fetch"); $work/logs/latest
+# points to it. Exit status 0 only when every smoke test passed.
 #
 # One rank per GPU: the tests launch srun with --gpus-per-task=1
-# (GUST_MPIEXEC_PREFLAGS), one test at a time.
+# --gpu-bind=none (GUST_MPIEXEC_PREFLAGS), one test at a time. Every rank sees
+# every GPU and AMReX picks one per rank: with each rank confined to its own
+# GPU, Cray MPICH's GPU IPC fails between ranks (cuIpcOpenMemHandle, then
+# "MPI_Waitall: Invalid count").
 #
-# Scheduling: scrontab (where Kestrel enables it), or cron on a login node:
-#   0 1 * * * GUST_ACCOUNT=<account> /path/to/nightly_gpu.sh submit
+# Scheduling: cron on a login node (scrontab is disabled on Kestrel); a login
+# shell, so that sbatch and module are defined:
+#   0 1 * * * bash -lc 'GUST_ACCOUNT=<account> /path/to/nightly_gpu.sh submit'
 #
 # Partition and GPU request syntax follow Kestrel's documentation as of
 # October 2026 and may need adjusting after the system update.
@@ -46,16 +52,29 @@ keep=${GUST_NIGHTLY_KEEP:-30}
 src="$work/gust-abl"
 self=$(cd "$(dirname "$0")" && pwd)/$(basename "$0")
 
-usage () { sed -n '2,38p' "$0" >&2; exit 2; }
+usage () { sed -n '2,44p' "$0" >&2; exit 2; }
 
 case "$gpus" in ''|*[!0-9]*|0) echo "GUST_NIGHTLY_GPUS must be a positive integer (got $gpus)" >&2; exit 2 ;; esac
+if [ "$gpus" -lt 3 ] || [ "$gpus" -gt 4 ]; then
+    echo "GUST_NIGHTLY_GPUS must be 3 or 4: the smoke tests use up to 3 ranks, one H100 node has 4 (got $gpus)" >&2
+    exit 2
+fi
 case "$keep" in ''|*[!0-9]*|0) echo "GUST_NIGHTLY_KEEP must be a positive integer (got $keep)" >&2; exit 2 ;; esac
 
 stamp () { date '+%Y-%m-%dT%H:%M:%S%z'; }
 
-# Writes the status file and exits: fail <step> (exit 1) or pass (exit 0).
+# Keeps the newest $keep run logs.
+prune () {
+    (cd "$work/logs" && ls -1d 20*_* 2>/dev/null | sort |
+        awk -v k="$keep" '{ d[NR] = $0 } END { for (i = 1; i <= NR - k; i++) print d[i] }' |
+        while read -r d; do rm -rf "./$d"; done)
+}
+
+# Writes the status file, prunes the logs and exits: fail <step> (exit 1) or
+# pass (exit 0).
 finish () {
     echo "$1" > "$log/status"
+    prune
     echo "nightly_gpu: $1 ($log)"
     if [ "$1" = pass ]; then exit 0; fi
     exit 1
@@ -66,15 +85,32 @@ case "$cmd" in
 
 run)
     if [ -z "${SLURM_JOB_ID:-}" ]; then
-        echo "run inside a GPU allocation, e.g. salloc -A \$GUST_ACCOUNT --gpus=$gpus -t 03:00:00" >&2
+        echo "run inside a GPU allocation, e.g. salloc -A \$GUST_ACCOUNT --nodes=1 --gpus=$gpus --ntasks=$gpus" \
+             "--cpus-per-task=8 --mem=240G -t 03:00:00" >&2
         exit 2
     fi
     mkdir -p "$work/logs"
+    # One run at a time in the work directory (a batch job and a run by hand).
+    exec 9> "$work/.lock"
+    if ! flock -n 9; then echo "another run holds $work/.lock" >&2; exit 3; fi
+    # A clone or fetch that fails still writes a log, so status does not show
+    # the previous night.
+    fetch_failed () {
+        log="$work/logs/$(date +%Y-%m-%d_%H%M%S)_nofetch"
+        mkdir -p "$log"
+        ln -sfn "$log" "$work/logs/latest"
+        printf 'repository %s\nref        %s\njob        %s on %s\nstarted    %s\n' \
+            "$repo" "$ref" "$SLURM_JOB_ID" "$(hostname)" "$(stamp)" > "$log/info"
+        finish "fail: fetch"
+    }
     if [ ! -d "$src/.git" ]; then
-        git clone "$repo" "$src"
+        git clone "$repo" "$src" || fetch_failed
     fi
-    git -C "$src" fetch --prune origin
-    git -C "$src" checkout --detach -q "origin/$ref" 2>/dev/null || git -C "$src" checkout --detach -q "$ref"
+    # GUST_NIGHTLY_REPO may change between nights.
+    git -C "$src" remote set-url origin "$repo" || fetch_failed
+    git -C "$src" fetch --prune origin || fetch_failed
+    git -C "$src" checkout --detach -q "origin/$ref" 2>/dev/null || git -C "$src" checkout --detach -q "$ref" \
+        || fetch_failed
     sha=$(git -C "$src" rev-parse --short=9 HEAD)
     log="$work/logs/$(date +%Y-%m-%d_%H%M%S)_$sha"
     mkdir -p "$log"
@@ -92,14 +128,14 @@ run)
         "$src/tools/kestrel/build_kestrel.sh" gpu > "$log/build.log" 2>&1 || finish "fail: build"
     # One rank per GPU for every test.
     # shellcheck source=kestrel_env.sh
-    source "$src/tools/kestrel/kestrel_env.sh" gpu >> "$log/build.log" 2>&1
-    cmake "$build" -DGUST_MPIEXEC_PREFLAGS="--gpus-per-task=1" >> "$log/build.log" 2>&1 \
+    source "$src/tools/kestrel/kestrel_env.sh" gpu >> "$log/build.log" 2>&1 || finish "fail: configure"
+    cmake "$build" -DGUST_MPIEXEC_PREFLAGS="--gpus-per-task=1;--gpu-bind=none" >> "$log/build.log" 2>&1 \
         || finish "fail: configure"
     cmake --build "$build" -j "${GUST_BUILD_JOBS:-${SLURM_CPUS_ON_NODE:-16}}" >> "$log/build.log" 2>&1 \
         || finish "fail: build"
 
     # Every smoke run of gust must carry the GPU runtime flags.
-    ctest --test-dir "$build" -L smoke --show-only=json-v1 > "$log/tests.json"
+    ctest --test-dir "$build" -L smoke --show-only=json-v1 > "$log/tests.json" || finish "fail: configure"
     python3 -I - "$log/tests.json" > "$log/flags_check.log" 2>&1 <<'PY' || finish "fail: arena flags"
 import json, os, sys
 tests = json.load(open(sys.argv[1]))["tests"]
@@ -116,11 +152,6 @@ PY
     ctest --test-dir "$build" -L smoke --output-on-failure --output-junit "$log/junit.xml" \
         > "$log/ctest.log" 2>&1 || { tail -n 40 "$log/ctest.log"; finish "fail: tests"; }
     echo "finished   $(stamp)" >> "$log/info"
-
-    # Keep the newest $keep run logs.
-    (cd "$work/logs" && ls -1d 20*_* 2>/dev/null | sort |
-        awk -v k="$keep" '{ d[NR] = $0 } END { for (i = 1; i <= NR - k; i++) print d[i] }' |
-        while read -r d; do rm -rf "./$d"; done)
     finish pass
     ;;
 
@@ -134,9 +165,10 @@ submit)
 #SBATCH --mail-user=$GUST_NIGHTLY_MAIL"
     fi
     cat > "$job" <<JOB
-#!/usr/bin/env bash
+#!/bin/bash -l
 #SBATCH --account=$GUST_ACCOUNT
 #SBATCH --job-name=gust-nightly-gpu
+#SBATCH --dependency=singleton
 #SBATCH --time=03:00:00
 #SBATCH --nodes=1
 #SBATCH --gpus=$gpus

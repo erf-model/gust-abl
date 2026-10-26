@@ -63,23 +63,61 @@ runs the smoke tests on Kestrel H100s:
 
 .. code-block:: bash
 
-   tools/kestrel/nightly_gpu.sh run      # inside a GPU allocation (salloc --gpus=4)
+   tools/kestrel/nightly_gpu.sh run      # inside a GPU allocation (salloc --gpus=4 --ntasks=4 --mem=240G)
    tools/kestrel/nightly_gpu.sh submit   # the same as a batch job (GUST_ACCOUNT=<allocation>)
    tools/kestrel/nightly_gpu.sh status   # the result of the latest run
 
-The job clones ``erf-model/gust-abl`` at ``main`` (``GUST_NIGHTLY_REF`` for another branch) into
-``GUST_NIGHTLY_WORK`` (default ``/scratch/$USER/gust-nightly``), builds it with ``build_kestrel.sh gpu``, sets one
-rank per GPU (``GUST_MPIEXEC_PREFLAGS=--gpus-per-task=1``) and runs ``ctest -L smoke``. Before the tests it checks
-that every smoke run of ``gust`` carries ``amrex.the_arena_init_size=0 amrex.init_snan=1
-amrex.fpe_trap_invalid=1``. The smoke tests include the 2-D hill restart chain over terrain
-(``rt_steady_hill2d_restart_*``) and the 2-D hill with Coriolis run twice, compared at zero tolerance
-(``rt_coriolis_repeat_*``). Each run writes ``logs/<date>_<sha>/`` (``info``, ``build.log``, ``ctest.log``,
-``junit.xml``, ``status``); the newest 30 are kept (``GUST_NIGHTLY_KEEP``). ``GUST_NIGHTLY_MAIL`` mails a failed
-batch job.
+The job clones the repository at a branch or commit into its work directory, builds it with ``build_kestrel.sh
+gpu`` and runs ``ctest -L smoke`` with one rank per GPU (``GUST_MPIEXEC_PREFLAGS=--gpus-per-task=1;--gpu-bind=none``:
+every rank sees every GPU and AMReX picks one per rank; with each rank confined to its own GPU, Cray MPICH's GPU IPC
+fails between ranks). Before the tests it checks that every smoke run of ``gust`` carries
+``amrex.the_arena_init_size=0 amrex.init_snan=1 amrex.fpe_trap_invalid=1``. The smoke tests include the 2-D hill
+restart chain over terrain (``rt_steady_hill2d_restart_*``) and the 2-D hill with Coriolis run twice, compared at
+zero tolerance (``rt_coriolis_repeat_*``). Each run writes ``logs/<date>_<sha>/`` (``info``, ``build.log``,
+``ctest.log``, ``junit.xml``, ``status``: ``pass`` or ``fail: <step>``); a clone or fetch that fails writes
+``logs/<date>_nofetch/`` with ``fail: fetch``. One run at a time holds the work directory (a lock, and
+``--dependency=singleton`` for batch jobs).
 
-The job is started by ``scrontab`` or by ``cron`` on a login node, not from GitHub Actions: a self-hosted runner on
-Kestrel would need the HPC center's approval. Results are read on Kestrel (``status``) and are not reported to pull
-requests.
+.. list-table::
+   :header-rows: 1
+
+   * - Variable
+     - Default
+     - Effect
+   * - ``GUST_ACCOUNT``
+     - none
+     - Kestrel allocation; required for ``submit``
+   * - ``GUST_NIGHTLY_WORK``
+     - ``/scratch/$USER/gust-nightly``
+     - Work directory (clone, build, logs, job scripts)
+   * - ``GUST_NIGHTLY_REPO``
+     - ``https://github.com/erf-model/gust-abl.git``
+     - Repository to test (also set on an existing clone)
+   * - ``GUST_NIGHTLY_REF``
+     - ``main``
+     - Branch or commit
+   * - ``GUST_NIGHTLY_GPUS``
+     - 4
+     - GPUs requested, 3 or 4 (the smoke tests use up to 3 ranks)
+   * - ``GUST_NIGHTLY_MAIL``
+     - none
+     - Mail address for a failed batch job
+   * - ``GUST_NIGHTLY_KEEP``
+     - 30
+     - Run logs kept, failed runs included
+   * - ``GUST_BUILD_JOBS``
+     - ``SLURM_CPUS_ON_NODE``, else 16
+     - Parallel build jobs
+
+The job is started by ``cron`` on a login node (``scrontab`` is disabled on Kestrel), not from GitHub Actions: a
+self-hosted runner on Kestrel would need the HPC center's approval. The cron line starts a login shell, so that
+``sbatch`` and ``module`` are defined, and the job script is a login shell too:
+
+.. code-block:: text
+
+   0 1 * * * bash -lc 'GUST_ACCOUNT=<account> /path/to/gust-abl/tools/kestrel/nightly_gpu.sh submit'
+
+Results are read on Kestrel (``status``) and are not reported to pull requests.
 
 The regression tests labelled ``physics`` (``ctest -L physics``) and the performance tests will run nightly on
 Kestrel CPU nodes and H100s once they exist.
