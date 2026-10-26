@@ -92,6 +92,10 @@ public:
 
     [[nodiscard]] const amrex::Vector<amrex::Real>& zlevels () const { return m_zlevels; }
     [[nodiscard]] const MeshQuality& quality () const { return m_quality; }
+    //! The smallest detJ over the valid cells (detJ.min(0)), kept when the
+    //! metrics are made: the mesh does not change during a run, and the
+    //! pressure correction reads it every iteration.
+    [[nodiscard]] amrex::Real min_detJ () const { return m_min_detJ; }
 
     //! The report as printed: one "name = value" line per entry, and a
     //! warning line when STF smoothing was capped.
@@ -110,6 +114,7 @@ private:
 
     amrex::Vector<amrex::Real> m_zlevels;
     MeshQuality m_quality;
+    amrex::Real m_min_detJ{0};
     int m_smoothing{1};
 };
 

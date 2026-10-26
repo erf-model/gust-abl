@@ -222,6 +222,7 @@ void Mesh::check_restart (const Inputs& in, const amrex::Geometry& geom, amrex::
 void Mesh::make_metrics (const amrex::Geometry& geom, amrex::MultiFab& z_phys_nd)
 {
     make_J(geom, z_phys_nd, detJ);
+    m_min_detJ = detJ.min(0);
     make_areas(geom, z_phys_nd, ax, ay, az);
     make_zcc(geom, z_phys_nd, z_cc);
 }

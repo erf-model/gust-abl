@@ -1364,14 +1364,17 @@ TEST (Simplec, InputReadersAndRefusals)
         EXPECT_THROW(gust::pressure_correction(q, pf, solver, pbc, 1.0, c.mesh, c.geom, w), std::runtime_error);
         pf.d_u.setVal(1.0);
         EXPECT_THROW(gust::pressure_correction(q, pf, solver, pbc, 0.0, c.mesh, c.geom, w), std::runtime_error);
-        // a non-positive dtau is refused by the scalar sweep
         amrex::MultiFab dtau(c.ba, c.dm, 1, 0), R(c.ba, c.dm, 1, 0);
-        dtau.setVal(0.0);
         R.setVal(0.0);
         amrex::Array<amrex::MultiFab, 3> F;
         gust::transport_fluxes(q.u, q.v, q.w, q.z_phys_nd, c.mesh, c.geom, F);
+#ifdef GUST_DEBUG_CHECKS
+        // a non-positive dtau is refused by the scalar sweep in debug builds (the
+        // stage checks it once per iteration in face_dtau; Reductions.H)
+        dtau.setVal(0.0);
         EXPECT_THROW(gust::scalar_sweep(Equation::theta, q.theta, R, {&F[0], &F[1], &F[2]}, q.z_phys_nd, lam.in, dtau, c.mesh,
                                              c.geom, 2, 0, nullptr, nullptr, w), std::runtime_error);
+#endif
         dtau.setVal(1.0);
         EXPECT_THROW(gust::scalar_sweep(Equation::u, q.theta, R, {&F[0], &F[1], &F[2]}, q.z_phys_nd, lam.in, dtau, c.mesh,
                                              c.geom, 2, 0, nullptr, nullptr, w), std::runtime_error);

@@ -3,6 +3,7 @@
 #include "Convection.H"
 #include "MassFlux.H"
 #include "PseudoTime.H"
+#include "Reductions.H"
 
 #include <AMReX_Print.H>
 
@@ -131,13 +132,8 @@ void SimplecPreconditioner::setup (const State& q, const amrex::MultiFab* dtau)
         const amrex::MultiFab* nu = (m_in.closure != nullptr) ? &m_cf.nu : m_in.nu;
         local_dtau(m_q0, nu, m_mesh, m_geom, m_inf_cfl, m_dtau);
     }
-    {
-        // Once per setup: the bound of the sweeps (scalar_sweep checks it too).
-        const amrex::Real lo = m_dtau.min(0);
-        if (std::isnan(lo) || !(lo > 0) || !std::isfinite(m_dtau.max(0))) {
-            amrex::Abort("gust: SimplecPreconditioner::setup: dtau must be finite and > 0 everywhere");
-        }
-    }
+    // Once per setup: the bound of the sweeps (scalar_sweep repeats it in debug builds only).
+    require_positive("SimplecPreconditioner::setup", "dtau", {&m_dtau}, false);
     transport_fluxes(m_q0.u, m_q0.v, m_q0.w, m_z, m_mesh, m_geom, m_F0);
     m_in.bc->outflow_transport(m_F0);
     face_dtau(m_dtau, m_mesh, m_geom, m_w.dtau_faces);

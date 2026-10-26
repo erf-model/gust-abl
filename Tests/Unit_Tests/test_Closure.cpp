@@ -8,6 +8,7 @@
 #include "ERF_RANSClosure.H"
 #include "ImplicitOperator.H"
 #include "MassFlux.H"
+#include "Reductions.H"
 #include "Residual.H"
 #include "TransportTestHelpers.H"
 
@@ -436,6 +437,40 @@ TEST(Closure, InputsAreReadAndChecked)
 // ERF's composition of the copied relations (erf_point) at those N^2 and S^2,
 // for a stable and an unstable gamma; the lateral ghost ring equals the
 // periodic image's value.
+// The wall distance plus z0 is checked once per level where it is made
+// (Sequencing), the ghost cells included, not at every evaluation (audit
+// A7, I3); evaluate() repeats the check in debug builds only.
+TEST(Closure, WallDistanceIsCheckedOnce)
+{
+    PCase c = make_mesh(8, 8, 8, 0, false);
+    const gust::Closure closure(ClosureOptions{});
+    gust::State q;
+    define_state(q, c);
+    amrex::MultiFab dist;
+    gust::height_above_ground(q.z_phys_nd, dist);
+    EXPECT_NO_THROW(closure.check_wall_distance(dist, amrex::Real(0)));
+    // one ghost cell below the ground, on whichever rank holds it
+    const auto set_ghost = [&] (amrex::Real v) {
+        for (amrex::MFIter mfi(dist, false); mfi.isValid(); ++mfi) {
+            if (!mfi.validbox().contains(amrex::IntVect(0, 0, 0))) { continue; }
+            const auto d = dist.array(mfi);
+            amrex::ParallelFor(amrex::Box(amrex::IntVect(0, 0, -1), amrex::IntVect(0, 0, -1)),
+                               [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept { d(i, j, k) = v; });
+        }
+    };
+    set_ghost(0);
+    EXPECT_THROW(closure.check_wall_distance(dist, amrex::Real(0)), std::runtime_error);
+    EXPECT_NO_THROW(closure.check_wall_distance(dist, amrex::Real(0.1)));
+    set_ghost(amrex::Real(-0.1));
+    EXPECT_THROW(closure.check_wall_distance(dist, amrex::Real(0.1)), std::runtime_error);
+#ifdef GUST_DEBUG_CHECKS
+    q.tke.setVal(0.1);
+    q.theta.setVal(300.0);
+    gust::ClosureFields f;
+    EXPECT_THROW(closure.evaluate(q, dist, amrex::Real(0.1), gust::BuoyancyOptions{}, c.mesh, c.geom, f), std::runtime_error);
+#endif
+}
+
 TEST(Closure, FieldsMatchClosedForms)
 {
     // Uniform layers: the centred difference of a linear theta is exact.

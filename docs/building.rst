@@ -60,7 +60,10 @@ An option outside its allowed values stops the configuration.
      - AMReX with hypre, for the optional Newton–Krylov preconditioner (in development).
    * - ``GUST_TESTING``
      - ``OFF``
-     - ``AMReX_TESTING`` and assertions on, as in GPU CI.
+     - ``AMReX_TESTING`` and assertions on, as in GPU CI. With assertions (or in a ``Debug`` build) the inner
+       operators also re-check inputs that the solver has already checked once per iteration or per setup (the
+       pseudo-time step at the faces and in the scalar sweeps, the wall distance in every closure evaluation).
+       A ``Release`` build skips these repeated checks and their all-reduces.
    * - ``GUST_ENABLE_TESTS``
      - ``ON``
      - Build the unit tests and register all tests with CTest.
