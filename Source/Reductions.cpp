@@ -3,12 +3,14 @@
 #include <AMReX.H>
 #include <AMReX_FArrayBox.H>
 #include <AMReX_GpuContainers.H>
-#include <AMReX_Math.H>
 #include <AMReX_ParallelDescriptor.H>
 
+#include <bit>
+#include <cstdint>
 #include <limits>
 #include <memory>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 namespace gust {
@@ -122,6 +124,11 @@ namespace {
 template <bool AllowZero>
 amrex::Long local_not_positive (const amrex::MultiFab& mf, int ngrow)
 {
+    // The IEEE 754 layout of amrex::Real: the sign bit and the exponent mask.
+    using Bits = std::conditional_t<sizeof(amrex::Real) == 8, std::uint64_t, std::uint32_t>;
+    static_assert(sizeof(Bits) == sizeof(amrex::Real));
+    constexpr Bits kSign = Bits(1) << (8 * sizeof(Bits) - 1);
+    constexpr Bits kExp = (sizeof(Bits) == 8) ? Bits(0x7ff0000000000000ULL) : Bits(0x7f800000UL);
     amrex::ReduceOps<amrex::ReduceOpSum> op;
     amrex::ReduceData<amrex::Long> data(op);
     for (amrex::MFIter mfi(mf, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
@@ -129,13 +136,15 @@ amrex::Long local_not_positive (const amrex::MultiFab& mf, int ngrow)
         const auto a = mf.const_array(mfi);
         op.eval(bx, data, [=] AMREX_GPU_DEVICE (int i, int j, int k) -> amrex::GpuTuple<amrex::Long>
         {
-            const amrex::Real x = a(i, j, k);
-            // Quiet tests only: an ordered compare with a NaN raises FE_INVALID
-            // (trapped in CI), even after an isnan test the compiler may not
-            // branch on. The sign from copysign; -0 is not negative.
-            const bool negative = amrex::Math::copysign(amrex::Real(1), x) < 0 && x != 0;
-            bool bad = amrex::Math::isnan(x) || amrex::Math::isinf(x) || negative;
-            if constexpr (!AllowZero) { bad = bad || x == 0; }
+            // From the bit pattern, integer operations only: no floating-point
+            // compare ever sees a NaN, so nothing raises FE_INVALID (trapped in
+            // CI). GCC's std::isinf is an ordered compare, evaluated even when
+            // isnan is already true.
+            const auto bits = std::bit_cast<Bits>(a(i, j, k));
+            const Bits mag = bits & ~kSign;
+            const bool zero = mag == 0;                            // +0 or -0
+            bool bad = mag >= kExp || ((bits & kSign) != 0 && !zero);   // NaN, +-inf, or negative
+            if constexpr (!AllowZero) { bad = bad || zero; }
             return {bad ? amrex::Long(1) : amrex::Long(0)};
         });
     }
