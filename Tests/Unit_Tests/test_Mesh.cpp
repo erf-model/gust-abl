@@ -762,7 +762,13 @@ TEST (Mesh, RestartAcceptsHeightsWithinAFewUlp)
         const amrex::IntVect iv = vb.smallEnd() + amrex::IntVect(1, 1, 2);
         s.z.array(mfi)(iv[0], iv[1], iv[2]) = std::numeric_limits<amrex::Real>::quiet_NaN();
     }
-    EXPECT_THROW(s.mesh.check_restart(s.in, s.geom, s.z), std::runtime_error);
+    {
+        // The check tests the NaN first (d != d, quiet), but clang may still
+        // evaluate the ordered d > tol of the same lane, which raises the
+        // invalid flag the CI traps: the NaN case runs without the trap.
+        const gust::test::ScopedNoInvalidTrap no_trap;
+        EXPECT_THROW(s.mesh.check_restart(s.in, s.geom, s.z), std::runtime_error);
+    }
 }
 
 // The quality report on a steep ridge warns about STF capping.
