@@ -18,6 +18,7 @@
 #include <limits>
 #include <memory>
 #include <stdexcept>
+#include <sstream>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -1354,6 +1355,73 @@ TEST (Driver, HistoryRecordsTheResidualScaleHeight)
     neg.scale_height = -1;
     gust::Driver e(o, one_stage<DecayStage>("decay", amrex::Real(0.5)), c.mesh, c.geom, nullptr);
     EXPECT_THROW(e.restore(neg, q), std::runtime_error);
+    amrex::ParallelDescriptor::Barrier();
+    if (amrex::ParallelDescriptor::IOProcessor()) { amrex::FileSystem::RemoveAll(dir); }
+}
+
+// The history records the residual norm it was taken with (format 4, audit
+// A5): 1, each distinct point once (#60). A new run records 1 and a write and
+// a read keep it. A history that does not record it (format 3, as main wrote
+// it before #60) reads as 0, and a restore from it says in the log that the
+// reference may count box-seam and periodic faces twice; the restored history
+// then records 1. A value other than 0 or 1 is refused.
+TEST (Driver, HistoryRecordsTheResidualNorm)
+{
+    gust::ptest::Manufactured ms;
+    ms.Lx = 1000;
+    ms.Ly = 800;
+    ms.H0 = 0;
+    PCase c = gust::ptest::make_case(16, 8, 8, gust::PoissonFace::periodic, gust::PoissonFace::periodic, ms, 0, false);
+    SteadyOptions o = base_options();
+    o.criterion.monitor_window = 1000;   // never steady
+    gust::State q;
+    define_state(q, c);
+    q.u.setVal(1.0);
+    gust::Driver a(o, one_stage<DecayStage>("decay", amrex::Real(0.5)), c.mesh, c.geom, nullptr);
+    EXPECT_EQ(a.history().norm, 1);
+    for (int i = 0; i < 3; ++i) { a.step(q); }
+    const std::string dir = "ut_driver_norm";
+    if (amrex::ParallelDescriptor::IOProcessor()) {
+        amrex::FileSystem::RemoveAll(dir);
+        amrex::UtilCreateDirectory(dir, 0755);
+    }
+    amrex::ParallelDescriptor::Barrier();
+    gust::write_driver_history(dir, a.history());
+    EXPECT_EQ(gust::read_driver_history(dir).norm, 1);
+
+    // The restore's log line, captured from amrex::Print.
+    auto restore_log = [&] (const DriverHistory& h) {
+        std::ostringstream out;
+        std::streambuf* old = amrex::OutStream().rdbuf(out.rdbuf());
+        gust::Driver d(o, one_stage<DecayStage>("decay", amrex::Real(0.5)), c.mesh, c.geom, nullptr);
+        d.restore(h, q);
+        amrex::OutStream().rdbuf(old);
+        EXPECT_EQ(d.history().norm, 1);
+        return out.str();
+    };
+    const std::string note = "does not record its residual norm";
+    EXPECT_EQ(restore_log(a.history()).find(note), std::string::npos);
+    const std::string head = "gust-driver 3\nstate 0 0x1p+0 0 -1\nhold -1\nscale_height 0x1.f4p+8\n";
+    const std::string tail = "accounts 1\n0 0x0p+0 0x0p+0\nrecords 0\nswitches 0\ncriterion 0 0 0 \n1 0x0p+0\n1 0x0p+0\n1\n0\n";
+    if (amrex::ParallelDescriptor::IOProcessor()) {
+        std::ofstream os(dir + "/Driver");
+        os << head << tail;
+    }
+    amrex::ParallelDescriptor::Barrier();
+    const DriverHistory f3 = gust::read_driver_history(dir);
+    EXPECT_EQ(f3.norm, 0);
+    const std::string log = restore_log(f3);
+    if (amrex::ParallelDescriptor::IOProcessor()) { EXPECT_NE(log.find(note), std::string::npos) << log; }
+    for (const char* bad : {"norm 2", "norm -1"}) {
+        if (amrex::ParallelDescriptor::IOProcessor()) {
+            std::ofstream os(dir + "/Driver");
+            std::string h4 = head;
+            h4.replace(h4.find("gust-driver 3"), 13, "gust-driver 4");
+            os << h4 << bad << "\n" << tail;
+        }
+        amrex::ParallelDescriptor::Barrier();
+        EXPECT_THROW(gust::read_driver_history(dir), std::runtime_error) << bad;
+    }
     amrex::ParallelDescriptor::Barrier();
     if (amrex::ParallelDescriptor::IOProcessor()) { amrex::FileSystem::RemoveAll(dir); }
 }

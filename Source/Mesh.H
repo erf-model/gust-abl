@@ -7,6 +7,7 @@
 #include <AMReX_MultiFab.H>
 #include <AMReX_Vector.H>
 
+#include <limits>
 #include <string>
 
 namespace gust {
@@ -40,6 +41,18 @@ struct MeshQuality
     int nz{0};
 };
 
+//! How far a checkpoint's node height may lie from this build's for a
+//! restart (m): 64 ulp of the height H of the top level (Mesh::zlevels().back()). A compiler that contracts
+//! the mesh build's multiply-adds differently moves a node by up to 1.5 ulp of
+//! H (measured: BTF, STF with capping, Sullivan, Askervein, a 5.3 km deep
+//! domain); a changed mesh or terrain input moves it by orders more (1e-9 m
+//! of hill height is refused). An STF cap that flips on a rounded value would
+//! move nodes beyond it, so acceptance across builds is likely, not certain.
+inline amrex::Real restart_height_tolerance (amrex::Real H)
+{
+    return 64 * std::numeric_limits<amrex::Real>::epsilon() * H;
+}
+
 //! The terrain-following mesh: node heights z_phys_nd (held
 //! by the State, which checkpoints them) and the metric terms derived from
 //! them with ERF's kernels (extern_erf/ERF_TerrainMetrics.cpp):
@@ -63,10 +76,11 @@ public:
     //! z_phys_nd (ghost nodes in x and y included); terrain.type is not used.
     void build_from_ground (const Inputs& in, const amrex::Geometry& geom, amrex::MultiFab& z_phys_nd);
 
-    //! After a restart: rebuild from the inputs, check the result equals the
-    //! checkpoint's z_phys_nd on every valid node (abort, naming io.restart,
-    //! if the mesh or terrain inputs changed), take the rebuilt ghost nodes,
-    //! then compute the metrics.
+    //! After a restart: rebuild from the inputs, check the result is within
+    //! restart_height_tolerance of the checkpoint's z_phys_nd on every valid
+    //! node (abort, naming io.restart, if the mesh or terrain inputs changed;
+    //! say so in the log when the nodes differ within it), take the rebuilt
+    //! nodes, ghosts included, then compute the metrics.
     void check_restart (const Inputs& in, const amrex::Geometry& geom,
                         amrex::MultiFab& z_phys_nd);
 

@@ -479,7 +479,9 @@ double idw_brute (const gust::TerrainPoints& pts, int k, double xq, double yq)
     std::vector<std::pair<double, int>> d(pts.x.size());
     for (std::size_t i = 0; i < pts.x.size(); ++i) {
         const double dx = pts.x[i] - xq, dy = pts.y[i] - yq;
-        d[i] = {dx * dx + dy * dy, static_cast<int>(i)};
+        // The interpolator's distance: each square rounded, then added (no
+        // build can fuse it, and it is symmetric in dx and dy).
+        d[i] = {std::fma(dx, dx, 0.0) + std::fma(dy, dy, 0.0), static_cast<int>(i)};
     }
     std::partial_sort(d.begin(), d.begin() + k, d.end());
     double ws = 0, zs = 0;
@@ -490,6 +492,37 @@ double idw_brute (const gust::TerrainPoints& pts, int k, double xq, double yq)
         zs += w * pts.z[d[i].second];
     }
     return zs / ws;
+}
+
+// Mirror-image neighbours tie exactly and the lower index wins, whatever the
+// compiler does with multiply-adds (audit A5, found by Pressel: with
+// dx * dx + dy * dy contracted to fma(dx, dx, dy * dy) the two mirror images
+// of a query on the diagonal of a regular grid differ in the last bit, and a
+// build that contracts differently picked the other one: the Askervein
+// surface moved by 0.23 m). A 0.1-spaced grid (not exact in binary), the same
+// coordinates in x and y, queries on the diagonal, k = 2, 4, 6 and 8, heights
+// that differ from point to point; both point orders, so either mirror image
+// is the lower index once.
+TEST (Mesh, IdwMirrorTiesAreTheLowerIndex)
+{
+    for (const bool transposed : {false, true}) {
+        gust::TerrainPoints g;
+        for (int j = 0; j < 9; ++j) {
+            for (int i = 0; i < 9; ++i) {
+                const int a = transposed ? j : i, b = transposed ? i : j;
+                g.x.push_back(0.1 * a);
+                g.y.push_back(0.1 * b);
+                g.z.push_back(static_cast<double>((7 * a + 3 * b) % 11));
+            }
+        }
+        for (const int k : {2, 4, 6, 8}) {
+            const gust::IdwInterpolator idw(g, k, 2);
+            for (int n = 1; n < 80; ++n) {
+                const double q = 0.01 * n + 0.003;
+                EXPECT_EQ(idw(q, q), idw_brute(g, k, q, q)) << transposed << " k " << k << " at " << q;
+            }
+        }
+    }
 }
 
 // The bucket search gives the brute-force IDW answer, the
@@ -678,6 +711,64 @@ TEST (Mesh, RestartWithOtherTerrainIsRefused)
     auto other = s.in;
     other.terrain.hill_height = 151;
     EXPECT_THROW(s.mesh.check_restart(other, s.geom, s.z), std::runtime_error);
+}
+
+// A checkpoint whose node heights lie within restart_height_tolerance of
+// this build's (as from a compiler that contracts the multiply-adds
+// differently) restarts, on this build's heights; one beyond it, or with a
+// NaN height, is refused (audit A5, U6). Before, any difference refused it.
+TEST (Mesh, RestartAcceptsHeightsWithinAFewUlp)
+{
+    MeshCase s = hill3d(1);
+    s.mesh.build(s.in, s.geom, s.z);
+    amrex::MultiFab ref(s.z.boxArray(), s.z.DistributionMap(), 1, s.z.nGrowVect());
+    amrex::MultiFab::Copy(ref, s.z, 0, 0, 1, s.z.nGrowVect());
+    const amrex::Real tol = gust::restart_height_tolerance(s.mesh.zlevels().back());
+    EXPECT_GT(tol, 0);
+    EXPECT_LT(tol, amrex::Real(100) * std::numeric_limits<amrex::Real>::epsilon() * s.mesh.zlevels().back());
+    // Every valid node moved: up by one ulp, or by +-tol / 2.
+    auto perturb = [&] (int mode, amrex::Real by) {
+        amrex::MultiFab::Copy(s.z, ref, 0, 0, 1, s.z.nGrowVect());
+        for (amrex::MFIter mfi(s.z, false); mfi.isValid(); ++mfi) {
+            const auto z = s.z.array(mfi);
+            amrex::LoopOnCpu(mfi.validbox(), [&] (int i, int j, int k) {
+                const amrex::Real v = z(i, j, k);
+                z(i, j, k) = (mode == 0) ? std::nextafter(v, std::numeric_limits<amrex::Real>::infinity())
+                           : v + (((i + j + k) % 2 == 0) ? by : -by);
+            });
+        }
+    };
+    auto same_as_ref = [&] () {
+        amrex::MultiFab d(s.z.boxArray(), s.z.DistributionMap(), 1, s.z.nGrowVect());
+        amrex::MultiFab::Copy(d, s.z, 0, 0, 1, s.z.nGrowVect());
+        amrex::MultiFab::Subtract(d, ref, 0, 0, 1, s.z.nGrowVect());
+        return d.norminf(0, d.nGrow()) == 0;
+    };
+    perturb(0, 0);
+    EXPECT_NO_THROW(s.mesh.check_restart(s.in, s.geom, s.z));
+    EXPECT_TRUE(same_as_ref()) << "the run continues on this build's heights";
+    perturb(1, tol / 2);
+    EXPECT_NO_THROW(s.mesh.check_restart(s.in, s.geom, s.z));
+    EXPECT_TRUE(same_as_ref());
+    perturb(1, 2 * tol);
+    EXPECT_THROW(s.mesh.check_restart(s.in, s.geom, s.z), std::runtime_error);
+    perturb(1, 1000 * tol);   // 1.7e-8 m in double
+    EXPECT_THROW(s.mesh.check_restart(s.in, s.geom, s.z), std::runtime_error);
+    // One NaN node.
+    amrex::MultiFab::Copy(s.z, ref, 0, 0, 1, s.z.nGrowVect());
+    for (amrex::MFIter mfi(s.z, false); mfi.isValid(); ++mfi) {
+        if (mfi.index() != 0) { continue; }
+        const amrex::Box vb = mfi.validbox();
+        const amrex::IntVect iv = vb.smallEnd() + amrex::IntVect(1, 1, 2);
+        s.z.array(mfi)(iv[0], iv[1], iv[2]) = std::numeric_limits<amrex::Real>::quiet_NaN();
+    }
+    {
+        // The check tests the NaN first (d != d, quiet), but clang may still
+        // evaluate the ordered d > tol of the same lane, which raises the
+        // invalid flag the CI traps: the NaN case runs without the trap.
+        const gust::test::ScopedNoInvalidTrap no_trap;
+        EXPECT_THROW(s.mesh.check_restart(s.in, s.geom, s.z), std::runtime_error);
+    }
 }
 
 // The quality report on a steep ridge warns about STF capping.

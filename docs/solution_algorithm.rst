@@ -586,7 +586,8 @@ divided by a fixed scale:
   point counts once: a face shared by two boxes, or a periodic face and its image, is one point, so the norm does
   not depend on ``mesh.max_grid_size``. (Before audit A4 such a face counted twice. A checkpoint written before then
   holds its reference and residuals in that norm; a restart compares them with the new norm, which differs by
-  about the share of seam faces, so the restarted run is not bit for bit the run it was.)
+  about the share of seam faces, so the restarted run is not bit for bit the run it was. The driver history
+  records the norm from format 4 on; a restart from format 1 to 3 says in the log that it cannot tell.)
 - :math:`U` = 10 m/s, :math:`\theta_s` = 10 K, :math:`k_s` = 0.1 m²/s²: fixed scales, not inputs.
 - :math:`H`: the depth of the layers, from the ground level to the top level. On a uniform mesh this is
   ``mesh.prob_hi`` z; with ``mesh.stretch_ratio`` or ``mesh.zlevels_file`` it is where the layers end, which can be

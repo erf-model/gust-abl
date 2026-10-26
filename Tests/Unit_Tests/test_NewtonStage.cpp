@@ -50,9 +50,10 @@ double diff (gust::State& a, gust::State& b, int f)
 // The hill with the criterion of these tests (6 orders, residual_tol 1e-9)
 // and the switch at r <= switch_residual.
 std::unique_ptr<HillRun> make_run (Limiter lim, StageKind stage, double switch_residual = 1e-4,
-                                   gust::NewtonPreconditionerKind pc = gust::NewtonPreconditionerKind::simplec)
+                                   gust::NewtonPreconditionerKind pc = gust::NewtonPreconditionerKind::simplec,
+                                   const amrex::DistributionMapping* rank_map = nullptr)
 {
-    auto hr = std::make_unique<HillRun>(0.01, 8, 8, 4, 0, lim, stage);
+    auto hr = std::make_unique<HillRun>(0.01, 8, 8, 4, 0, lim, stage, rank_map);
     hr->s.sopt.newton_preconditioner = pc;
     hr->s.sopt.criterion.residual_tol = amrex::Real(1e-9);
     hr->s.sopt.criterion.residual_drop_orders = 6;
@@ -277,7 +278,12 @@ TEST(NewtonStage, RestartInsideTheStage)
         hr->ls->newton_stage()->write_checkpoint(dir);
         for (int it = 0; it < 3; ++it) { d.step(hr->q); }
 
-        auto hr2 = make_run(Limiter::van_albada, StageKind::simplec_newton, 1e-3, pc);
+        // On hr's ranks: DistributionMapping(ba) follows each rank's memory at
+        // the call, and the simplec preconditioner's Poisson solve sums per
+        // rank, so two maps could differ in the last bits (with two boxes they
+        // happen not to; audit A5).
+        auto hr2 = make_run(Limiter::van_albada, StageKind::simplec_newton, 1e-3, pc, &hr->c.dm);
+        ASSERT_TRUE(hr2->c.dm == hr->c.dm);
         gust::read_checkpoint(dir, hr2->q, hr2->c.in.mesh);
         hr2->ls->driver().restore(gust::read_driver_history(dir), hr2->q);
         hr2->ls->closure.read_checkpoint(dir, hr2->c.ba, hr2->c.dm, hr2->c.geom);
