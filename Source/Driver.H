@@ -221,6 +221,10 @@ struct DriverHistory
     //! (residual_scale_height). 0: not recorded (format 1 and 2, written with
     //! prob_hi z - prob_lo z).
     amrex::Real scale_height{0};
+    //! The residual norm the history was recorded with: 1, each distinct
+    //! point once (a box-seam face and a periodic image count once, #60);
+    //! 0: not recorded (formats 1 to 3; before #60 those faces counted twice).
+    int norm{0};
 };
 
 //! <dir>/Driver, text, hex floats. Aborts, naming the directory, on a file

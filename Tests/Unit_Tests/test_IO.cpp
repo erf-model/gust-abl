@@ -169,6 +169,47 @@ TEST (IO, CheckpointRestartIsBitIdenticalOnANewLayout)
     }
 }
 
+// The checkpoint's solution fields hold every ghost image as the
+// neighbouring box's (or the periodic image's) valid value, even when the
+// state's own ghosts are stale (fill_state sets them to 1e30); the state is
+// not touched (audit A5, from Pressel's A3 review: theta and k images were
+// written stale). On 3 x 2 uneven boxes, x periodic.
+TEST (IO, CheckpointGhostImagesAreTheNeighboursValues)
+{
+    const auto mesh = test_mesh();
+    const auto geom = gust::make_geometry(mesh);
+    const auto ba = gust::make_box_array(mesh);
+    const amrex::DistributionMapping dm(ba);
+    gust::State s;
+    s.define(ba, dm);
+    fill_state(s);
+    // One value per shared face, as the solver keeps them (the pattern gives
+    // a periodic face and its image different values, and which copy an
+    // image takes would then depend on the ranks).
+    int c = 0;
+    for (auto& f : s.fields()) {
+        ++c;
+        f.mf->OverrideSync(geom.periodicity());
+        f.mf->setBndry(amrex::Real(1.0e30) * c);
+    }
+    const ScopedDir dir{gust::write_checkpoint("ut_io_chkghost", s, mesh)};
+    c = 0;
+    for (auto& f : s.fields()) {
+        ++c;
+        if (f.mf == &s.z_phys_nd) { continue; }
+        amrex::MultiFab src;
+        amrex::VisMF::Read(src, amrex::MultiFabFileFullPrefix(0, dir.name, "Level_", f.name));
+        ASSERT_EQ(src.nGrowVect(), f.mf->nGrowVect()) << f.name;
+        // The images from the file's own valid data: equal to what it holds.
+        amrex::MultiFab ref(src.boxArray(), src.DistributionMap(), 1, src.nGrowVect());
+        amrex::MultiFab::Copy(ref, src, 0, 0, 1, src.nGrowVect());
+        ref.FillBoundary(geom.periodicity());
+        EXPECT_EQ(count_bit_differences(src, ref, src.nGrow()), 0) << f.name;
+        // The state keeps its own ghosts.
+        EXPECT_EQ(f.mf->max(0, f.mf->nGrow()), amrex::Real(1.0e30) * c) << f.name;
+    }
+}
+
 // A checkpoint written before the solution fields had two ghost cells (one,
 // before the MUSCL convection operators) restarts bit for bit: only valid
 // data is restored.

@@ -13,6 +13,7 @@
 #include <cmath>
 #include <limits>
 #include <cstdio>
+#include <iomanip>
 #include <sstream>
 
 namespace gust {
@@ -160,34 +161,61 @@ void Mesh::adopt (const Mesh& from, const amrex::Geometry& geom, amrex::MultiFab
     make_quality(geom, z_phys_nd);
 }
 
+namespace {
+std::string fmt_real (amrex::Real x)
+{
+    std::ostringstream os;
+    os << std::setprecision(4) << x;
+    return os.str();
+}
+} // namespace
+
 void Mesh::check_restart (const Inputs& in, const amrex::Geometry& geom, amrex::MultiFab& z_phys_nd)
 {
     amrex::MultiFab rebuilt(z_phys_nd.boxArray(), z_phys_nd.DistributionMap(), 1, z_phys_nd.nGrowVect());
     rebuilt.setVal(0.0);
     build(in, geom, rebuilt);
 
-    // Valid nodes only; compared exactly, with no arithmetic on the values.
-    long ndiff = 0;
+    // Valid nodes only, within restart_height_tolerance: another compiler
+    // (or a GPU build) may contract the multiply-adds of the mesh build
+    // differently and land a few ulp away; different inputs move nodes by
+    // far more. A NaN on either side is refused too, by d != d, a quiet
+    // comparison. The ordered d > tol may still be evaluated for it without a
+    // branch (clang), which raises the invalid flag: a run with
+    // amrex.fpe_trap_invalid = 1 then stops there instead of at the message.
+    const amrex::Real tol = restart_height_tolerance(m_zlevels.back());
+    amrex::Real maxdiff = 0;
+    long nbad = 0;
     for (amrex::MFIter mfi(z_phys_nd, false); mfi.isValid(); ++mfi) {
         const amrex::Box bx = mfi.validbox();
         const auto a = z_phys_nd.const_array(mfi);
         const auto b = rebuilt.const_array(mfi);
-        amrex::ReduceOps<amrex::ReduceOpSum> op;
-        amrex::ReduceData<long> data(op);
-        op.eval(bx, data, [=] AMREX_GPU_DEVICE (int i, int j, int k) -> amrex::GpuTuple<long> {
-            return {(a(i, j, k) == b(i, j, k)) ? 0L : 1L};
+        amrex::ReduceOps<amrex::ReduceOpMax, amrex::ReduceOpSum> op;
+        amrex::ReduceData<amrex::Real, long> data(op);
+        op.eval(bx, data, [=] AMREX_GPU_DEVICE (int i, int j, int k) -> amrex::GpuTuple<amrex::Real, long> {
+            const amrex::Real d = std::abs(a(i, j, k) - b(i, j, k));
+            const bool bad = (d != d) || d > tol;
+            return {bad ? amrex::Real(0) : d, bad ? 1L : 0L};
         });
-        ndiff += amrex::get<0>(data.value());
+        const auto v = data.value();
+        maxdiff = amrex::max(maxdiff, amrex::get<0>(v));
+        nbad += amrex::get<1>(v);
     }
-    amrex::ParallelAllReduce::Sum(ndiff, amrex::ParallelDescriptor::Communicator());
-    if (ndiff != 0) {
+    amrex::ParallelAllReduce::Sum(nbad, amrex::ParallelDescriptor::Communicator());
+    amrex::ParallelAllReduce::Max(maxdiff, amrex::ParallelDescriptor::Communicator());
+    if (nbad != 0) {
         amrex::Abort("gust: io.restart: the checkpoint's node heights differ from the ones the "
-                     "mesh and terrain inputs give at " + std::to_string(ndiff)
-                     + " nodes; restart with the inputs the checkpoint was written with");
+                     "mesh and terrain inputs give at " + std::to_string(nbad)
+                     + " nodes (by more than " + fmt_real(tol) + " m); restart with the inputs the checkpoint was "
+                     "written with");
     }
-    // The ghost nodes too: a checkpoint written before fill_ghost_columns
-    // holds the old corner and below-ground ghost heights (valid nodes are
-    // equal, checked above).
+    if (maxdiff > 0) {
+        amrex::Print() << "gust: io.restart: the checkpoint's node heights differ from this build's by up to "
+                       << maxdiff << " m (within " << tol << " m); the run continues on this build's heights\n";
+    }
+    // This build's heights, ghost nodes too: a checkpoint written before
+    // fill_ghost_columns holds the old corner and below-ground ghost heights,
+    // and one from another build may differ in the last bits (checked above).
     amrex::MultiFab::Copy(z_phys_nd, rebuilt, 0, 0, 1, z_phys_nd.nGrowVect());
 }
 
