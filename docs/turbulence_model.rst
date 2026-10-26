@@ -268,5 +268,5 @@ limit without the blending, first-order upwinding, the sensitivity to :math:`C_r
 and :math:`H_b`, and the grids) and draws its figures.
 
 The comparison uses data made openly available by N. Wagenbrenner (windninja-tools, the Big Southern Butte
-database and Wagenbrenner et al. 2019), T. Ishihara and Q. Zhou (the ridge wind-tunnel data) and ERCOFTAC (the
+database and Wagenbrenner et al. 2019), T. Ishihara and T. Zhou (the ridge wind-tunnel data) and ERCOFTAC (the
 RUSHIL data of Khurshudyan, Snyder and Nekrasov); we thank them. The case READMEs list the sources and licences.
