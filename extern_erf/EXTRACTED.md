@@ -39,6 +39,7 @@ ERF's `LICENSE.md` goes into `extern_erf/` with the first copied file. Copied fi
 | `extern_erf/ERF_SolverUtils.H` | `Source/LinearSolvers/ERF_SolverUtils.H` | 92410d578f612ab9e844c450bf8e900194becfb5 | unchanged | get_fft_bc: maps the domain boundary names to FFT::Boundary (Outflow/Open: odd, periodic: periodic, others: even) |
 | `extern_erf/ERF_MOSTUtils.H` | `Source/BoundaryConditions/ERF_MOSTUtils.H` | 92410d578f612ab9e844c450bf8e900194becfb5 | unchanged | similarity_funs (Businger-Dyer and Jimenez stability functions) for the surface layer; ERF#3982 (reference-height lookup) is already in this ERF |
 | `extern_erf/ERF_RANSClosure.H` | `Source/Diffusion/ERF_RANSClosure.H` | 92410d578f612ab9e844c450bf8e900194becfb5 | unchanged | AL01 k-L closure relations (geom_length, smooth_Rt, turb_length, cmu, cmu_prime): the reference of `Closure.KernelsMatchErfBitForBit` |
+| `extern_erf/ERF_ForestUtils.H` | `Source/Utils/ERF_ForestUtils.H` | 92410d578f612ab9e844c450bf8e900194becfb5 | unchanged | validate_laimax, the range check of the Lalic–Mihailovic laimax (canopy.laimax and type 2 lines of canopy.file, Canopy.cpp) |
 <!-- manifest:end -->
 
 The shims in `Source/erf_shims/` stand in for two ERF headers the copied files include (`ERF_IndexDefines.H`: only

@@ -1,0 +1,5 @@
+# type  x    y    height  diameter  cd    lai  laimax
+2       160  160  25.0    70        0.20  6.0  0.7    # across box edges (x = 160 and y = 160)
+1       190  150  12.5    40        0.30  3.5  0.0    # LAI changed from 3.0
+1       5    300  30.5    50        0.25  4.0  0.0    # across the periodic seam x = 0
+2       480  60   18.0    60        0.15  9.0  0.85   # dense, top-heavy

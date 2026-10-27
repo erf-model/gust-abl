@@ -224,6 +224,72 @@ signal in that test (SIGILL on macOS arm64), so the tests after it did not run.
      - p′ not restored after the projection
      - ``ProlongationAndProjectionIsDivergenceFree``
 
+The one-line mutants of the canopy's drag field (``Source/Canopy.cpp``, ``Source/Canopy_K.H``), each run against
+``Canopy.*`` on two ranks with the unit-test flags by ``tools/canopy_mutants.py`` (macOS arm64, AppleClang). All 18 are
+killed.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 6 50 44
+
+   * - Mutant
+     - Change
+     - Failing tests
+   * - C1
+     - Lower-branch polynomial coefficient :math:`12/6^3` changed to :math:`12/215`
+     - ``LalicMihailovicProfileIntegratesToOne``, ``ThinCellGivesErfPointValue``
+   * - C2
+     - Upper-branch tail without the erfc term
+     - ``LalicMihailovicProfileIntegratesToOne``, ``ThinCellGivesErfPointValue``
+   * - C3
+     - A cell across :math:`\eta_m` misses the lower branch's top
+     - ``ColumnIntegralIsCdLai``, ``LalicMihailovicProfileIntegratesToOne``, ``ThinCellGivesErfPointValue``
+   * - C4
+     - Uniform profile not clipped at the canopy top
+     - ``ColumnIntegralIsCdLai``, ``FollowsLocalGroundOnHill``, ``ThinCellGivesErfPointValue``
+   * - C5
+     - Cell value not divided by the cell's height
+     - ``ColumnIntegralIsCdLai``, ``FollowsLocalGroundOnHill``, ``ThinCellGivesErfPointValue``
+   * - C6
+     - Heights from sea level, not from the local ground
+     - ``FollowsLocalGroundOnHill``
+   * - C7
+     - A patch across the periodic seam not imaged
+     - ``PatchesSameOnEveryLayoutAcrossSeam``
+   * - C8
+     - Overlapping patches replace instead of add
+     - ``PatchesSameOnEveryLayoutAcrossSeam``
+   * - C9
+     - Ghost columns not imaged
+     - ``PatchesSameOnEveryLayoutAcrossSeam``
+   * - C10
+     - Restriction without the fine :math:`J`
+     - ``RestrictionKeepsLayerIntegrals``
+   * - C11
+     - Restriction not divided by the coarse :math:`J`
+     - ``RestrictionKeepsLayerIntegrals``
+   * - C12
+     - Restart hash of the file name, not its contents
+     - ``RestartRefusesAnotherCanopy``
+   * - C13
+     - Restart with another canopy accepted
+     - ``RestartRefusesAnotherCanopy``
+   * - C14
+     - Patch height 0 accepted
+     - ``PatchFileChecks``
+   * - C15
+     - ``canopy.laimax`` with the uniform profile accepted
+     - ``OptionChecks``
+   * - C16
+     - Negative map values accepted
+     - ``PatchFileChecks``
+   * - C17
+     - A patch wider than a periodic direction accepted
+     - ``PatchFileChecks``
+   * - C18
+     - Cells above half the tallest patch skip the patch loop
+     - ``PatchesSameOnEveryLayoutAcrossSeam``
+
 The one-line mutants of the Newton stage (``Source/NewtonStage.cpp`` and the switch rules in ``Source/Driver.cpp``),
 each run against ``Driver.*`` and ``NewtonStage.*`` on two ranks with the unit-test flags by
 ``tools/newton_stage_mutants.py`` (macOS arm64, AppleClang). 13 of 15 are killed. N14 and N15 survive: they matter only
@@ -498,6 +564,17 @@ Current tests
    * - ``smoke_clean``, ``smoke_run``, ``smoke_restart``, ``smoke_restart_matches``
      - A 2-rank run; a 3-rank restart on another box layout, whose log must show the restart; the two plotfiles
        identical under ``amrex_fcompare`` at zero tolerance.
+   * - ``canopy_clean``, ``canopy_run``, ``canopy_column_integrals``, ``canopy_check_detects_change``,
+       ``canopy_restart``, ``canopy_restart_matches``
+     - The canopy's drag field (``Tests/Infrastructure/Canopy_Field``): four ERF-format patches on a stretched,
+       periodic-in-x mesh of 12 boxes, 2 ranks. Every column's integral of ``canopy_drag`` is :math:`C_d`
+       LAI of the patches over it (3e-16 in double precision; the check allows 5e-6) and 0 outside them (the
+       vertical shape is checked by the unit tests; maps are covered by the unit tests only); the same
+       check against the patch file with one LAI changed fails (expected); a 3-rank restart on another layout with the
+       same canopy gives the same plotfile at zero tolerance.
+   * - ``abort_canopy_restart_changed``, ``abort_canopy_restart_none``, ``abort_canopy_inputs``
+     - A restart with one patch's LAI changed, and one without a canopy, stop naming ``io.restart``; a deck of canopy
+       mistakes stops, naming each input.
    * - ``abort_unknown_key``, ``abort_range``, ``abort_repeated_key``, ``abort_restart_mesh``,
        ``abort_restart_overwrite``, ``abort_restart_overwrite_spelled``, ``abort_column_guess_file_no_column``
      - Decks that must stop, with the input named in the message. Audit A10: ``io.restart = ./smoke_chk00000/``
@@ -1057,6 +1134,31 @@ GoogleTest suite
        wall flux minus the interior flux over the cell volume; the k rows are the wall-k rows (both modes). The
        ``line_jacobian`` rows lose the ground neighbour and gain the wall terms. At low wind the wall-k row uses
        u* ≥ 0.01 m/s. Invalid options and a reference height outside the columns stop with a message.
+   * - ``Canopy.LalicMihailovicProfileIntegratesToOne``, ``Canopy.ThinCellGivesErfPointValue``
+     - UT-8.1.2: the profile's :math:`N` in closed form against quadrature (``scipy.integrate.quad``) for
+       :math:`\eta_m` = 0, 0.3, 0.8, 0.95 to 1e-11; the shape integrates to :math:`N` (Simpson, 1e-8); :math:`F` is
+       continuous at :math:`\eta_m`, rises from 0 to 1 with slope :math:`P/N`; the fraction between two heights equals
+       :math:`F(b) - F(a)` and stays positive just below the top. A thin cell gives ERF's point value
+       :math:`C_d\,\mathrm{LAI}\,P/(hN)`; a cell across the top takes the part below it.
+   * - ``Canopy.ColumnIntegralIsCdLai``, ``Canopy.FollowsLocalGroundOnHill``
+     - UT-8.1.1 and UT-8.1.3: every column's sum of :math:`f J \Delta\zeta` is :math:`C_d` LAI with a height and LAI
+       that vary over the domain and the top inside stretched cells, both profiles, :math:`C_d` constant and from a
+       map; :math:`f` is 0 exactly above the canopy and > 0 below. On a 50 m hill (BTF) the same holds and the first
+       cell is :math:`C_d \mathrm{LAI}/h` in every column (heights from sea level would leave the hill bare).
+   * - ``Canopy.PatchesSameOnEveryLayoutAcrossSeam``
+     - UT-8.1.4: three patches give the same field, bit for bit, on 1, 16 and uneven boxes; the patch across the
+       periodic seam reaches the columns on the other side; overlapping patches add, and a layer above the shorter
+       patch holds the taller one's drag alone; the ghost column is the periodic image in x and the nearest column
+       in y.
+   * - ``Canopy.RestrictionKeepsLayerIntegrals``
+     - UT-8.1.5: on a hill smoothed differently on each level (levels 1 and 2, gathered on one box or not), each
+       layer's integral of :math:`f` over the coarse cells equals that over level 0.
+   * - ``Canopy.RestartRefusesAnotherCanopy``, ``Canopy.OptionChecks``, ``Canopy.PatchFileChecks``
+     - UT-8.1.7: the same canopy restarts; one changed LAI, a canopy where the checkpoint has none and none where it
+       has one are refused; the hash follows the contents, not the file name. The option checks, the patch file's
+       lines (named by number), negative map values and a patch wider than the periodic domain are refused with the
+       input named. UT-8.1.6 (``canopy.type = none`` leaves every answer bit-identical) is the existing suite and its
+       golds, unchanged by the canopy.
    * - ``BoundaryTypes.PoissonTypesMatchErfGetFftBc``
      - The Poisson boundary types of every face type on every face it may take, periodic directions included, equal
        ERF's ``get_fft_bc`` (the copied ``ERF_SolverUtils.H``).

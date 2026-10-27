@@ -60,6 +60,7 @@
 // previous; cfl0). See check_sequencing_options.
 
 #include "BoundaryConditions.H"
+#include "Canopy.H"
 #include "Closure.H"
 #include "Convection.H"
 #include "Driver.H"
@@ -167,6 +168,9 @@ struct RunSetup
 //! With bc.surface_z0_file the level owns its roughness map (SurfaceRoughness.H):
 //! read from the file when z0_fine is null (level 0), else averaged from
 //! level 0's map z0_fine.
+//! With a canopy (Canopy.H), level 0 takes the run's (canopy, built from the
+//! inputs) and a coarse level restricts it (canopy with canopy_fine_detJ, level
+//! 0's detJ) into its own canopy_field.
 //! label prefixes its log lines ("" for level 0, whose lines are those of a
 //! run without sequencing).
 class LevelSolver
@@ -174,7 +178,8 @@ class LevelSolver
 public:
     LevelSolver (const RunSetup& setup, const Mesh& mesh, const amrex::Geometry& geom, const amrex::MultiFab& z_nd,
                  const amrex::BoxArray& ba, const amrex::DistributionMapping& dm, const std::string& label,
-                 bool newton = false, const amrex::MultiFab* z0_fine = nullptr);
+                 bool newton = false, const amrex::MultiFab* z0_fine = nullptr, const Canopy* canopy = nullptr,
+                 const amrex::MultiFab* canopy_fine_detJ = nullptr);
     // res_in, the stage's copy of it and the driver's diffusivity point into
     // this object: it can be neither copied nor moved.
     LevelSolver (const LevelSolver&) = delete;
@@ -188,6 +193,9 @@ public:
     //! The surface-layer options of this level: the run's, with z0_map set to z0_map_field when there is a map.
     SurfaceLayerOptions surf;
     amrex::MultiFab z0_map_field;  //!< the roughness map (empty without bc.surface_z0_file)
+    Canopy canopy_field;           //!< a coarse level's canopy (restricted from level 0)
+    //! This level's canopy: the run's on level 0, canopy_field on a coarse level; null without one.
+    const Canopy* canopy{nullptr};
     ResidualInputs res_in;
 
     [[nodiscard]] Driver& driver () { return *m_driver; }
