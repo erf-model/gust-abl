@@ -753,6 +753,71 @@ TEST(BoundaryFill, RulesPerFaceType)
     }
 }
 
+// u differs at every x face point: 2 + i + 0.01 (j + k) on the nodes. A
+// device lambda cannot be inside a TEST body (CUDA), so a function of its own.
+// The test compares with a host copy taken before the fill: a GPU build may
+// contract the expression into an FMA, which the host's value would not be.
+void set_u_by_node (amrex::MultiFab& u)
+{
+    for (amrex::MFIter mfi(u, false); mfi.isValid(); ++mfi) {
+        const auto a = u.array(mfi);
+        amrex::ParallelFor(mfi.validbox(), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+        {
+            a(i, j, k) = amrex::Real(2 + i) + amrex::Real(0.01) * (j + k);
+        });
+    }
+}
+
+// A domain two cells wide in x with slip walls on both x faces: the low
+// face's second ghost of u mirrors the high face point (u(-2) = -u(2)) and
+// the high face's second ghost the low one (u(4) = -u(0)). The fills run the
+// low face first, so u(-2) takes u(2) before the high face sets it to 0, and
+// u(4) the low face's 0. fill_direction splits such a fill into two launches;
+// its single launch queues the high face first, so on a CPU build (tags run in
+// order) a lost split fails here. On a GPU the order in one launch is not
+// fixed, so only the CPU shows it.
+TEST(BoundaryFill, NarrowDomainFillsTheLowFaceFirst)
+{
+    PCase c;
+    c.in.mesh.n_cell = amrex::IntVect(2, 12, 8);
+    c.in.mesh.prob_hi = {125, 800, 500};
+    c.in.mesh.is_periodic = {0, 1, 0};
+    c.in.mesh.max_grid_size = {8, 8};
+    c.in.mesh.dz0 = amrex::Real(500 * 0.06 / (std::pow(1.06, 8) - 1));
+    c.in.mesh.stretch_ratio = amrex::Real(1.06);
+    c.in.mesh.stretch_ratio_given = true;
+    c.in.terrain.smoothing = 0;
+    c.make(flat);
+    gust::State q;
+    define_state(q, c);
+    set_u_by_node(q.u);
+    for (auto* mf : {&q.v, &q.w, &q.p}) { mf->setVal(0); }
+    q.theta.setVal(300);
+    q.tke.setVal(amrex::Real(0.1));
+    BoundaryInputs in = lateral_inputs(FaceType::slip_wall, FaceType::slip_wall, FaceType::periodic, FaceType::periodic,
+                                       FaceType::slip_wall, FaceType::slip_wall);
+    BoundaryConditions bc(in, c.geom, c.mesh, kNoCoriolis);
+    std::vector<amrex::FArrayBox> before;
+    for (amrex::MFIter mfi(q.u, false); mfi.isValid(); ++mfi) { before.push_back(host_copy(q.u, mfi)); }
+    bc.fill_ghosts(q, nullptr, kBuoy);
+    int b = 0;
+    for (amrex::MFIter mfi(q.u, false); mfi.isValid(); ++mfi, ++b) {
+        const auto u = host_copy(q.u, mfi);
+        const amrex::FArrayBox& u0 = before[b];
+        amrex::LoopOnCpu(mfi.validbox(), [&] (int i, int j, int k) {
+            if (i != 0) { return; }
+            const amrex::Real u2 = u0(amrex::IntVect(2, j, k));   // u(2) before the fill
+            ASSERT_NE(u2, 0);
+            EXPECT_EQ(u(amrex::IntVect(0, j, k)), 0);
+            EXPECT_EQ(u(amrex::IntVect(2, j, k)), 0);
+            EXPECT_EQ(u(amrex::IntVect(-1, j, k)), -u(amrex::IntVect(1, j, k)));
+            EXPECT_EQ(u(amrex::IntVect(-2, j, k)), -u2) << j << " " << k;
+            EXPECT_EQ(u(amrex::IntVect(3, j, k)), -u(amrex::IntVect(1, j, k)));
+            EXPECT_EQ(u(amrex::IntVect(4, j, k)), 0) << j << " " << k;
+        });
+    }
+}
+
 // The surface-layer ground on a sloped column: after the fill the centred
 // difference of u and v across the first cell centre equals the wall law's
 // gradient u*/(kappa (d0 + z0)) along the tangential wind, and theta's equals
