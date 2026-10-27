@@ -556,6 +556,19 @@ TEST(Canopy, OptionChecks)
     m.file = ok;
     m.given.emplace_back("file");
     EXPECT_NE(first(m).find("canopy.file has no effect with canopy.type = map"), std::string::npos);
+    // canopy.drag_diagonal (CanopyDrag.H): any type but none, three names.
+    p = patch_options(ok);
+    p.drag_diagonal_name = "implicit";
+    p.given.emplace_back("drag_diagonal");
+    EXPECT_EQ(first(p), "canopy.drag_diagonal must be derivative, picard or none (got implicit)");
+    m = map_options(ok, ok, 0.2, false);
+    m.given.emplace_back("drag_diagonal");
+    for (const char* name : {"derivative", "picard", "none"}) {
+        m.drag_diagonal_name = name;
+        EXPECT_TRUE(gust::check_canopy_options(m).empty()) << name;
+    }
+    none.given = {"drag_diagonal"};
+    EXPECT_EQ(first(none), "canopy.drag_diagonal has no effect with canopy.type = none");
 
     // ParmParse: a repeated key, a value that is not a number, two values.
     {

@@ -1,5 +1,7 @@
 #include "Residual.H"
 
+#include "CanopyDrag.H"
+
 #include "Diffusion.H"
 #include "ImplicitOperator.H"
 #include "BoundaryConditions.H"
@@ -301,6 +303,8 @@ void residual (const State& q, const ResidualInputs& in, const Mesh& mesh, const
         amrex::MultiFab::Add(R.tke, cf->eps, 0, 0, 1, 0);
     }
     if (in.surface != nullptr) { apply_wall_k(*ssp, *in.surface, q.tke, R.tke); }
+    // The canopy drag before the boundary rows, which replace their rows' residuals.
+    if (in.canopy != nullptr) { add_canopy_drag(*in.canopy, q.u, q.v, q.w, R.u, R.v, R.w); }
     if (in.bc != nullptr) {
         in.bc->add_damping(q, R);
         in.bc->apply_rows(q, R);
@@ -324,13 +328,15 @@ void line_jacobian (const State& q, const ResidualInputs& in, Equation eq, int d
     if (wall) { compute_surface_state(q, *in.surface, in.buoyancy, mesh, geom, ss); }
     ClosureFields cf;
     if (in.closure != nullptr) { evaluate_closure(q, in, mesh, geom, cf); }
+    CanopyRows rows;
+    if (in.canopy != nullptr) { canopy_rows(*in.canopy, q.u, q.v, q.w, rows); }
     line_jacobian({&F[0], &F[1], &F[2]}, q.z_phys_nd, in, eq, dir, mesh, geom, tri, wall ? &ss : nullptr,
-                  in.closure != nullptr ? &cf : nullptr);
+                  in.closure != nullptr ? &cf : nullptr, in.canopy != nullptr ? &rows : nullptr);
 }
 
 void implicit_rows (const amrex::Array<const amrex::MultiFab*, AMREX_SPACEDIM>& F, const amrex::MultiFab& z_nd,
                     const ResidualInputs& in, Equation eq, const Mesh& mesh, const amrex::Geometry& geom,
-                    amrex::MultiFab& A, const SurfaceState* surface, const ClosureFields* fields)
+                    amrex::MultiFab& A, const SurfaceState* surface, const ClosureFields* fields, const CanopyRows* canopy)
 {
     check_diffusivities("implicit_rows", in);
     const bool closure = (in.closure != nullptr);
@@ -359,16 +365,29 @@ void implicit_rows (const amrex::Array<const amrex::MultiFab*, AMREX_SPACEDIM>& 
         apply_wall_to_implicit(*surface, loc, mesh, geom, A);
         if (eq == Equation::tke) { apply_wall_k_to_implicit(*surface, *in.surface, A); }
     }
+    const bool momentum = (eq == Equation::u || eq == Equation::v || eq == Equation::w);
+    if (in.canopy != nullptr && momentum) {
+        if (canopy == nullptr) {
+            amrex::Abort("gust: implicit_rows: with a canopy the momentum rows need the drag's diagonal (canopy_rows)");
+        }
+        const int c = (eq == Equation::u) ? 0 : (eq == Equation::v) ? 1 : 2;
+        const amrex::MultiFab& ap = canopy->ap[static_cast<std::size_t>(c)];
+        if (ap.boxArray() != A.boxArray() || ap.DistributionMap() != A.DistributionMap()) {
+            amrex::Abort("gust: implicit_rows: the canopy rows are not on the equation's layout");
+        }
+        amrex::MultiFab::Add(A, ap, 0, coef_P, 1, 0);
+    }
+    // Last: the Dirichlet rows become identity rows.
     if (in.bc != nullptr) { in.bc->apply_to_implicit(eq, loc, z_nd, A); }
 }
 
 void line_jacobian (const amrex::Array<const amrex::MultiFab*, AMREX_SPACEDIM>& F, const amrex::MultiFab& z_nd,
                     const ResidualInputs& in, Equation eq, int dir, const Mesh& mesh, const amrex::Geometry& geom,
-                    amrex::MultiFab& tri, const SurfaceState* surface, const ClosureFields* fields)
+                    amrex::MultiFab& tri, const SurfaceState* surface, const ClosureFields* fields, const CanopyRows* canopy)
 {
     if (dir < 0 || dir > 2) { amrex::Abort("gust: line_jacobian: dir must be 0, 1 or 2"); }
     amrex::MultiFab A;
-    implicit_rows(F, z_nd, in, eq, mesh, geom, A, surface, fields);
+    implicit_rows(F, z_nd, in, eq, mesh, geom, A, surface, fields, canopy);
     const Loc loc = (eq == Equation::u) ? Loc::xface : (eq == Equation::v) ? Loc::yface : (eq == Equation::w) ? Loc::zface : Loc::cell;
     if (tri.empty()) { tri.define(A.boxArray(), A.DistributionMap(), n_line_coefs, 0); }
     check_operator_field("line_jacobian", "tri", tri, loc, mesh, 0);

@@ -56,6 +56,9 @@
 
 namespace gust {
 
+class CanopyFaceDrag;
+struct CanopyRows;
+
 class BoundaryConditions;
 
 //! The residual of each equation, on the state's locations, without ghosts.
@@ -126,6 +129,10 @@ struct ResidualInputs
     //! vector gets the homogeneous fill. With bc set, surface must match
     //! bc.zlo = surface_layer (set) or not (null).
     const BoundaryConditions* bc{nullptr};
+    //! The canopy drag on the velocity faces (CanopyDrag.H); null: none. The
+    //! residual adds f_c |U| u_c to the momentum rows, and implicit_rows the
+    //! diagonal of its option at the solver's linearisation state (CanopyRows).
+    const CanopyFaceDrag* canopy{nullptr};
 };
 
 //! Scratch fields of residual() and jvp, kept between calls so that a
@@ -190,11 +197,12 @@ void line_jacobian (const State& q, const ResidualInputs& in, Equation eq, int d
 //! (ImplicitOperator.H) with the wall model's rows (k's wall-k rows included), the closure's
 //! point-implicit k diagonal, the damping diagonal, the Dirichlet identity
 //! rows and the ghost couplings of the boundary rows applied (the same rows
-//! line_jacobian splits by direction). A: defined here if empty. surface and
-//! fields as for line_jacobian below.
+//! line_jacobian splits by direction). A: defined here if empty. surface,
+//! fields and canopy as for line_jacobian below.
 void implicit_rows (const amrex::Array<const amrex::MultiFab*, AMREX_SPACEDIM>& F, const amrex::MultiFab& z_nd,
                     const ResidualInputs& in, Equation eq, const Mesh& mesh, const amrex::Geometry& geom,
-                    amrex::MultiFab& A, const SurfaceState* surface = nullptr, const ClosureFields* fields = nullptr);
+                    amrex::MultiFab& A, const SurfaceState* surface = nullptr, const ClosureFields* fields = nullptr,
+                    const CanopyRows* canopy = nullptr);
 
 //! The same from transport fluxes F already computed (transport_fluxes), for
 //! line solvers that sweep every direction with one state.
@@ -203,10 +211,14 @@ void implicit_rows (const amrex::Array<const amrex::MultiFab*, AMREX_SPACEDIM>& 
 //! neighbour, u and v gain the wall stress's Picard coefficient, and k's
 //! rows are the wall-k rows. With a closure, fields must be its evaluation
 //! at the state (Closure::evaluate): the diffusivities come from it and k's
-//! diagonal gains the point-implicit source term dSdk.
+//! diagonal gains the point-implicit source term dSdk. With a canopy
+//! (in.canopy) the momentum rows need canopy, the drag's diagonal at the
+//! solver's linearisation state (canopy_rows, CanopyDrag.H): their a_P
+//! gains it.
 void line_jacobian (const amrex::Array<const amrex::MultiFab*, AMREX_SPACEDIM>& F, const amrex::MultiFab& z_nd,
                     const ResidualInputs& in, Equation eq, int dir, const Mesh& mesh, const amrex::Geometry& geom,
-                    amrex::MultiFab& tri, const SurfaceState* surface = nullptr, const ClosureFields* fields = nullptr);
+                    amrex::MultiFab& tri, const SurfaceState* surface = nullptr, const ClosureFields* fields = nullptr,
+                    const CanopyRows* canopy = nullptr);
 
 //! Jv = (R(q + eps v) - R(q)) / eps, with
 //!   eps = h (1 + mean |q~|) / rms(v~),   h = in.jvp_scales.step (sqrt(machine epsilon) by default)

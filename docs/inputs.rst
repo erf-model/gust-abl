@@ -244,6 +244,9 @@ Quick reference
    * - ``canopy.laimax``
      - ``0.8``
      - Height of the largest leaf area density, as a fraction of the canopy height
+   * - ``canopy.drag_diagonal``
+     - ``derivative``
+     - Implicit drag term on the momentum diagonal: ``derivative``, ``picard`` or ``none``
    * - **Forcing** (`forcing`_)
      -
      -
@@ -782,9 +785,9 @@ The wall model and the inflow profile's equilibrium :math:`k` and :math:`\nu_t` 
 ----------
 
 See :doc:`canopy`. The canopy's drag field is built in every run (with or without ``steady.stage``) and written to the
-plotfile as ``canopy_drag``; it does not act on the flow yet. A key that has no effect with the chosen
+plotfile as ``canopy_drag``; its drag acts on the momentum equations. A key that has no effect with the chosen
 ``canopy.type`` or ``canopy.profile`` is refused. A restart refuses canopy inputs other than those of the run it
-continues.
+continues, except ``canopy.drag_diagonal``.
 
 .. list-table::
    :header-rows: 1
@@ -828,6 +831,12 @@ continues.
      - ``0.8``
      - Finite, in [0, 1); ``map`` with ``lalic_mihailovic`` only. The height of the largest leaf area density as a
        fraction of the canopy height (ERF's ``erf.forest_laimax``).
+   * - ``canopy.drag_diagonal``
+     - ``derivative``
+     - ``derivative``, ``picard`` or ``none``; ``patches`` or ``map``. The drag's term on the diagonal of the
+       momentum rows: the exact derivative :math:`f_c(|U| + u_c^2/|U|)`, :math:`f_c|U|` with :math:`|U|` frozen,
+       or nothing (the drag explicit, as in ERF). The converged answer does not depend on it; the iterations do. May
+       change across a restart.
 
 ``forcing``
 -----------

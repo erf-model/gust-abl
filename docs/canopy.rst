@@ -5,10 +5,10 @@ A forest slows the wind inside and above it. GUST represents a forest as a drag 
 of a drag coefficient and the leaf area density of the trees in it. This page describes how that field is built
 from the ``canopy`` inputs (:doc:`inputs`).
 
-**Status.** The drag field is built, checked and written to the plotfile. It does not act on the flow yet: the drag
-in the momentum equations and the canopy terms of the turbulence model follow in later changes (Phase 8 of the
-development tracker). Until then a forest can still be represented by its roughness alone, with
-``bc.surface_z0_file``.
+**Status.** The drag field is built, checked, written to the plotfile and acts on the momentum equations (`Drag on
+the flow`_). The canopy terms of the turbulence model (wake production and the short-circuit of the energy cascade)
+follow in a later change (Phase 8 of the development tracker); until then the closure sees the canopy only through
+the slower wind.
 
 The geometry follows ERF's ``ForestDrag`` (``Source/SourceTerms/ERF_ForestDrag.cpp`` in ERF): the same patch file,
 the same two profile shapes and the same ``laimax`` range check (the copied ``ERF_ForestUtils.H``). The differences
@@ -132,6 +132,58 @@ dividing by :math:`J_c` keeps the integral rather than the mean. The coarse cano
 scales with :math:`J_c/J`: under a strongly smoothed ground it is spread over more or fewer layers than on level 0.
 Only the coarse levels' solution, the first guess of level 0, sees this.
 
+Drag on the flow
+----------------
+
+Each velocity face takes the momentum sink of ERF (``ERF_MakeMomSources.cpp``):
+
+.. math::
+
+   S_c = -f_c\,|U|\,u_c, \qquad |U| = \sqrt{u^2 + v^2 + w^2},
+
+with :math:`u_c` the face's own component (:math:`c = x, y, z`), :math:`f_c` the mean of :math:`f` over the two cells
+that share the face, and the other two components the means of their four faces around it. A :math:`z`-face on the
+ground or the top of the domain takes the one cell inside; those rows are the boundary rows of :math:`w`, which the
+boundary conditions set.
+
+**Implicit diagonal.** In a dense canopy the drag rate :math:`f\,|U|` can exceed the pseudo-time rate
+:math:`1/\Delta\tau` of the empty domain (:math:`C_d` = 0.2 and LAI 6 over 20 m at 2 m/s give about 0.1 /s). An explicit sink would
+then limit the pseudo-time step. The momentum rows therefore gain a term on their diagonal
+(``canopy.drag_diagonal``):
+
+.. math::
+
+   \texttt{derivative}:\ f_c\left(|U| + \frac{u_c^2}{|U|}\right) = \frac{\partial (f_c |U| u_c)}{\partial u_c},
+   \qquad \texttt{picard}:\ f_c\,|U|, \qquad \texttt{none}:\ 0.
+
+Each is :math:`\ge 0`, so :math:`1/\Delta\tau` plus the diagonal stays positive. The term reaches the line solves,
+the SIMPLEC :math:`a_P` and its :math:`d = a_P - \sum a_{nb}`, so the pressure correction sees the drag, and the
+Newton preconditioner. It changes the iterations, not the converged answer, and it does not enter the local
+pseudo-time step, as with the damping layers. ``none`` keeps ERF's explicit treatment for comparison; an explicit
+drag is stable only while :math:`f\,|U|\,\Delta\tau < 1` on the component along the wind (2 across it), which a
+dense canopy breaks at a CFL of 1.
+
+**Which diagonal.** On the drag alone (the scalar model :math:`du/d\tau = -f|u|u`), ``derivative`` damps every
+pseudo-time step monotonically, by :math:`1/(1 + 2 f|U|\Delta\tau)`; ``picard`` damps by
+:math:`(1 - x)/(1 + x)` with :math:`x = f|U|\Delta\tau`, which changes sign for :math:`x > 1` and tends to :math:`-1`
+for large steps. In the coupled solver the convection and diffusion on the same diagonal bound both. On
+``Tests/Canonical_RANS/Canopy_Drag`` the two took the same iterations within 5 % for LAI 1 and 3, and ``picard``
+2 % and 10 % more for LAI 6 and 10. ``derivative`` is the default: it is the drag's own Jacobian diagonal, so the
+SIMPLEC :math:`d` and the Newton stage's linearisation agree, and it does not depend on the other terms for its
+damping.
+
+**Linearisation state.** A solver computes the diagonal once per step, at the state it linearises about, before it
+updates any component (``CanopyRows``): the SIMPLEC predictor at the current state, the Newton preconditioner at the
+state of the Newton step, not at the increment it solves for.
+
+**Face mean.** :math:`f_c` is the plain mean of the two cells, as in ERF. On terrain a mean weighted by the cell
+volumes would keep the drag's integral exactly, as the coarse-level restriction does; the difference is of the
+order of the change of :math:`J` between neighbouring cells.
+
+The drag acts on the coarse levels of the grid hierarchy with their restricted field, and in the residual the Newton
+stage differentiates. The column first guess (``init.first_guess = column``) does not include it, so it starts with
+the open-ground wind inside the canopy.
+
 Output and restart
 ------------------
 
@@ -148,7 +200,8 @@ is still exact, since the layers telescope.
 The checkpoint holds the SHA-256 of the canopy inputs: the options and the contents of the files read, byte for
 byte. A restart with other canopy inputs, with a canopy where the checkpoint has none, or without one where it has
 one, stops and names ``io.restart``; it is checked before the field is built. Renaming a file with the same contents
-is accepted; editing a comment in it counts as a change.
+is accepted; editing a comment in it counts as a change. ``canopy.drag_diagonal`` is not part of the hash: it changes
+the iterations, not the fixed point, so it may change across a restart.
 
 Differences from ERF
 --------------------

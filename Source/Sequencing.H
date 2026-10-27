@@ -61,6 +61,7 @@
 
 #include "BoundaryConditions.H"
 #include "Canopy.H"
+#include "CanopyDrag.H"
 #include "Closure.H"
 #include "Convection.H"
 #include "Driver.H"
@@ -196,6 +197,8 @@ public:
     Canopy canopy_field;           //!< a coarse level's canopy (restricted from level 0)
     //! This level's canopy: the run's on level 0, canopy_field on a coarse level; null without one.
     const Canopy* canopy{nullptr};
+    //! The canopy's drag on the velocity faces (CanopyDrag.H), res_in.canopy; empty without a canopy.
+    CanopyFaceDrag canopy_faces;
     ResidualInputs res_in;
 
     [[nodiscard]] Driver& driver () { return *m_driver; }

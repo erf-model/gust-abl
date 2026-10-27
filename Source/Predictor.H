@@ -191,6 +191,8 @@
 
 namespace gust {
 
+struct CanopyRows;
+
 //! dtau on the x-, y- and z-faces from the cell-centred step: the mean of the
 //! two cells sharing the face (periodic images through the geometry; on a
 //! non-periodic domain face, the ground and the top the one cell). The face
@@ -239,6 +241,10 @@ struct MomentumPredictorResult
 //! w_vnn_slope_margin (0: off, else finite and >= 1; used only with the cap):
 //! the cap's term is limited on sloping ground so the pressure operator stays
 //! definite with this margin (the header).
+//! canopy (needed with in.canopy): the drag's diagonal at the linearisation
+//! state (canopy_rows, CanopyDrag.H), computed by the caller before this step
+//! updates any component: q for the SIMPLEC stage, the preconditioner's q0
+//! when q is an increment.
 MomentumPredictorResult momentum_predictor (State& q, const ResidualFields& R,
                                             const amrex::Array<const amrex::MultiFab*, AMREX_SPACEDIM>& F,
                                             const ResidualInputs& in,
@@ -249,7 +255,8 @@ MomentumPredictorResult momentum_predictor (State& q, const ResidualFields& R,
                                             const LineSweepOptions& sweep = LineSweepOptions(),
                                             amrex::Real w_vnn_cap = 0,
                                             // 0 here (#32's cap); the application's default is 4 (SimplecOptions)
-                                            amrex::Real w_vnn_slope_margin = 0);
+                                            amrex::Real w_vnn_slope_margin = 0,
+                                            const CanopyRows* canopy = nullptr);
 
 //! zline_jacobi or, with opt.kind = lusgs, zline_lusgs (LineSweeps.H, the
 //! line LU-SGS solve) with opt's ghosts, overlap
