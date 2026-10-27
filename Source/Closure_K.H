@@ -10,6 +10,9 @@
 //   L    = l_g                                   |N^2| <= eps (neutral)
 //        = (1/l_g^2 + N^2/(Cb^2 k))^(-1/2)       N^2 > 0  (stable, Eq. 26)
 //        = l_g (1 - Cmu0^6 Rt_s(l_g)/Cb^2)^(1/2) N^2 < 0  (unstable, Eq. 28)
+//   L    = min(L, alpha / f) in a forest canopy (f = Cd a the drag field,
+//          alpha = canopy.length_alpha; ERF's canopy_turbulence::limited_length,
+//          extern_erf/ERF_CanopyTurbulence.H), before eps, Rt and nu_t
 //   eps  = Cmu0^3 k^(3/2) / L                                            (Eq. 19)
 //   Rt   = L^2 N^2 / (k Cmu0^6), smoothed below Rt_crit (Burchard & Petersen)
 //   cmu  = (Cmu0 + 0.108 Rt) / (1 + 0.308 Rt + 0.00837 Rt^2)             (Eq. 31)
@@ -34,6 +37,8 @@
 // same way, so its divisor x + a < 0 never vanishes.
 
 #include "Dual.H"
+
+#include "ERF_CanopyTurbulence.H"
 
 #include <AMReX_GpuQualifiers.H>
 #include <AMReX_REAL.H>
@@ -64,6 +69,7 @@ struct Switches
     bool smooth_Rt_g{false}; //!< the unstable length's Rt (from l_g) is below Rt_crit
     bool smooth_Rt{false};   //!< the final Rt is below Rt_crit
     bool floored{false};     //!< k is at the floor
+    bool canopy_capped{false};   //!< L is the canopy cap alpha / f
 };
 
 namespace closure {
@@ -93,9 +99,12 @@ T smooth_Rt (T Rt, bool smooth, amrex::Real Rt_crit, amrex::Real Rt_min) noexcep
     return smooth ? smoothed : Rt;
 }
 
-//! The decisions for the primal values (k before the floor).
+//! The decisions for the primal values (k before the floor). f_drag and
+//! alpha: the canopy's drag field at the point and canopy.length_alpha (0: no
+//! cap, the default).
 AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
-Switches switches_for (amrex::Real k, amrex::Real N2, amrex::Real l_g, const ClosureConstants& c) noexcept
+Switches switches_for (amrex::Real k, amrex::Real N2, amrex::Real l_g, const ClosureConstants& c,
+                       amrex::Real f_drag = 0, amrex::Real alpha = 0) noexcept
 {
     Switches s;
     s.floored = !(k > c.tke_floor);
@@ -109,7 +118,9 @@ Switches switches_for (amrex::Real k, amrex::Real N2, amrex::Real l_g, const Clo
     s.smooth_Rt_g = (s.branch == 2) && (Rt_g < c.Rt_crit);
     const amrex::Real L_unstable = l_g * std::sqrt(amrex::Real(1) - c6 * c.inv_Cb_sq * smooth_Rt(Rt_g, s.smooth_Rt_g, c.Rt_crit, c.Rt_min));
     const amrex::Real L_stable = std::sqrt(amrex::Real(1) / (amrex::Real(1) / (l_g * l_g) + c.inv_Cb_sq * N2s / kf));
-    const amrex::Real L = (s.branch == 0) ? l_g : (s.branch == 1) ? L_stable : L_unstable;
+    const amrex::Real L_free = (s.branch == 0) ? l_g : (s.branch == 1) ? L_stable : L_unstable;
+    const amrex::Real L = canopy_turbulence::limited_length(L_free, f_drag, alpha);
+    s.canopy_capped = (L < L_free);
     s.smooth_Rt = (L * L * N2 / (kf * c.Cmu0_pow3 * c.Cmu0_pow3) < c.Rt_crit);
     return s;
 }
@@ -144,11 +155,13 @@ struct Point
 
 //! The closure at one point: k (T), the Brunt–Väisälä frequency squared N2
 //! (1/s^2), the strain invariant S2 = 2 S_ij S_ij (1/s^2), the capped
-//! geometric length l_g (m), the constants and the point's switches.
+//! geometric length l_g (m), the constants and the point's switches. L_cap:
+//! the canopy's length alpha / f, used where s.canopy_capped (a constant in
+//! k, so the capped L has no k derivative).
 template <class T>
 AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
 Point<T> closure_point (T k, amrex::Real N2, amrex::Real S2, amrex::Real l_g, const ClosureConstants& c,
-                        const Switches& s) noexcept
+                        const Switches& s, amrex::Real L_cap = 0) noexcept
 {
     const T one(amrex::Real(1));
     Point<T> p;
@@ -161,7 +174,8 @@ Point<T> closure_point (T k, amrex::Real N2, amrex::Real S2, amrex::Real l_g, co
     const T L_stable = dual::sqrt(one / (T(amrex::Real(1) / (l_g * l_g)) + T(c.inv_Cb_sq * N2s) / p.k));
     const T Rt_g = T(l_g * l_g * N2u) / (p.k * T(c.Cmu0_pow3) * T(c.Cmu0_pow3));
     const T L_unstable = T(l_g) * dual::sqrt(one - T(c6 * c.inv_Cb_sq) * smooth_Rt(Rt_g, s.smooth_Rt_g, c.Rt_crit, c.Rt_min));
-    p.L = (s.branch == 0) ? T(l_g) : (s.branch == 1) ? L_stable : L_unstable;
+    const T L_free = (s.branch == 0) ? T(l_g) : (s.branch == 1) ? L_stable : L_unstable;
+    p.L = s.canopy_capped ? T(L_cap) : L_free;
     // Dissipation (Eq. 19), rho = 1.
     p.eps = T(c.Cmu0_pow3) * dual::pow15(p.k) / p.L;
     // Richardson number from the final length, smoothed.

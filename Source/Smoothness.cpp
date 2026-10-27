@@ -8,6 +8,7 @@
 #include <AMReX_iMultiFab.H>
 
 #include <fstream>
+#include <iomanip>
 #include <sstream>
 
 namespace gust {
@@ -104,6 +105,9 @@ void NewtonSmoothness::write_checkpoint (const std::string& dir, const Closure* 
         os << kMagic << " " << kVersion << "\n";
         os << "active " << (m_active ? 1 : 0) << " frozen " << (frozen ? 1 : 0) << " scope "
            << (frozen && closure->freeze_scope() == FreezeScope::all ? "all" : "floor") << "\n";
+        // The canopy's length cap of the frozen decisions (0: none); a checkpoint without the line has none.
+        os << std::setprecision(17) << "canopy_alpha "
+           << (frozen ? static_cast<double>(closure->canopy_alpha()) : 0.0) << "\n";
         ok = os.good() ? 1 : 0;
     }
     amrex::ParallelDescriptor::Bcast(&ok, 1, amrex::ParallelDescriptor::IOProcessorNumber());
@@ -136,6 +140,11 @@ void NewtonSmoothness::read_checkpoint (const std::string& dir, Closure* closure
         || (active != 0 && active != 1) || (frozen != 0 && frozen != 1) || (scope != "all" && scope != "floor")) {
         file_error(dir, "corrupt: bad state line");
     }
+    double alpha = 0;
+    std::string w4;
+    if (is >> w4) {
+        if (w4 != "canopy_alpha" || !(is >> alpha)) { file_error(dir, "corrupt: bad canopy_alpha line"); }
+    }
     if (frozen == 1) {
         if (closure == nullptr) { file_error(dir, "frozen closure decisions, but the run has no closure"); }
         if (!m_opt.freeze_floor) {
@@ -144,6 +153,16 @@ void NewtonSmoothness::read_checkpoint (const std::string& dir, Closure* closure
         }
         if (!exists_everywhere(dir + "/Level_0/closure_switches_H")) {
             file_error(dir, "frozen decisions recorded, but " + dir + "/Level_0/closure_switches is missing");
+        }
+        // Frozen with every decision held: whether a cell is capped by the canopy (L <= alpha / f) is one of
+        // them, so the cap's alpha must be that of the checkpoint (a cell held as capped takes alpha / f).
+        if (scope == "all" && alpha != static_cast<double>(closure->canopy_alpha())) {
+            std::ostringstream m;
+            m << std::setprecision(17) << "the checkpoint holds frozen closure decisions taken with the canopy length "
+              << "cap alpha = " << alpha << " (0: none), and this run has " << double(closure->canopy_alpha())
+              << "; restart with the checkpoint's canopy.tke and canopy.length_alpha, or from a checkpoint outside "
+              << "the Newton stage";
+            file_error(dir, m.str());
         }
         amrex::iMultiFab src;
         amrex::Read(src, dir + "/Level_0/closure_switches");

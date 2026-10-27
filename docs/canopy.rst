@@ -6,9 +6,7 @@ of a drag coefficient and the leaf area density of the trees in it. This page de
 from the ``canopy`` inputs (:doc:`inputs`).
 
 **Status.** The drag field is built, checked, written to the plotfile and acts on the momentum equations (`Drag on
-the flow`_). The canopy terms of the turbulence model (wake production and the short-circuit of the energy cascade)
-follow in a later change (Phase 8 of the development tracker); until then the closure sees the canopy only through
-the slower wind.
+the flow`_) and on the turbulence model (`Canopy turbulence`_).
 
 The geometry follows ERF's ``ForestDrag`` (``Source/SourceTerms/ERF_ForestDrag.cpp`` in ERF): the same patch file,
 the same two profile shapes and the same ``laimax`` range check (the copied ``ERF_ForestUtils.H``). The differences
@@ -183,6 +181,73 @@ order of the change of :math:`J` between neighbouring cells.
 The drag acts on the coarse levels of the grid hierarchy with their restricted field, and in the residual the Newton
 stage differentiates. The column first guess (``init.first_guess = column``) does not include it, so it starts with
 the open-ground wind inside the canopy.
+
+Canopy turbulence
+-----------------
+
+The drag takes mean kinetic energy from the wind at the rate :math:`f|U|^3`. Part of it becomes turbulence in the
+wakes of leaves and branches, at scales far below the mesh, and that turbulence dissipates fast (the short-circuit of
+the energy cascade). The leaves also limit the size of the eddies. With ``canopy.tke = on`` (the default with a
+canopy) the k–L closure takes ERF's canopy terms (erf-model/ERF#4340, which follows the KLAxell canopy of Kynema-SGF)
+where :math:`f > 0`:
+
+.. math::
+
+   S_k \mathrel{+}= P_c - D_c,\qquad P_c = \beta_p f |U|^3,\qquad D_c = \beta_d f |U| k,
+   \qquad L \le \alpha / f,
+
+with :math:`|U|` the cell-centred wind, :math:`\beta_p` = ``canopy.beta_p`` the fraction of the drag work that
+becomes :math:`k`, :math:`\beta_d` = ``canopy.beta_d`` the short-circuit coefficient (Green 1992, Liu et al. 1996,
+Sanz 2003) and :math:`\alpha` = ``canopy.length_alpha`` (Harman and Finnigan 2007: :math:`\alpha = 2\beta^3` with
+:math:`\beta = u_*/U_h`; 0.04 is :math:`\beta \approx 0.27`, the low end of their range). The defaults are ERF's
+(1, 4, 0.04).
+
+**Local balance.** Where the canopy terms and the dissipation dominate (no shear production or transport), the
+capped dissipation :math:`\varepsilon = C_{\mu0}^3 k^{3/2} f/\alpha` is also proportional to :math:`f`, and the
+balance :math:`P_c = D_c + \varepsilon` gives :math:`k = \kappa_c |U|^2` with
+
+.. math::
+
+   \beta_d\,\kappa_c + \frac{C_{\mu0}^3}{\alpha}\,\kappa_c^{3/2} = \beta_p,
+
+independent of :math:`f` and :math:`|U|`: :math:`\kappa_c = 0.1728` for the defaults, so the cap and the sink act
+together as an effective short-circuit coefficient :math:`\beta_p/\kappa_c \approx 5.8` (the uncapped k–ε values
+are 4 to 5.1). Without the cap (``canopy.length_alpha = 0``) and where :math:`\varepsilon` is small,
+:math:`\kappa_c \to \beta_p/\beta_d`. Near the canopy top the shear layer above adds production and transport, so
+:math:`k` there is larger than :math:`\kappa_c |U|^2`.
+
+**The length cap** acts on the turbulent length before the dissipation :math:`\varepsilon = C_{\mu0}^3
+k^{3/2}/L`, the Richardson number, the stability functions and :math:`\nu_t` are formed from it (ERF's
+``limited_length``, the copied ``ERF_CanopyTurbulence.H``). It acts only where :math:`f > 0` and :math:`\alpha < L
+f`, so near the ground, where :math:`L = \kappa (d + z_0)` is already short, the closure is unchanged. Whether a
+cell is capped is one of the closure's branch decisions: a full freeze of the decisions (a Jacobian by differences)
+holds it with the others, while the Newton stage (``turb.frozen_switch``) holds only the :math:`k`-floor decisions
+and takes the cap, like the stratification branches, from the state. A checkpoint of fully frozen decisions records
+the cap's :math:`\alpha`, and a restart with another (``canopy.tke = off`` included) is refused.
+
+**Implicit side.** The sink :math:`D_c` is linear in :math:`k`, so the diagonal of the :math:`k` rows gains
+:math:`\beta_d f |U|` exactly (the point-implicit Patankar term, :math:`D_c/k`) and the exact source derivative the
+Newton stage reads loses it. The capped length raises :math:`\varepsilon`, which is already on that diagonal as
+:math:`\varepsilon/k`. The production :math:`P_c` does not depend on :math:`k` and stays an explicit source; its
+dependence on the wind is lagged, as the shear production's. So neither term limits the pseudo-time step, and
+:math:`k` stays positive.
+
+**Steady form.** ERF integrates :math:`P_c` and :math:`D_c` together and exactly over each time stage (an
+exponential update), so that an explicit step never removes more :math:`k` than there is, and it needs
+``erf.implicit_tke_dissipation`` with the cap. GUST's diagonal does both jobs in pseudo-time: the point update
+:math:`k^+ = (k + \Delta\tau P)/(1 + \Delta\tau\,a)`, with :math:`a` the diagonal, stays positive for any
+:math:`\Delta\tau`. GUST's fixed point is ERF's in the limit :math:`\Delta t \to 0`; at a finite step ERF's
+exponential form weights the canopy pair by :math:`\varphi_1(\beta_d f |U| \Delta t)` against the other terms, so
+the two agree exactly only where the canopy pair is alone.
+
+**Ground roughness.** Under the canopy the ground's :math:`z_0` should be that of the soil and litter (0.01 to
+0.1 m). A forest-sized :math:`z_0` (about :math:`h/10`) counts the forest twice; the run warns when a column with
+canopy has a ground :math:`z_0` of 0.5 m or more.
+
+``canopy.tke = off`` keeps the drag only, the behaviour of ERF before #4340 and of GUST before this term (#75). With
+the default ``on``, a run with a canopy gives other answers than it did with #75. These inputs are not part of the
+checkpoint's canopy hash: like the ``turb.*`` inputs, they may change across a restart, which then converges to the
+new inputs' answer (except the frozen-decision case above).
 
 Output and restart
 ------------------

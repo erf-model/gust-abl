@@ -1,6 +1,7 @@
 #include "Closure.H"
 
 #include "CVFluxes.H"
+#include "CanopyTke.H"
 #include "ClosureWake.H"
 #include "Reductions.H"
 #include "Stencil_K.H"
@@ -26,13 +27,13 @@ const char* const kKeys[] = {"Cmu0", "Cb", "Rt_crit", "Rt_min", "max_geom_lscale
 
 //! The bits of encode() that FreezeScope holds.
 constexpr int kFloorBit = 16;
-constexpr int kAllBits = 31;
+constexpr int kAllBits = 63;
 int scope_mask (FreezeScope scope) { return scope == FreezeScope::floor ? kFloorBit : kAllBits; }
 
 //! Encode and decode the switches of one point.
 AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE int encode (const Switches& s) noexcept
 {
-    return s.branch | (s.smooth_Rt_g ? 4 : 0) | (s.smooth_Rt ? 8 : 0) | (s.floored ? 16 : 0);
+    return s.branch | (s.smooth_Rt_g ? 4 : 0) | (s.smooth_Rt ? 8 : 0) | (s.floored ? 16 : 0) | (s.canopy_capped ? 32 : 0);
 }
 AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE Switches decode (int code) noexcept
 {
@@ -41,6 +42,7 @@ AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE Switches decode (int code) noexcept
     s.smooth_Rt_g = (code & 4) != 0;
     s.smooth_Rt = (code & 8) != 0;
     s.floored = (code & 16) != 0;
+    s.canopy_capped = (code & 32) != 0;
     return s;
 }
 
@@ -96,9 +98,11 @@ void require_length_distance (const char* op, const amrex::MultiFab& dist, amrex
     }
 }
 
-//! The decisions at the state, encoded, on the closure's cells: out(k, N2).
+//! The decisions at the state, encoded, on the closure's cells: out(k, N2),
+//! with the canopy's length cap (fd the drag field, alpha 0: no cap; fd is
+//! then any cell field on the layout and is not read for a decision).
 void live_decisions (const amrex::MultiFab& tke, const amrex::MultiFab& N2, const amrex::MultiFab& dist, amrex::Real z0,
-                     const ClosureConstants& c, amrex::iMultiFab& out)
+                     const ClosureConstants& c, const amrex::MultiFab& fd, amrex::Real alpha, amrex::iMultiFab& out)
 {
     for (amrex::MFIter mfi(out, false); mfi.isValid(); ++mfi) {
         const amrex::Box bx = lateral_grown(mfi.validbox());
@@ -106,10 +110,11 @@ void live_decisions (const amrex::MultiFab& tke, const amrex::MultiFab& N2, cons
         const auto kk = tke.const_array(mfi);
         const auto n2 = N2.const_array(mfi);
         const auto d = dist.const_array(mfi);
+        const auto f = fd.const_array(mfi);
         amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
         {
             const amrex::Real l_g = closure::geom_length(c.kappa * (d(i, j, k) + z0), c.l_g_max);
-            o(i, j, k) = encode(closure::switches_for(kk(i, j, k), n2(i, j, k), l_g, c));
+            o(i, j, k) = encode(closure::switches_for(kk(i, j, k), n2(i, j, k), l_g, c, f(i, j, k), alpha));
         });
     }
 }
@@ -120,8 +125,8 @@ void live_decisions (const amrex::MultiFab& tke, const amrex::MultiFab& N2, cons
 //! which floors it if k has fallen to the floor or below (no k <= 0 reaches
 //! the kernel).
 void floor_held_decisions (const amrex::MultiFab& tke, const amrex::MultiFab& N2, const amrex::MultiFab& dist,
-                           amrex::Real z0, const ClosureConstants& c, const amrex::iMultiFab& frozen,
-                           amrex::iMultiFab& out)
+                           amrex::Real z0, const ClosureConstants& c, const amrex::MultiFab& fd, amrex::Real alpha,
+                           const amrex::iMultiFab& frozen, amrex::iMultiFab& out)
 {
     for (amrex::MFIter mfi(out, false); mfi.isValid(); ++mfi) {
         const amrex::Box bx = lateral_grown(mfi.validbox());
@@ -130,11 +135,12 @@ void floor_held_decisions (const amrex::MultiFab& tke, const amrex::MultiFab& N2
         const auto kk = tke.const_array(mfi);
         const auto n2 = N2.const_array(mfi);
         const auto d = dist.const_array(mfi);
+        const auto f = fd.const_array(mfi);
         amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
         {
             const amrex::Real l_g = closure::geom_length(c.kappa * (d(i, j, k) + z0), c.l_g_max);
             const amrex::Real k_in = ((sw(i, j, k) & kFloorBit) != 0) ? c.tke_floor : kk(i, j, k);
-            o(i, j, k) = encode(closure::switches_for(k_in, n2(i, j, k), l_g, c));
+            o(i, j, k) = encode(closure::switches_for(k_in, n2(i, j, k), l_g, c, f(i, j, k), alpha));
         });
     }
 }
@@ -268,6 +274,10 @@ void ClosureFields::define (const amrex::BoxArray& ba, const amrex::Distribution
 {
     for (auto* mf : {&nu, &gamma_theta, &gamma_tke, &nut}) { mf->define(ba, dm, 1, 1); }
     for (auto* mf : {&length, &Rt, &Ps, &Pb, &eps, &dSdk, &dSdk_exact, &dnutdk, &cap_ratio}) { mf->define(ba, dm, 1, 0); }
+    // The canopy terms are defined on their first evaluation (CanopyTke.cpp), on this layout.
+    Pc.clear();
+    Dc.clear();
+    canopy = false;
 }
 
 void height_above_ground (const amrex::MultiFab& z_nd, amrex::MultiFab& dist)
@@ -387,6 +397,7 @@ void Closure::evaluate (const State& q, const amrex::MultiFab& dist_in, const Ro
                         ClosureFields& f, ClosureScratch* scratch) const
 {
     const char* op = "Closure::evaluate";
+    check_canopy_layout(op, q);
     check_operator_field(op, "tke", q.tke, Loc::cell, mesh, 2);
     check_operator_field(op, "theta", q.theta, Loc::cell, mesh, 2);
     check_operator_field(op, "dist", dist_in, Loc::cell, mesh, 1);
@@ -431,6 +442,8 @@ void Closure::evaluate (const State& q, const amrex::MultiFab& dist_in, const Ro
     amrex::iMultiFab& dec = sc.dec;
     decide(q, N2c, dist, z0, dec);
     const ClosureConstants c = m_c;
+    const amrex::MultiFab& fd = canopy_field(dist);
+    const amrex::Real alpha = canopy_alpha();
     const amrex::Real nu_mol = m_opt.nu_molecular, alpha_mol = m_opt.alpha_molecular, inv_sigma = 1 / m_opt.sigma_k;
     const bool has = has_history();
     const amrex::Real w = has ? m_opt.nut_relax : amrex::Real(1);
@@ -450,6 +463,7 @@ void Closure::evaluate (const State& q, const amrex::MultiFab& dist_in, const Ro
         // 0 exactly; a fresh field could hold signalling NaNs).
         const auto prev = has ? m_nut_prev.const_array(mfi) : q.tke.const_array(mfi);
         const auto dc = dec.const_array(mfi);
+        const auto fa = fd.const_array(mfi);
         const auto nu = f.nu.array(mfi), gth = f.gamma_theta.array(mfi), gk = f.gamma_tke.array(mfi), nut = f.nut.array(mfi);
         const auto Lf = f.length.array(mfi), Rtf = f.Rt.array(mfi), Psf = f.Ps.array(mfi), Pbf = f.Pb.array(mfi),
                    epsf = f.eps.array(mfi), dsf = f.dSdk.array(mfi), dse = f.dSdk_exact.array(mfi), dnf = f.dnutdk.array(mfi);
@@ -457,7 +471,10 @@ void Closure::evaluate (const State& q, const amrex::MultiFab& dist_in, const Ro
         {
             const amrex::Real l_g = closure::geom_length(c.kappa * (d(i, j, k) + z0), c.l_g_max);
             const Switches s = decode(dc(i, j, k));
-            const auto p = closure::closure_point<amrex::Real>(kk(i, j, k), n2(i, j, k), s2(i, j, k), l_g, c, s);
+            // The canopy's length alpha / f where the decision capped it, with the divisor of ERF's
+            // limited_length (never zero; the value is used only where the decision capped the cell).
+            const amrex::Real L_cap = alpha / (amrex::max(fa(i, j, k), amrex::Real(0)) + std::numeric_limits<amrex::Real>::min());
+            const auto p = closure::closure_point<amrex::Real>(kk(i, j, k), n2(i, j, k), s2(i, j, k), l_g, c, s, L_cap);
             const amrex::Real ratio = p.cmu_prime / p.cmu;   // 1/Pr_t(Rt)
             // The cap acts on the new nu_t before the relaxation, so turb.nut_relax < 1 also damps
             // its changes between iterations; with w = 1 this is min(nu_t, cap).
@@ -481,17 +498,42 @@ void Closure::evaluate (const State& q, const amrex::MultiFab& dist_in, const Ro
                 pr.Pb = Pb;
                 dsf(i, j, k) = closure::patankar_diagonal(pr);
                 // The exact derivative on dual numbers: nu_t relaxed by w, eps as is.
-                const auto pd = closure::closure_point<Dual>(Dual{kk(i, j, k), 1}, n2(i, j, k), s2(i, j, k), l_g, c, s);
+                const auto pd = closure::closure_point<Dual>(Dual{kk(i, j, k), 1}, n2(i, j, k), s2(i, j, k), l_g, c, s, L_cap);
                 // d min(nu_t, cap)/dk: where the cap holds, cap = C_r max(k, floor)/S gives cap/k (0 at the floor).
                 const amrex::Real dnut_new = (p.nut <= cp(i, j, k)) ? pd.nut.d
                                            : ((kk(i, j, k) > c.tke_floor) ? cp(i, j, k) / kk(i, j, k) : amrex::Real(0));
                 const amrex::Real dnut = w * dnut_new;
                 dnf(i, j, k) = dnut;
-                dse(i, j, k) = dnut * s2(i, j, k) - ratio * dnut * n2r(i, j, k) - pd.eps.d;
+                // P_b = -(cmu'/cmu) nu_t N^2: the ratio depends on k through Rt (stratified), so both
+                // factors are differentiated.
+                const Dual rd = pd.cmu_prime / pd.cmu;
+                dse(i, j, k) = dnut * s2(i, j, k) - (rd.d * nt + ratio * dnut) * n2r(i, j, k) - pd.eps.d;
             }
         });
     }
     for (auto* mf : {&f.nu, &f.gamma_theta, &f.gamma_tke, &f.nut}) { copy_vertical_ghosts(*mf); }
+    // The canopy's wake production and short-circuit sink of k (CanopyTke.H), with the
+    // sink on the Patankar and exact diagonals.
+    f.canopy = (m_canopy_f != nullptr);
+    if (f.canopy) { add_canopy_tke(q, *m_canopy_f, m_beta_p, m_beta_d, c.tke_floor, f); }
+}
+
+void Closure::check_canopy_layout (const char* op, const State& q) const
+{
+    if (m_canopy_f != nullptr && (m_canopy_f->boxArray() != q.p.boxArray() || m_canopy_f->DistributionMap() != q.p.DistributionMap())) {
+        amrex::Abort(std::string("gust: ") + op + ": the canopy's drag field is not on the state's cells");
+    }
+}
+
+void Closure::set_canopy (const amrex::MultiFab* drag, amrex::Real beta_p, amrex::Real beta_d, amrex::Real alpha)
+{
+    if (drag != nullptr && (drag->nGrowVect()[0] < 1 || drag->nGrowVect()[1] < 1)) {
+        amrex::Abort("gust: Closure::set_canopy: the drag field needs one ghost column in x and y");
+    }
+    m_canopy_f = drag;
+    m_beta_p = beta_p;
+    m_beta_d = beta_d;
+    m_alpha = alpha;
 }
 
 void Closure::accept (const ClosureFields& f)
@@ -539,6 +581,7 @@ void Closure::freeze_switches (const State& q, const amrex::MultiFab& dist_in, c
                                FreezeScope scope)
 {
     check_operator_field("Closure::freeze_switches", "dist", dist_in, Loc::cell, mesh, 1);
+    check_canopy_layout("Closure::freeze_switches", q);
     amrex::Real z0 = 0;
     const amrex::MultiFab& dist = length_distance("Closure::freeze_switches", dist_in, rough, m_dz, m_dz_of, z0);
     amrex::MultiFab N2, S2;
@@ -547,7 +590,7 @@ void Closure::freeze_switches (const State& q, const amrex::MultiFab& dist_in, c
     m_switches.clear();
     m_switches.define(q.p.boxArray(), q.p.DistributionMap(), 1, 1);
     m_switches.setVal(0);
-    live_decisions(q.tke, N2, dist, z0, m_c, m_switches);
+    live_decisions(q.tke, N2, dist, z0, m_c, canopy_field(dist), canopy_alpha(), m_switches);
 }
 
 void Closure::decide (const State& q, const amrex::MultiFab& N2, const amrex::MultiFab& dist, amrex::Real z0,
@@ -560,11 +603,11 @@ void Closure::decide (const State& q, const amrex::MultiFab& N2, const amrex::Mu
     }
     out.setVal(0);
     if (!frozen()) {
-        live_decisions(q.tke, N2, dist, z0, m_c, out);
+        live_decisions(q.tke, N2, dist, z0, m_c, canopy_field(dist), canopy_alpha(), out);
     } else if (m_scope == FreezeScope::all) {
         amrex::iMultiFab::Copy(out, m_switches, 0, 0, 1, 1);
     } else {
-        floor_held_decisions(q.tke, N2, dist, z0, m_c, m_switches, out);
+        floor_held_decisions(q.tke, N2, dist, z0, m_c, canopy_field(dist), canopy_alpha(), m_switches, out);
     }
 }
 
@@ -573,6 +616,7 @@ amrex::Long Closure::changed_switches (const State& q, const amrex::MultiFab& di
 {
     const char* op = "Closure::changed_switches";
     if (!frozen()) { amrex::Abort(std::string("gust: ") + op + ": the switches are not frozen"); }
+    check_canopy_layout(op, q);
     check_operator_field(op, "dist", dist_in, Loc::cell, mesh, 1);
     amrex::Real z0 = 0;
     const amrex::MultiFab& dist = length_distance(op, dist_in, rough, m_dz, m_dz_of, z0);
@@ -582,6 +626,8 @@ amrex::Long Closure::changed_switches (const State& q, const amrex::MultiFab& di
     amrex::MultiFab N2, S2;
     stratification(q, buoyancy, geom, N2, S2);
     const ClosureConstants c = m_c;
+    const amrex::MultiFab& fd = canopy_field(dist);
+    const amrex::Real alpha = canopy_alpha();
     const int fm = scope_mask(m_scope);
     amrex::ReduceOps<amrex::ReduceOpSum> rop;
     amrex::ReduceData<amrex::Long> data(rop);
@@ -591,10 +637,11 @@ amrex::Long Closure::changed_switches (const State& q, const amrex::MultiFab& di
         const auto kk = q.tke.const_array(mfi);
         const auto n2 = N2.const_array(mfi);
         const auto d = dist.const_array(mfi);
+        const auto f = fd.const_array(mfi);
         rop.eval(vb, data, [=] AMREX_GPU_DEVICE (int i, int j, int k) -> amrex::GpuTuple<amrex::Long>
         {
             const amrex::Real l_g = closure::geom_length(c.kappa * (d(i, j, k) + z0), c.l_g_max);
-            const int now = encode(closure::switches_for(kk(i, j, k), n2(i, j, k), l_g, c));
+            const int now = encode(closure::switches_for(kk(i, j, k), n2(i, j, k), l_g, c, f(i, j, k), alpha));
             return {(now & fm) != (sw(i, j, k) & fm) ? amrex::Long(1) : amrex::Long(0)};
         });
     }

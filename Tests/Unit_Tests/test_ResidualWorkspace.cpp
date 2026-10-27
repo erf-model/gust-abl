@@ -211,6 +211,7 @@ void poison (gust::ResidualWorkspace& w)
     for (auto* f : {&w.theta_ref, &w.d, &w.omega, &w.jvp_theta_ref}) { poison(*f); }
     for (auto* f : surface_fields(w.ss)) { poison(*f); }
     for (auto* f : {&w.cf.nu, &w.cf.gamma_theta, &w.cf.gamma_tke, &w.cf.nut, &w.cf.length, &w.cf.Rt, &w.cf.Ps, &w.cf.Pb,
+                    &w.cf.Pc, &w.cf.Dc,
                     &w.cf.eps, &w.cf.dSdk, &w.cf.cap_ratio, &w.cf.dSdk_exact, &w.cf.dnutdk}) { poison(*f); }
     for (auto* f : {&w.closure.N2, &w.closure.S2, &w.closure.N2g, &w.closure.cap}) { poison(*f); }
     if (!w.closure.dec.empty()) { w.closure.dec.setVal(0x5a5a5a5a); }
