@@ -8,8 +8,8 @@ form: each column's integral of the drag field is the drag coefficient times the
 it. A restart with the same canopy continues bit for bit; a restart with another canopy, or without one, stops; a deck
 of canopy mistakes stops with every input named.
 
-The drag field does not act on the flow yet, so no stage runs here. The column integral does not see how the drag
-is spread over the layers; the profile shapes are checked by the unit tests (`Canopy.*`), which also cover
+No stage runs here: the drag's action on the flow is checked in `Tests/Canonical_RANS/Canopy_Drag`. The column
+integral does not see how the drag is spread over the layers; the profile shapes are checked by the unit tests (`Canopy.*`), which also cover
 `canopy.type = map`.
 
 ## Files
@@ -21,7 +21,7 @@ is spread over the layers; the profile shapes are checked by the unit tests (`Ca
 | `check_canopy.py` | Integrates `canopy_drag * detJ * dzeta` over each column of the plotfile and compares with `cd * lai` of the patches over the column centre (nearest periodic image in x); columns outside every patch must hold 0. |
 | `inputs_restart` | Restart on another layout and rank count with the same canopy; writes `canopy_restart_plt00000`. |
 | `inputs_abort_restart_no_canopy` | Restart without the canopy: must stop. |
-| `inputs_abort_canopy` | A map without a drag coefficient, a missing height file, no LAI file, `laimax` with the uniform profile, the patch file with a map, an unknown key: must stop, naming each. |
+| `inputs_abort_canopy` | A map without a drag coefficient, a missing height file, no LAI file, `laimax` with the uniform profile, the patch file with a map, an unknown `canopy.drag_diagonal`, an unknown key: must stop, naming each. |
 
 ## Data and acknowledgements
 No external data: the patches are made up for the test. The patch format is ERF's `erf.forest_file`

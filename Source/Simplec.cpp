@@ -486,8 +486,11 @@ void SimplecStage::iterate (State& q, const amrex::MultiFab& dtau)
     face_dtau(dtau, m_mesh, m_geom, m_w.dtau_faces);
     const SurfaceState* ss = (m_in.surface != nullptr) ? &m_ss : nullptr;
     const ClosureFields* cf = (m_in.closure != nullptr) ? &m_cf : nullptr;
+    // The canopy drag's diagonal at q, before the predictor updates any component.
+    if (m_in.canopy != nullptr) { canopy_rows(*m_in.canopy, q.u, q.v, q.w, m_canopy_rows); }
     m_info.predictor = momentum_predictor(q, m_R, F, m_in, m_w.dtau_faces, m_mesh, m_geom, m_sweeps, m_pf, ss, cf, m_opt.rotation_relax,
-                                          m_sweep, m_opt.w_vnn_cap, m_opt.w_vnn_cap_slope_margin);
+                                          m_sweep, m_opt.w_vnn_cap, m_opt.w_vnn_cap_slope_margin,
+                                          m_in.canopy != nullptr ? &m_canopy_rows : nullptr);
     // 4. The pressure correction on u* (its ghosts refilled first).
     m_in.bc->fill_ghosts(q, m_in.surface, m_in.buoyancy, false, nullptr);
     m_info.pressure = pressure_correction(q, m_pf, m_solver, m_pbc, m_opt.alpha_p, m_mesh, m_geom, m_w);
