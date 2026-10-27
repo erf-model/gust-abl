@@ -24,9 +24,9 @@ int cell_index (int i, int lo, int hi, bool periodic)
     return lo + (((i - lo) % n) + n) % n;
 }
 
-// The ghost columns outside the domain take the column they image (periodic
-// images by FillBoundary first, then the nearest domain column).
-void fill_ghost_columns (amrex::MultiFab& z0, const amrex::Geometry& geom)
+} // namespace
+
+void image_ghost_columns (amrex::MultiFab& z0, const amrex::Geometry& geom)
 {
     z0.FillBoundary(geom.periodicity());
     const amrex::Box& dom = geom.Domain();
@@ -52,8 +52,6 @@ void fill_ghost_columns (amrex::MultiFab& z0, const amrex::Geometry& geom)
         });
     }
 }
-
-} // namespace
 
 amrex::BoxArray ground_slab (const amrex::BoxArray& ba)
 {
@@ -160,7 +158,7 @@ void average_roughness_map (const amrex::MultiFab& fine, const amrex::Geometry& 
     z0.clear();
     z0.define(ground_slab(cell_ba), dm, 1, amrex::IntVect(1, 1, 0));
     z0.ParallelCopy(mean, 0, 0, 1);
-    fill_ghost_columns(z0, geom);
+    image_ghost_columns(z0, geom);
 }
 
 std::string roughness_summary (const amrex::MultiFab& z0)

@@ -9,7 +9,7 @@ nothing is written into the source tree.
 ## Groups
 | Folder | Cases | Character |
 |---|---|---|
-| `Infrastructure` | Smoke run and restart, input validation, reference archives, the Kestrel scripts. | unit / regression / smoke |
+| `Infrastructure` | Smoke run and restart, input validation, the canopy drag field, reference archives, the Kestrel scripts. | unit / regression / smoke |
 | `Discretization` | The terrain mesh and its grid hierarchy, boundary fluxes, the k-L closure, the Poisson layer and the wall distance, each on a fixed state. | regression |
 | `Initialization` | The mass-consistent initial field: Askervein, and the hilltop speed-up trend against FastWindTerrain. | regression |
 | `Canonical_RANS` | The SIMPLEC stage to steady on ERF's canonical RANS cases: the neutral column, Neutral_ABL_Flat, Neutral_Hill_2D, Neutral_Hill_3D and its truly neutral variant, and the smooth plateau comparison case. Also the thin-cell aspect-ratio sweep (`Aspect_Ratio_Hill_2D`) and steep terrain at an outflow face (`Outflow_Steep_Terrain`). | regression / nightly |

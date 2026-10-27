@@ -1,0 +1,17 @@
+# The canopy's drag field from ERF-format patches (canopy.file is given on the
+# command line, from this folder): no stage, so the run writes the plotfile
+# (with canopy_drag) and a checkpoint (with the canopy's input hash).
+# 32 x 24 x 20 cells, 8 x 8 boxes (12 boxes); a stretched grid, so the
+# canopy tops fall inside cells; periodic in x, so one patch crosses the seam.
+mesh.n_cell        = 32 24 20
+mesh.prob_lo       = 0. 0. 0.
+mesh.prob_hi       = 640. 480. 400.
+mesh.is_periodic   = 1 0 0
+mesh.max_grid_size = 8
+mesh.dz0           = 1.
+mesh.stretch_ratio = 1.12
+
+canopy.type = patches
+
+io.plot_file = canopy_plt
+io.chk_file  = canopy_chk

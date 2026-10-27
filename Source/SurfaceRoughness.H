@@ -112,6 +112,12 @@ void read_roughness_map (const std::string& file, const std::string& key, int k,
 void average_roughness_map (const amrex::MultiFab& fine, const amrex::Geometry& geom, const amrex::BoxArray& cell_ba,
                             const amrex::DistributionMapping& dm, amrex::MultiFab& z0);
 
+//! The ghost columns of a cell-centred field with ghost cells in x and y:
+//! periodic images in a periodic direction (FillBoundary), else the nearest
+//! domain column at the same k. The roughness map and the canopy's drag field
+//! (Canopy.H) use it.
+void image_ghost_columns (amrex::MultiFab& mf, const amrex::Geometry& geom);
+
 //! "min a, max b, geometric mean c m" over the valid columns (every rank).
 std::string roughness_summary (const amrex::MultiFab& z0);
 

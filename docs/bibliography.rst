@@ -26,6 +26,9 @@ equations and a multigrid method. *Journal of Computational Physics* 48, 387–4
 Klemp, J. B. (2011). A terrain-following coordinate with smoothed coordinate surfaces. *Monthly Weather Review* 139,
 2163–2169.
 
+Lalic, B., Mihailovic, D. T. (2004). An empirical relation describing leaf-area density inside the forest for
+environmental modeling. *Journal of Applied Meteorology* 43, 641–645.
+
 Mason, P. J. (1988). The formation of areally-averaged roughness lengths. *Quarterly Journal of the Royal
 Meteorological Society* 114, 399–420.
 

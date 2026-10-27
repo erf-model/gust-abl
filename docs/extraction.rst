@@ -43,6 +43,11 @@ stability functions (:doc:`boundary_conditions`). ERF's MOST kernels (``ERF_MOST
 copied: they are tied to ERF's state layout and plane averaging, and ``Source/SurfaceLayer.cpp`` follows their
 formulas per column. The reference-height lookup fix ERF#3982 is already in the pinned ERF.
 
+Copied unchanged for the forest canopy: ``ERF_ForestUtils.H``, whose ``validate_laimax`` checks ``canopy.laimax``
+and the laimax of type 2 lines in ``canopy.file`` (:doc:`canopy`). ERF's ``ERF_ForestDrag.cpp`` is not copied: it
+reads NetCDF and samples the profile at the cell centre, while ``Source/Canopy.cpp`` reads point files and takes the
+profile's mean over each cell (:doc:`canopy`).
+
 The drift check
 ---------------
 

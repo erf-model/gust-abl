@@ -77,10 +77,11 @@
 #     ridge_x (a ridge along y, varying in x), ridge_y or round; agnesi only.
 #
 # terrain.idw_neighbors = 6
-#     ≥ 1; xyz or bc.surface_z0_file only. Points used for each height (and each column's z_0 of the roughness map).
+#     ≥ 1; xyz, bc.surface_z0_file or canopy.type = map only. Points used for each height (and each column's z_0 of
+#     the roughness map, and the canopy's maps).
 #
 # terrain.idw_power = 2
-#     Finite, > 0; xyz or bc.surface_z0_file only. Weight exponent p in d^(-p).
+#     Finite, > 0; xyz, bc.surface_z0_file or canopy.type = map only. Weight exponent p in d^(-p).
 #
 # terrain.hierarchy_passes = 1
 #     Integer from 0 to 64; only with mesh.hierarchy_levels > 1. The ground of level l is smoothed by this number
@@ -298,6 +299,46 @@
 # bc.surface_qnse_ah = 2.5
 # bc.surface_qnse_bh = 0.2
 #     a_h, b_h of φ_h, as a_m, b_m. qnse only.
+
+# ==================================================================================================================
+# canopy
+# ==================================================================================================================
+# See docs/canopy.rst. The canopy's drag field is built in every run (with or without steady.stage) and written to
+# the plotfile as canopy_drag; it does not act on the flow yet. A key that has no effect with the chosen canopy.type
+# or canopy.profile is refused. A restart refuses canopy inputs other than those of the run it continues.
+#
+# canopy.type = none
+#     none, patches (round patches from ERF's forest file) or map (point maps of height, LAI and optionally C_d,
+#     interpolated with terrain.idw_neighbors and terrain.idw_power).
+#
+# canopy.file =    # required for patches
+#     A readable file of patches, one per line, type x y height diameter cd lai laimax (ERF's erf.forest_file); #
+#     starts a comment. type 1 or 2 (uniform or Lalic–Mihailovic), height and diameter finite and > 0 (m), cd and
+#     lai finite and ≥ 0, laimax in [0, 1) on a type 2 line and finite on a type 1 line. Any other line stops the
+#     run, naming the file and the line. A patch wider than a periodic direction of the domain is refused.
+#
+# canopy.height_file =    # required for map
+#     A readable file of x y h points (terrain.file's xyz format): the canopy height (m), every value finite and ≥
+#     0, at least terrain.idw_neighbors points.
+#
+# canopy.lai_file =    # required for map
+#     A readable file of x y LAI points: the leaf area index, every value finite and ≥ 0, at least
+#     terrain.idw_neighbors points.
+#
+# canopy.cd =    # none
+#     Finite, > 0; map only. The drag coefficient of every column. map needs this or canopy.cd_file, not both (no
+#     default, as in ERF). 0 is refused: without a canopy, set canopy.type = none. The maps, by contrast, may hold 0
+#     where there is no forest.
+#
+# canopy.cd_file =    # none
+#     map only. A readable file of x y cd points, every value finite and ≥ 0, at least terrain.idw_neighbors points.
+#
+# canopy.profile = uniform
+#     uniform or lalic_mihailovic; map only. The shape of the leaf area density over the canopy height.
+#
+# canopy.laimax = 0.8
+#     Finite, in [0, 1); map with lalic_mihailovic only. The height of the largest leaf area density as a fraction
+#     of the canopy height (ERF's erf.forest_laimax).
 
 # ==================================================================================================================
 # forcing

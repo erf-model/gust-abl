@@ -37,6 +37,7 @@ add_executable(unit_tests
     Unit_Tests/test_ResidualWorkspace.cpp
     Unit_Tests/test_SurfaceLayer.cpp
     Unit_Tests/test_SurfaceRoughness.cpp
+    Unit_Tests/test_Canopy.cpp
     Unit_Tests/test_BoundaryConditions.cpp
     Unit_Tests/test_Closure.cpp
     Unit_Tests/test_Initializer.cpp
@@ -133,6 +134,7 @@ endfunction()
 # One folder per case (see Tests/README.md): its decks, check script and golds.
 set(SMOKE_CASE          ${CMAKE_CURRENT_SOURCE_DIR}/Infrastructure/Smoke_Restart)
 set(VALIDATION_CASE     ${CMAKE_CURRENT_SOURCE_DIR}/Infrastructure/Input_Validation)
+set(CANOPY_CASE         ${CMAKE_CURRENT_SOURCE_DIR}/Infrastructure/Canopy_Field)
 set(REFAVG_CASE         ${CMAKE_CURRENT_SOURCE_DIR}/Infrastructure/Reference_Archive)
 set(KESTREL_CASE        ${CMAKE_CURRENT_SOURCE_DIR}/Infrastructure/Kestrel_Dryrun)
 set(MESH_CASE           ${CMAKE_CURRENT_SOURCE_DIR}/Discretization/Terrain_Mesh)
@@ -209,6 +211,55 @@ gust_add_test(NAME smoke_restart NP 3 LABELS "regression;smoke" RUN_DIR ${SMOKE_
 gust_add_test(NAME smoke_restart_matches NP 1 LABELS "regression;smoke" RUN_DIR ${SMOKE_DIR}
               FIXTURES_REQUIRED smoke_restart
               COMMAND ${FCOMPARE} --allow_diff_grids smoke_plt00000 restart_plt00000)
+
+# --- The canopy's drag field (Canopy.H): plotfile, restart, refusals ---------
+set(CANOPY_DIR ${CMAKE_CURRENT_BINARY_DIR}/run/canopy)
+add_test(NAME canopy_clean
+         COMMAND ${Python3_EXECUTABLE} -c
+                 "import shutil, os, sys; shutil.rmtree(sys.argv[1], ignore_errors=True); os.makedirs(sys.argv[1])"
+                 ${CANOPY_DIR})
+set_tests_properties(canopy_clean PROPERTIES LABELS "regression;smoke" FIXTURES_SETUP canopy_clean)
+gust_add_test(NAME canopy_run NP 2 LABELS "regression;smoke" RUN_DIR ${CANOPY_DIR}
+              FIXTURES_REQUIRED canopy_clean FIXTURES_SETUP canopy
+              COMMAND $<TARGET_FILE:gust> ${CANOPY_CASE}/inputs_canopy canopy.file=${CANOPY_CASE}/canopy_patches.txt
+                      ${GUST_TEST_AMREX_FLAGS})
+# Every column's integral of canopy_drag is cd LAI of the patches over it.
+gust_add_test(NAME canopy_column_integrals NP 1 LABELS "regression;smoke" RUN_DIR ${CANOPY_DIR}
+              FIXTURES_REQUIRED canopy
+              COMMAND ${Python3_EXECUTABLE} ${CANOPY_CASE}/check_canopy.py canopy_plt00000
+                      ${CANOPY_CASE}/canopy_patches.txt)
+# The check is not vacuous: against the patch file with one LAI changed it fails.
+gust_add_test(NAME canopy_check_detects_change NP 1 LABELS "regression;smoke" RUN_DIR ${CANOPY_DIR}
+              FIXTURES_REQUIRED canopy
+              COMMAND ${Python3_EXECUTABLE} ${CANOPY_CASE}/check_canopy.py canopy_plt00000
+                      ${CANOPY_CASE}/canopy_patches_changed.txt)
+set_tests_properties(canopy_check_detects_change PROPERTIES WILL_FAIL TRUE)
+gust_add_test(NAME canopy_restart NP 3 LABELS "regression;smoke" RUN_DIR ${CANOPY_DIR}
+              FIXTURES_REQUIRED canopy FIXTURES_SETUP canopy_restart
+              PREFIX ${EXPECT_ABORT} --success "restarted from canopy_chk00000 at step 0" --
+              COMMAND $<TARGET_FILE:gust> ${CANOPY_CASE}/inputs_restart canopy.file=${CANOPY_CASE}/canopy_patches.txt
+                      ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME canopy_restart_matches NP 1 LABELS "regression;smoke" RUN_DIR ${CANOPY_DIR}
+              FIXTURES_REQUIRED canopy_restart
+              COMMAND ${FCOMPARE} --allow_diff_grids canopy_plt00000 canopy_restart_plt00000)
+gust_add_test(NAME abort_canopy_restart_changed NP 1 LABELS "regression;smoke" RUN_DIR ${CANOPY_DIR}
+              FIXTURES_REQUIRED canopy
+              PREFIX ${EXPECT_ABORT} "io\\.restart = canopy_chk00000: the canopy inputs differ from the checkpoint's" --
+              COMMAND $<TARGET_FILE:gust> ${CANOPY_CASE}/inputs_restart canopy.file=${CANOPY_CASE}/canopy_patches_changed.txt
+                      io.write_plotfile=0 ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_canopy_restart_none NP 1 LABELS "regression;smoke" RUN_DIR ${CANOPY_DIR}
+              FIXTURES_REQUIRED canopy
+              PREFIX ${EXPECT_ABORT} "the checkpoint was written with a canopy; give the run's canopy\\.\\* inputs" --
+              COMMAND $<TARGET_FILE:gust> ${CANOPY_CASE}/inputs_abort_restart_no_canopy ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_canopy_inputs NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT}
+                     "canopy\\.file has no effect with canopy\\.type = map"
+                     "canopy\\.height_file = no_such_canopy_height\\.xyz: cannot be read"
+                     "canopy\\.lai_file is required with canopy\\.type = map"
+                     "canopy\\.type = map needs canopy\\.cd or canopy\\.cd_file"
+                     "canopy\\.laimax has no effect with canopy\\.profile = uniform"
+                     "canopy\\.leaf_area.*not an input of namespace 'canopy'" --
+              COMMAND $<TARGET_FILE:gust> ${CANOPY_CASE}/inputs_abort_canopy ${GUST_TEST_AMREX_FLAGS})
 
 # --- Decks that must abort, with the input named ------------------------------
 gust_add_test(NAME abort_unknown_key NP 1 LABELS "regression;smoke"
