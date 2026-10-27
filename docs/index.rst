@@ -52,7 +52,7 @@ Where to start
   :doc:`tutorial_column`.
 - **Setting up your own case:** :doc:`howto` and the :doc:`inputs`.
 - **The model and the numerics:** the Mathematical model and Numerical method sections below.
-- **Accuracy and speed:** :doc:`results`.
+- **Accuracy and speed:** :doc:`results` and :doc:`scaling`.
 
 Contents
 --------
@@ -105,6 +105,7 @@ Contents
 
    test_cases
    results
+   scaling
    references
    bibliography
 
