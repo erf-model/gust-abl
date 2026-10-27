@@ -290,6 +290,54 @@ killed.
      - Cells above half the tallest patch skip the patch loop
      - ``PatchesSameOnEveryLayoutAcrossSeam``
 
+The one-line mutants of the canopy's drag on the momentum equations (``Source/CanopyDrag.cpp``,
+``Source/Residual.cpp``, ``Source/Canopy.cpp``), each run against ``Canopy.*`` and ``CanopyDrag.*`` on two ranks with
+the unit-test flags by ``tools/canopy_drag_mutants.py`` (macOS arm64, AppleClang). All 12 are killed.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 6 50 44
+
+   * - Mutant
+     - Change
+     - Failing tests
+   * - D1
+     - The sink with the wrong sign
+     - ``SinkHasItsClosedForm``, ``DiagonalIsTheDerivativeOfTheSink``
+   * - D2
+     - x and y faces take one cell's :math:`f`, not the mean of two
+     - ``SinkHasItsClosedForm``
+   * - D3
+     - z faces take the cell above only
+     - ``SinkHasItsClosedForm``
+   * - D4
+     - The ``derivative`` diagonal without the :math:`u_c^2/|U|` term
+     - ``DiagonalIsTheDerivativeOfTheSink``
+   * - D5
+     - :math:`|U|` without :math:`w`
+     - ``SinkHasItsClosedForm``, ``DiagonalIsTheDerivativeOfTheSink``
+   * - D6
+     - :math:`v` at an x- or z-face not averaged over its four faces
+     - ``SinkHasItsClosedForm``
+   * - D7
+     - The ``picard`` diagonal with the derivative's term
+     - ``DiagonalIsTheDerivativeOfTheSink``
+   * - D8
+     - The residual without the drag
+     - ``ResidualAndImplicitRowsCarryTheDrag``
+   * - D9
+     - ``implicit_rows`` without the drag diagonal
+     - ``ResidualAndImplicitRowsCarryTheDrag``, ``PredictorTakesTheRowsOfTheLinearisationState``
+   * - D11
+     - The drag rows added to an off-diagonal coefficient
+     - ``ResidualAndImplicitRowsCarryTheDrag``, ``PredictorTakesTheRowsOfTheLinearisationState``
+   * - D12
+     - ``canopy_rows`` takes the derivative whatever the option
+     - ``DiagonalIsTheDerivativeOfTheSink``
+   * - D10
+     - A ``canopy.drag_diagonal`` other than the three names accepted
+     - ``Canopy.OptionChecks``
+
 The one-line mutants of the Newton stage (``Source/NewtonStage.cpp`` and the switch rules in ``Source/Driver.cpp``),
 each run against ``Driver.*`` and ``NewtonStage.*`` on two ranks with the unit-test flags by
 ``tools/newton_stage_mutants.py`` (macOS arm64, AppleClang). 13 of 15 are killed. N14 and N15 survive: they matter only
@@ -763,6 +811,19 @@ Current tests
        passing, on one to three ranks with both compilers (the bursts of an earlier version of the predictor's
        rotation step are explained and removed in :doc:`solution_algorithm`). Label ``regression`` (the run time); double only.
        The 1 % comparison with an ERF reference run is not in this version.
+   * - ``rt_canopy_drag``
+     - The canopy's drag on the momentum equations (``Tests/Canonical_RANS/Canopy_Drag``: neutral geostrophic flow
+       over flat ground through a 20 m uniform patch with LAI 3 and a 25 m Lalic–Mihailovic patch with LAI 6,
+       16 × 16 × 40 cells, periodic, converged to 7 orders and 1e-8). ``check_canopy_drag.py`` runs it with
+       ``canopy.drag_diagonal`` ``derivative`` and ``picard`` to the verdict: u, v, w, p and k of the two steady
+       states agree to 1e-6 of each field's largest value; at 5.3 m, u in the dense patch is at most 0.6 times u on
+       open ground; with ``none`` (the drag explicit) the residual norm is above 1 and above the implicit run's after
+       20 iterations; with grid sequencing over two levels the steady state is the same to 1e-6; a run of 40
+       iterations continued to 80 from its checkpoint equals 80 straight, bit for bit, and a restart with
+       ``canopy.drag_diagonal = picard`` is accepted. Measured: 5710 and 5160 iterations, the fields within 1.4e-8
+       (p) and 2.6e-9 (velocities); with sequencing within 1.2e-8 (p) and 9.2e-11 (velocities); u 1.14 against
+       2.16 m/s (ratio 0.53); r = 3.1e3 explicit against 0.16 after 20 iterations. About 4 min on two ranks; label
+       ``regression`` (the run time); double only.
    * - ``rt_thin_cell_w_vnn_cap``
      - The w rows' VNN cap on a flat inflow/outflow strip with a 0.7 m first cell
        (``Tests/Canonical_RANS/Thin_Cell_Flat/inputs_thin_cell_flat``: 16 × 2 × 40, dx/dz₀ = 134, line LU-SGS with
@@ -1159,6 +1220,22 @@ GoogleTest suite
        lines (named by number), negative map values and a patch wider than the periodic domain are refused with the
        input named. UT-8.1.6 (``canopy.type = none`` leaves every answer bit-identical) is the existing suite and its
        golds, unchanged by the canopy.
+   * - ``CanopyDrag.SinkHasItsClosedForm``
+     - UT-8.2.1: on linear velocity fields (so every four-point mean is the value at the face) through a uniform
+       patch, each face's residual is :math:`f_c |U| u_c` with :math:`f_c = C_d\,\mathrm{LAI}/h` or 0 in closed form,
+       on 1 and 16 boxes (the faces on box edges read the ghost column), the ground z-faces taking the first cell.
+   * - ``CanopyDrag.DiagonalIsTheDerivativeOfTheSink``
+     - UT-8.2.2: on sign-changing periodic velocities, the ``derivative`` diagonal equals the central difference of
+       the sink in the face's own component (1e-8 relative), ``picard`` equals the sink over :math:`u_c`, ``none``
+       adds nothing, ``canopy_rows`` holds the same diagonal, and every diagonal is :math:`\ge 0`.
+   * - ``CanopyDrag.ResidualAndImplicitRowsCarryTheDrag``
+     - The residual's momentum rows gain exactly the sink and ``implicit_rows``' :math:`a_P` exactly the diagonal
+       (the off-diagonal coefficients and the :math:`\theta` rows unchanged); without the drag's rows
+       ``implicit_rows`` refuses a canopy.
+   * - ``CanopyDrag.PredictorTakesTheRowsOfTheLinearisationState``
+     - The momentum predictor's :math:`a_P` is that of the run without a canopy plus the rows computed at the state
+       before the step, on all three components (the v and w rows do not see the u the step has just updated); a step
+       on an increment from zero, as the Newton preconditioner takes, has the same :math:`a_P`.
    * - ``BoundaryTypes.PoissonTypesMatchErfGetFftBc``
      - The Poisson boundary types of every face type on every face it may take, periodic directions included, equal
        ERF's ``get_fft_bc`` (the copied ``ERF_SolverUtils.H``).

@@ -102,6 +102,7 @@
 // residual's fields, the closure's, the transport and the workspaces), on
 // top of NewtonKrylov's (Newton.H), and the Poisson solver's hierarchy.
 
+#include "CanopyDrag.H"
 #include "Newton.H"
 #include "Simplec.H"
 
@@ -174,6 +175,7 @@ private:
     ResidualFields m_R;         //!< -r for the predictor and the sweeps (and R(q) in setup)
     ClosureFields m_cf;
     SurfaceState m_ss;
+    CanopyRows m_canopy_rows;   //!< the canopy drag's diagonal at m_q0 (CanopyDrag.H)
     ResidualWorkspace m_rws;    //!< setup's residual scratch
     PredictorFields m_pf;
     SimplecWorkspace m_w;

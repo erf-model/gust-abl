@@ -25,6 +25,7 @@ set(GUST_SOURCES
     SurfaceLayer.cpp
     SurfaceRoughness.cpp
     Canopy.cpp
+    CanopyDrag.cpp
     InflowProfile.cpp
     BoundaryConditions.cpp
     BoundaryDamping.cpp

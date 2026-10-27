@@ -132,7 +132,8 @@ MomentumPredictorResult momentum_predictor (State& q, const ResidualFields& R,
                                             const Mesh& mesh, const amrex::Geometry& geom, int sweeps,
                                             PredictorFields& ap, const SurfaceState* surface, const ClosureFields* fields,
                                             amrex::Real rotation_relax, const LineSweepOptions& sweep,
-                                            amrex::Real w_vnn_cap, amrex::Real w_vnn_slope_margin)
+                                            amrex::Real w_vnn_cap, amrex::Real w_vnn_slope_margin,
+                                            const CanopyRows* canopy)
 {
     const char* op = "momentum_predictor";
     if (std::isnan(rotation_relax) || !(rotation_relax > 0 && rotation_relax <= 1)) {
@@ -171,7 +172,7 @@ MomentumPredictorResult momentum_predictor (State& q, const ResidualFields& R,
         check_operator_field(op, "q", *comps[c], loc, mesh, 0);
         check_operator_field(op, "R", *res[c], loc, mesh, 0);
         amrex::MultiFab A;
-        implicit_rows(F, q.z_phys_nd, in, eqs[c], mesh, geom, A, surface, fields);
+        implicit_rows(F, q.z_phys_nd, in, eqs[c], mesh, geom, A, surface, fields, canopy);
         if (aps[c]->empty()) { aps[c]->define(A.boxArray(), A.DistributionMap(), 1, 0); }
         if (ds[c]->empty()) { ds[c]->define(A.boxArray(), A.DistributionMap(), 1, 0); }
         check_operator_field(op, "ap", *aps[c], loc, mesh, 0);

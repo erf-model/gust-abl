@@ -51,6 +51,8 @@ namespace gust {
 
 enum class CanopyType { none, patches, map };
 enum class CanopyProfile { uniform, lalic_mihailovic };
+//! canopy.drag_diagonal: the momentum rows' implicit drag term (CanopyDrag.H).
+enum class CanopyDiagonal { derivative, picard, none };
 
 //! The canopy.* inputs (read_canopy_options) and the IDW keys they share.
 struct CanopyOptions
@@ -65,6 +67,8 @@ struct CanopyOptions
     double cd{0};              //!< canopy.cd (map without canopy.cd_file)
     CanopyProfile profile{CanopyProfile::uniform};   //!< canopy.profile (map)
     double laimax{0.8};        //!< canopy.laimax (map with lalic_mihailovic)
+    std::string drag_diagonal_name{"derivative"};   //!< canopy.drag_diagonal as given
+    CanopyDiagonal drag_diagonal{CanopyDiagonal::derivative};   //!< canopy.drag_diagonal
     int idw_neighbors{6};      //!< terrain.idw_neighbors (map)
     double idw_power{2};       //!< terrain.idw_power (map)
     std::vector<std::string> given;   //!< canopy.* keys in the inputs
@@ -111,6 +115,8 @@ public:
     [[nodiscard]] bool active () const { return m_active; }
     //! f (1/m), one ghost column in x and y; empty unless active().
     [[nodiscard]] const amrex::MultiFab& drag () const { return m_drag; }
+    //! canopy.drag_diagonal (a coarse level takes level 0's).
+    [[nodiscard]] CanopyDiagonal drag_diagonal () const { return m_diagonal; }
 
     //! The log line: the largest f, the columns with canopy, the mean column
     //! integral of f over them (their mean Cd LAI) and its largest value.
@@ -135,6 +141,7 @@ private:
     bool m_active{false};
     amrex::MultiFab m_drag;
     std::string m_hash;
+    CanopyDiagonal m_diagonal{CanopyDiagonal::derivative};
 };
 
 //! The canopy file name in a checkpoint directory.
