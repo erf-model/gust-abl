@@ -223,6 +223,27 @@ Quick reference
    * - ``bc.surface_qnse_am``, ``_bm``, ``_ah``, ``_bh``
      - ``2.5``, ``0.2``, ``2.5``, ``0.2``
      - QNSE coefficients
+   * - **Forest canopy** (`canopy`_)
+     -
+     -
+   * - ``canopy.type``
+     - ``none``
+     - ``none``, ``patches`` (ERF's patch file) or ``map`` (point maps)
+   * - ``canopy.file``
+     - required for ``patches``
+     - Patch file, ``type x y height diameter cd lai laimax`` per line
+   * - ``canopy.height_file``, ``canopy.lai_file``
+     - required for ``map``
+     - Canopy height (m) and leaf area index, ``x y value`` points
+   * - ``canopy.cd``, ``canopy.cd_file``
+     - one required for ``map``
+     - Drag coefficient: one value or ``x y value`` points
+   * - ``canopy.profile``
+     - ``uniform``
+     - Leaf area density shape: ``uniform`` or ``lalic_mihailovic``
+   * - ``canopy.laimax``
+     - ``0.8``
+     - Height of the largest leaf area density, as a fraction of the canopy height
    * - **Forcing** (`forcing`_)
      -
      -
@@ -527,11 +548,12 @@ Quick reference
      - ``ridge_x`` (a ridge along y, varying in x), ``ridge_y`` or ``round``; ``agnesi`` only.
    * - ``terrain.idw_neighbors``
      - ``6``
-     - ≥ 1; ``xyz`` or ``bc.surface_z0_file`` only. Points used for each height (and each column's
-       :math:`z_0` of the roughness map).
+     - ≥ 1; ``xyz``, ``bc.surface_z0_file`` or ``canopy.type = map`` only. Points used for each height (and each
+       column's :math:`z_0` of the roughness map, and the canopy's maps).
    * - ``terrain.idw_power``
      - ``2``
-     - Finite, > 0; ``xyz`` or ``bc.surface_z0_file`` only. Weight exponent :math:`p` in :math:`d^{-p}`.
+     - Finite, > 0; ``xyz``, ``bc.surface_z0_file`` or ``canopy.type = map`` only. Weight exponent :math:`p` in
+       :math:`d^{-p}`.
    * - ``terrain.hierarchy_passes``
      - ``1``
      - Integer from 0 to 64; only with ``mesh.hierarchy_levels`` > 1. The ground of level :math:`l` is smoothed by
@@ -755,6 +777,57 @@ types, the inflow profile and the sounding; the other keys act in the SIMPLEC st
 The wall model and the inflow profile's equilibrium :math:`k` and :math:`\nu_t` use the turbulence model's
 ``turb.Cmu0`` and ``turb.kappa``, and the inflow profile its ``turb.max_geom_lscale``. Without the SIMPLEC stage
 (``turb.*`` is then refused) they use the defaults, 0.5562, 0.41 and 30 m.
+
+``canopy``
+----------
+
+See :doc:`canopy`. The canopy's drag field is built in every run (with or without ``steady.stage``) and written to the
+plotfile as ``canopy_drag``; it does not act on the flow yet. A key that has no effect with the chosen
+``canopy.type`` or ``canopy.profile`` is refused. A restart refuses canopy inputs other than those of the run it
+continues.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 26 12 62
+
+   * - Input
+     - Default
+     - Range and meaning
+   * - ``canopy.type``
+     - ``none``
+     - ``none``, ``patches`` (round patches from ERF's forest file) or ``map`` (point maps of height, LAI and
+       optionally :math:`C_d`, interpolated with ``terrain.idw_neighbors`` and ``terrain.idw_power``).
+   * - ``canopy.file``
+     - required for ``patches``
+     - A readable file of patches, one per line, ``type x y height diameter cd lai laimax`` (ERF's
+       ``erf.forest_file``); ``#`` starts a comment. type 1 or 2 (uniform or Lalic–Mihailovic), height and diameter
+       finite and > 0 (m), cd and lai finite and ≥ 0, laimax in [0, 1) on a type 2 line and finite on a type 1 line.
+       Any other line stops the run, naming the file and the line. A patch wider than a periodic direction of the
+       domain is refused.
+   * - ``canopy.height_file``
+     - required for ``map``
+     - A readable file of ``x y h`` points (``terrain.file``'s xyz format): the canopy height (m), every value finite
+       and ≥ 0, at least ``terrain.idw_neighbors`` points.
+   * - ``canopy.lai_file``
+     - required for ``map``
+     - A readable file of ``x y LAI`` points: the leaf area index, every value finite and ≥ 0, at least
+       ``terrain.idw_neighbors`` points.
+   * - ``canopy.cd``
+     - none
+     - Finite, > 0; ``map`` only. The drag coefficient of every column. ``map`` needs this or ``canopy.cd_file``, not
+       both (no default, as in ERF). 0 is refused: without a canopy, set ``canopy.type = none``. The maps, by
+       contrast, may hold 0 where there is no forest.
+   * - ``canopy.cd_file``
+     - none
+     - ``map`` only. A readable file of ``x y cd`` points, every value finite and ≥ 0, at least
+       ``terrain.idw_neighbors`` points.
+   * - ``canopy.profile``
+     - ``uniform``
+     - ``uniform`` or ``lalic_mihailovic``; ``map`` only. The shape of the leaf area density over the canopy height.
+   * - ``canopy.laimax``
+     - ``0.8``
+     - Finite, in [0, 1); ``map`` with ``lalic_mihailovic`` only. The height of the largest leaf area density as a
+       fraction of the canopy height (ERF's ``erf.forest_laimax``).
 
 ``forcing``
 -----------

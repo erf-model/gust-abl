@@ -89,6 +89,7 @@ Contents
    turbulence_model
    terrain_coordinates
    boundary_conditions
+   canopy
 
 .. toctree::
    :maxdepth: 2

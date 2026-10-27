@@ -54,6 +54,11 @@ It can be read with yt, ParaView, VisIt or AMReX's ``amrex_fcompare``.
      - Turbulent kinetic energy k.
    * - ``z``
      - Height of the cell centre: the mean of the cell's eight node heights.
+   * - ``detJ``
+     - The cell volume factor, (cell volume) / (Δx Δy Δζ).
+   * - ``canopy_drag``
+     - With ``canopy.type`` other than ``none``: the canopy's drag field :math:`f = C_d a` (1/m), the mean over the
+       cell (:doc:`canopy`).
 
 The node heights themselves, ghost nodes included, are written to ``Level_0/z_phys_nd`` inside the plotfile as a
 VisMF MultiFab.
