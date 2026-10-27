@@ -247,6 +247,12 @@ Quick reference
    * - ``canopy.drag_diagonal``
      - ``derivative``
      - Implicit drag term on the momentum diagonal: ``derivative``, ``picard`` or ``none``
+   * - ``canopy.tke``
+     - ``on``
+     - Canopy terms of the k–L closure: wake production, short-circuit sink, length cap
+   * - ``canopy.beta_p``, ``canopy.beta_d``, ``canopy.length_alpha``
+     - ``1``, ``4``, ``0.04``
+     - Wake production fraction, short-circuit coefficient, length cap :math:`L \le \alpha/f`
    * - **Forcing** (`forcing`_)
      -
      -
@@ -785,9 +791,13 @@ The wall model and the inflow profile's equilibrium :math:`k` and :math:`\nu_t` 
 ----------
 
 See :doc:`canopy`. The canopy's drag field is built in every run (with or without ``steady.stage``) and written to the
-plotfile as ``canopy_drag``; its drag acts on the momentum equations. A key that has no effect with the chosen
-``canopy.type`` or ``canopy.profile`` is refused. A restart refuses canopy inputs other than those of the run it
-continues, except ``canopy.drag_diagonal``.
+plotfile as ``canopy_drag``; its drag acts on the momentum equations and, with ``canopy.tke``, on the k–L closure. A
+key that has no effect with the chosen ``canopy.type``, ``canopy.profile`` or ``canopy.tke`` is refused. A restart
+refuses a canopy geometry other than that of the run it continues (``canopy.type`` and the keys that build the drag
+field); ``canopy.drag_diagonal`` and the closure's canopy terms (``canopy.tke``, ``canopy.beta_p``,
+``canopy.beta_d``, ``canopy.length_alpha``) may change across a restart, as the ``turb.*`` inputs may (the closure's
+inputs then change the answer, not only the path; a checkpoint of fully frozen closure decisions keeps
+``canopy.length_alpha``, :doc:`canopy`).
 
 .. list-table::
    :header-rows: 1
@@ -837,6 +847,25 @@ continues, except ``canopy.drag_diagonal``.
        momentum rows: the exact derivative :math:`f_c(|U| + u_c^2/|U|)`, :math:`f_c|U|` with :math:`|U|` frozen,
        or nothing (the drag explicit, as in ERF). The converged answer does not depend on it; the iterations do. May
        change across a restart.
+   * - ``canopy.tke``
+     - ``on``
+     - ``on`` or ``off``; ``patches`` or ``map``. The canopy terms of the k–L closure (:doc:`canopy`): the wake
+       production :math:`\beta_p f |U|^3`, the short-circuit sink :math:`\beta_d f |U| k` and the length cap
+       :math:`L \le \alpha/f`. ``off`` keeps the drag only.
+   * - ``canopy.beta_p``
+     - ``1``
+     - Finite, in [0, 1]; ``canopy.tke = on`` only. The fraction of the drag work :math:`f|U|^3` that becomes
+       :math:`k` (ERF's ``erf.forest_canopy_beta_p``).
+   * - ``canopy.beta_d``
+     - ``4``
+     - Finite, ≥ 0; ``canopy.tke = on`` only. The short-circuit coefficient of the sink :math:`\beta_d f |U| k`
+       (ERF's ``erf.forest_canopy_beta_d``).
+   * - ``canopy.length_alpha``
+     - ``0.04``
+     - Finite, in [0, 1]; ``canopy.tke = on`` only. The cap :math:`L \le \alpha/f` on the turbulent length; 0 turns
+       the cap off and keeps the sources (ERF's ``erf.forest_canopy_length_alpha``). ``canopy.beta_p``,
+       ``canopy.beta_d`` and ``canopy.length_alpha`` all 0 with ``canopy.tke = on`` is refused (it changes
+       nothing).
 
 ``forcing``
 -----------

@@ -40,6 +40,8 @@ ERF's `LICENSE.md` goes into `extern_erf/` with the first copied file. Copied fi
 | `extern_erf/ERF_MOSTUtils.H` | `Source/BoundaryConditions/ERF_MOSTUtils.H` | 92410d578f612ab9e844c450bf8e900194becfb5 | unchanged | similarity_funs (Businger-Dyer and Jimenez stability functions) for the surface layer; ERF#3982 (reference-height lookup) is already in this ERF |
 | `extern_erf/ERF_RANSClosure.H` | `Source/Diffusion/ERF_RANSClosure.H` | 92410d578f612ab9e844c450bf8e900194becfb5 | unchanged | AL01 k-L closure relations (geom_length, smooth_Rt, turb_length, cmu, cmu_prime): the reference of `Closure.KernelsMatchErfBitForBit` |
 | `extern_erf/ERF_ForestUtils.H` | `Source/Utils/ERF_ForestUtils.H` | 92410d578f612ab9e844c450bf8e900194becfb5 | unchanged | validate_laimax, the range check of the Lalic–Mihailovic laimax (canopy.laimax and type 2 lines of canopy.file, Canopy.cpp) |
+| `extern_erf/ERF_CanopyTurbulence.H` | `Source/SourceTerms/ERF_CanopyTurbulence.H` | 0a0230e62faa25d73bc4fef88feb42cb457f05d0 | unchanged | canopy_turbulence::limited_length, the canopy cap on the turbulent length L <= alpha / f (canopy.length_alpha, Closure.cpp); tke_source and AddCanopyTKESources are not used (GUST's steady form of the same terms is CanopyTke.cpp) |
+| `extern_erf/ERF_CanopyTurbStruct.H` | `Source/DataStructs/ERF_CanopyTurbStruct.H` | 0a0230e62faa25d73bc4fef88feb42cb457f05d0 | unchanged | Included by ERF_CanopyTurbulence.H; not used (the canopy.* reader is Canopy.cpp) |
 <!-- manifest:end -->
 
 The shims in `Source/erf_shims/` stand in for two ERF headers the copied files include (`ERF_IndexDefines.H`: only

@@ -293,6 +293,13 @@ void run ()
         amrex::Print() << "gust: canopy (canopy.type = " << canopy_opt.type_name << "): " << canopy.summary(mesh.detJ, geom)
                        << "\ngust: canopy: the drag acts on the momentum equations when a stage runs, "
                           "canopy.drag_diagonal = " << canopy_diagonal_name(canopy_opt.drag_diagonal) << "\n";
+        const CanopyTkeOptions& t = canopy_opt.tke;
+        if (t.on) {
+            amrex::Print() << "gust: canopy: k terms on (canopy.tke): beta_p " << t.beta_p << ", beta_d " << t.beta_d
+                           << ", length cap alpha / f with canopy.length_alpha " << t.length_alpha << "\n";
+        } else {
+            amrex::Print() << "gust: canopy: k terms off (canopy.tke = off): the drag only\n";
+        }
     }
     const amrex::MultiFab* canopy_plot = canopy.active() ? &canopy.drag() : nullptr;
     // Writing a checkpoint of the same name as the one read would move it to
