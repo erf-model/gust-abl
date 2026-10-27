@@ -1239,12 +1239,15 @@ GoogleTest suite
    * - ``BoundaryTypes.PoissonTypesMatchErfGetFftBc``
      - The Poisson boundary types of every face type on every face it may take, periodic directions included, equal
        ERF's ``get_fft_bc`` (the copied ``ERF_SolverUtils.H``).
-   * - ``BoundaryFill.InflowFollowsTheGroundHeight``, ``BoundaryFill.RulesPerFaceType``, ``InflowProfile.*``
+   * - ``BoundaryFill.InflowFollowsTheGroundHeight``, ``BoundaryFill.RulesPerFaceType``, ``BoundaryFill.NarrowDomainFillsTheLowFaceFirst``, ``InflowProfile.*``
      - On a ridge whose height varies along the inflow face: every inflow ghost point (both layers, u, v, θ, k) takes the
        profile at its own height above the ground, the inlet wind varies along the face by more than 0.05 m/s, and the
        outflow face points of u are not Dirichlet rows. The ghost values of every rule for every
        face type (even, odd, value, profile, gradient, the Dirichlet face points, the top's θ gradient); the analytic
-       profiles and their equilibrium k and :math:`\nu_t`, and a file table with and without a k column.
+       profiles and their equilibrium k and :math:`\nu_t`, and a file table with and without a k column. On a domain
+       two cells wide in x with slip walls on both x faces, the low face is filled first: :math:`u(-2) = -u(2)` before
+       the high face sets :math:`u(2) = 0`, and :math:`u(4) = -u(0) = 0` (audit A9: one launch for both faces would read
+       the other face's points; a CPU build, which runs the tags in order, fails if the split is lost).
    * - ``BoundaryFill.GroundGradientIsTheWallLaw``, ``BoundaryImplicit.FoldsMatchTheHomogeneousFill``, ``BoundaryResidual.DirichletRowsAndIdentityLines``, ``BoundaryDamping.*``, ``BoundaryInputs.KeysAreReadAndChecked``
      - Over a 120 m hill with a stable heat flux, the ground ghosts of u, v and θ give MOST's
        gradient at the first centre (u* φ_m/(κ(d₀ + z₀)) along the stress, −q φ_h/(κ u* (d₀ + z₀))) in both layers,
