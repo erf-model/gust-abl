@@ -9,6 +9,9 @@
 #include "ImplicitOperator.H"
 #include "Stencil_K.H"
 
+#include <AMReX_ParallelDescriptor.H>
+#include <AMReX_Reduce.H>
+
 #include <cmath>
 
 namespace gust {
@@ -144,6 +147,49 @@ void BoundaryConditions::add_damping (const State& q, ResidualFields& R) const
             });
         }
     }
+}
+
+BoundaryConditions::CanopyZoneCounts BoundaryConditions::canopy_in_boundary_zones (const amrex::MultiFab& f,
+                                                                                   const amrex::MultiFab& z_nd) const
+{
+    const amrex::Box& dom = m_geom.Domain();
+    const int klo = dom.smallEnd(2);
+    // The first cell column inside each inflow face.
+    const bool in_xlo = m_in.face[amrex::Orientation(0, amrex::Orientation::low)] == FaceType::inflow;
+    const bool in_xhi = m_in.face[amrex::Orientation(0, amrex::Orientation::high)] == FaceType::inflow;
+    const bool in_ylo = m_in.face[amrex::Orientation(1, amrex::Orientation::low)] == FaceType::inflow;
+    const bool in_yhi = m_in.face[amrex::Orientation(1, amrex::Orientation::high)] == FaceType::inflow;
+    const int x0 = dom.smallEnd(0), x1 = dom.bigEnd(0), y0 = dom.smallEnd(1), y1 = dom.bigEnd(1);
+    const DampingCoef coef = damping_coef(m_in, m_geom, m_mesh.zlevels().back());
+    const bool above_ground = m_in.rayleigh_above_ground;
+    // The Rayleigh layer counts when it relaxes a field other than w (u, v, theta, k) towards the profile.
+    const auto& rf = m_in.rayleigh_fields;
+    const bool rayleigh_to_profile = rf[0] || rf[1] || rf[3] || rf[4];
+    const auto plo = m_geom.ProbLoArray();
+    const auto dx = m_geom.CellSizeArray();
+    amrex::ReduceOps<amrex::ReduceOpSum, amrex::ReduceOpSum> rop;
+    amrex::ReduceData<amrex::Long, amrex::Long> data(rop);
+    for (amrex::MFIter mfi(f, false); mfi.isValid(); ++mfi) {
+        const amrex::Box bx = mfi.validbox();
+        const auto fa = f.const_array(mfi);
+        const amrex::Box zb = z_nd[mfi].box();
+        const NodeZ nz{z_nd.const_array(mfi), amrex::lbound(zb), amrex::ubound(zb)};
+        rop.eval(bx, data, [=] AMREX_GPU_DEVICE (int i, int j, int k) -> amrex::GpuTuple<amrex::Long, amrex::Long>
+        {
+            if (!(fa(i, j, k) > 0)) { return {0, 0}; }
+            const bool inflow = (in_xlo && i == x0) || (in_xhi && i == x1) || (in_ylo && j == y0) || (in_yhi && j == y1);
+            amrex::Real h, zc;
+            point_heights(stencil::CC, nz, i, j, k, klo, h, zc);
+            const amrex::Real x = plo[0] + (i + amrex::Real(0.5)) * dx[0];
+            const amrex::Real y = plo[1] + (j + amrex::Real(0.5)) * dx[1];
+            const bool damped = (rayleigh_to_profile && coef.rayleigh_part(above_ground ? h : zc) > 0) || coef.sponge_part(x, y) > 0;
+            return {inflow ? amrex::Long(1) : amrex::Long(0), damped ? amrex::Long(1) : amrex::Long(0)};
+        });
+    }
+    auto v = data.value(rop);
+    amrex::Long n[2] = {amrex::get<0>(v), amrex::get<1>(v)};
+    amrex::ParallelDescriptor::ReduceLongSum(n, 2);
+    return {n[0], n[1]};
 }
 
 void BoundaryConditions::add_damping_to_implicit (Equation eq, Loc loc, const amrex::MultiFab& z_nd, amrex::MultiFab& A) const

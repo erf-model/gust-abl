@@ -390,6 +390,33 @@ arm64, AppleClang). All 13 are killed.
      - ``canopy.length_alpha`` with ``canopy.tke = off`` accepted
      - ``Canopy.OptionChecks``
 
+The one-line mutants of the count behind the canopy's inflow-face and damping-layer warnings
+(``BoundaryConditions::canopy_in_boundary_zones``, ``Source/BoundaryDamping.cpp``), each run against ``CanopyTke.*`` by
+``tools/canopy_zone_mutants.py``. All 8 are killed by ``BoundaryZonesCountTheCanopyCells``.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 6 94
+
+   * - Mutant
+     - Change
+   * - Z1
+     - Every cell counted, not only canopy cells
+   * - Z2
+     - The inflow face's second column counted in place of its first
+   * - Z3
+     - The sponge left out
+   * - Z4
+     - The Rayleigh layer left out
+   * - Z5
+     - An outflow face counted as an inflow face
+   * - Z6
+     - The x high face's second-last column counted
+   * - Z7
+     - The y high face's second-last row counted
+   * - Z8
+     - The Rayleigh layer counted when it damps only w
+
 The one-line mutants of the Newton stage (``Source/NewtonStage.cpp`` and the switch rules in ``Source/Driver.cpp``),
 each run against ``Driver.*`` and ``NewtonStage.*`` on two ranks with the unit-test flags by
 ``tools/newton_stage_mutants.py`` (macOS arm64, AppleClang). 13 of 15 are killed. N14 and N15 survive: they matter only
@@ -877,6 +904,16 @@ Current tests
        (p) and 2.6e-9 (velocities); with sequencing within 1.2e-8 (p) and 9.2e-11 (velocities); u 1.14 against
        2.16 m/s (ratio 0.53); r = 3.1e3 explicit against 0.16 after 20 iterations. About 4 min on two ranks; label
        ``regression`` (the run time); double only.
+   * - ``rt_forested_escarpment``
+     - A dense canopy on steep terrain with an inflow face (``Tests/Canonical_RANS/Forested_Escarpment``, the WINSENT
+       Albtrauf in 2-D: a 200 m tanh escarpment, steepest slope 22°, the WINSENT canopy on the slope, WINSENT's layers,
+       inflow and outflow faces, LU-SGS with grid sequencing at ``steady.cfl_max`` 2). ``check_forested_escarpment.py``:
+       steady within 300 iterations on 2 ranks with no boundary-zone warning; the 1- and 4-rank runs within 1e-9
+       (velocities against the largest :math:`|u|`, p and k against their own largest values);
+       12 m above the ground, u in the forest below half of u upstream; a run of 40 iterations continued to 80 equals 80
+       straight, bit for bit; with the forest at the inflow face, the inflow-face warning with its count. Measured: 185
+       iterations on 1, 2 and 4 ranks, differences about 4e-11, u 0.72 against 3.52 m/s, 24 canopy cells at the
+       inflow face. About 1 min on two ranks; label ``regression``; double only.
    * - ``rt_canopy_tke``
      - The canopy terms of the k–L closure on ``Tests/Canonical_RANS/Canopy_Drag``. ``check_canopy_tke.py`` runs it
        with ``canopy.tke`` on and off to the verdict (and the turbulence plotfile): in every canopy cell
@@ -1311,6 +1348,12 @@ GoogleTest suite
    * - ``CanopyTke.ZeroCanopyIsBitIdenticalAndResidualCarriesTheTerms``
      - UT-8.3.4: a canopy with a zero drag field leaves every closure field bit for bit; the residual of :math:`k`
        gains exactly :math:`D_c - P_c`.
+   * - ``CanopyTke.BoundaryZonesCountTheCanopyCells``
+     - The count behind the inflow-face and damping-layer warnings: a patch covering only the first column of the
+       inflow face is counted there; with a 100 m sponge on the inflow and outflow faces and a Rayleigh layer above
+       15 m, the canopy cells whose centre lies in either are counted (the Rayleigh layer on w alone is not); patches in
+       the first column or row of each of the four faces are counted with that face inflow; an outflow face and no
+       damping count nothing.
    * - ``CanopyTke.CapSwitchIsFrozen``, ``CanopyTke.RoughGroundUnderTheCanopyIsCounted``
      - UT-8.3.5: a capped decision held for a smaller :math:`k` keeps :math:`L = \alpha/f`; on the field the moved
        decisions are counted and the frozen evaluation keeps the cap. The ground-:math:`z_0` warning counts every
