@@ -821,6 +821,35 @@ gust_add_test(NAME rt_steady_hill2d_restart_matches NP 1 LABELS "regression;smok
               FIXTURES_REQUIRED steady_hill2d_continued steady_hill2d_straight
               COMMAND ${FCOMPARE} --rel_tol 1e-14 --abs_tol 1e-300 steady_hill2d_restart_plt00010
                       straight/steady_hill2d_restart_plt00010)
+# The 2-D hill with Coriolis, run twice on the same two ranks and layout: the
+# plotfiles and the turbulence plotfiles (which carry the residual fields and
+# the wall state) identical at zero tolerance. The Coriolis coupling takes a
+# horizontal mean of the other residual per level; before audit A4 (#60) that
+# mean added every face atomically into one address per level, an order that
+# can change from run to run on a GPU. On a CPU two runs are identical either
+# way; the test is there for the nightly H100 job (tools/kestrel/nightly_gpu.sh),
+# which runs every smoke test. 40 iterations, from inputs_steady_hill2d_restart
+# (inputs_steady_hill2d without the iteration cap; the same Coriolis case).
+set(CRP_DIR ${CMAKE_CURRENT_BINARY_DIR}/run/rt_coriolis_repeat)
+# Both run directories start empty (as smoke_clean).
+add_test(NAME rt_coriolis_repeat_clean
+         COMMAND ${Python3_EXECUTABLE} -c
+                 "import shutil, os, sys; shutil.rmtree(sys.argv[1], ignore_errors=True); [os.makedirs(os.path.join(sys.argv[1], d)) for d in ('first', 'second')]"
+                 ${CRP_DIR})
+set_tests_properties(rt_coriolis_repeat_clean PROPERTIES LABELS "regression;smoke" FIXTURES_SETUP coriolis_repeat_clean)
+foreach(run first second)
+    gust_add_test(NAME rt_coriolis_repeat_${run} NP 2 LABELS "regression;smoke" RUN_DIR ${CRP_DIR}/${run}
+                  FIXTURES_REQUIRED coriolis_repeat_clean FIXTURES_SETUP coriolis_repeat_${run}
+                  COMMAND $<TARGET_FILE:gust> ${HILL2D_CASE}/inputs_steady_hill2d_restart steady.max_iterations=40
+                          init.first_guess=profile io.turb_plot_file=steady_hill2d_restart_turb
+                          ${GUST_TEST_AMREX_FLAGS})
+endforeach()
+foreach(kind plt turb)
+    gust_add_test(NAME rt_coriolis_repeat_${kind}_matches NP 1 LABELS "regression;smoke" RUN_DIR ${CRP_DIR}
+                  FIXTURES_REQUIRED coriolis_repeat_first coriolis_repeat_second
+                  COMMAND ${FCOMPARE} --rel_tol 0 --abs_tol 0 first/steady_hill2d_restart_${kind}00040
+                          second/steady_hill2d_restart_${kind}00040)
+endforeach()
 # The column's target wind carried into the 3-D run (init.column_target_*), neutral and with a
 # stable column (L = 1000 m) whose flux and theta the run takes (bc.surface_stability = heat_flux). The 3-D wind at
 # 10 m is the target to 0.5 % and, stable, the 3-D surface's L is 1000 m to 2 %.
@@ -1297,6 +1326,11 @@ if(NOT WIN32)
                 $<TARGET_FILE:gust_refavg> ${SMOKE_DIR}/smoke_plt00000
                 ${CMAKE_CURRENT_BINARY_DIR}/run/kestrel_dryrun)
     set_tests_properties(kestrel_dryrun PROPERTIES LABELS "regression;smoke" FIXTURES_REQUIRED smoke)
+    # The nightly GPU job (tools/kestrel/nightly_gpu.sh) with stub git, module, sbatch, srun, cmake and ctest.
+    add_test(NAME kestrel_nightly_dryrun
+             COMMAND bash ${KESTREL_CASE}/nightly_gpu_dryrun.sh ${PROJECT_SOURCE_DIR}
+                ${CMAKE_CURRENT_BINARY_DIR}/run/kestrel_nightly_dryrun)
+    set_tests_properties(kestrel_nightly_dryrun PROPERTIES LABELS unit)
     # The WindNinja2019 drivers' timing helper (Tests/Real_Terrain/WindNinja2019/timed_run.sh) and sweep.sh
     # with stub mpirun, gust and python3, on a path with a space (bash scripts: not on Windows).
     add_test(NAME wn2019_timed_run
