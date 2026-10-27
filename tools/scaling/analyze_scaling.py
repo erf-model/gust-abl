@@ -14,12 +14,14 @@ and, next to results.csv:
   scaling.rst            the documentation page (docs/scaling.rst): set-up,
                          minimum cells per rank and per GPU, every table and
                          every plot
-For the PR, copy the PNGs to docs/figures/scaling/ (the default paths of both).
+For the PR, copy the PNGs to docs/figures/scaling/ and scaling.rst to docs/ (the
+default paths of both); paste readme_scaling.md into README.md.
 
 Throughput is cell-iterations per second: cells / (seconds per iteration). The
 per-rank (per-GPU) throughput is that divided by the rank (GPU) count. The
-minimum cells per rank (GPU) at a fraction f is the smallest load from which on
-every point keeps at least f of the best per-rank (per-GPU) throughput measured.
+minimum cells per rank (GPU) at a fraction f is the smallest load such that every
+point at that load or larger keeps at least f of the best per-rank (per-GPU)
+throughput measured.
 Python 3.6 or later; matplotlib is optional.
 """
 import argparse
@@ -52,10 +54,12 @@ def load(path):
                 r["s_per_iter"] = float("nan")
             r["ok"] = r["status"] == "ok" and r["s_per_iter"] > 0
             rows.append(r)
-    # A point run again keeps its last result.
+    # A point run again keeps its last ok result (its last result if none is ok).
     last = {}
     for r in rows:
-        last[(r["device"], r["nx"], r["ny"], r["nz"], r["nproc"])] = r
+        key = (r["device"], r["nx"], r["ny"], r["nz"], r["nproc"])
+        if r["ok"] or key not in last or not last[key]["ok"]:
+            last[key] = r
     return list(last.values())
 
 
@@ -78,7 +82,7 @@ def derive(rows):
 
 
 def min_cells(points, fraction):
-    """Smallest cells per proc from which on every point keeps fraction of the peak."""
+    """Smallest cells per proc such that every point at that load or larger keeps fraction of the peak."""
     pts = [r for r in points if r["ok"]]
     if not pts:
         return None, None
@@ -91,8 +95,8 @@ def min_cells(points, fraction):
 
 
 def levelled(points):
-    """Whether the per-device throughput levels off: the largest load gains
-    less than 5 % over the next one measured."""
+    """Whether the per-device throughput levels off: the largest load is within
+    5 % of the next one measured (best value at each load)."""
     best = {}
     for r in points:
         best[r["cells_per_proc"]] = max(best.get(r["cells_per_proc"], 0), r["throughput_per_proc"])
@@ -100,6 +104,8 @@ def levelled(points):
     if len(loads) < 2:
         return "one load only"
     gain = best[loads[-1]] / best[loads[-2]] - 1
+    if gain <= -0.05:
+        return "no, falls (%+.0f %% at the largest load)" % (100 * gain)
     if gain < 0.05:
         return "yes (%+.0f %% at the largest load)" % (100 * gain)
     return "no (%+.0f %% at the largest load): add a larger mesh" % (100 * gain)
@@ -123,11 +129,11 @@ PLOTS = [("cpu_seconds_per_iter.png", "CPU seconds per iteration against mesh si
          ("cpu_strong_scaling.png", "CPU strong scaling: speedup against the smallest rank count of each mesh."),
          ("cpu_efficiency.png", "CPU parallel efficiency."),
          ("cpu_throughput_per_rank.png", "CPU throughput per rank against cells per rank."),
-         ("gpu_strong_scaling.png", "GPU strong scaling: speedup against one GPU."),
+         ("gpu_strong_scaling.png", "GPU strong scaling: speedup against the smallest GPU count of each mesh."),
          ("gpu_efficiency.png", "GPU parallel efficiency."),
          ("gpu_throughput_per_gpu.png", "GPU throughput per GPU against cells per GPU."),
-         ("node_cpu_vs_gpu.png", "The most CPU ranks measured against 1, 2 and 4 GPUs, total throughput."),
-         ("seconds_per_iter.png", "Seconds per iteration against mesh size, the most CPU ranks measured and 1, 2 and 4 GPUs.")]
+         ("node_cpu_vs_gpu.png", "Total throughput: the most CPU ranks measured against each GPU count."),
+         ("seconds_per_iter.png", "Seconds per iteration against mesh size: the most CPU ranks measured and each GPU count.")]
 
 # Where the runs ran (set from the command line).
 NODES = {"cpu": "a Kestrel CPU node (104 Intel Xeon Sapphire Rapids cores)",
@@ -157,13 +163,30 @@ def threshold_groups(rows):
 
 
 def setup_text(rows):
-    shas = ", ".join(sorted({r["gust_sha"] for r in rows}))
-    nodes = ", ".join(sorted({r["node"] for r in rows}))
-    return shas, nodes, rows[0]["iters_short"], rows[0]["iters_long"]
+    ok = [r for r in rows if r["ok"]] or rows
+
+    def distinct(k):
+        return ", ".join(sorted({r[k] for r in ok if r[k]}))
+    return distinct("gust_sha"), distinct("node"), distinct("iters_short"), distinct("iters_long")
 
 
-def readme_md(rows, fig_dir, docs_url):
-    """The README section: the two strong-scaling plots and a pointer to the docs."""
+def counts_text(rows):
+    """'CPU runs on 1 to 64 MPI ranks of ..., and GPU runs on 1, 2 and 4 GPUs of ...', from what was measured."""
+    parts = []
+    for dev, unit in (("cpu", "MPI ranks"), ("gpu", "GPUs")):
+        n = sorted({r["nproc"] for r in rows if r["device"] == dev and r["ok"]})
+        if not n:
+            continue
+        if dev == "cpu":
+            c = "%d to %d" % (n[0], n[-1]) if len(n) > 1 else str(n[0])
+        else:
+            c = ", ".join(str(x) for x in n[:-1]) + " and %d" % n[-1] if len(n) > 1 else str(n[0])
+        parts.append("%s runs on %s %s of %s" % (dev.upper(), c, unit, NODES[dev]))
+    return ", and ".join(parts)
+
+
+def readme_md(rows, fig_dir, docs_url, written):
+    """The README section: the two seconds-per-iteration plots and a pointer to the docs."""
     shas, nodes, _, _ = setup_text(rows)
     lines = ["## Performance", "",
              "Seconds per iteration on %s and on %s, the 3-D hill on " % (NODES["cpu"], NODES["gpu"]) +
@@ -171,7 +194,8 @@ def readme_md(rows, fig_dir, docs_url):
              "tables are in the [scaling page](%s) of the documentation." % (shas, docs_url), ""]
     for f, alt in (("cpu_seconds_per_iter.png", "CPU seconds per iteration"),
                    ("gpu_seconds_per_iter.png", "GPU seconds per iteration")):
-        lines += ["![%s](%s/%s)" % (alt, fig_dir, f), ""]
+        if f in written:
+            lines += ["![%s](%s/%s)" % (alt, fig_dir, f), ""]
     return "\n".join(lines)
 
 
@@ -179,21 +203,22 @@ def rst_table(header, body, widths):
     lines = [".. list-table::", "   :header-rows: 1", "   :widths: %s" % " ".join(str(w) for w in widths), ""]
     for row in [header] + body:
         lines.append("   * - %s" % row[0])
-        lines += ["     - %s" % c for c in row[1:]]
+        lines += [("     - %s" % c).rstrip() for c in row[1:]]
     return lines + [""]
 
 
-def scaling_rst(rows, fig_dir, have_plots):
+def scaling_rst(rows, fig_dir, written):
     """The documentation page: set-up, minimum cells, tables and every plot."""
     shas, nodes, ns, nl = setup_text(rows)
     title = "Performance and scaling"
     lines = [title, "=" * len(title), "",
-             "Strong scaling of GUST: CPU runs on 1 to %d MPI ranks of %s, and GPU runs on 1, 2 and 4 GPUs of %s, "
-             "one rank per GPU. GUST %s on %s." % (max_cpu_ranks(rows), NODES["cpu"], NODES["gpu"], shas, nodes),
+             "Strong scaling of GUST: %s; one rank per GPU. GUST %s on %s." % (counts_text(rows), shas, nodes),
              "", "Set-up", "------", ""]
     lines += rst_table(["Item", "Value"], [
         ["Case", "``Tests/Canonical_RANS/Neutral_Hill_3D/inputs_steady_hill3d``: the 3-D Agnesi hill, periodic, "
-                 "Coriolis on, z-line Jacobi sweeps on both devices; no plotfiles or checkpoints written"],
+                 "Coriolis on, z-line Jacobi sweeps (``steady.sweep = zjacobi``, 16 sweeps, CFL cap 4, as in the "
+                 "deck) on both devices; the CPU default ``steady.sweep = lusgs`` was not timed. ``mesh.n_cell``, "
+                 "``mesh.max_grid_size`` and ``steady.max_iterations`` are set for each run on the command line"],
         ["Meshes", ", ".join(sorted({mesh_name(r) for r in rows}, key=lambda m: [int(x) for x in m.split("x")]))],
         ["Boxes", "one per rank: x and y split in powers of 2 (``mesh.max_grid_size``), whole columns in z"],
         ["Launch", "CPU ``srun --cpu-bind=cores``; GPU ``srun --gpus-per-task=1 --gpu-bind=none``"],
@@ -204,17 +229,31 @@ def scaling_rst(rows, fig_dir, have_plots):
                        "rank or per GPU, divided by the count"],
     ], [20, 80])
     lines += ["Minimum cells per rank and per GPU", "----------------------------------", "",
-              "The smallest load from which on every measured point keeps 80 % (50 %) of the best per-rank "
-              "(per-GPU) throughput. \"Levelled off\" says whether the largest load gains less than 5 % over the "
-              "next; if not, the best throughput is not yet reached and a larger mesh is needed.", ""]
-    lines += rst_table(["Device", "Points", "Best Mcell-it/s per device", "80 % from (cells)", "50 % from (cells)",
-                        "Levelled off"],
-                       [[n, str(k), fmt_rate(p), fmt_cells(a), fmt_cells(b), lev]
-                        for n, k, p, a, b, lev in threshold_groups(rows)], [24, 8, 14, 18, 18, 18])
-    lines += ["On the CPU the per-rank throughput also falls as ranks share the node's memory bandwidth, so the "
-              "all-rank-count row mixes that with the box size; the row with the most ranks is the closest to a full node.", ""]
+              "The smallest load such that every measured point at that load or larger keeps 80 % (50 %) of the "
+              "best per-rank (per-GPU) throughput. \"Levelled off\" says whether the best throughput at the "
+              "largest load is within 5 % of that at the next largest load. If it is still rising, the best "
+              "throughput is not yet reached and a larger mesh would show it; if it falls, larger loads are slower "
+              "per cell. The two largest loads can come from meshes of different height (``nz``), so the test "
+              "also mixes in the mesh shape.", ""]
+    groups = threshold_groups(rows)
+    if groups:
+        lines += rst_table(["Device", "Points", "Best Mcell-it/s per rank or GPU", "80 % from (cells)",
+                            "50 % from (cells)", "Levelled off"],
+                           [[n, str(k), fmt_rate(p), fmt_cells(a), fmt_cells(b), lev]
+                            for n, k, p, a, b, lev in groups], [24, 8, 14, 18, 18, 18])
+    else:
+        lines += ["No point finished, so there is no threshold to report.", ""]
+    lines += ["On the CPU the per-rank throughput depends on two things. It falls as the box per rank grows "
+              "(less of it fits in cache), and it falls as more ranks share the node's memory bandwidth. When it "
+              "falls with load, the largest loads can stay below 80 % (50 %) of the best, and the table then says "
+              "\"not reached\"; a larger mesh does not change that. The all-rank-count row mixes both effects; the row with the most "
+              "ranks is the closest to a full node.", "",
+              "An efficiency above 100 % means the base point (the smallest count measured for that mesh) ran "
+              "slower per rank than the larger counts, for example a box that does not fit in cache; the "
+              "per-rank throughput plot shows which.", ""]
     for dev, label, per in (("cpu", "CPU ranks", "rank"), ("gpu", "GPUs", "GPU")):
-        pts = sorted((r for r in rows if r["device"] == dev), key=lambda r: (r["cells"], r["nz"], r["nproc"]))
+        pts = sorted((r for r in rows if r["device"] == dev),
+                     key=lambda r: (r["cells"], r["nz"], r["ny"], r["nx"], r["nproc"]))
         if not pts:
             continue
         head = "%s runs" % dev.upper()
@@ -228,18 +267,22 @@ def scaling_rst(rows, fig_dir, have_plots):
                              "%.0f %%" % (100 * r["efficiency"])])
             else:
                 body.append([mesh_name(r), str(r["cells"]), str(r["nproc"]), "%sx%s" % (r["boxes_x"], r["boxes_y"]),
-                             str(r["cells_per_proc"]), r["status"], "", "", "", ""])
+                             str(r["cells_per_proc"]), r["status"] if r["status"] != "ok" else "invalid time",
+                             "", "", "", ""])
         lines += rst_table(["Mesh", "Cells", label, "Boxes", "Cells per %s" % per, "s per iteration", "Mcell-it/s",
                             "per %s" % per, "Speedup", "Efficiency"], body, [12, 10, 7, 7, 10, 10, 10, 10, 8, 8])
         lines += ["Speedup and efficiency against the smallest %s count measured for each mesh." % label[:-1], ""]
-    if have_plots:
+    if written:
         lines += ["Plots", "-----", ""]
         for f, cap in PLOTS:
-            lines += [".. figure:: %s/%s" % (fig_dir, f), "   :width: 90%", "", "   %s" % cap, ""]
+            if f in written:
+                lines += [".. figure:: %s/%s" % (fig_dir, f), "   :width: 90%", "", "   %s" % cap, ""]
     lines += ["Reproducing", "-----------", "",
               "``run_scaling.sh`` (in a one-node allocation; ``CPU_TARGET=spr`` on a CPU node) builds GUST for CPU and "
-              "CUDA, runs every point and writes ``results.csv``; ``analyze_scaling.py results.csv`` writes the plots, "
-              "this page and the README section. Finished points are skipped when the script runs again. The "
+              "CUDA, runs every point and writes ``results.csv``; ``analyze_scaling.py results.csv`` writes the plots "
+              "into ``--out`` and this page and the README section (``scaling.rst``, ``readme_scaling.md``) next to "
+              "``results.csv``; copy the plots to ``docs/figures/scaling/``, the page to ``docs/`` and the section "
+              "into ``README.md``. Finished points are skipped when ``run_scaling.sh`` runs again. The "
               "measured ``results.csv`` and ``analyze_scaling.py`` are in ``tools/scaling/``; ``run_scaling.sh`` is "
               "not in the repository yet.", ""]
     return "\n".join(lines)
@@ -252,7 +295,7 @@ def plots(rows, out):
         import matplotlib.pyplot as plt
         from matplotlib.ticker import FuncFormatter, LogLocator, NullFormatter
     except ImportError:
-        return False
+        return set()
     plt.rcParams.update({"font.size": 10, "axes.edgecolor": MUTED, "axes.labelcolor": INK,
                          "xtick.color": MUTED, "ytick.color": MUTED, "axes.titlecolor": INK,
                          "axes.spines.top": False, "axes.spines.right": False, "legend.frameon": False})
@@ -260,6 +303,13 @@ def plots(rows, out):
     style = {m[2]: (SERIES[i % len(SERIES)], MARKERS[i % len(MARKERS)]) for i, m in enumerate(meshes)}
     int_fmt = FuncFormatter(lambda v, _: "%g" % v)
     cells_fmt = FuncFormatter(lambda v, _: fmt_cells(int(round(v))).split()[0] if v >= 1 else "")
+    written = set()
+
+    def done(fig, name):
+        fig.tight_layout()
+        fig.savefig(os.path.join(out, name))
+        plt.close(fig)
+        written.add(name)
 
     def plain_y(ax, subs=(2, 5)):
         # Plain numbers on a log axis; minor labels at subs when the
@@ -293,9 +343,7 @@ def plots(rows, out):
     def save(fig, ax, name, legend=True):
         if legend:
             ax.legend(fontsize=8, title="Mesh", title_fontsize=8, loc="upper left", bbox_to_anchor=(1.02, 1))
-        fig.tight_layout()
-        fig.savefig(os.path.join(out, name))
-        plt.close(fig)
+        done(fig, name)
 
     def by_mesh(dev):
         for _, _, m in meshes:
@@ -318,9 +366,7 @@ def plots(rows, out):
         ax.xaxis.set_major_formatter(cells_fmt)
         plain_y(ax)
         ax.legend(fontsize=8, title=unit, title_fontsize=8, loc="upper left", bbox_to_anchor=(1.02, 1))
-        fig.tight_layout()
-        fig.savefig(os.path.join(out, "%s_seconds_per_iter.png" % dev))
-        plt.close(fig)
+        done(fig, "%s_seconds_per_iter.png" % dev)
         # Strong scaling: speedup against the smallest count, with the ideal line.
         fig, ax = axes("%s strong scaling" % dev.upper(), unit, "Speedup")
         ax.plot(procs, procs, color=MUTED, linestyle="--", linewidth=1, label="ideal")
@@ -360,11 +406,12 @@ def plots(rows, out):
                         textcoords="offset points", xytext=(-4, 6), ha="right", fontsize=8, color=MUTED)
         save(fig, ax, "%s_throughput_per_%s.png" % (dev, per.lower()))
 
-    # Total throughput against mesh size: the most CPU ranks measured and 1, 2, 4 GPUs.
+    # Total throughput against mesh size: the most CPU ranks measured and each GPU count.
     nmax = max_cpu_ranks(rows)
     lines = [("cpu", nmax, "%d CPU ranks" % nmax, SERIES[0], "o")]
     for i, g in enumerate(sorted({r["nproc"] for r in rows if r["device"] == "gpu"})):
-        lines.append(("gpu", g, "%d GPU%s" % (g, "s" if g > 1 else ""), SERIES[1 + i], MARKERS[1 + i]))
+        lines.append(("gpu", g, "%d GPU%s" % (g, "s" if g > 1 else ""), SERIES[(1 + i) % len(SERIES)],
+                      MARKERS[(1 + i) % len(MARKERS)]))
     have = [(d, p, l, c, mk) for d, p, l, c, mk in lines
             if any(r["device"] == d and r["nproc"] == p and r["ok"] for r in rows)]
     if have:
@@ -377,9 +424,7 @@ def plots(rows, out):
         ax.xaxis.set_major_formatter(cells_fmt)
         plain_y(ax)
         ax.legend(fontsize=8, loc="upper left", bbox_to_anchor=(1.02, 1))
-        fig.tight_layout()
-        fig.savefig(os.path.join(out, "node_cpu_vs_gpu.png"))
-        plt.close(fig)
+        done(fig, "node_cpu_vs_gpu.png")
         # The same lines as wall time: seconds per iteration against mesh size.
         fig, ax = axes("Seconds per iteration", "Cells", "Seconds per iteration")
         for d, p, label, c, mk in have:
@@ -390,21 +435,20 @@ def plots(rows, out):
         ax.xaxis.set_major_formatter(cells_fmt)
         plain_y(ax)
         ax.legend(fontsize=8, loc="upper left", bbox_to_anchor=(1.02, 1))
-        fig.tight_layout()
-        fig.savefig(os.path.join(out, "seconds_per_iter.png"))
-        plt.close(fig)
-    return True
+        done(fig, "seconds_per_iter.png")
+    return written
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("results")
-    ap.add_argument("--out", default="plots")
+    ap.add_argument("results", help="the results.csv written by run_scaling.sh")
+    ap.add_argument("--out", default="plots", help="directory for the PNGs and summary.csv")
     ap.add_argument("--readme-figures", default="docs/figures/scaling",
                     help="where README.md finds the plots (from the repository root)")
     ap.add_argument("--docs-figures", default="figures/scaling",
                     help="where docs/scaling.rst finds the plots (from docs/)")
-    ap.add_argument("--docs-url", default="https://erf-model.github.io/gust-abl/scaling.html")
+    ap.add_argument("--docs-url", default="https://erf-model.github.io/gust-abl/scaling.html",
+                    help="the scaling page, linked from the README section")
     ap.add_argument("--cpu-node", default=NODES["cpu"], help="where the CPU runs ran, for the text")
     ap.add_argument("--gpu-node", default=NODES["gpu"], help="where the GPU runs ran, for the text")
     a = ap.parse_args()
@@ -414,21 +458,21 @@ def main():
         sys.exit("no points in %s" % a.results)
     derive(rows)
     os.makedirs(a.out, exist_ok=True)
-    have_plots = plots(rows, a.out)
+    written = plots(rows, a.out)
     keys = ["device", "nx", "ny", "nz", "cells", "nproc", "cells_per_proc", "s_per_iter", "throughput",
             "throughput_per_proc", "speedup", "efficiency", "base_nproc", "status"]
     with open(os.path.join(a.out, "summary.csv"), "w") as f:
         w = csv.writer(f)
         w.writerow(keys)
-        for r in sorted(rows, key=lambda r: (r["device"], r["cells"], r["nz"], r["nproc"])):
+        for r in sorted(rows, key=lambda r: (r["device"], r["cells"], r["nz"], r["ny"], r["nx"], r["nproc"])):
             w.writerow([r.get(k, "") for k in keys])
     base = os.path.dirname(os.path.abspath(a.results))
     with open(os.path.join(base, "readme_scaling.md"), "w") as f:
-        f.write(readme_md(rows, a.readme_figures, a.docs_url).rstrip("\n") + "\n")
+        f.write(readme_md(rows, a.readme_figures, a.docs_url, written).rstrip("\n") + "\n")
     with open(os.path.join(base, "scaling.rst"), "w") as f:
-        f.write(scaling_rst(rows, a.docs_figures, have_plots).rstrip("\n") + "\n")
+        f.write(scaling_rst(rows, a.docs_figures, written).rstrip("\n") + "\n")
     print("wrote %s/readme_scaling.md, %s/scaling.rst, %s/summary.csv%s" % (
-        base, base, a.out, " and the plots" if have_plots else " (no matplotlib: no plots)"))
+        base, base, a.out, " and %d plots" % len(written) if written else " (no plots)"))
 
 
 if __name__ == "__main__":

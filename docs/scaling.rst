@@ -1,7 +1,7 @@
 Performance and scaling
 =======================
 
-Strong scaling of GUST: CPU runs on 1 to 64 MPI ranks of a Kestrel CPU node (104 Intel Xeon Sapphire Rapids cores), and GPU runs on 1, 2 and 4 GPUs of a Kestrel GPU node (4 × NVIDIA H100), one rank per GPU. GUST 12a81339f on x1002c0s0b0n0, x3109c0s33b0n0.
+Strong scaling of GUST: CPU runs on 1 to 64 MPI ranks of a Kestrel CPU node (104 Intel Xeon Sapphire Rapids cores), and GPU runs on 1, 2 and 4 GPUs of a Kestrel GPU node (4 × NVIDIA H100); one rank per GPU. GUST 12a81339f on x1002c0s0b0n0, x3109c0s33b0n0.
 
 Set-up
 ------
@@ -13,7 +13,7 @@ Set-up
    * - Item
      - Value
    * - Case
-     - ``Tests/Canonical_RANS/Neutral_Hill_3D/inputs_steady_hill3d``: the 3-D Agnesi hill, periodic, Coriolis on, z-line Jacobi sweeps on both devices; no plotfiles or checkpoints written
+     - ``Tests/Canonical_RANS/Neutral_Hill_3D/inputs_steady_hill3d``: the 3-D Agnesi hill, periodic, Coriolis on, z-line Jacobi sweeps (``steady.sweep = zjacobi``, 16 sweeps, CFL cap 4, as in the deck) on both devices; the CPU default ``steady.sweep = lusgs`` was not timed. ``mesh.n_cell``, ``mesh.max_grid_size`` and ``steady.max_iterations`` are set for each run on the command line
    * - Meshes
      - 32x32x32, 64x64x32, 128x128x32, 256x256x32, 256x256x64, 512x512x64, 512x512x128
    * - Boxes
@@ -28,7 +28,7 @@ Set-up
 Minimum cells per rank and per GPU
 ----------------------------------
 
-The smallest load from which on every measured point keeps 80 % (50 %) of the best per-rank (per-GPU) throughput. "Levelled off" says whether the largest load gains less than 5 % over the next; if not, the best throughput is not yet reached and a larger mesh is needed.
+The smallest load such that every measured point at that load or larger keeps 80 % (50 %) of the best per-rank (per-GPU) throughput. "Levelled off" says whether the best throughput at the largest load is within 5 % of that at the next largest load. If it is still rising, the best throughput is not yet reached and a larger mesh would show it; if it falls, larger loads are slower per cell. The two largest loads can come from meshes of different height (``nz``), so the test also mixes in the mesh shape.
 
 .. list-table::
    :header-rows: 1
@@ -36,7 +36,7 @@ The smallest load from which on every measured point keeps 80 % (50 %) of the be
 
    * - Device
      - Points
-     - Best Mcell-it/s per device
+     - Best Mcell-it/s per rank or GPU
      - 80 % from (cells)
      - 50 % from (cells)
      - Levelled off
@@ -51,7 +51,7 @@ The smallest load from which on every measured point keeps 80 % (50 %) of the be
      - 0.235
      - not reached
      - not reached
-     - yes (-28 % at the largest load)
+     - no, falls (-28 % at the largest load)
    * - GPU, 1 GPU
      - 7
      - 82.1
@@ -77,7 +77,9 @@ The smallest load from which on every measured point keeps 80 % (50 %) of the be
      - 4M (4194304)
      - no (+6 % at the largest load): add a larger mesh
 
-On the CPU the per-rank throughput also falls as ranks share the node's memory bandwidth, so the all-rank-count row mixes that with the box size; the row with the most ranks is the closest to a full node.
+On the CPU the per-rank throughput depends on two things. It falls as the box per rank grows (less of it fits in cache), and it falls as more ranks share the node's memory bandwidth. When it falls with load, the largest loads can stay below 80 % (50 %) of the best, and the table then says "not reached"; a larger mesh does not change that. The all-rank-count row mixes both effects; the row with the most ranks is the closest to a full node.
+
+An efficiency above 100 % means the base point (the smallest count measured for that mesh) ran slower per rank than the larger counts, for example a box that does not fit in cache; the per-rank throughput plot shows which.
 
 CPU runs
 --------
@@ -670,7 +672,7 @@ Plots
 .. figure:: figures/scaling/gpu_strong_scaling.png
    :width: 90%
 
-   GPU strong scaling: speedup against one GPU.
+   GPU strong scaling: speedup against the smallest GPU count of each mesh.
 
 .. figure:: figures/scaling/gpu_efficiency.png
    :width: 90%
@@ -685,14 +687,14 @@ Plots
 .. figure:: figures/scaling/node_cpu_vs_gpu.png
    :width: 90%
 
-   The most CPU ranks measured against 1, 2 and 4 GPUs, total throughput.
+   Total throughput: the most CPU ranks measured against each GPU count.
 
 .. figure:: figures/scaling/seconds_per_iter.png
    :width: 90%
 
-   Seconds per iteration against mesh size, the most CPU ranks measured and 1, 2 and 4 GPUs.
+   Seconds per iteration against mesh size: the most CPU ranks measured and each GPU count.
 
 Reproducing
 -----------
 
-``run_scaling.sh`` (in a one-node allocation; ``CPU_TARGET=spr`` on a CPU node) builds GUST for CPU and CUDA, runs every point and writes ``results.csv``; ``analyze_scaling.py results.csv`` writes the plots, this page and the README section. Finished points are skipped when the script runs again. The measured ``results.csv`` and ``analyze_scaling.py`` are in ``tools/scaling/``; ``run_scaling.sh`` is not in the repository yet.
+``run_scaling.sh`` (in a one-node allocation; ``CPU_TARGET=spr`` on a CPU node) builds GUST for CPU and CUDA, runs every point and writes ``results.csv``; ``analyze_scaling.py results.csv`` writes the plots into ``--out`` and this page and the README section (``scaling.rst``, ``readme_scaling.md``) next to ``results.csv``; copy the plots to ``docs/figures/scaling/``, the page to ``docs/`` and the section into ``README.md``. Finished points are skipped when ``run_scaling.sh`` runs again. The measured ``results.csv`` and ``analyze_scaling.py`` are in ``tools/scaling/``; ``run_scaling.sh`` is not in the repository yet.
