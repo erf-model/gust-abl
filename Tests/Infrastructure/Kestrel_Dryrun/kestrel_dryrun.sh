@@ -21,6 +21,12 @@ case_dir="$work/ERF/Exec/CanonicalTests/Real_Terrain/Askervein"
 printf 'erf.plot_file_1     = "plt_"   # 3-D\nerf.plot2d_file_1 = "plt2d_"\n' > "$case_dir/inputs_anel"
 echo "terrain" > "$case_dir/askervein.txt"
 
+# On Kestrel module (and ml) are exported shell functions, which a script
+# finds before the stub on PATH, and every bash script defines them again
+# from BASH_ENV (Lmod's init): a real `module reset` would unload the loaded
+# modules of the caller (ctest on a GPU node).
+unset -f module ml 2>/dev/null || true
+unset BASH_ENV
 export PATH="$work/bin:$PATH" GUST_REF_WORK="$work" GUST_ACCOUNT=test GUST_REFAVG="$refavg"
 script="$src/tools/kestrel/erf_references.sh"
 

@@ -664,6 +664,15 @@ Current tests
        ground and above the top (Ω on those faces). Without that fill the runs differ by 8.5e-4 (v); with it but with
        a fill that is not a fixed point (before the wall model took the ground cell's w from the no-flux rule), by
        1.5e-12. Both fail the test. Labels ``regression;smoke``, about 1.5 s on two ranks.
+   * - ``rt_coriolis_repeat_first``, ``…_second``, ``…_plt_matches``, ``…_turb_matches``
+     - The 2-D hill with Coriolis (``inputs_steady_hill2d_restart``, ``steady.max_iterations=40``,
+       ``init.first_guess=profile``) for 40 iterations, from empty directories, twice on the same two ranks and
+       layout: the plotfiles and the turbulence plotfiles (residual fields, wall state) identical at zero tolerance.
+       The Coriolis coupling's level mean of the other residual is a fixed-order sum since audit A4 (#60); before,
+       the faces were added atomically, in an order that can change between runs on a GPU: with that sum put back,
+       5 of 5 pairs differed on Kestrel's H100s (up to 3.9e-13 relative in v, at nearly every point). On a CPU two
+       runs agree either way (no OpenMP; two ranks' sums add in a fixed order): the test is for the nightly H100 job
+       (:doc:`ci`). Labels ``regression;smoke``.
    * - ``rt_steady_neutral_flat``
      - The application on ERF's Neutral_ABL_Flat (``Tests/Canonical_RANS/Neutral_ABL_Flat/inputs_steady_neutral_flat``: 8 × 8 × 64,
        geostrophic wind 10 m/s at latitude 90°, f = 1e-4 1/s, the sounding's inversion from 700 m, slip top with
@@ -864,6 +873,15 @@ Current tests
        script (run length, plot period, no 2-D plotfiles, ranks) and archives a fake finished run, averaging only
        the 3-D plotfiles in the final window and archiving the inputs but not the run's outputs; a second case
        with the default prefix ``plt`` keeps its ``plt2d_`` plotfiles out.
+   * - ``kestrel_nightly_dryrun``
+     - Not registered on Windows. ``tools/kestrel/nightly_gpu.sh`` with stub ``git``, ``module``, ``sbatch``,
+       ``srun``, ``cmake`` and ``ctest``: refused outside an allocation; a passing run builds with ``build_kestrel.sh
+       gpu``, sets ``--gpus-per-task=1;--gpu-bind=none``, runs ``ctest -L smoke`` with a JUnit file, writes ``pass``
+       and keeps the newest ``GUST_NIGHTLY_KEEP`` logs; a smoke run of ``gust`` without the GPU runtime flags stops the
+       job before the tests; failing tests give ``fail: tests`` and exit 1; a failed fetch gives ``fail: fetch`` in a
+       new log, pruned as well; a second run while one holds the lock is refused; ``submit`` needs ``GUST_ACCOUNT``
+       and writes a singleton login-shell job that requests the GPUs; a ``GUST_NIGHTLY_GPUS`` other than 3 or 4 is
+       refused. Twelve one-line mutants each fail it. Label ``unit``.
    * - ``wn2019_timed_run``
      - Not registered on Windows. Audit A10 (P1): the WindNinja2019 drivers' ``timed_run.sh`` writes one line
        ``real <seconds>`` to ``time.txt``, the command's error output to ``err.txt``, returns its exit status and
