@@ -301,6 +301,11 @@ void residual (const State& q, const ResidualInputs& in, const Mesh& mesh, const
         amrex::MultiFab::Subtract(R.tke, cf->Ps, 0, 0, 1, 0);
         amrex::MultiFab::Subtract(R.tke, cf->Pb, 0, 0, 1, 0);
         amrex::MultiFab::Add(R.tke, cf->eps, 0, 0, 1, 0);
+        if (cf->canopy) {
+            // The canopy's wake production and short-circuit sink (CanopyTke.H).
+            amrex::MultiFab::Subtract(R.tke, cf->Pc, 0, 0, 1, 0);
+            amrex::MultiFab::Add(R.tke, cf->Dc, 0, 0, 1, 0);
+        }
     }
     if (in.surface != nullptr) { apply_wall_k(*ssp, *in.surface, q.tke, R.tke); }
     // The canopy drag before the boundary rows, which replace their rows' residuals.

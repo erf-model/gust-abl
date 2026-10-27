@@ -1,7 +1,7 @@
 # Must abort, every error reported together: a map without a drag
 # coefficient, a missing height file, no LAI file, laimax with the uniform
-# profile, the patch file with a map, an unknown drag_diagonal and an unknown
-# canopy key.
+# profile, the patch file with a map, an unknown drag_diagonal, beta_p
+# outside [0, 1] and an unknown canopy key.
 mesh.n_cell        = 8 8 8
 mesh.prob_hi       = 800. 800. 800.
 mesh.is_periodic   = 1 1 0
@@ -12,6 +12,7 @@ canopy.laimax      = 0.5
 canopy.file        = no_such_patches.txt
 canopy.leaf_area   = 3
 canopy.drag_diagonal = explicit
+canopy.beta_p        = 2
 
 io.write_plotfile   = 0
 io.write_checkpoint = 0

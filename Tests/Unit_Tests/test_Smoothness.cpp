@@ -626,3 +626,44 @@ TEST(Smoothness, DISABLED_Sweep)
         }
     }
 }
+
+// A checkpoint of fully frozen closure decisions records the canopy's length
+// cap alpha (a cell held as capped takes alpha / f): a restart with another
+// alpha, or without the canopy terms (alpha 0), is refused; the same alpha
+// restores, and floor-scope decisions (the cap decided live) restore with any.
+TEST(NewtonSmoothness, FrozenCanopyCapNeedsTheSameAlpha)
+{
+    ClosureBox b;
+    amrex::MultiFab f(b.c.ba, b.c.dm, 1, amrex::IntVect(1, 1, 0));
+    f.setVal(0.1);
+    gust::Closure ca(gust::ClosureOptions{});
+    ca.set_canopy(&f, 1, 4, amrex::Real(0.04));
+    b.freeze(ca, FreezeScope::all);
+    const std::string dir = "ut_smoothness_canopy_chk";
+    if (amrex::ParallelDescriptor::IOProcessor()) { amrex::UtilCreateCleanDirectory(dir + "/Level_0", false); }
+    amrex::ParallelDescriptor::Barrier();
+    gust::NewtonSmoothness sm{gust::SmoothnessOptions{}};
+    sm.write_checkpoint(dir, &ca);
+    auto message = [&] (gust::Closure& cl) {
+        try {
+            gust::NewtonSmoothness s{gust::SmoothnessOptions{}};
+            s.read_checkpoint(dir, &cl, b.c.ba, b.c.dm, b.c.geom);
+        } catch (const std::runtime_error& e) {
+            return std::string(e.what());
+        }
+        return std::string();
+    };
+    gust::Closure same(gust::ClosureOptions{}), other(gust::ClosureOptions{}), none(gust::ClosureOptions{});
+    same.set_canopy(&f, 1, 4, amrex::Real(0.04));
+    other.set_canopy(&f, 1, 4, amrex::Real(0.05));
+    EXPECT_EQ(message(same), "");
+    EXPECT_TRUE(same.frozen());
+    EXPECT_NE(message(other).find("canopy length cap alpha = 0.04"), std::string::npos);
+    EXPECT_NE(message(none).find("restart with the checkpoint's canopy.tke and canopy.length_alpha"), std::string::npos);
+    // Floor scope: the cap is decided from the state, so any alpha restores.
+    ca.thaw();
+    b.freeze(ca, FreezeScope::floor);
+    sm.write_checkpoint(dir, &ca);
+    gust::Closure none2(gust::ClosureOptions{});
+    EXPECT_EQ(message(none2), "");
+}

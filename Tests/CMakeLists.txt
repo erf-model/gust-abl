@@ -39,6 +39,7 @@ add_executable(unit_tests
     Unit_Tests/test_SurfaceRoughness.cpp
     Unit_Tests/test_Canopy.cpp
     Unit_Tests/test_CanopyDrag.cpp
+    Unit_Tests/test_CanopyTke.cpp
     Unit_Tests/test_BoundaryConditions.cpp
     Unit_Tests/test_Closure.cpp
     Unit_Tests/test_Initializer.cpp
@@ -261,6 +262,7 @@ gust_add_test(NAME abort_canopy_inputs NP 1 LABELS "regression;smoke"
                      "canopy\\.type = map needs canopy\\.cd or canopy\\.cd_file"
                      "canopy\\.laimax has no effect with canopy\\.profile = uniform"
                      "canopy\\.drag_diagonal must be derivative, picard or none \\(got explicit\\)"
+                     "canopy\\.beta_p must be in \\[0, 1\\]"
                      "canopy\\.leaf_area.*not an input of namespace 'canopy'" --
               COMMAND $<TARGET_FILE:gust> ${CANOPY_CASE}/inputs_abort_canopy ${GUST_TEST_AMREX_FLAGS})
 
@@ -940,16 +942,24 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
                          --cap 16 --min-ratio 5 --tol 2e-4 --
                   COMMAND $<TARGET_FILE:gust> ${THIN_CELL_CASE}/inputs_thin_cell_flat ${GUST_TEST_AMREX_FLAGS})
     set_tests_properties(rt_thin_cell_w_vnn_cap PROPERTIES ENVIRONMENT PYTHONDONTWRITEBYTECODE=1 TIMEOUT 300)
-    # The canopy's drag on the momentum equations (Canonical_RANS/Canopy_Drag,
-    # about 4 min on two ranks): the derivative and picard diagonals and grid
+    # The canopy's drag on the momentum equations, alone (canopy.tke = off; the
+    # k terms are rt_canopy_tke's) (Canonical_RANS/Canopy_Drag, about 4 min on two ranks): the derivative and picard diagonals and grid
     # sequencing reach the same fixed point, the drag slows the wind in the
     # dense patch, the explicit drag departs within 20 iterations, a restart is
     # bit for bit and one with another diagonal is accepted.
     gust_add_test(NAME rt_canopy_drag NP 2 LABELS "regression"
                   PREFIX ${Python3_EXECUTABLE} ${CANOPY_DRAG_CASE}/check_canopy_drag.py --tol 1e-6 --max-ratio 0.6 --
                   COMMAND $<TARGET_FILE:gust> ${CANOPY_DRAG_CASE}/inputs_canopy_drag
-                          canopy.file=${CANOPY_DRAG_CASE}/canopy_patches.txt ${GUST_TEST_AMREX_FLAGS})
+                          canopy.file=${CANOPY_DRAG_CASE}/canopy_patches.txt canopy.tke=off ${GUST_TEST_AMREX_FLAGS})
     set_tests_properties(rt_canopy_drag PROPERTIES ENVIRONMENT PYTHONDONTWRITEBYTECODE=1 TIMEOUT 600)
+    # The canopy terms of the k-L closure (Canonical_RANS/Canopy_Drag, about
+    # 3 min on two ranks): with canopy.tke on and off to the verdict; L <= alpha / f
+    # in the canopy and the crown's eddy viscosity cut by the k terms.
+    gust_add_test(NAME rt_canopy_tke NP 2 LABELS "regression"
+                  PREFIX ${Python3_EXECUTABLE} ${CANOPY_DRAG_CASE}/check_canopy_tke.py --nut-ratio 0.1 --
+                  COMMAND $<TARGET_FILE:gust> ${CANOPY_DRAG_CASE}/inputs_canopy_drag
+                          canopy.file=${CANOPY_DRAG_CASE}/canopy_patches.txt ${GUST_TEST_AMREX_FLAGS})
+    set_tests_properties(rt_canopy_tke PROPERTIES ENVIRONMENT PYTHONDONTWRITEBYTECODE=1 TIMEOUT 600)
     # The slope margin of the cap on a steep ridge with a 0.4 m
     # first cell (Canonical_RANS/Steep_Ridge_Thin_Cell). With the default margin
     # the run is steady within 3500 iterations; with the margin off (#32's cap)

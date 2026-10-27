@@ -24,7 +24,8 @@ namespace gust {
 
 namespace {
 
-const char* const kCanopyKeys[] = {"type", "file", "height_file", "lai_file", "cd", "cd_file", "profile", "laimax", "drag_diagonal"};
+const char* const kCanopyKeys[] = {"type", "file", "height_file", "lai_file", "cd", "cd_file", "profile", "laimax", "drag_diagonal", "tke", "beta_p", "beta_d",
+                                  "length_alpha"};
 constexpr const char* kCanopyMagic = "gust_canopy";
 constexpr int kCanopyVersion = 1;
 
@@ -259,6 +260,8 @@ CanopyOptions read_canopy_options (int idw_neighbors, double idw_power)
     pp.query("cd_file", opt.cd_file);
     pp.query("profile", opt.profile_name);
     pp.query("drag_diagonal", opt.drag_diagonal_name);
+    pp.query("tke", opt.tke.name);
+    opt.tke.on = (opt.tke.name != "off");
     if (opt.drag_diagonal_name == "picard") { opt.drag_diagonal = CanopyDiagonal::picard; }
     if (opt.drag_diagonal_name == "none") { opt.drag_diagonal = CanopyDiagonal::none; }
     // The numbers as text first: a value that is not a number is reported with the others.
@@ -270,6 +273,9 @@ CanopyOptions read_canopy_options (int idw_neighbors, double idw_power)
     };
     number("cd", opt.cd);
     number("laimax", opt.laimax);
+    number("beta_p", opt.tke.beta_p);
+    number("beta_d", opt.tke.beta_d);
+    number("length_alpha", opt.tke.length_alpha);
     if (opt.type_name == "patches") { opt.type = CanopyType::patches; }
     if (opt.type_name == "map") { opt.type = CanopyType::map; }
     if (opt.profile_name == "lalic_mihailovic") { opt.profile = CanopyProfile::lalic_mihailovic; }
@@ -302,6 +308,31 @@ std::vector<std::string> check_canopy_options (const CanopyOptions& opt)
     }
     if (opt.drag_diagonal_name != "derivative" && opt.drag_diagonal_name != "picard" && opt.drag_diagonal_name != "none") {
         err.emplace_back("canopy.drag_diagonal must be derivative, picard or none (got " + opt.drag_diagonal_name + ")");
+    }
+    // The canopy terms of the closure (CanopyTke.H); ranges as ERF's erf.forest_canopy_*.
+    const CanopyTkeOptions& t = opt.tke;
+    if (t.name != "on" && t.name != "off") {
+        err.emplace_back("canopy.tke must be on or off (got " + t.name + ")");
+    } else if (!t.on) {
+        for (const char* k : {"beta_p", "beta_d", "length_alpha"}) {
+            no_effect(k, "with canopy.tke = off");
+        }
+    } else {
+        if (!(t.beta_p >= 0 && t.beta_p <= 1)) {
+            err.emplace_back("canopy.beta_p must be in [0, 1], the fraction of the drag work that becomes k (got "
+                             + std::to_string(t.beta_p) + ")");
+        }
+        if (!(t.beta_d >= 0 && std::isfinite(t.beta_d))) {
+            err.emplace_back("canopy.beta_d must be finite and >= 0 (got " + std::to_string(t.beta_d) + ")");
+        }
+        if (!(t.length_alpha >= 0 && t.length_alpha <= 1)) {
+            err.emplace_back("canopy.length_alpha must be in [0, 1] (0: no length cap) (got "
+                             + std::to_string(t.length_alpha) + ")");
+        }
+        if (t.beta_p == 0 && t.beta_d == 0 && t.length_alpha == 0) {
+            err.emplace_back("canopy.tke = on with canopy.beta_p, canopy.beta_d and canopy.length_alpha all 0 changes "
+                             "nothing; set canopy.tke = off");
+        }
     }
     if (opt.type == CanopyType::patches) {
         need_file("file", opt.file);
@@ -422,6 +453,7 @@ void Canopy::build (const CanopyOptions& opt, const amrex::Geometry& geom, const
     m_active = true;
     m_hash = hash_inputs(opt);
     m_diagonal = opt.drag_diagonal;
+    m_tke = opt.tke;
     m_drag.clear();
     m_drag.define(cell_ba, dm, 1, amrex::IntVect(1, 1, 0));
     m_drag.setVal(0);
@@ -485,6 +517,7 @@ void Canopy::restrict_from (const Canopy& fine, const amrex::MultiFab& fine_detJ
     m_active = true;
     m_hash = fine.m_hash;
     m_diagonal = fine.m_diagonal;
+    m_tke = fine.m_tke;
     // sum(f detJ) / r^2 over each coarse cell's fine cells, on the fine boxes
     // coarsened (local to each box), then copied to the level's layout (which
     // may be gathered on one box) and divided by the coarse detJ.

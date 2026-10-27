@@ -338,6 +338,58 @@ the unit-test flags by ``tools/canopy_drag_mutants.py`` (macOS arm64, AppleClang
      - A ``canopy.drag_diagonal`` other than the three names accepted
      - ``Canopy.OptionChecks``
 
+The one-line mutants of the canopy terms of the k–L closure (``Source/CanopyTke.cpp``, ``Source/Closure.cpp``,
+``Source/Closure_K.H``, ``Source/Residual.cpp``, ``Source/Canopy.cpp``), each run against ``Canopy.*``,
+``CanopyDrag.*`` and ``CanopyTke.*`` on two ranks with the unit-test flags by ``tools/canopy_tke_mutants.py`` (macOS
+arm64, AppleClang). All 13 are killed.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 6 50 44
+
+   * - Mutant
+     - Change
+     - Failing tests
+   * - T1
+     - Wake production without :math:`\beta_p`
+     - ``SourcesHaveTheirClosedForms``
+   * - T2
+     - Wake production with :math:`|U|^2` in place of :math:`|U|^3`
+     - ``SourcesHaveTheirClosedForms``
+   * - T3
+     - The sink not on the Patankar diagonal
+     - ``SourcesHaveTheirClosedForms``
+   * - T4
+     - The sink added to the exact derivative with the wrong sign
+     - ``SourcesHaveTheirClosedForms``, ``ExactDerivativeMatchesDifferences``
+   * - T5
+     - The residual without the wake production
+     - ``ZeroCanopyIsBitIdenticalAndResidualCarriesTheTerms``
+   * - T6
+     - The residual without the short-circuit sink
+     - ``ZeroCanopyIsBitIdenticalAndResidualCarriesTheTerms``
+   * - T7
+     - The capped length not :math:`\alpha/f`
+     - ``LengthCapActsOnlyInTheCanopy``, ``ExactDerivativeMatchesDifferences``, ``CapSwitchIsFrozen``
+   * - T8
+     - The live decisions without the canopy
+     - ``LengthCapActsOnlyInTheCanopy``, ``ExactDerivativeMatchesDifferences``, ``CapSwitchIsFrozen``
+   * - T9
+     - The cap's switch not encoded (not frozen)
+     - ``LengthCapActsOnlyInTheCanopy``, ``ExactDerivativeMatchesDifferences``, ``CapSwitchIsFrozen``
+   * - T10
+     - The capped decision taken against :math:`\alpha/(2f)`
+     - ``LengthCapActsOnlyInTheCanopy``, ``CapSwitchIsFrozen``
+   * - T11
+     - :math:`P_b`'s derivative without :math:`d(c_\mu'/c_\mu)/dk` (the error fixed here)
+     - ``ExactDerivativeMatchesDifferences``
+   * - T12
+     - ``canopy.beta_p`` outside [0, 1] accepted
+     - ``Canopy.OptionChecks``
+   * - T13
+     - ``canopy.length_alpha`` with ``canopy.tke = off`` accepted
+     - ``Canopy.OptionChecks``
+
 The one-line mutants of the Newton stage (``Source/NewtonStage.cpp`` and the switch rules in ``Source/Driver.cpp``),
 each run against ``Driver.*`` and ``NewtonStage.*`` on two ranks with the unit-test flags by
 ``tools/newton_stage_mutants.py`` (macOS arm64, AppleClang). 13 of 15 are killed. N14 and N15 survive: they matter only
@@ -812,7 +864,8 @@ Current tests
        rotation step are explained and removed in :doc:`solution_algorithm`). Label ``regression`` (the run time); double only.
        The 1 % comparison with an ERF reference run is not in this version.
    * - ``rt_canopy_drag``
-     - The canopy's drag on the momentum equations (``Tests/Canonical_RANS/Canopy_Drag``: neutral geostrophic flow
+     - The canopy's drag on the momentum equations, alone (``canopy.tke = off``; ``rt_canopy_tke`` adds the
+       closure's terms) (``Tests/Canonical_RANS/Canopy_Drag``: neutral geostrophic flow
        over flat ground through a 20 m uniform patch with LAI 3 and a 25 m Lalic–Mihailovic patch with LAI 6,
        16 × 16 × 40 cells, periodic, converged to 7 orders and 1e-8). ``check_canopy_drag.py`` runs it with
        ``canopy.drag_diagonal`` ``derivative`` and ``picard`` to the verdict: u, v, w, p and k of the two steady
@@ -824,6 +877,14 @@ Current tests
        (p) and 2.6e-9 (velocities); with sequencing within 1.2e-8 (p) and 9.2e-11 (velocities); u 1.14 against
        2.16 m/s (ratio 0.53); r = 3.1e3 explicit against 0.16 after 20 iterations. About 4 min on two ranks; label
        ``regression`` (the run time); double only.
+   * - ``rt_canopy_tke``
+     - The canopy terms of the k–L closure on ``Tests/Canonical_RANS/Canopy_Drag``. ``check_canopy_tke.py`` runs it
+       with ``canopy.tke`` on and off to the verdict (and the turbulence plotfile): in every canopy cell
+       :math:`L \le \alpha/f` with the terms on, with equality in some, and ``off`` exceeds it (the check is not
+       vacuous); at the crown of the dense patch the eddy viscosity with the terms is at most 0.1 of that without.
+       Measured: 5586 and 5710 iterations, 176 cells at the cap, :math:`\nu_t` 0.033 against 3.99 m²/s. The local
+       balance :math:`k = \kappa_c|U|^2` is pinned by ``CanopyTke.CappedBalanceIsKappaU2``; at the crown the shear
+       layer above adds production and transport. About 3 min on two ranks; label ``regression``; double only.
    * - ``rt_thin_cell_w_vnn_cap``
      - The w rows' VNN cap on a flat inflow/outflow strip with a 0.7 m first cell
        (``Tests/Canonical_RANS/Thin_Cell_Flat/inputs_thin_cell_flat``: 16 × 2 × 40, dx/dz₀ = 134, line LU-SGS with
@@ -1232,6 +1293,28 @@ GoogleTest suite
      - The residual's momentum rows gain exactly the sink and ``implicit_rows``' :math:`a_P` exactly the diagonal
        (the off-diagonal coefficients and the :math:`\theta` rows unchanged); without the drag's rows
        ``implicit_rows`` refuses a canopy.
+   * - ``CanopyTke.SourcesHaveTheirClosedForms``
+     - UT-8.3.1: with a uniform 5 m/s wind, :math:`P_c = \beta_p f |U|^3` and :math:`D_c = \beta_d f |U| k` on every
+       cell; where :math:`k = \beta_p |U|^2/\beta_d` they balance; the Patankar diagonal gains :math:`\beta_d f |U|`
+       and the exact one loses it.
+   * - ``CanopyTke.CappedBalanceIsKappaU2``
+     - UT-8.3.1 with the cap: in a uniform wind (no shear production), neutral, every capped canopy cell has
+       :math:`P_c = D_c + \varepsilon` at :math:`k = \kappa_c |U|^2`, :math:`\kappa_c` the root of
+       :math:`\beta_d \kappa + C_{\mu0}^3 \kappa^{3/2}/\alpha = \beta_p` (0.1728 for the defaults).
+   * - ``CanopyTke.LengthCapActsOnlyInTheCanopy``
+     - UT-8.3.2: :math:`L = \min(L_\text{free}, \alpha/f)` where :math:`f > 0` and :math:`\varepsilon` follows it;
+       the same bits where :math:`f = 0` or with :math:`\alpha = 0`; both capped and uncapped canopy cells occur.
+   * - ``CanopyTke.ExactDerivativeMatchesDifferences``
+     - UT-8.3.3: with the switches frozen, :math:`dS_k/dk` by central differences equals ``dSdk_exact`` in stably
+       stratified cells with and without canopy (capped cells among them). It found that ``dSdk_exact`` held
+       :math:`c_\mu'/c_\mu` fixed in :math:`P_b` since the closure was added (8c0d883); fixed here.
+   * - ``CanopyTke.ZeroCanopyIsBitIdenticalAndResidualCarriesTheTerms``
+     - UT-8.3.4: a canopy with a zero drag field leaves every closure field bit for bit; the residual of :math:`k`
+       gains exactly :math:`D_c - P_c`.
+   * - ``CanopyTke.CapSwitchIsFrozen``, ``CanopyTke.RoughGroundUnderTheCanopyIsCounted``
+     - UT-8.3.5: a capped decision held for a smaller :math:`k` keeps :math:`L = \alpha/f`; on the field the moved
+       decisions are counted and the frozen evaluation keeps the cap. The ground-:math:`z_0` warning counts every
+       canopy column when :math:`z_0` = 1 m and none when 0.05 m.
    * - ``CanopyDrag.PredictorTakesTheRowsOfTheLinearisationState``
      - The momentum predictor's :math:`a_P` is that of the run without a canopy plus the rows computed at the state
        before the step, on all three components (the v and w rows do not see the u the step has just updated); a step

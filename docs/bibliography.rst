@@ -23,11 +23,20 @@ measurements. *International Journal of Wildland Fire* 23, 969–981.
 Ghia, U., Ghia, K. N., Shin, C. T. (1982). High-Re solutions for incompressible flow using the Navier–Stokes
 equations and a multigrid method. *Journal of Computational Physics* 48, 387–411.
 
+Green, S. R. (1992). Modelling turbulent air flow in a stand of widely-spaced trees. *PHOENICS Journal of
+Computational Fluid Dynamics and Its Applications* 5, 294–312.
+
+Harman, I. N., Finnigan, J. J. (2007). A simple unified theory for flow in the canopy and roughness sublayer.
+*Boundary-Layer Meteorology* 123, 339–363.
+
 Klemp, J. B. (2011). A terrain-following coordinate with smoothed coordinate surfaces. *Monthly Weather Review* 139,
 2163–2169.
 
 Lalic, B., Mihailovic, D. T. (2004). An empirical relation describing leaf-area density inside the forest for
 environmental modeling. *Journal of Applied Meteorology* 43, 641–645.
+
+Liu, J., Chen, J. M., Black, T. A., Novak, M. D. (1996). E-ε modelling of turbulent air flow downwind of a model
+forest edge. *Boundary-Layer Meteorology* 77, 21–44.
 
 Mason, P. J. (1988). The formation of areally-averaged roughness lengths. *Quarterly Journal of the Royal
 Meteorological Society* 114, 399–420.
@@ -37,6 +46,9 @@ Computational Physics* 59, 232–246.
 
 O'Brien, J. J. (1970). Alternative solutions to the classical vertical velocity problem. *Journal of Applied
 Meteorology* 9, 197–203.
+
+Sanz, C. (2003). A note on k-ε modelling of vegetation canopy air-flows. *Boundary-Layer Meteorology* 108,
+191–197.
 
 Sherman, C. A. (1978). A mass-consistent model for wind fields over complex terrain. *Journal of Applied
 Meteorology* 17, 312–319.
