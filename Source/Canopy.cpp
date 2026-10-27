@@ -24,7 +24,7 @@ namespace gust {
 
 namespace {
 
-const char* const kCanopyKeys[] = {"type", "file", "height_file", "lai_file", "cd", "cd_file", "profile", "laimax"};
+const char* const kCanopyKeys[] = {"type", "file", "height_file", "lai_file", "cd", "cd_file", "profile", "laimax", "drag_diagonal"};
 constexpr const char* kCanopyMagic = "gust_canopy";
 constexpr int kCanopyVersion = 1;
 
@@ -258,6 +258,9 @@ CanopyOptions read_canopy_options (int idw_neighbors, double idw_power)
     pp.query("lai_file", opt.lai_file);
     pp.query("cd_file", opt.cd_file);
     pp.query("profile", opt.profile_name);
+    pp.query("drag_diagonal", opt.drag_diagonal_name);
+    if (opt.drag_diagonal_name == "picard") { opt.drag_diagonal = CanopyDiagonal::picard; }
+    if (opt.drag_diagonal_name == "none") { opt.drag_diagonal = CanopyDiagonal::none; }
     // The numbers as text first: a value that is not a number is reported with the others.
     auto number = [&] (const char* key, double& dst) {
         std::string s;
@@ -296,6 +299,9 @@ std::vector<std::string> check_canopy_options (const CanopyOptions& opt)
             if (std::string(k) != "type") { no_effect(k, "with canopy.type = none"); }
         }
         return err;
+    }
+    if (opt.drag_diagonal_name != "derivative" && opt.drag_diagonal_name != "picard" && opt.drag_diagonal_name != "none") {
+        err.emplace_back("canopy.drag_diagonal must be derivative, picard or none (got " + opt.drag_diagonal_name + ")");
     }
     if (opt.type == CanopyType::patches) {
         need_file("file", opt.file);
@@ -415,6 +421,7 @@ void Canopy::build (const CanopyOptions& opt, const amrex::Geometry& geom, const
     if (!opt.active()) { amrex::Abort("gust: Canopy::build needs canopy.type = patches or map"); }
     m_active = true;
     m_hash = hash_inputs(opt);
+    m_diagonal = opt.drag_diagonal;
     m_drag.clear();
     m_drag.define(cell_ba, dm, 1, amrex::IntVect(1, 1, 0));
     m_drag.setVal(0);
@@ -477,6 +484,7 @@ void Canopy::restrict_from (const Canopy& fine, const amrex::MultiFab& fine_detJ
     }
     m_active = true;
     m_hash = fine.m_hash;
+    m_diagonal = fine.m_diagonal;
     // sum(f detJ) / r^2 over each coarse cell's fine cells, on the fine boxes
     // coarsened (local to each box), then copied to the level's layout (which
     // may be gathered on one box) and divided by the coarse detJ.

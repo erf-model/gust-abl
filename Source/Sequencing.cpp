@@ -259,6 +259,10 @@ LevelSolver::LevelSolver (const RunSetup& s, const Mesh& mesh, const amrex::Geom
         height_above_ground(z_nd, dist);
     }
     res_in = residual_inputs(s, closure, dist, bc, surf);
+    if (canopy != nullptr) {
+        canopy_faces.build(*canopy, geom);
+        res_in.canopy = &canopy_faces;
+    }
     closure.check_wall_distance(dist, ground_roughness(res_in.surface));
     auto stage = std::make_unique<SimplecStage>(s.simplec, s.sopt.zline_sweeps, res_in, &closure, s.popt, mesh, geom, z_nd,
                                                 s.copt.tke_floor, ba, dm, line_sweep_options(s.sopt));

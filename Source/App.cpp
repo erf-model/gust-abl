@@ -2,6 +2,7 @@
 
 #include "BoundaryConditions.H"
 #include "Canopy.H"
+#include "CanopyDrag.H"
 #include "Closure.H"
 #include "ColumnGuess.H"
 #include "Convection.H"
@@ -290,8 +291,8 @@ void run ()
     if (canopy_opt.active()) {
         canopy.build(canopy_opt, geom, state.z_phys_nd, ba, dm);
         amrex::Print() << "gust: canopy (canopy.type = " << canopy_opt.type_name << "): " << canopy.summary(mesh.detJ, geom)
-                       << "\ngust: canopy: the drag field is written to the plotfile (canopy_drag); it does not act on the "
-                          "flow yet\n";
+                       << "\ngust: canopy: the drag acts on the momentum equations when a stage runs, "
+                          "canopy.drag_diagonal = " << canopy_diagonal_name(canopy_opt.drag_diagonal) << "\n";
     }
     const amrex::MultiFab* canopy_plot = canopy.active() ? &canopy.drag() : nullptr;
     // Writing a checkpoint of the same name as the one read would move it to

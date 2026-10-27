@@ -60,6 +60,7 @@
 // the mean k and, with a surface layer, the mean u*.
 
 #include "BoundaryConditions.H"
+#include "CanopyDrag.H"
 #include "Closure.H"
 #include "Driver.H"
 #include "Poisson.H"
@@ -250,6 +251,7 @@ private:
     ResidualFields m_R;
     ClosureFields m_cf;
     SurfaceState m_ss;
+    CanopyRows m_canopy_rows;   //!< the canopy drag's diagonal at q (CanopyDrag.H), each predictor step
     PredictorFields m_pf;
     SimplecWorkspace m_w;
     ResidualWorkspace m_rws;    //!< the residual's scratch
