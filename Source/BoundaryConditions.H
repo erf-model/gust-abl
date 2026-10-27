@@ -220,6 +220,19 @@ public:
     //! Its diagonal, c(x, y, z), added to the implicit side (apply_to_implicit calls it).
     void add_damping_to_implicit (Equation eq, Loc loc, const amrex::MultiFab& z_nd, amrex::MultiFab& A) const;
 
+    //! The canopy cells (f > 0 in the drag field f, cell-centred on the mesh's
+    //! layout; valid cells of every rank) in the first cell column inside an
+    //! inflow face, and inside a damping layer at the cell centre (the sponge,
+    //! or the Rayleigh layer when it damps u, v, theta or k: bc.rayleigh_fields).
+    //! z_nd: the mesh's nodes. The inflow profile and the damping targets
+    //! ignore the drag there.
+    struct CanopyZoneCounts
+    {
+        amrex::Long inflow{0};
+        amrex::Long damping{0};
+    };
+    [[nodiscard]] CanopyZoneCounts canopy_in_boundary_zones (const amrex::MultiFab& f, const amrex::MultiFab& z_nd) const;
+
     [[nodiscard]] const BoundaryInputs& inputs () const { return m_in; }
     [[nodiscard]] const InflowProfile& profile () const { return m_profile; }
     [[nodiscard]] bool has_inflow () const;

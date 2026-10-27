@@ -249,6 +249,60 @@ the default ``on``, a run with a canopy gives other answers than it did with #75
 checkpoint's canopy hash: like the ``turb.*`` inputs, they may change across a restart, which then converges to the
 new inputs' answer (except the frozen-decision case above).
 
+Steep terrain and the boundaries
+--------------------------------
+
+**CFL cap.** A dense canopy on steep terrain can need a lower ``steady.cfl_max`` than the empty domain. On
+``Tests/Canonical_RANS/Forested_Escarpment`` (a 200 m tanh escarpment, steepest slope 22°, with the benchmark canopy:
+uniform, 25 m, LAI 5, :math:`C_d` = 0.15, on the slope and the plateau's edge; 8 m first layer stretched by 1.12; LU-SGS
+with grid sequencing over three levels, 2 ranks), from the inflow profile to the verdict (:math:`r` = 1e-4):
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 30 40
+
+   * - ``steady.cfl_max``
+     - Iterations
+     - Note
+   * - 1.5
+     - 245
+     -
+   * - **2**
+     - **185**
+     - the case's setting
+   * - 2.5
+     - 177
+     -
+   * - 3
+     - 2885
+     -
+   * - 4, 8 (default)
+     - not steady after 3000
+     - a cycle of 40 iterations on level 0, :math:`r` between 0.1 and 0.5
+   * - 8, LAI 0.7 (leafless)
+     - 109
+     -
+   * - 8, no canopy
+     - 82
+     -
+
+The cycle sits in a pocket of reversed flow under the forest at the foot of the slope, where the wind slows against
+the rising ground. It is an instability of the iteration, not an unsteady flow: a steady state exists (the lower caps
+reach it), the period in pseudo-time is not fixed, and the CFL controller moves the step back and forth across a
+fixed-CFL limit of about 3. The w and pressure residuals lead the cycle. The cause of the limit is not known yet. These do
+not remove it at the default cap: the canopy k terms (the drag alone cycles), grid sequencing, the realizability cap,
+the ``picard`` drag diagonal, a diagonal that bounds the drag's lagged cross-couplings, ``simplec.alpha_p`` = 0.5, four
+line sweeps, the z-line Jacobi sweep, ``turb.nut_relax`` = 0.5, first-order upwind convection, and the drag's rate in
+the local pseudo-time step. **Recommendation:** on the one case tested (:math:`C_d` LAI = 0.75 on a 22° slope, 8 m
+first layer, 2-D), the iteration cycles at ``steady.cfl_max`` of 4 and above and is marginal at 3. For a dense canopy on
+steep terrain use 2 to 2.5, and lower the cap if the relative residual stalls between 0.1 and 0.5. Other slopes,
+densities, meshes and 3-D terrain are not measured yet; the cause is the subject of PR-62b.
+
+**Inflow faces and damping layers.** The inflow profile and the damping layers' targets do not feel the drag. The run
+warns, with the count, when canopy cells lie in the first cell column inside an inflow face, or inside the sponge or
+the Rayleigh layer (at the cell centre). The inflow check covers the first column only; keep the forest a few cells
+away from inflow faces, as a terrain blend that fades the forest out does.
+
 Output and restart
 ------------------
 
