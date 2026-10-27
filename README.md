@@ -55,6 +55,17 @@ and Askervein Hill.
 Hosted CI runners have no GPUs, so the GPU builds are compiled but not yet run (see the
 [CI page](https://erf-model.github.io/gust-abl/ci.html)).
 
+## Performance
+
+Seconds per iteration on a Kestrel CPU node (104 Intel Xeon Sapphire Rapids cores) and on a Kestrel GPU node
+(4 × NVIDIA H100), the 3-D hill on power-of-2 meshes (GUST 12a81339f). The analysis, the minimum cells per rank
+and per GPU and the full tables are in the [scaling page](https://erf-model.github.io/gust-abl/scaling.html) of
+the documentation.
+
+![CPU seconds per iteration](docs/figures/scaling/cpu_seconds_per_iter.png)
+
+![GPU seconds per iteration](docs/figures/scaling/gpu_seconds_per_iter.png)
+
 ## Documentation
 
 The full documentation is at <https://erf-model.github.io/gust-abl/>: building and running, every input with its

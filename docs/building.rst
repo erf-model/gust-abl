@@ -118,7 +118,7 @@ follows ERF's Kestrel profiles at the pinned commit (after Kestrel's RHEL9 upgra
 module names change with system updates, so check them with ``module avail`` first. A CUDA build needs memory: on
 a shared node, build inside an allocation with ``--mem=240G`` or ``--exclusive``.
 
-The scripts have not yet been run on Kestrel. :doc:`references` describes the ERF reference runs, :doc:`ci` the
+The scaling runs on :doc:`scaling` were made on Kestrel by hand. :doc:`references` describes the ERF reference runs, :doc:`ci` the
 nightly GPU job (``tools/kestrel/nightly_gpu.sh``).
 
 Documentation
