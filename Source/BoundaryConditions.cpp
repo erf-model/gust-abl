@@ -11,6 +11,7 @@
 
 #include <AMReX_BoxList.H>
 #include <AMReX_ParmParse.H>
+#include <AMReX_TagParallelFor.H>
 
 #include <algorithm>
 #include <cmath>
@@ -127,128 +128,204 @@ bool BoundaryConditions::has_inflow () const
 
 namespace {
 
-//! Fill the ghosts of one field at one face for one rule (not gradient).
-template <int T>
-void fill_face (amrex::MultiFab& q, const amrex::MultiFab& z_nd, const amrex::Geometry& geom, int d, bool lo,
-                int f, Rule rule, amrex::Real value, const InflowProfile::View& prof, bool homogeneous)
+//! One field's ghosts at one face of one box: both ghost layers (and the face
+//! point of a normal velocity with a value or profile), so that a direction's
+//! fills of every field, both faces and all boxes of the rank are one launch
+//! (fill_direction). A point reads only points inside the face (for the
+//! gradient rule the column's first point inside, and its own first ghost),
+//! never one that another point of the launch writes, when the domain is
+//! wider than the ghost layers along d (fill_direction checks that). The order
+//! within the launch then does not matter, and the values are those of the
+//! fill with one launch per field, face, box and layer (before audit A9).
+struct FillTag
 {
+    amrex::Array4<amrex::Real> a;
+    NodeZ nz;
+    amrex::Array4<amrex::Real const> g;   //!< the wall law's gradient slab (gradient rule, per column)
+    amrex::Box bx;
+    amrex::Dim3 glo, ghi;                 //!< the bounds of g
+    amrex::Real value;                    //!< the rule's value; the gradient rule's constant
+    int loc;                              //!< location type (stencil::CC, XF, YF, ZF)
+    int f;                                //!< field (Field)
+    int d;                                //!< the face's normal direction
+    int rule;                             //!< Rule
+    int edge;                             //!< face point (nodal in d) or edge cell index
+    int mirror;                           //!< the mirror index about the face (value, even, odd)
+    int lo;                               //!< 1 on the low face
+    int comp;                             //!< g's component
+    int klo;                              //!< the ground slab's k
+    int per_column;                       //!< the gradient from g (1) or the constant (0)
+
+    [[nodiscard]] AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
+    amrex::Box const& box () const noexcept { return bx; }
+};
+
+//! Fill ghost point (i, j, k) of tag t, or for the gradient rule both ghosts
+//! of column (i, j); see FillTag.
+template <int T>
+AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
+void fill_point (const FillTag& t, int i, int j, int k, const InflowProfile::View& prof, bool homogeneous) noexcept
+{
+    const auto a = t.a;
+    if (t.rule == static_cast<int>(Rule::gradient)) {
+        // The gradient along z (the ground or the top) from the column's
+        // first point inside; the box is the first ghost layer, the second
+        // is written from the first. The slab g holds the two ghost columns
+        // the box spans; a face point of a nodal direction averages the two
+        // cells beside it, and at the outermost ghost faces (one beyond the
+        // columns) the one it has.
+        const int c1 = t.lo ? t.edge + 1 : t.edge - 1;
+        const int g1 = t.lo ? t.edge - 1 : t.edge + 1, g2 = t.lo ? t.edge - 2 : t.edge + 2;
+        amrex::Real G = t.value;
+        if (t.per_column) {
+            const int ia = amrex::max(t.glo.x, amrex::min(t.ghi.x, i)), ja = amrex::max(t.glo.y, amrex::min(t.ghi.y, j));
+            const int ib = amrex::max(t.glo.x, amrex::min(t.ghi.x, stencil::nodal(T, 0) ? i - 1 : i));
+            const int jb = amrex::max(t.glo.y, amrex::min(t.ghi.y, stencil::nodal(T, 1) ? j - 1 : j));
+            G = amrex::Real(0.5) * (t.g(ib, jb, t.klo, t.comp) + t.g(ia, ja, t.klo, t.comp));
+        }
+        if (homogeneous) { G = amrex::Real(0); }
+        const amrex::Real zc1 = point_z<T>(t.nz, i, j, c1), zg1 = point_z<T>(t.nz, i, j, g1), zg2 = point_z<T>(t.nz, i, j, g2);
+        a(i, j, g1) = a(i, j, c1) + (zg1 - zc1) * G;
+        a(i, j, g2) = a(i, j, g1) + (zg2 - zg1) * G;
+        return;
+    }
+    const amrex::Real V = homogeneous ? amrex::Real(0) : t.value;
+    const int n = (t.d == 0) ? i : (t.d == 1) ? j : k;
+    const bool is_profile = (t.rule == static_cast<int>(Rule::profile));
+    if (n == t.edge) {
+        // The face point of a normal velocity takes the value itself.
+        a(i, j, k) = (is_profile && !homogeneous) ? profile_value(prof, t.f, height_above_ground<T>(t.nz, i, j, k, t.klo)) : V;
+        return;
+    }
+    if (is_profile) {
+        a(i, j, k) = homogeneous ? amrex::Real(0) : profile_value(prof, t.f, height_above_ground<T>(t.nz, i, j, k, t.klo));
+        return;
+    }
+    // The mirror point about the face (nodal) or the face plane (cell).
+    const int ex = (t.d == 0) ? 1 : 0, ey = (t.d == 1) ? 1 : 0, ez = (t.d == 2) ? 1 : 0;
+    const int m = t.mirror - n;
+    const amrex::Real am = a(i + ex * (m - i), j + ey * (m - j), k + ez * (m - k));
+    if (t.rule == static_cast<int>(Rule::value)) {
+        a(i, j, k) = 2 * V - am;
+    } else {
+        const int sgn = (t.rule == static_cast<int>(Rule::odd)) ? -1 : 1;
+        a(i, j, k) = sgn * am;
+    }
+}
+
+//! The tags of field f (location type T) at face (d, lo), one per box
+//! touching it whose slab is not empty: the rule of the face's type, its value (the geostrophic
+//! wind, the moving wall's velocity) and, for the gradient rule, the wall
+//! law's gradient (surface layer) or bc.zhi_theta_grad.
+template <int T>
+void add_field_tags (amrex::Vector<FillTag>& tags, amrex::MultiFab& q, int f, int d, bool lo, const BoundaryInputs& in,
+                     const amrex::MultiFab& z_nd, const amrex::Geometry& geom, const CoriolisOptions& cor,
+                     const amrex::MultiFab* ground_grad)
+{
+    const amrex::Orientation o(d, lo ? amrex::Orientation::low : amrex::Orientation::high);
+    const FaceType ft = in.face[o];
+    const Rule rule = rule_for(static_cast<Field>(f), ft, d, lo);
+    amrex::Real value = 0;
+    if (ft == FaceType::geostrophic) { value = (f == f_u) ? cor.ug : (f == f_v) ? cor.vg : amrex::Real(0); }
+    if (ft == FaceType::no_slip_wall && f <= f_w) { value = in.wall_velocity[o][f]; }
+    const amrex::MultiFab* grad = nullptr;
+    int comp = 0;
+    if (rule == Rule::gradient) {
+        if (ft == FaceType::surface_layer) {
+            grad = ground_grad;
+            comp = (f == f_u) ? 0 : (f == f_v) ? 1 : 2;
+        } else {
+            value = in.zhi_theta_grad;
+        }
+    }
     const amrex::Box& dom = geom.Domain();
-    const int klo = dom.smallEnd(2);
     const bool nodal_d = stencil::nodal(T, d);
-    const int edge = lo ? dom.smallEnd(d) : (nodal_d ? dom.bigEnd(d) + 1 : dom.bigEnd(d));
-    const amrex::Real V = homogeneous ? amrex::Real(0) : value;
-    const int sgn = (rule == Rule::odd) ? -1 : 1;
+    const int ng = q.nGrow();
     for (amrex::MFIter mfi(q, false); mfi.isValid(); ++mfi) {
         const amrex::Box vb = mfi.validbox();
         if (!touches(vb, dom, d, lo)) { continue; }
-        const auto a = q.array(mfi);
+        FillTag t{};
+        t.a = q.array(mfi);
         const amrex::Box zb = z_nd[mfi].box();
-        const NodeZ nz{z_nd.const_array(mfi), amrex::lbound(zb), amrex::ubound(zb)};
-        // The face point of a normal velocity takes the value itself.
-        if (nodal_d && (rule == Rule::value || rule == Rule::profile)) {
-            amrex::Box fb = ghost_slab(vb, dom, geom, d, lo, 0, q.nGrow());
-            fb &= mfi.fabbox();
-            const bool is_profile = (rule == Rule::profile);
-            amrex::ParallelFor(fb, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
-            {
-                a(i, j, k) = (is_profile && !homogeneous) ? profile_value(prof, f, height_above_ground<T>(nz, i, j, k, klo)) : V;
-            });
-        }
-        for (int layer = 1; layer <= q.nGrow(); ++layer) {
-            amrex::Box gb = ghost_slab(vb, dom, geom, d, lo, layer, q.nGrow());
-            gb &= mfi.fabbox();
-            if (gb.isEmpty()) { continue; }
-            // The mirror point about the face (nodal) or the face plane (cell).
-            const int mirror = nodal_d ? 2 * edge : (lo ? 2 * edge - 1 : 2 * edge + 1);
-            const int ex = (d == 0) ? 1 : 0, ey = (d == 1) ? 1 : 0, ez = (d == 2) ? 1 : 0;
-            if (rule == Rule::profile) {
-                amrex::ParallelFor(gb, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
-                {
-                    a(i, j, k) = homogeneous ? amrex::Real(0) : profile_value(prof, f, height_above_ground<T>(nz, i, j, k, klo));
-                });
-            } else if (rule == Rule::value) {
-                amrex::ParallelFor(gb, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
-                {
-                    const int m = mirror - (d == 0 ? i : d == 1 ? j : k);
-                    a(i, j, k) = 2 * V - a(i + ex * (m - i), j + ey * (m - j), k + ez * (m - k));
-                });
-            } else {
-                amrex::ParallelFor(gb, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
-                {
-                    const int m = mirror - (d == 0 ? i : d == 1 ? j : k);
-                    a(i, j, k) = sgn * a(i + ex * (m - i), j + ey * (m - j), k + ez * (m - k));
-                });
+        t.nz = NodeZ{z_nd.const_array(mfi), amrex::lbound(zb), amrex::ubound(zb)};
+        t.loc = T;
+        t.f = f;
+        t.d = d;
+        t.rule = static_cast<int>(rule);
+        t.lo = lo ? 1 : 0;
+        t.klo = dom.smallEnd(2);
+        t.value = value;
+        if (rule == Rule::gradient) {
+            t.edge = lo ? dom.smallEnd(2) : dom.bigEnd(2);
+            t.bx = ghost_slab(vb, dom, geom, 2, lo, 1, ng) & mfi.fabbox();
+            if (grad != nullptr) {
+                t.g = grad->const_array(mfi);
+                t.glo = amrex::lbound(t.g);
+                t.ghi = amrex::ubound(t.g);
+                t.comp = comp;
+                t.per_column = 1;
             }
+        } else {
+            t.edge = lo ? dom.smallEnd(d) : (nodal_d ? dom.bigEnd(d) + 1 : dom.bigEnd(d));
+            t.mirror = nodal_d ? 2 * t.edge : (lo ? 2 * t.edge - 1 : 2 * t.edge + 1);
+            // Layers 1 to ng, and the face point (layer 0) of a normal velocity
+            // with a value or profile: the slabs differ only along d.
+            const int inner = (nodal_d && (rule == Rule::value || rule == Rule::profile)) ? 0 : 1;
+            amrex::Box gb = ghost_slab(vb, dom, geom, d, lo, inner, ng);
+            gb.setSmall(d, lo ? t.edge - ng : t.edge + inner);
+            gb.setBig(d, lo ? t.edge - inner : t.edge + ng);
+            t.bx = gb & mfi.fabbox();
         }
+        if (!t.bx.isEmpty()) { tags.push_back(t); }
     }
 }
 
-//! The gradient fill along z (the ground or the top) for a field at T with
-//! the gradient G(i, j) of a per-column slab (one component), or a constant.
-template <int T>
-void fill_gradient_z (amrex::MultiFab& q, const amrex::MultiFab& z_nd, const amrex::Geometry& geom, bool lo,
-                      const amrex::MultiFab* grad, int comp, amrex::Real constant, bool homogeneous)
+//! Fill the ghosts of every field at both faces normal to d, on every box of
+//! the rank, in one launch. When the domain is not wider than the ghost
+//! layers along d, one face's ghosts read the other face's points (on two
+//! cells, u(-2) mirrors the high face point u(2)), so the fill is two
+//! launches, low face first, as before audit A9.
+void fill_direction (State& q, int d, const BoundaryInputs& in, const amrex::Geometry& geom, const InflowProfile::View& prof,
+                     const CoriolisOptions& cor, const amrex::MultiFab* ground_grad, bool homogeneous)
 {
-    const amrex::Box& dom = geom.Domain();
-    const int klo = dom.smallEnd(2);   // the ground slab's k
-    const int edge = lo ? klo : dom.bigEnd(2);
-    const int c1 = lo ? edge + 1 : edge - 1;
-    for (amrex::MFIter mfi(q, false); mfi.isValid(); ++mfi) {
-        const amrex::Box vb = mfi.validbox();
-        if (!touches(vb, dom, 2, lo)) { continue; }
-        const auto a = q.array(mfi);
-        const amrex::Box zb = z_nd[mfi].box();
-        const NodeZ nz{z_nd.const_array(mfi), amrex::lbound(zb), amrex::ubound(zb)};
-        amrex::Array4<amrex::Real const> g;
-        if (grad != nullptr) { g = grad->const_array(mfi); }
-        const bool per_column = (grad != nullptr);
-        amrex::Box gb = ghost_slab(vb, dom, geom, 2, lo, 1, q.nGrow());
-        gb &= mfi.fabbox();
-        const int g1 = lo ? edge - 1 : edge + 1, g2 = lo ? edge - 2 : edge + 2;
-        // The slab g holds the two ghost columns the slab gb spans; a face
-        // point of a nodal direction averages the two cells beside it, and
-        // at the outermost ghost faces (one beyond the columns) the one it has.
-        const amrex::Dim3 glo = per_column ? amrex::lbound(g) : amrex::Dim3{0, 0, 0};
-        const amrex::Dim3 ghi = per_column ? amrex::ubound(g) : amrex::Dim3{0, 0, 0};
-        amrex::ParallelFor(gb, [=] AMREX_GPU_DEVICE (int i, int j, int) noexcept
+    amrex::Vector<FillTag> tags;
+    auto add = [&] (bool lo) {
+        add_field_tags<stencil::XF>(tags, q.u, f_u, d, lo, in, q.z_phys_nd, geom, cor, ground_grad);
+        add_field_tags<stencil::YF>(tags, q.v, f_v, d, lo, in, q.z_phys_nd, geom, cor, ground_grad);
+        add_field_tags<stencil::ZF>(tags, q.w, f_w, d, lo, in, q.z_phys_nd, geom, cor, ground_grad);
+        add_field_tags<stencil::CC>(tags, q.p, f_p, d, lo, in, q.z_phys_nd, geom, cor, ground_grad);
+        add_field_tags<stencil::CC>(tags, q.theta, f_theta, d, lo, in, q.z_phys_nd, geom, cor, ground_grad);
+        add_field_tags<stencil::CC>(tags, q.tke, f_tke, d, lo, in, q.z_phys_nd, geom, cor, ground_grad);
+    };
+    auto launch = [&] () {
+        if (tags.empty()) { return; }
+        amrex::ParallelFor(tags, [=] AMREX_GPU_DEVICE (int i, int j, int k, FillTag const& t) noexcept
         {
-            amrex::Real G = constant;
-            if (per_column) {
-                const int ia = amrex::max(glo.x, amrex::min(ghi.x, i)), ja = amrex::max(glo.y, amrex::min(ghi.y, j));
-                const int ib = amrex::max(glo.x, amrex::min(ghi.x, stencil::nodal(T, 0) ? i - 1 : i));
-                const int jb = amrex::max(glo.y, amrex::min(ghi.y, stencil::nodal(T, 1) ? j - 1 : j));
-                G = amrex::Real(0.5) * (g(ib, jb, klo, comp) + g(ia, ja, klo, comp));
+            switch (t.loc) {
+            case stencil::XF: fill_point<stencil::XF>(t, i, j, k, prof, homogeneous); break;
+            case stencil::YF: fill_point<stencil::YF>(t, i, j, k, prof, homogeneous); break;
+            case stencil::ZF: fill_point<stencil::ZF>(t, i, j, k, prof, homogeneous); break;
+            default: fill_point<stencil::CC>(t, i, j, k, prof, homogeneous); break;
             }
-            if (homogeneous) { G = amrex::Real(0); }
-            const amrex::Real zc1 = point_z<T>(nz, i, j, c1), zg1 = point_z<T>(nz, i, j, g1), zg2 = point_z<T>(nz, i, j, g2);
-            a(i, j, g1) = a(i, j, c1) + (zg1 - zc1) * G;
-            a(i, j, g2) = a(i, j, g1) + (zg2 - zg1) * G;
         });
-    }
-}
-
-template <int T>
-void fill_field (amrex::MultiFab& q, int f, int d, const BoundaryInputs& in, const amrex::MultiFab& z_nd,
-                 const amrex::Geometry& geom, const InflowProfile::View& prof, const CoriolisOptions& cor,
-                 const amrex::MultiFab* ground_grad, bool homogeneous)
-{
-    for (const bool lo : {true, false}) {
-            const FaceType t = in.face[amrex::Orientation(d, lo ? amrex::Orientation::low : amrex::Orientation::high)];
-            const Rule rule = rule_for(static_cast<Field>(f), t, d, lo);
-            amrex::Real value = 0;
-            if (t == FaceType::geostrophic) { value = (f == f_u) ? cor.ug : (f == f_v) ? cor.vg : amrex::Real(0); }
-            if (t == FaceType::no_slip_wall && f <= f_w) {
-                value = in.wall_velocity[amrex::Orientation(d, lo ? amrex::Orientation::low : amrex::Orientation::high)][f];
-            }
-            if (rule == Rule::gradient) {
-                if (t == FaceType::surface_layer) {
-                    fill_gradient_z<T>(q, z_nd, geom, lo, ground_grad, f == f_u ? 0 : f == f_v ? 1 : 2, 0, homogeneous);
-                } else {
-                    fill_gradient_z<T>(q, z_nd, geom, lo, nullptr, 0, in.zhi_theta_grad, homogeneous);
-                }
-            } else {
-                fill_face<T>(q, z_nd, geom, d, lo, f, rule, value, prof, homogeneous);
-            }
+        tags.clear();
+    };
+    int ng = 0;
+    for (const amrex::MultiFab* mf : {&q.u, &q.v, &q.w, &q.p, &q.theta, &q.tke}) { ng = std::max(ng, mf->nGrow()); }
+    if (geom.Domain().length(d) <= ng) {
+        add(true);
+        launch();
+        add(false);
+        launch();
+    } else {
+        // The high face's tags first: a CPU build runs the tags in order (GUST
+        // has no OpenMP), so if the split above were lost, the narrow domain's
+        // low face would read the high face's new values and
+        // BoundaryFill.NarrowDomainFillsTheLowFaceFirst would fail. In the low
+        // face's order it would pass; keep this order.
+        add(false);
+        add(true);
+        launch();
     }
 }
 
@@ -411,13 +488,11 @@ void BoundaryConditions::fill_ghosts (State& q, const SurfaceLayerOptions* surfa
         }
         if (m_geom.isPeriodic(d)) { continue; }
         const amrex::MultiFab* gg = ground_grad.empty() ? nullptr : &ground_grad;
-        fill_field<stencil::XF>(q.u, f_u, d, m_in, q.z_phys_nd, m_geom, prof, m_coriolis, gg, homogeneous);
-        fill_field<stencil::YF>(q.v, f_v, d, m_in, q.z_phys_nd, m_geom, prof, m_coriolis, gg, homogeneous);
-        fill_field<stencil::ZF>(q.w, f_w, d, m_in, q.z_phys_nd, m_geom, prof, m_coriolis, gg, homogeneous);
+        // Every field at both faces in one launch (two on a narrow domain,
+        // fill_direction); the no-flux w of the ground and the top reads u and
+        // v there, so it comes after. The p, theta and k fills do not read w.
+        fill_direction(q, d, m_in, m_geom, prof, m_coriolis, gg, homogeneous);
         if (d == 2) { fill_no_flux_w(q, m_in, m_geom); }
-        fill_field<stencil::CC>(q.p, f_p, d, m_in, q.z_phys_nd, m_geom, prof, m_coriolis, gg, homogeneous);
-        fill_field<stencil::CC>(q.theta, f_theta, d, m_in, q.z_phys_nd, m_geom, prof, m_coriolis, gg, homogeneous);
-        fill_field<stencil::CC>(q.tke, f_tke, d, m_in, q.z_phys_nd, m_geom, prof, m_coriolis, gg, homogeneous);
     }
     for (auto* mf : fields) { sync_ghost_copies(*mf); }
 }

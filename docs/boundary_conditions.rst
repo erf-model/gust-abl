@@ -325,7 +325,9 @@ values :math:`g_1, g_2` along the face normal:
    * - gradient :math:`G`
      - the centred difference at :math:`c_0` equals :math:`G`
 
-The directions are filled in the order x, y, z, so corner ghosts get values too.
+The directions are filled in the order x, y, z, so corner ghosts get values too. Each direction fills every field
+at both faces on all boxes of a rank in one launch (audit A9); on a domain no wider than the two ghost layers it is two
+launches, the low face first. The values are those of one launch per field, face, box and layer.
 Every copy of a ghost cell then holds one value. In its outermost lateral ghost layer a box lacks some of what the
 rules read (the node heights have one lateral ghost layer, the wall law's gradient two), so after the fill each cell
 outside the domain takes the value of the box whose column it is in, and the ghost images of cells inside the domain
