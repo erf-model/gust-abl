@@ -1064,7 +1064,8 @@ writes them and stops; the other ``steady.*`` keys are then refused.
    * - ``steady.cfl_max``
      - ``8`` with ``lusgs``, ``10`` with ``zjacobi``
      - Finite, ≥ ``steady.cfl0``. Largest CFL number. The default depends on ``steady.sweep`` (the sweep and
-       CFL-cap study on Askervein, :doc:`results`); a given value is used with either sweep.
+       CFL-cap study on Askervein, :doc:`results`); a given value is used with either sweep. A dense canopy on steep
+       terrain may need a lower cap (:doc:`canopy`, steep terrain and the boundaries).
    * - ``steady.ser_exponent``
      - ``1``
      - Finite, ≥ 0. Exponent :math:`p` of the CFL ramp; 0 holds the CFL at ``cfl0``.

@@ -151,6 +151,7 @@ set(COLUMN_CASE         ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Neutral_Colum
 set(FLAT_CASE           ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Neutral_ABL_Flat)
 set(THIN_CELL_CASE      ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Thin_Cell_Flat)
 set(CANOPY_DRAG_CASE    ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Canopy_Drag)
+set(ESCARPMENT_CASE     ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Forested_Escarpment)
 set(STEEP_RIDGE_CASE    ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Steep_Ridge_Thin_Cell)
 set(AR_CASE             ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Aspect_Ratio_Hill_2D)
 set(OUTFLOW_CASE        ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Outflow_Steep_Terrain)
@@ -960,6 +961,18 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
                   COMMAND $<TARGET_FILE:gust> ${CANOPY_DRAG_CASE}/inputs_canopy_drag
                           canopy.file=${CANOPY_DRAG_CASE}/canopy_patches.txt ${GUST_TEST_AMREX_FLAGS})
     set_tests_properties(rt_canopy_tke PROPERTIES ENVIRONMENT PYTHONDONTWRITEBYTECODE=1 TIMEOUT 600)
+    # A dense canopy on steep terrain with an inflow face (Canonical_RANS/
+    # Forested_Escarpment, the WINSENT Albtrauf in 2-D, about 1 min): steady at
+    # steady.cfl_max 2 within 300 iterations, the same answer on 1, 2 and 4
+    # ranks, the canopy slows the wind, a restart bit for bit, and the
+    # inflow-face warning with the forest at the inflow.
+    # MPI builds only: the script runs 1, 2 and 4 ranks through the launcher's -n.
+    if(GUST_MPI)
+        gust_add_test(NAME rt_forested_escarpment NP 2 LABELS "regression"
+                      PREFIX ${Python3_EXECUTABLE} ${ESCARPMENT_CASE}/check_forested_escarpment.py --max-iterations 300 --
+                      COMMAND $<TARGET_FILE:gust> ${ESCARPMENT_CASE}/inputs_forested_escarpment ${GUST_TEST_AMREX_FLAGS})
+        set_tests_properties(rt_forested_escarpment PROPERTIES ENVIRONMENT PYTHONDONTWRITEBYTECODE=1 TIMEOUT 900)
+    endif()
     # The slope margin of the cap on a steep ridge with a 0.4 m
     # first cell (Canonical_RANS/Steep_Ridge_Thin_Cell). With the default margin
     # the run is steady within 3500 iterations; with the margin off (#32's cap)
