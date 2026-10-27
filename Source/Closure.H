@@ -130,6 +130,12 @@ struct ClosureFields
     //! weight on nu_t) and d nu_t / d k, for a Newton diagonal
     //! (max(dSdk, -dSdk_exact) keeps the sign).
     amrex::MultiFab dSdk_exact, dnutdk;
+    //! The canopy's k terms (CanopyTke.H), with Closure::set_canopy: the wake
+    //! production P_c and the short-circuit sink D_c (both >= 0; S_k gains
+    //! P_c - D_c). Defined on the first evaluation with a canopy; canopy says
+    //! whether the last evaluation had one.
+    amrex::MultiFab Pc, Dc;
+    bool canopy{false};
     void define (const amrex::BoxArray& ba, const amrex::DistributionMapping& dm);
     [[nodiscard]] bool empty () const { return nu.empty(); }
 };
@@ -209,6 +215,18 @@ public:
     void restore_switches (const amrex::iMultiFab& src, FreezeScope scope, const amrex::BoxArray& ba,
                            const amrex::DistributionMapping& dm, const amrex::Geometry& geom);
 
+    //! The forest canopy's terms of the closure (docs/canopy.rst; PR-60): drag the
+    //! level's drag field f = Cd a (Canopy.H, one ghost column in x and y, on the
+    //! level's cells; null: none). The length cap L <= alpha / f (a switch, frozen
+    //! with the others) and the k sources beta_p f |U|^3 - beta_d f |U| k. The
+    //! field must outlive the closure's use of it.
+    void set_canopy (const amrex::MultiFab* drag, amrex::Real beta_p, amrex::Real beta_d, amrex::Real alpha);
+    [[nodiscard]] bool has_canopy () const { return m_canopy_f != nullptr; }
+    //! The canopy's length cap alpha (0 without a canopy or a cap): the frozen
+    //! decisions hold whether a cell is capped, so a restart of frozen
+    //! decisions needs the same alpha (Smoothness.cpp).
+    [[nodiscard]] amrex::Real canopy_alpha () const { return (m_canopy_f != nullptr) ? m_alpha : amrex::Real(0); }
+
     [[nodiscard]] const ClosureOptions& options () const { return m_opt; }
     [[nodiscard]] const ClosureConstants& constants () const { return m_c; }
 
@@ -223,6 +241,15 @@ private:
     mutable amrex::MultiFab m_dz;
     mutable std::pair<const amrex::MultiFab*, const amrex::MultiFab*> m_dz_of{nullptr, nullptr};
     FreezeScope m_scope{FreezeScope::all};
+    const amrex::MultiFab* m_canopy_f{nullptr};
+    //! Abort unless the drag field (when set) is on q's cells.
+    void check_canopy_layout (const char* op, const State& q) const;
+    amrex::Real m_beta_p{1}, m_beta_d{4}, m_alpha{0};
+    //! The drag field, or (no canopy) dummy, which the kernels then do not read for a value that matters.
+    [[nodiscard]] const amrex::MultiFab& canopy_field (const amrex::MultiFab& dummy) const
+    {
+        return (m_canopy_f != nullptr) ? *m_canopy_f : dummy;
+    }
     //! The decisions evaluate() uses at q (N2: gated when turb.ri_gate > 0),
     //! encoded on q's layout: the state's own, the frozen ones (all), or the
     //! state's with the floor held (floor). One kernel per case.

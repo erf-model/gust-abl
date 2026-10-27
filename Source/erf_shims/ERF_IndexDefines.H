@@ -2,9 +2,11 @@
 #define GUST_ERF_SHIM_INDEX_DEFINES_H_
 
 // Shim for ERF's ERF_IndexDefines.H, which the files in extern_erf/ include.
-// They use only the boundary-condition enum below; it is ERF's ERF_BC
-// (Source/ERF_IndexDefines.H at the commit in external/VERSIONS), copied with
-// its enumerators in ERF's order. ERF's licence: extern_erf/LICENSE.md.
+// They use only the boundary-condition enum below and the two state
+// component indices that ERF_CanopyTurbulence.H's AddCanopyTKESources names
+// (not called by GUST); both are ERF's (Source/ERF_IndexDefines.H at the
+// commit in external/VERSIONS), the enumerators in ERF's order. ERF's
+// licence: extern_erf/LICENSE.md.
 
 enum struct ERF_BC {
     symmetry,
@@ -19,5 +21,12 @@ enum struct ERF_BC {
     surface_layer,
     undefined
 };
+
+#ifndef Rho_comp
+#define Rho_comp       0
+#endif
+#ifndef RhoKE_comp
+#define RhoKE_comp     (Rho_comp+2)
+#endif
 
 #endif

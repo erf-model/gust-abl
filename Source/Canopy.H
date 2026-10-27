@@ -54,6 +54,18 @@ enum class CanopyProfile { uniform, lalic_mihailovic };
 //! canopy.drag_diagonal: the momentum rows' implicit drag term (CanopyDrag.H).
 enum class CanopyDiagonal { derivative, picard, none };
 
+//! The canopy terms of the k–L closure (CanopyTke.H, Closure::set_canopy):
+//! canopy.tke (on by default with a canopy), beta_p, beta_d, length_alpha
+//! (ERF's erf.forest_canopy_* defaults).
+struct CanopyTkeOptions
+{
+    std::string name{"on"};    //!< canopy.tke as given
+    bool on{true};
+    double beta_p{1.0};        //!< canopy.beta_p, [0, 1]
+    double beta_d{4.0};        //!< canopy.beta_d, finite, >= 0
+    double length_alpha{0.04}; //!< canopy.length_alpha, [0, 1] (0: no length cap)
+};
+
 //! The canopy.* inputs (read_canopy_options) and the IDW keys they share.
 struct CanopyOptions
 {
@@ -69,6 +81,7 @@ struct CanopyOptions
     double laimax{0.8};        //!< canopy.laimax (map with lalic_mihailovic)
     std::string drag_diagonal_name{"derivative"};   //!< canopy.drag_diagonal as given
     CanopyDiagonal drag_diagonal{CanopyDiagonal::derivative};   //!< canopy.drag_diagonal
+    CanopyTkeOptions tke;      //!< canopy.tke, beta_p, beta_d, length_alpha (CanopyTke.H)
     int idw_neighbors{6};      //!< terrain.idw_neighbors (map)
     double idw_power{2};       //!< terrain.idw_power (map)
     std::vector<std::string> given;   //!< canopy.* keys in the inputs
@@ -117,6 +130,8 @@ public:
     [[nodiscard]] const amrex::MultiFab& drag () const { return m_drag; }
     //! canopy.drag_diagonal (a coarse level takes level 0's).
     [[nodiscard]] CanopyDiagonal drag_diagonal () const { return m_diagonal; }
+    //! The canopy terms of the closure (a coarse level takes level 0's).
+    [[nodiscard]] const CanopyTkeOptions& tke () const { return m_tke; }
 
     //! The log line: the largest f, the columns with canopy, the mean column
     //! integral of f over them (their mean Cd LAI) and its largest value.
@@ -142,6 +157,7 @@ private:
     amrex::MultiFab m_drag;
     std::string m_hash;
     CanopyDiagonal m_diagonal{CanopyDiagonal::derivative};
+    CanopyTkeOptions m_tke;
 };
 
 //! The canopy file name in a checkpoint directory.

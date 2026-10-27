@@ -1,5 +1,6 @@
 #include "Sequencing.H"
 
+#include "CanopyTke.H"
 #include "ColumnGuess.H"
 
 #include "WallDistance.H"
@@ -262,6 +263,21 @@ LevelSolver::LevelSolver (const RunSetup& s, const Mesh& mesh, const amrex::Geom
     if (canopy != nullptr) {
         canopy_faces.build(*canopy, geom);
         res_in.canopy = &canopy_faces;
+        const CanopyTkeOptions& t = canopy->tke();
+        if (t.on) {
+            closure.set_canopy(&canopy->drag(), static_cast<amrex::Real>(t.beta_p), static_cast<amrex::Real>(t.beta_d),
+                               static_cast<amrex::Real>(t.length_alpha));
+        }
+        if (res_in.surface != nullptr && label.empty()) {   // once, on level 0
+            const amrex::Long n = canopy_columns_on_rough_ground(canopy->drag(), ground_roughness(res_in.surface),
+                                                                 kForestSizedZ0);
+            if (n > 0) {
+                amrex::Print() << "gust: WARNING: " << label << n << " columns with canopy have a ground z0 of "
+                               << double(kForestSizedZ0) << " m or more (bc.surface_z0 or bc.surface_z0_file): the canopy "
+                               << "already stands for the trees, so a forest-sized z0 counts the forest twice; give "
+                               << "the soil and litter's z0 (0.01 to 0.1 m) under the canopy\n";
+            }
+        }
     }
     closure.check_wall_distance(dist, ground_roughness(res_in.surface));
     auto stage = std::make_unique<SimplecStage>(s.simplec, s.sopt.zline_sweeps, res_in, &closure, s.popt, mesh, geom, z_nd,

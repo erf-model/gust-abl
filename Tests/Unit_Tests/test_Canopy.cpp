@@ -569,6 +569,37 @@ TEST(Canopy, OptionChecks)
     }
     none.given = {"drag_diagonal"};
     EXPECT_EQ(first(none), "canopy.drag_diagonal has no effect with canopy.type = none");
+    // The closure's canopy terms (CanopyTke.H): canopy.tke and its coefficients.
+    none.given = {"beta_d"};
+    EXPECT_EQ(first(none), "canopy.beta_d has no effect with canopy.type = none");
+    p = patch_options(ok);
+    EXPECT_TRUE(p.tke.on);
+    p.tke.name = "yes";
+    EXPECT_EQ(first(p), "canopy.tke must be on or off (got yes)");
+    p = patch_options(ok);
+    p.tke.name = "off";
+    p.tke.on = false;
+    EXPECT_TRUE(gust::check_canopy_options(p).empty());
+    p.given.emplace_back("length_alpha");
+    EXPECT_EQ(first(p), "canopy.length_alpha has no effect with canopy.tke = off");
+    auto coef = [&] (double bp, double bd, double a) {
+        gust::CanopyOptions o = patch_options(ok);
+        o.tke.beta_p = bp;
+        o.tke.beta_d = bd;
+        o.tke.length_alpha = a;
+        return first(o);
+    };
+    EXPECT_EQ(coef(1, 4, 0.04), "");
+    EXPECT_EQ(coef(0, 4, 0), "");
+    EXPECT_EQ(coef(1, 0, 1), "");
+    EXPECT_NE(coef(1.5, 4, 0.04).find("canopy.beta_p must be in [0, 1]"), std::string::npos);
+    EXPECT_NE(coef(-0.1, 4, 0.04).find("canopy.beta_p must be in [0, 1]"), std::string::npos);
+    EXPECT_NE(coef(std::nan(""), 4, 0.04).find("canopy.beta_p must be in [0, 1]"), std::string::npos);
+    EXPECT_NE(coef(1, -1, 0.04).find("canopy.beta_d must be finite and >= 0"), std::string::npos);
+    EXPECT_NE(coef(1, INFINITY, 0.04).find("canopy.beta_d must be finite and >= 0"), std::string::npos);
+    EXPECT_NE(coef(1, 4, 1.1).find("canopy.length_alpha must be in [0, 1]"), std::string::npos);
+    EXPECT_NE(coef(1, 4, -0.01).find("canopy.length_alpha must be in [0, 1]"), std::string::npos);
+    EXPECT_NE(coef(0, 0, 0).find("all 0 changes nothing; set canopy.tke = off"), std::string::npos);
 
     // ParmParse: a repeated key, a value that is not a number, two values.
     {
