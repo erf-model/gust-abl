@@ -268,6 +268,19 @@ LevelSolver::LevelSolver (const RunSetup& s, const Mesh& mesh, const amrex::Geom
             closure.set_canopy(&canopy->drag(), static_cast<amrex::Real>(t.beta_p), static_cast<amrex::Real>(t.beta_d),
                                static_cast<amrex::Real>(t.length_alpha));
         }
+        if (label.empty()) {   // once, on level 0
+            const BoundaryConditions::CanopyZoneCounts zones = bc.canopy_in_boundary_zones(canopy->drag(), z_nd);
+            if (zones.inflow > 0) {
+                amrex::Print() << "gust: WARNING: " << zones.inflow << " canopy cells lie in the first cell column of an "
+                               << "inflow face: the inflow profile there does not feel the drag; keep the forest a few "
+                               << "cells away from inflow faces (fade it out, as a terrain blend does)\n";
+            }
+            if (zones.damping > 0) {
+                amrex::Print() << "gust: WARNING: " << zones.damping << " canopy cells lie inside a damping layer "
+                               << "(bc.sponge_width, or bc.rayleigh_zdamp with u, v, theta or k damped): the layer "
+                               << "relaxes them towards the inflow profile, which does not feel the drag\n";
+            }
+        }
         if (res_in.surface != nullptr && label.empty()) {   // once, on level 0
             const amrex::Long n = canopy_columns_on_rough_ground(canopy->drag(), ground_roughness(res_in.surface),
                                                                  kForestSizedZ0);

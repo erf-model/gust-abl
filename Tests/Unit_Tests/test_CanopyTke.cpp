@@ -14,6 +14,7 @@
 //   the cap is a switch: frozen, it holds where the state has moved past it,
 //   and changed_switches counts those cells (UT-8.3.5);
 //   the ground-roughness warning counts the canopy columns.
+#include "BoundaryConditions.H"
 #include "Canopy.H"
 #include "CanopyTke.H"
 #include "Closure.H"
@@ -36,6 +37,7 @@ namespace fs = std::filesystem;
 
 namespace {
 
+using gust::FaceType;
 using gust::ptest::PCase;
 
 constexpr bool kDouble = std::is_same_v<amrex::Real, double>;
@@ -446,4 +448,96 @@ TEST(CanopyTke, RoughGroundUnderTheCanopyIsCounted)
     }
     EXPECT_EQ(gust::canopy_columns_on_rough_ground(cn.drag(), gust::Roughness{amrex::Real(1.0)}, gust::kForestSizedZ0), want);
     EXPECT_EQ(gust::canopy_columns_on_rough_ground(cn.drag(), gust::Roughness{amrex::Real(0.05)}, gust::kForestSizedZ0), 0);
+}
+
+// The canopy cells the inflow-face and damping-layer warnings count
+// (BoundaryConditions::canopy_in_boundary_zones), on a domain without periodic
+// sides: four narrow patches each cover only the first cell column (or row)
+// inside one face, one patch sits inside. With one face inflow at a time, its
+// patch's cells are counted, and only those; an outflow face counts nothing.
+// With a 100 m sponge on the x faces and a Rayleigh layer above 15 m, the
+// canopy cells whose centre lies in either are counted; the Rayleigh layer on
+// w alone (it relaxes w to zero, not towards the profile) is not counted.
+TEST(CanopyTke, BoundaryZonesCountTheCanopyCells)
+{
+    PCase c;
+    c.in.mesh.n_cell = amrex::IntVect(16, 16, 24);
+    c.in.mesh.prob_hi = {400, 400, 1000};
+    c.in.mesh.is_periodic = {0, 0, 0};
+    c.in.mesh.max_grid_size = {4, 4};
+    c.in.mesh.dz0 = amrex::Real(1);
+    c.in.mesh.stretch_ratio = amrex::Real(1.1);
+    c.in.mesh.stretch_ratio_given = true;
+    c.in.terrain.smoothing = 0;
+    c.make([] (double, double) { return 0.0; });
+    const fs::path dir = fs::temp_directory_path() / ("gust_canopy_zones_" + std::to_string(amrex::ParallelDescriptor::NProcs()));
+    const std::string file = (dir / "patches.txt").string();
+    if (amrex::ParallelDescriptor::IOProcessor()) {
+        fs::create_directories(dir);
+        std::ofstream os(file);
+        for (const char* xy : {"12.5 200", "387.5 100", "200 12.5", "300 387.5"}) {   // one column or row each
+            os << "1 " << xy << " " << kH << " 30 " << kCd << " " << kLai << " 0.8\n";
+        }
+        os << "1 260 200 " << kH << " 120 " << kCd << " " << kLai << " 0.8\n";   // inside
+    }
+    amrex::ParallelDescriptor::Barrier();
+    gust::CanopyOptions o;
+    o.type = gust::CanopyType::patches;
+    o.type_name = "patches";
+    o.file = file;
+    o.given = {"type", "file"};
+    gust::Canopy cn;
+    cn.build(o, c.geom, c.z, c.ba, c.dm);
+
+    // The expected counts from the drag field on the host: face 0..3 = xlo, xhi, ylo, yhi.
+    const auto& zl = c.mesh.zlevels();
+    auto expect = [&] (int face, double sponge, double zdamp) {
+        long n_in = 0, n_damp = 0;
+        for (amrex::MFIter mfi(cn.drag(), false); mfi.isValid(); ++mfi) {
+            const auto fd = host(cn.drag(), mfi);
+            amrex::LoopOnCpu(mfi.validbox(), [&] (int i, int j, int k) {
+                if (!(fd(amrex::IntVect(i, j, k)) > 0)) { return; }
+                const double x = (i + 0.5) * 25, zc = 0.5 * (zl[static_cast<std::size_t>(k)] + zl[static_cast<std::size_t>(k + 1)]);
+                const bool on = (face == 0 && i == 0) || (face == 1 && i == 15) || (face == 2 && j == 0) || (face == 3 && j == 15);
+                if (on) { ++n_in; }
+                const bool sp = sponge > 0 && (x < sponge || 400 - x < sponge);
+                const bool ry = zdamp > 0 && zc > zdamp;
+                if (sp || ry) { ++n_damp; }
+            });
+        }
+        amrex::ParallelDescriptor::ReduceLongSum(n_in);
+        amrex::ParallelDescriptor::ReduceLongSum(n_damp);
+        return std::make_pair(n_in, n_damp);
+    };
+    gust::CoriolisOptions cor;
+    auto counts = [&] (int inflow_face, double sponge, double zdamp, bool w_only = false) {
+        gust::BoundaryInputs bin;
+        bin.face = {FaceType::outflow, FaceType::slip_wall, FaceType::surface_layer, FaceType::outflow, FaceType::slip_wall,
+                    FaceType::slip_wall};
+        const int slot[4] = {0, 3, 1, 4};   // xlo, xhi, ylo, yhi in AMReX's orientation order
+        if (inflow_face >= 0) { bin.face[static_cast<std::size_t>(slot[inflow_face])] = FaceType::inflow; }
+        bin.sponge_width = static_cast<amrex::Real>(sponge);
+        bin.sponge_strength = sponge > 0 ? amrex::Real(0.01) : amrex::Real(0);
+        bin.rayleigh_zdamp = static_cast<amrex::Real>(zdamp);
+        bin.rayleigh_dampcoef = zdamp > 0 ? amrex::Real(0.2) : amrex::Real(0);
+        if (w_only) { bin.rayleigh_fields = {false, false, true, false, false}; }
+        gust::BoundaryConditions bc(bin, c.geom, c.mesh, cor);
+        return bc.canopy_in_boundary_zones(cn.drag(), c.z);
+    };
+    const auto none = counts(-1, 0, 0);
+    EXPECT_EQ(none.inflow, 0);
+    EXPECT_EQ(none.damping, 0);
+    for (int face = 0; face < 4; ++face) {
+        const auto in = counts(face, 0, 0);
+        EXPECT_EQ(in.inflow, expect(face, 0, 0).first) << "face " << face;
+        EXPECT_GT(in.inflow, 10) << "face " << face;
+        EXPECT_EQ(in.damping, 0) << "face " << face;
+    }
+    const auto damp = counts(0, 100, 15);
+    const auto want = expect(0, 100, 15);
+    EXPECT_EQ(damp.inflow, want.first);
+    EXPECT_EQ(damp.damping, want.second);
+    EXPECT_GT(damp.damping, damp.inflow);
+    // The Rayleigh layer on w alone: only the sponge counts.
+    EXPECT_EQ(counts(0, 100, 15, true).damping, expect(0, 100, 0).second);
 }
