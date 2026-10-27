@@ -1,6 +1,7 @@
 #include "App.H"
 
 #include "BoundaryConditions.H"
+#include "Canopy.H"
 #include "Closure.H"
 #include "ColumnGuess.H"
 #include "Convection.H"
@@ -136,6 +137,10 @@ void run ()
     if (solve) {
         for (auto& e : check_sequencing_options(seq, sopt.criterion, in.mesh)) { err.push_back(std::move(e)); }
     }
+    // The forest canopy (Canopy.H): read in every run, so that a run without
+    // the stage writes the drag field with its plotfile.
+    const CanopyOptions canopy_opt = read_canopy_options(in.terrain.idw_neighbors, static_cast<double>(in.terrain.idw_power));
+    for (auto& e : check_canopy_options(canopy_opt)) { err.push_back(std::move(e)); }
     for (const auto& e : unknown_inputs(parmparse_entries())) {
         // The stage's namespaces were reported above with their reason.
         bool reported = false;
@@ -278,6 +283,17 @@ void run ()
         amrex::Print() << "gust: restarted from " << in.io.restart
                        << " at step " << state.step << "\n";
     }
+    // The canopy's drag field on level 0's mesh; a restart continues the same
+    // canopy (checked before the field is built).
+    if (restart) { Canopy::check_restart(in.io.restart, canopy_opt.active() ? Canopy::hash_inputs(canopy_opt) : ""); }
+    Canopy canopy;
+    if (canopy_opt.active()) {
+        canopy.build(canopy_opt, geom, state.z_phys_nd, ba, dm);
+        amrex::Print() << "gust: canopy (canopy.type = " << canopy_opt.type_name << "): " << canopy.summary(mesh.detJ, geom)
+                       << "\ngust: canopy: the drag field is written to the plotfile (canopy_drag); it does not act on the "
+                          "flow yet\n";
+    }
+    const amrex::MultiFab* canopy_plot = canopy.active() ? &canopy.drag() : nullptr;
     // Writing a checkpoint of the same name as the one read would move it to
     // <name>.old.NNNN: refused (checked at the final step, after the solve).
     // The file system decides whether the two paths name one directory
@@ -345,7 +361,8 @@ void run ()
         setup.sopt = sopt;
         setup.newton = newton_opt;
         setup.log = iteration_log(in.io.iteration_log);
-        LevelSolver level0(setup, mesh, geom, state.z_phys_nd, ba, dm, "", newton);
+        LevelSolver level0(setup, mesh, geom, state.z_phys_nd, ba, dm, "", newton, nullptr,
+                           canopy.active() ? &canopy : nullptr);
         NewtonStage* newton_stage = level0.newton_stage();
         const BoundaryConditions& bc = level0.bc;
         Closure& closure = level0.closure;
@@ -432,7 +449,7 @@ void run ()
         if (!levels.empty()) { amrex::Print() << sequencing_report(levels, driver.history(), status, sopt.criterion.residual_ref_iterations); }
         check_overwrite();   // the step is final here, before any output
         if (in.io.write_plotfile == 1) {
-            const auto name = write_plotfile(in.io.plot_file, state, geom, &mesh.detJ);
+            const auto name = write_plotfile(in.io.plot_file, state, geom, &mesh.detJ, canopy_plot);
             amrex::Print() << "gust: wrote " << name << "\n";
             write_hierarchy();
         }
@@ -445,6 +462,7 @@ void run ()
             const auto name = write_checkpoint(in.io.chk_file, state, in.mesh);
             write_driver_history(name, driver.history());
             closure.write_checkpoint(name);
+            canopy.write_checkpoint(name);
             if (newton_stage != nullptr) { newton_stage->write_checkpoint(name); }
             amrex::Print() << "gust: wrote " << name << "\n";
         }
@@ -471,12 +489,13 @@ void run ()
 
     // No stage: the run writes its state and stops.
     if (in.io.write_plotfile == 1) {
-        const auto name = write_plotfile(in.io.plot_file, state, geom, &mesh.detJ);
+        const auto name = write_plotfile(in.io.plot_file, state, geom, &mesh.detJ, canopy_plot);
         amrex::Print() << "gust: wrote " << name << "\n";
         write_hierarchy();
     }
     if (in.io.write_checkpoint == 1) {
         const auto name = write_checkpoint(in.io.chk_file, state, in.mesh);
+        canopy.write_checkpoint(name);
         amrex::Print() << "gust: wrote " << name << "\n";
     }
 }

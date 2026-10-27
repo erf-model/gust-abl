@@ -112,6 +112,11 @@ Inputs parse_inputs ()
         pp.query("hierarchy_passes", t.hierarchy_passes);
         // The roughness map (bc.surface_z0_file, SurfaceRoughness.H) shares the IDW keys.
         t.idw_for_z0_map = amrex::ParmParse("bc").contains("surface_z0_file");
+        // So do the canopy's maps (canopy.type = map, Canopy.H). Read as text
+        // here; Canopy.cpp reads and checks the key.
+        std::string canopy_type;
+        amrex::ParmParse("canopy").query("type", canopy_type);
+        t.idw_for_canopy_map = (canopy_type == "map");
     }
 
     {
@@ -265,7 +270,7 @@ std::vector<std::string> validate (const Inputs& in)
             if (given(k)) { err.emplace_back(std::string("terrain.") + k + " has no effect unless terrain.type = agnesi"); }
         }
     }
-    if (t.type == "xyz" || t.idw_for_z0_map) {
+    if (t.type == "xyz" || t.idw_for_z0_map || t.idw_for_canopy_map) {
         if (t.idw_neighbors < 1) { err.emplace_back("terrain.idw_neighbors must be >= 1"); }
         if (!std::isfinite(t.idw_power) || !(t.idw_power > 0)) {
             err.emplace_back("terrain.idw_power must be finite and > 0");
@@ -273,7 +278,8 @@ std::vector<std::string> validate (const Inputs& in)
     } else {
         for (const char* k : {"idw_neighbors", "idw_power"}) {
             if (given(k)) {
-                err.emplace_back(std::string("terrain.") + k + " has no effect unless terrain.type = xyz or bc.surface_z0_file is given");
+                err.emplace_back(std::string("terrain.") + k + " has no effect unless terrain.type = xyz, bc.surface_z0_file is given "
+                                             "or canopy.type = map");
             }
         }
     }

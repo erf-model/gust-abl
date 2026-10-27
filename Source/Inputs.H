@@ -15,7 +15,7 @@ namespace gust {
 inline const std::vector<std::string>& owned_namespaces ()
 {
     static const std::vector<std::string> ns{
-        "mesh", "terrain", "init", "turb", "bc", "steady", "solver", "io", "forcing", "convection", "simplec"};
+        "mesh", "terrain", "init", "turb", "bc", "steady", "solver", "io", "forcing", "convection", "simplec", "canopy"};
     return ns;
 }
 
@@ -81,6 +81,8 @@ struct TerrainInputs
     amrex::Real idw_power{2};
     //! bc.surface_z0_file is given: the map is interpolated with idw_neighbors and idw_power too.
     bool idw_for_z0_map{false};
+    //! canopy.type = map: its maps are interpolated with idw_neighbors and idw_power too (Canopy.H).
+    bool idw_for_canopy_map{false};
     //! Grid hierarchy: level l's ground is smoothed by hierarchy_passes (2^l - 1)
     //! passes (MeshHierarchy.H).
     int hierarchy_passes{1};
