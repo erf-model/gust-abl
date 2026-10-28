@@ -259,7 +259,6 @@ public:
 private:
     [[nodiscard]] const GhostSlabs& ghost_slabs (const amrex::MultiFab& mf) const;
     void sync_ghost_copies (amrex::MultiFab& mf) const;
-    void extend_theta_below_ground (amrex::MultiFab& theta, const amrex::MultiFab& z_nd) const;   //!< set_theta_ground_extension
 
     BoundaryInputs m_in;
     amrex::Geometry m_geom;
