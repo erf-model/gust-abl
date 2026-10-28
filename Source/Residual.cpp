@@ -270,7 +270,7 @@ void residual (const State& q, const ResidualInputs& in, const Mesh& mesh, const
     amrex::MultiFab& theta_ref = w.theta_ref;
     if (theta_ref.empty()) { theta_ref.define(q.p.boxArray(), q.p.DistributionMap(), 1, 1); }
     fill_theta_ref(in.theta_ref, z, theta_ref);
-    subtract_buoyancy(q.theta, theta_ref, in.buoyancy, mesh, R.w);
+    if (in.buoyancy_in_momentum) { subtract_buoyancy(q.theta, theta_ref, in.buoyancy, mesh, R.w); }
     subtract_coriolis(q.u, q.v, q.w, in.coriolis, mesh, R.u, R.v, R.w);
     subtract_pressure_gradient(in.pressure_gradient, mesh, R.u, R.v, R.w);
 

@@ -87,6 +87,12 @@ struct SimplecOptions
     //! the cap is lowered on sloping ground so the pressure operator stays
     //! definite with this safety factor (Predictor.H).
     amrex::Real w_vnn_cap_slope_margin{4};
+    //! simplec.theta, "solve" (default) or "frozen": with frozen, theta is the
+    //! inflow profile's theta by height above the ground (set on every
+    //! sequenced level) and is not solved; the closure uses it as given and the
+    //! momentum equations carry no buoyancy (a prescribed stratification, van
+    //! der Laan et al. 2024; docs/solution_algorithm.rst).
+    bool theta_frozen{false};
     std::vector<std::string> given;                  //!< the simplec.* keys given
 };
 

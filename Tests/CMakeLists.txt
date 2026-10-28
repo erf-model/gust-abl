@@ -59,6 +59,7 @@ add_executable(unit_tests
     Unit_Tests/test_Smoothness.cpp
     Unit_Tests/test_NewtonStage.cpp
     Unit_Tests/test_LeeWake.cpp
+    Unit_Tests/test_FrozenTheta.cpp
 )
 target_include_directories(unit_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Unit_Tests)
 target_link_libraries(unit_tests PRIVATE gust_core GTest::gtest)
@@ -374,6 +375,29 @@ gust_add_test(NAME abort_ri_gate_range NP 1 LABELS "regression;smoke"
               PREFIX ${EXPECT_ABORT} "turb\\.ri_gate = 2\\.0+: must be 0 \\(off\\) or finite, >= 1e-6 and <= 1" --
               COMMAND $<TARGET_FILE:gust> ${HILL3D_NEUTRAL_CASE}/inputs_steady_hill3d_neutral
                       turb.ri_gate=2 ${GUST_TEST_AMREX_FLAGS})
+# simplec.theta: a bad value aborts naming the key; frozen aborts with the
+# Newton stage, with a restart, with a stratified column first guess and
+# without grid sequencing.
+gust_add_test(NAME abort_simplec_theta_value NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT} "simplec\\.theta = fixed: must be solve or frozen" --
+              COMMAND $<TARGET_FILE:gust> ${HILL3D_NEUTRAL_CASE}/inputs_steady_hill3d_neutral
+                      simplec.theta=fixed ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_simplec_theta_newton NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT} "simplec\\.theta = frozen is not supported with steady\\.stage = simplec_newton" --
+              COMMAND $<TARGET_FILE:gust> ${HILL2D_CASE}/inputs_steady_hill2d_newton simplec.theta=frozen
+                      ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_simplec_theta_restart NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT} "simplec\\.theta = frozen is not supported with io\\.restart" --
+              COMMAND $<TARGET_FILE:gust> ${HILL3D_NEUTRAL_CASE}/inputs_sequencing_restart simplec.theta=frozen
+                      io.restart=seq_chk00003 ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_simplec_theta_column NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT} "simplec\\.theta = frozen is not supported with a stratified column first guess" --
+              COMMAND $<TARGET_FILE:gust> ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Column_Target/inputs_column_target
+                      init.column_mol=1000 bc.surface_stability=heat_flux simplec.theta=frozen ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_simplec_theta_no_sequencing NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT} "simplec\\.theta = frozen needs grid sequencing" --
+              COMMAND $<TARGET_FILE:gust> ${HILL3D_NEUTRAL_CASE}/inputs_steady_hill3d_neutral simplec.theta=frozen
+                      ${GUST_TEST_AMREX_FLAGS})
 # The Newton stage's keys and the switch rules have no effect
 # with steady.stage = simplec (one stage), so they abort there.
 gust_add_test(NAME abort_newton_keys_no_newton_stage NP 1 LABELS "regression;smoke"
@@ -972,6 +996,15 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
                       PREFIX ${Python3_EXECUTABLE} ${ESCARPMENT_CASE}/check_forested_escarpment.py --max-iterations 300 --
                       COMMAND $<TARGET_FILE:gust> ${ESCARPMENT_CASE}/inputs_forested_escarpment ${GUST_TEST_AMREX_FLAGS})
         set_tests_properties(rt_forested_escarpment PROPERTIES ENVIRONMENT PYTHONDONTWRITEBYTECODE=1 TIMEOUT 900)
+        # simplec.theta = frozen on the same escarpment with a stable sounding
+        # (inputs_frozen_theta, about 40 s): steady within 400 iterations, theta
+        # the sounding at each cell's height above the ground on every
+        # sequenced level (1e-9 K), its residual 0, the same answer on 2 and
+        # 4 ranks, and theta moving when it is solved.
+        gust_add_test(NAME rt_frozen_theta NP 2 LABELS "regression"
+                      PREFIX ${Python3_EXECUTABLE} ${ESCARPMENT_CASE}/check_frozen_theta.py --max-iterations 400 --
+                      COMMAND $<TARGET_FILE:gust> ${ESCARPMENT_CASE}/inputs_frozen_theta ${GUST_TEST_AMREX_FLAGS})
+        set_tests_properties(rt_frozen_theta PROPERTIES ENVIRONMENT PYTHONDONTWRITEBYTECODE=1 TIMEOUT 900)
     endif()
     # The slope margin of the cap on a steep ridge with a 0.4 m
     # first cell (Canonical_RANS/Steep_Ridge_Thin_Cell). With the default margin
