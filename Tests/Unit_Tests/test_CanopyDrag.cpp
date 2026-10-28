@@ -123,10 +123,10 @@ double cell_f (int i, int j, int k, const amrex::Vector<amrex::Real>& zl)
 // The largest |R_c - closed form| over component c's valid faces (faces
 // next to a part-filled cell skipped) relative to the largest closed form,
 // and the number of faces checked.
-std::pair<double, long> sink_error (const amrex::MultiFab& R, int c, const amrex::Vector<amrex::Real>& zl, int nz)
+std::pair<double, amrex::Long> sink_error (const amrex::MultiFab& R, int c, const amrex::Vector<amrex::Real>& zl, int nz)
 {
     double err = 0, big = 0;
-    long n = 0;
+    amrex::Long n = 0;
     for (amrex::MFIter mfi(R, false); mfi.isValid(); ++mfi) {
         const amrex::Box b = mfi.validbox();
         amrex::FArrayBox h(b, 1, amrex::The_Pinned_Arena());
