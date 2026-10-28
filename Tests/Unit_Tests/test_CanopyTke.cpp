@@ -165,7 +165,7 @@ TEST(CanopyTke, SourcesHaveTheirClosedForms)
     EXPECT_FALSE(f0.canopy);
     const double t = kDouble ? 1e-13 : 1e-5;
     double worst = 0, balance = 0;
-    long in_canopy = 0, balanced = 0;
+    amrex::Long in_canopy = 0, balanced = 0;
     for (amrex::MFIter mfi(f1.Pc, false); mfi.isValid(); ++mfi) {
         const auto pc = host(f1.Pc, mfi), dc = host(f1.Dc, mfi), d1 = host(f1.dSdk, mfi), d0 = host(f0.dSdk, mfi),
                    e1 = host(f1.dSdk_exact, mfi), e0 = host(f0.dSdk_exact, mfi), fd = host(s.canopy.drag(), mfi),
@@ -218,7 +218,7 @@ TEST(CanopyTke, CappedBalanceIsKappaU2)
     gust::ClosureFields f;
     cl.evaluate(s.q, s.dist, kZ0, gust::BuoyancyOptions{}, s.c.mesh, s.c.geom, f);
     double worst = 0;
-    long capped = 0;
+    amrex::Long capped = 0;
     for (amrex::MFIter mfi(f.Pc, false); mfi.isValid(); ++mfi) {
         const auto pc = host(f.Pc, mfi), dc = host(f.Dc, mfi), ep = host(f.eps, mfi), ps = host(f.Ps, mfi),
                    L = host(f.length, mfi), fd = host(s.canopy.drag(), mfi);
@@ -253,7 +253,7 @@ TEST(CanopyTke, LengthCapActsOnlyInTheCanopy)
     const gust::ClosureConstants cst = plain.constants();
     const double t = kDouble ? 1e-13 : 1e-5;
     double worst = 0;
-    long changed_outside = 0, uncapped_diff = 0, n_capped = 0, n_kept = 0;
+    amrex::Long changed_outside = 0, uncapped_diff = 0, n_capped = 0, n_kept = 0;
     for (amrex::MFIter mfi(f0.length, false); mfi.isValid(); ++mfi) {
         const auto L0 = host(f0.length, mfi), L1 = host(f1.length, mfi), L2 = host(f2.length, mfi),
                    e1 = host(f1.eps, mfi), n1 = host(f1.nut, mfi), n0 = host(f0.nut, mfi), fd = host(s.canopy.drag(), mfi),
@@ -274,7 +274,7 @@ TEST(CanopyTke, LengthCapActsOnlyInTheCanopy)
         });
     }
     amrex::ParallelDescriptor::ReduceRealMax(worst);
-    for (long* n : {&changed_outside, &uncapped_diff, &n_capped, &n_kept}) { amrex::ParallelDescriptor::ReduceLongSum(*n); }
+    for (amrex::Long* n : {&changed_outside, &uncapped_diff, &n_capped, &n_kept}) { amrex::ParallelDescriptor::ReduceLongSum(*n); }
     EXPECT_LE(worst, t);
     EXPECT_EQ(changed_outside, 0L);
     EXPECT_EQ(uncapped_diff, 0L);
@@ -317,7 +317,7 @@ TEST(CanopyTke, ExactDerivativeMatchesDifferences)
     source_at(h, Sp);
     source_at(-h, Sm);
     double worst = 0;
-    long n_capped_cells = 0;
+    amrex::Long n_capped_cells = 0;
     for (amrex::MFIter mfi(Sp, false); mfi.isValid(); ++mfi) {
         const auto sp = host(Sp, mfi), sm = host(Sm, mfi), de = host(f.dSdk_exact, mfi), kk = host(s.q.tke, mfi),
                    fd = host(s.canopy.drag(), mfi), L = host(f.length, mfi);
@@ -421,7 +421,7 @@ TEST(CanopyTke, CapSwitchIsFrozen)
     cl.evaluate(q2, s.dist, kZ0, gust::BuoyancyOptions{}, s.c.mesh, s.c.geom, frozen);
     cl.thaw();
     cl.evaluate(q2, s.dist, kZ0, gust::BuoyancyOptions{}, s.c.mesh, s.c.geom, live);
-    long held_cells = 0;
+    amrex::Long held_cells = 0;
     for (amrex::MFIter mfi(frozen.length, false); mfi.isValid(); ++mfi) {
         const auto Lf = host(frozen.length, mfi), Ll = host(live.length, mfi), fd = host(s.canopy.drag(), mfi);
         amrex::LoopOnCpu(mfi.validbox(), [&] (int i, int j, int k) {
@@ -439,7 +439,7 @@ TEST(CanopyTke, RoughGroundUnderTheCanopyIsCounted)
 {
     PCase c = make_case(4);
     const gust::Canopy cn = make_canopy(c);
-    long want = 0;
+    amrex::Long want = 0;
     for (int j = 0; j < 16; ++j) {
         for (int i = 0; i < 16; ++i) {
             const double x = (i + 0.5) * 25 - 200, y = (j + 0.5) * 25 - 200;
@@ -492,7 +492,7 @@ TEST(CanopyTke, BoundaryZonesCountTheCanopyCells)
     // The expected counts from the drag field on the host: face 0..3 = xlo, xhi, ylo, yhi.
     const auto& zl = c.mesh.zlevels();
     auto expect = [&] (int face, double sponge, double zdamp) {
-        long n_in = 0, n_damp = 0;
+        amrex::Long n_in = 0, n_damp = 0;
         for (amrex::MFIter mfi(cn.drag(), false); mfi.isValid(); ++mfi) {
             const auto fd = host(cn.drag(), mfi);
             amrex::LoopOnCpu(mfi.validbox(), [&] (int i, int j, int k) {
