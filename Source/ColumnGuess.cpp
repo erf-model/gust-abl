@@ -68,6 +68,39 @@ bool column_surface_most (double kappa, double z0, double z1, double U1, double 
     return converged && std::abs(zeta) < 100.0;
 }
 
+bool column_surface_most_flux (double kappa, double z0, double z1, double U1, double qs, double grav, double theta0,
+                               double den_floor, bool qnse, const StableCoefficients& sc, double& ustar, double& thstar,
+                               double& invL)
+{
+    const double lz = std::log((z1 + z0) / z0);
+    const double m = (den_floor > 0) ? 1.0 : std::min(lz, 1.0);
+    auto clamp_zeta = [] (double z) { return std::max(std::min(z, 100.0), -100.0); };
+    auto psim = [&] (double z) {
+        const auto zr = static_cast<amrex::Real>(clamp_zeta(z));
+        return static_cast<double>(qnse ? most_psi_m<true>(zr, sc) : most_psi_m<false>(zr, sc));
+    };
+    // zeta = -kappa g q z1 / (theta0 u*^3) with u* = kappa U1 / (ln - psi_m(zeta)), the fixed point under-relaxed by a
+    // half from the zeta of invL on entry (the previous step's), to 1e-10 in zeta.
+    // A seed above the upper (repelling) stable root runs to the clamp: then once more from zeta = 0.
+    double zeta = 0;
+    bool converged = false;
+    for (const double seed : {clamp_zeta(z1 * invL), 0.0}) {
+        zeta = seed;
+        converged = false;
+        for (int it = 0; it < 20000 && !converged; ++it) {
+            const double us = std::max(kappa * U1 / std::max(lz - psim(zeta), m), 1.0e-3);
+            const double next = clamp_zeta(0.5 * zeta - 0.5 * kappa * grav * qs * z1 / (theta0 * us * us * us));
+            converged = std::abs(next - zeta) <= 1.0e-10 * std::max(1.0, std::abs(next));
+            zeta = next;
+        }
+        if (converged && std::abs(zeta) < 100.0) { break; }
+    }
+    ustar = std::max(kappa * U1 / std::max(lz - psim(zeta), m), 1.0e-3);
+    thstar = -qs / ustar;
+    invL = zeta / z1;
+    return converged && std::abs(zeta) < 100.0;
+}
+
 
 bool column_theta_evolves (const InitOptions& iopt, const SurfaceLayerOptions& surf)
 {
@@ -149,13 +182,19 @@ std::vector<std::string> check_column_guess (const InitOptions& iopt, const Stea
         err.emplace_back("init.column_stability with a non-neutral surface needs buoyancy (forcing.gravity > 0)");
     }
     for (const char* k : {"column_rib_max", "column_rib_min"}) {
-        if (!evolve && std::find(iopt.given.begin(), iopt.given.end(), k) != iopt.given.end()) {
+        const bool k_given = std::find(iopt.given.begin(), iopt.given.end(), k) != iopt.given.end();
+        if (!evolve && k_given) {
             err.emplace_back(std::string("init.") + k + " has no effect: the column's surface is neutral (init.column_stability)");
+        }
+        if (evolve && k_given && iopt.column_time > 0 && iopt.column_stability == InitOptions::ColumnStability::heat_flux) {
+            err.emplace_back(std::string("init.") + k + " has no effect with init.column_time > 0 and init.column_stability = "
+                             "heat_flux (the flux is given; no bulk Richardson number is solved)");
         }
     }
     // The column's heat budget: at steady state the surface flux leaves (or enters) the column through the Rayleigh
     // layer on theta, its only heat source or sink (the top flux is the deck's gradient times a floored diffusivity).
-    if (evolve && !(bin.rayleigh_zdamp > 0 && bin.rayleigh_fields[3])) {
+    const bool marching = iopt.column_time > 0;
+    if (evolve && !marching && !(bin.rayleigh_zdamp > 0 && bin.rayleigh_fields[3])) {
         err.emplace_back("init.column_stability with a non-neutral surface needs a Rayleigh layer on theta (bc.rayleigh_zdamp > 0, "
                          "theta in bc.rayleigh_fields): it returns the heat the surface takes or gives, so the column can be steady");
     }
@@ -202,7 +241,7 @@ std::vector<std::string> check_column_guess (const InitOptions& iopt, const Stea
         neutral = neutral && (bin.theta_ref.theta[i] == bin.theta_ref.theta[0]);
     }
     const bool held = bin.rayleigh_zdamp > 0 && bin.rayleigh_fields[0] && bin.rayleigh_fields[1];
-    if (driven && !coriolis_driven && !neutral && !held) {
+    if (driven && !coriolis_driven && !neutral && !held && !marching) {
         err.emplace_back("init.first_guess = column with forcing.pressure_gradient alone needs a neutral bc.theta_profile or a "
                          "Rayleigh layer holding u and v (bc.rayleigh_fields): above an inversion the column has no steady state");
     }
@@ -342,7 +381,26 @@ ColumnGuessResult run_column_guess (const Inputs& in, const InitOptions& iopt, c
     // balanced by the Rayleigh layer on theta (check_column_guess requires it).
     double qs = 0, invL = 0, ch = 0;
     double theta_s = (iopt.column_stability == CS::surface_temperature) ? static_cast<double>(iopt.column_surface_theta) : th[0];
-    const bool flux_mode = evolve && iopt.column_stability != CS::surface_temperature;
+    // The time-marching column (init.column_time > 0): fixed steps of init.column_dt to init.column_time, one column;
+    // with heat_flux the surface takes bc.surface_heat_flux itself (an explicit flux, column_surface_most_flux), no
+    // search for theta_s.
+    const bool marching = iopt.column_time > 0;
+    const bool fixed_flux = marching && evolve && iopt.column_stability == CS::heat_flux;
+    const double q_fixed = fixed_flux ? static_cast<double>(surf.heat_flux) : 0.0;
+    const double t_end = static_cast<double>(iopt.column_time), dt_fixed = static_cast<double>(iopt.column_dt);
+    // The steps: ceil(T / dt) less a slack for the rounding of T / dt (in Real: T, dt are inputs), at least one; the
+    // last step is then T - (n - 1) dt, in (0, dt (1 + slack)].
+    int n_steps = 0;
+    if (marching) {
+        const double r = t_end / dt_fixed;
+        const double slack = std::max(1.0e-9, 64.0 * static_cast<double>(std::numeric_limits<amrex::Real>::epsilon()) * r);
+        n_steps = std::max(1, static_cast<int>(std::ceil(r - slack)));
+        if (!(t_end - static_cast<double>(n_steps - 1) * dt_fixed > 0)) {
+            amrex::Abort("gust: column guess: init.column_time / init.column_dt leaves no last step (rounding); change "
+                         "init.column_dt");
+        }
+    }
+    const bool flux_mode = evolve && iopt.column_stability != CS::surface_temperature && !marching;
     // The closure's point kernels run in Real, so the change cannot fall
     // below a few multiples of Real's epsilon: init.column_tol is lifted to
     // 100 epsilon (1.2e-5 in single precision, 2.2e-14 in double) and the
@@ -356,7 +414,7 @@ ColumnGuessResult run_column_guess (const Inputs& in, const InitOptions& iopt, c
     // returned in a flux mode (the search backs off) and aborts otherwise; the iteration limit always aborts.
     enum class Outcome { ok, stall, no_most };
     auto solve = [&] () -> Outcome {
-    double dt = 10.0;
+    double dt = marching ? dt_fixed : 10.0;
     const double dt_max = 1.0e5;
     bool converged = false;
     double last_change = 0, best_change = std::numeric_limits<double>::infinity();
@@ -364,16 +422,38 @@ ColumnGuessResult run_column_guess (const Inputs& in, const InitOptions& iopt, c
     bool most_ok = true;
     int steps = 0;
     res.columns += 1;
-    for (int it = 0; it < iopt.column_max_iterations; ++it) {
+    const int max_steps = marching ? n_steps : iopt.column_max_iterations;
+    for (int it = 0; it < max_steps; ++it) {
+        // the last step of the time-marching column ends at init.column_time
+        if (marching && it == n_steps - 1) { dt = t_end - static_cast<double>(n_steps - 1) * dt_fixed; }
         // 1. the wall law from the first cell (neutral, or MOST with the column's surface)
         const double U1 = std::max(std::abs(W[0]), 1.0e-12);
         double thstar = 0;
         if (!evolve) {
             ustar = kappa * U1 / std::max(std::log((zc[0] + z0) / z0), den_floor);
+        } else if (fixed_flux) {
+            qs = q_fixed;
+            ch = 0;
+            most_ok = column_surface_most_flux(kappa, z0, zc[0], U1, qs, grav, theta0, den_floor, qnse, sc, ustar, thstar,
+                                               invL);
+            if (!most_ok) {
+                char msg[320];
+                std::snprintf(msg, sizeof(msg), "gust: column guess: at t = %.6g s the surface flux %.4e K m/s "
+                              "(bc.surface_heat_flux) has no Monin-Obukhov solution for the first cell's wind %.4g m/s: a "
+                              "smaller flux (downward or upward) or a stronger wind", static_cast<double>(it) * dt_fixed, qs, U1);
+                amrex::Abort(msg);
+            }
         } else {
             most_ok = column_surface_most(kappa, z0, zc[0], U1, th[0], theta_s, grav, theta0, den_floor, qnse, sc,
                                           static_cast<double>(iopt.column_rib_min), static_cast<double>(iopt.column_rib_max),
                                           ustar, thstar, qs, invL, ch);
+            if (marching && !most_ok) {   // the time-marching column stops at the first step without a MOST solution
+                char msg[320];
+                std::snprintf(msg, sizeof(msg), "gust: column guess: at t = %.6g s the surface (init.column_surface_theta = %.4f K) "
+                              "has no Monin-Obukhov solution for the first cell's wind %.4g m/s: a warmer "
+                              "init.column_surface_theta or a stronger wind", static_cast<double>(it) * dt_fixed, theta_s, U1);
+                amrex::Abort(msg);
+            }
         }
         const double drag = ustar * ustar / U1;   // the ground stress per unit speed (m/s)
         // 2. the closure at every cell: N^2 and S^2 from the cell's two faces
@@ -399,7 +479,9 @@ ColumnGuessResult run_column_guess (const Inputs& in, const InitOptions& iopt, c
             const closure::Point<amrex::Real> p = closure::closure_point<amrex::Real>(static_cast<amrex::Real>(tk[k]), N2, S2, lg, cc, sw);
             // nu_t relaxed against the previous step's (the lagged closure
             // of a fixed-point iteration cycles at large steps otherwise)
-            const double nut = (it == 0) ? static_cast<double>(p.nut) : 0.5 * (nut_prev[k] + static_cast<double>(p.nut));
+            // (the time-marching column takes the closure's nu_t as it is: time accuracy, as ERF's)
+            const double nut = (it == 0 || marching) ? static_cast<double>(p.nut)
+                                                     : 0.5 * (nut_prev[k] + static_cast<double>(p.nut));
             nut_prev[k] = nut;
             nu[k] = copt.nu_molecular + nut;
             gk[k] = copt.nu_molecular + nut / copt.sigma_k;
@@ -450,8 +532,9 @@ ColumnGuessResult run_column_guess (const Inputs& in, const InitOptions& iopt, c
                 dT[k] = 1.0 / dt + da[k] + ct;
                 rT[k] = th[k] / dt + ct * thref[k];
             }
-            dT[0] += ch / dzc[0];   // q = -ch (theta_1 - theta_s), implicit
+            dT[0] += ch / dzc[0];   // q = -ch (theta_1 - theta_s), implicit (ch = 0 with the fixed flux)
             rT[0] += ch * theta_s / dzc[0];
+            if (fixed_flux) { rT[0] += q_fixed / dzc[0]; }   // the fixed flux q, explicit
             rT[nz - 1] += gth[nz - 1] * static_cast<double>(bin.zhi_theta_grad) / dzc[nz - 1];
             thomas(lo, dT, up, rT);
             th_new = rT;
@@ -494,7 +577,14 @@ ColumnGuessResult run_column_guess (const Inputs& in, const InitOptions& iopt, c
         res.iterations += 1;
         steps = it + 1;
         last_change = change;
-        if (!(change == change)) { amrex::Abort("gust: column guess: the column produced a NaN (init.column_tol, the deck's forcing)"); }
+        if (!(change == change)) {
+            amrex::Abort(marching ? "gust: column guess: the time-marching column produced a NaN (init.column_dt, the deck's forcing)"
+                                  : "gust: column guess: the column produced a NaN (init.column_tol, the deck's forcing)");
+        }
+        if (marching) {
+            if (it == n_steps - 1) { converged = true; }
+            continue;
+        }
         if (change < tol) { converged = true; break; }
         // A stall: the change has not improved for 200 steps once the step is
         // at its cap (the asymptotic contraction is about 0.88 per step).
@@ -508,7 +598,7 @@ ColumnGuessResult run_column_guess (const Inputs& in, const InitOptions& iopt, c
         }
         dt = std::min(dt * 1.3, dt_max);
     }
-    res.steady = converged;
+    res.steady = converged && !marching;
     if (!converged) {
         char msg[256];
         std::snprintf(msg, sizeof(msg), "gust: column guess: the column did not converge to the tolerance %.3e (init.column_tol) in %d "
@@ -661,6 +751,26 @@ ColumnGuessResult run_column_guess (const Inputs& in, const InitOptions& iopt, c
             W[k] *= R;
         }
     }
+    if (marching) {   // the surface of the final state (the loop's is the state before the last step)
+        const double U1 = std::max(std::abs(W[0]), 1.0e-12);
+        double thstar = 0;
+        if (!evolve) {
+            ustar = kappa * U1 / std::max(std::log((zc[0] + z0) / z0), den_floor);
+        } else if (fixed_flux) {
+            column_surface_most_flux(kappa, z0, zc[0], U1, qs, grav, theta0, den_floor, qnse, sc, ustar, thstar, invL);
+        } else {
+            column_surface_most(kappa, z0, zc[0], U1, th[0], theta_s, grav, theta0, den_floor, qnse, sc,
+                                static_cast<double>(iopt.column_rib_min), static_cast<double>(iopt.column_rib_max), ustar,
+                                thstar, qs, invL, ch);
+        }
+    }
+    if (fixed_flux) {   // the surface temperature MOST gives the fixed flux, for the report: theta_1 - theta* (ln - psi_h) / kappa
+        const double lz = std::log((zc[0] + z0) / z0), m = (den_floor > 0) ? 1.0 : std::min(lz, 1.0);
+        const auto zeta = static_cast<amrex::Real>(std::max(std::min(zc[0] * invL, 100.0), -100.0));
+        const double psih = static_cast<double>(qnse ? most_psi_h<true>(zeta, sc) : most_psi_h<false>(zeta, sc));
+        theta_s = th[0] + qs / ustar * std::max(lz - psih, m) / kappa;
+    }
+    res.time = marching ? t_end : 0.0;
     res.ug = static_cast<amrex::Real>(Wg.real()); res.vg = static_cast<amrex::Real>(Wg.imag());
     res.pressure_gradient_x = static_cast<amrex::Real>(F.real()); res.pressure_gradient_y = static_cast<amrex::Real>(F.imag());
     res.ustar = static_cast<amrex::Real>(ustar);
@@ -686,10 +796,17 @@ ColumnGuessResult run_column_guess (const Inputs& in, const InitOptions& iopt, c
         std::FILE* fh = std::fopen(table_file.c_str(), "w");
         bool ok = fh != nullptr;
         if (ok) {
-            std::fprintf(fh, "# the converged column (init.first_guess = column): z u v theta k; u* %.6e m/s, %d steps; "
-                         "surface heat flux %.6e K m/s, 1/L %.6e 1/m, surface theta %.6f K\n",
-                         static_cast<double>(res.ustar), res.iterations, static_cast<double>(res.heat_flux),
-                         static_cast<double>(res.inv_L), static_cast<double>(res.theta_surface));
+            if (marching) {
+                std::fprintf(fh, "# the column at t = %.6g s (init.first_guess = column, init.column_time): z u v theta k; "
+                             "u* %.6e m/s, %d steps; surface heat flux %.6e K m/s, 1/L %.6e 1/m, surface theta %.6f K\n",
+                             res.time, static_cast<double>(res.ustar), res.iterations, static_cast<double>(res.heat_flux),
+                             static_cast<double>(res.inv_L), static_cast<double>(res.theta_surface));
+            } else {
+                std::fprintf(fh, "# the converged column (init.first_guess = column): z u v theta k; u* %.6e m/s, %d steps; "
+                             "surface heat flux %.6e K m/s, 1/L %.6e 1/m, surface theta %.6f K\n",
+                             static_cast<double>(res.ustar), res.iterations, static_cast<double>(res.heat_flux),
+                             static_cast<double>(res.inv_L), static_cast<double>(res.theta_surface));
+            }
             for (amrex::Long i = 0; i < res.z.size(); ++i) {
                 std::fprintf(fh, "%.17g %.17g %.17g %.17g %.17g\n", static_cast<double>(res.z[i]), static_cast<double>(res.u[i]),
                              static_cast<double>(res.v[i]), static_cast<double>(res.theta[i]), static_cast<double>(res.tke[i]));

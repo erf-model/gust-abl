@@ -88,6 +88,10 @@ struct InitOptions
     //! stratified column's surface solve (ERF's +-4, ERF_MOSTStress.H); Businger-Dyer's stable side is further
     //! capped at 0.19, below its 0.2 limit (ColumnGuess.H column_surface_most).
     amrex::Real column_rib_max{4}, column_rib_min{-4};
+    //! init.column_time (s, >= 0; 0: the steady column, the default) and init.column_dt (s, > 0): the column's
+    //! time-marching mode, backward Euler steps of column_dt in physical time to column_time (ColumnGuess.H), the
+    //! form of ERF's near-1-D column (erf_column.py) for a stratified column that has no steady state.
+    amrex::Real column_time{0}, column_dt{1};
     amrex::Real z_agl_min{0};
     amrex::Real alpha_h{1};
     amrex::Real alpha_v{1};
