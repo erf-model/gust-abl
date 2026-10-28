@@ -128,8 +128,8 @@
 # init.column_stability = mol
 #     mol, heat_flux or surface_temperature; column only. How the column's surface sets θ (stratified column,
 #     docs/initial_conditions.rst). heat_flux takes bc.surface_heat_flux and needs bc.surface_stability = heat_flux.
-#     Any non-neutral surface needs forcing.gravity > 0 and a Rayleigh layer on θ (bc.rayleigh_zdamp > 0, theta in
-#     bc.rayleigh_fields).
+#     Any non-neutral surface needs forcing.gravity > 0 and, in the steady column, a Rayleigh layer on θ
+#     (bc.rayleigh_zdamp > 0, theta in bc.rayleigh_fields).
 #
 # init.column_mol = 0
 #     0 (neutral: θ held at the sounding, the column before this input) or finite with |L| ≥ 1 (m); mol only. The
@@ -158,7 +158,18 @@
 #     below their 0.2 limit (stratified column, docs/initial_conditions.rst).
 #
 # init.column_rib_min = -4
-#     Finite, < 0; a stratified column only. The lower bound (ERF's value).
+#     Finite, < 0; a stratified column only. The lower bound (ERF's value). Both bounds are refused with
+#     init.column_time > 0 and heat_flux (the flux is given; no bulk Richardson number is solved).
+#
+# init.column_time = 0
+#     Finite, ≥ 0 (s); column only. 0: the steady column. > 0: the time-marching column (time-marching column,
+#     docs/initial_conditions.rst), backward Euler steps of init.column_dt in physical time to this time; the table
+#     is the column at that time. Refused with init.column_tol, init.column_max_iterations, a target wind and a
+#     non-zero init.column_mol.
+#
+# init.column_dt = 1
+#     Finite, > 0 (s); with init.column_time > 0 only. The step; the last step ends at init.column_time.
+#     init.column_time / init.column_dt must be at most 1e7 steps.
 
 # ==================================================================================================================
 # bc

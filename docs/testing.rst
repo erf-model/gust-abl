@@ -1772,6 +1772,18 @@ GoogleTest suite
        ``init.column_rib_max``), QNSE at Rib = 1 and the −4 bound (``SurfaceSolveMatchesTheClosedForm``); QNSE's ψ on
        the stable side (``QnseStableColumn``); the input checks, including the Rayleigh layer on θ, the 3-D refusals
        of a target, the flux hand-off of ``mol`` and the Rib bounds.
+   * - ``ColumnMarching.*``
+     - The time-marching column (``init.column_time``) on the same 64 × 1 m column without the Rayleigh layer on θ:
+       with a fixed flux (0.02 and −0.002 K m/s) for 3605 s in 10 s steps (361 steps, the last of 5 s) the heat
+       content :math:`\sum(\theta - 300)\,\Delta z` is :math:`q t` (1e-8 relative; the implicit solves' round-off);
+       the neutral column marched to 2e6 s equals the steady column (1e-6 m/s); the flux surface meets MOST's closed
+       form (Businger–Dyer stable, ERF's unstable ψ) and returns its flux through the surface-temperature solve
+       (1e-7), a seed above the upper stable root still finds the root, and a downward flux too large for the wind has
+       no root (the column stops, naming the time and ``bc.surface_heat_flux``); ``surface_temperature`` keeps its
+       θ_s and reports the final state's MOST surface (1e-6); the step count (9 s in 0.9 s steps is 10 steps; a time
+       below one step is one step); the input checks. Eight one-line mutants are caught (the flux term, the last
+       step's length, the sign of ζ, the Rayleigh check, the retry seed, the one-step floor, the final surface, the
+       Richardson-bound refusal).
    * - ``StabilityFunctions.*``, ``SurfaceLayer.QnseFrictionVelocity``, ``SurfaceLayer.StableFunctionsKeysAreRead``,
        ``BoundaryFill.GroundGradientIsTheWallLaw``
      - QNSE's φ and ψ against Python values at ζ = 0.1–100 (1e-14) and with distinct coefficients per function, ψ

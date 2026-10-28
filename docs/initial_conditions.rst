@@ -94,10 +94,11 @@ An inflow face keeps the case's inflow profile; the solver reconciles the two.
 - a ``surface_layer`` ground with the default wall :math:`k` (``bc.surface_zref`` is not supported), neutral
   unless ``init.column_stability = heat_flux`` (then ``bc.surface_stability = heat_flux``) or ``mol`` with a
   non-zero ``init.column_mol`` (``bc.surface_stability = heat_flux`` allowed: the run takes the column's flux);
-- with a non-neutral column, a Rayleigh layer on :math:`\theta` (below);
+- with a non-neutral steady column, a Rayleigh layer on :math:`\theta` (below; the time-marching column needs none);
 - a ``slip_wall``, ``geostrophic`` or ``no_slip_wall`` top;
 - ``bc.rayleigh_fields`` either containing both ``u`` and ``v`` or neither;
-- with a pressure gradient but no Coriolis force: a neutral sounding or a Rayleigh layer on ``u`` and ``v``.
+- with a pressure gradient but no Coriolis force: a neutral sounding or a Rayleigh layer on ``u`` and ``v`` (the
+  steady column only).
 
 ``init.k_decay_height`` cannot be used with it. Otherwise the run stops with a message naming
 ``init.first_guess``.
@@ -167,6 +168,40 @@ then takes that forcing. It reaches the target only if nothing holds its wind to
 target is refused with a Rayleigh layer on :math:`u, v`, a sponge or an inflow face (for an inflow case, run the
 column on a periodic deck and give its ``io.column_guess_file`` table as ``bc.inflow_file``), and with a stratified column
 over a neutral 3-D surface.
+
+.. _column-marching:
+
+**Time-marching column.** ``init.column_time`` > 0 marches the same column in physical time instead: backward Euler
+steps of ``init.column_dt`` (the last step ends at ``init.column_time``), :math:`\nu_t` taken from the closure at
+each step without the steady column's relaxation, and no convergence test. It is the form of ERF's near-1-D column
+(the WINSENT stratified inflow): a column heated or cooled at a fixed rate has no steady state, so it needs no
+Rayleigh layer on :math:`\theta`, and the table is its state at ``init.column_time``. The surface is fixed: the
+neutral wall law (``mol`` with ``init.column_mol = 0``, :math:`\theta` held), ``surface_temperature``, or
+``heat_flux``, where the flux :math:`q` = ``bc.surface_heat_flux`` enters the first cell as given (explicit, no search
+for :math:`\theta_s`) and MOST gives :math:`u_*` and :math:`L` from it, as ERF's flux surface:
+
+.. math::
+
+   u_* = \frac{\kappa U_1}{\ln\frac{z_1 + z_0}{z_0} - \psi_m(\zeta)}, \qquad
+   \zeta = -\frac{\kappa g q z_1}{\theta_0 u_*^3},
+
+solved by the fixed point under-relaxed by a half (from the previous step's :math:`\zeta`, then from 0 if that
+fails, to :math:`10^{-10}`),
+:math:`\theta_* = -q/u_*`. A downward flux too large for the wind has no root and stops the run, naming
+``bc.surface_heat_flux``. With a slip top, ``bc.zhi_theta_grad = 0`` and no Rayleigh layer on :math:`\theta` the
+column's heat content :math:`\sum \theta\,\Delta z` then grows by :math:`q t` to round-off (the unit test
+``ColumnMarching.SurfaceFluxBudget``). The target wind and a non-zero ``init.column_mol`` need the steady column; the
+bulk Richardson bounds are refused with ``heat_flux`` (no bulk Richardson number is solved). The log and the table
+header give the surface of the final state; with ``surface_temperature`` the flux printed is the one at
+``init.column_time`` only. The 3-D run is steady and has no such time: a marched :math:`\theta` with a fixed flux and
+no heat sink is not a steady state of a periodic deck. The table is meant as the ``bc.inflow_file`` of a deck with an
+inflow face (the WINSENT runs, with ``simplec.theta = frozen``, PR #78), or as a first guess alone (the example deck
+stops after one iteration, ``steady.max_iterations = 1``).
+On the four WINSENT stratified columns (240 × 10 m levels, 9 h, ``Tests/Canonical_RANS/Column_Marching``) the
+column is within 9 % of ERF's bulk Richardson number between 46 and 73 m and within 1 % of its speed at 300 m, the
+same for steps of 1, 10 and 60 s; a 9 h column of 1 s steps takes about 2 s. The march is first order in time and
+stayed stable up to 3600 s steps; steps up to about 300 s keep the bulk Richardson number within 0.002 of the 1 s
+column, while 3600 s steps damp the inertial oscillation (U(300 m) 1–3 % low).
 
 **Restart.** The checkpoint holds the state, not the adjusted forcing or the column's flux, and ``init.*`` keys are
 refused on a restart. The log lists the inputs a restart deck needs in their place (``forcing.ug``,
