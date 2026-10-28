@@ -54,7 +54,7 @@ SimplecOptions read_simplec_options ()
     SimplecOptions opt;
     amrex::ParmParse pp("simplec");
     std::vector<std::string> err;
-    for (const char* key : {"pressure_reltol", "alpha_p", "rotation_relax", "w_vnn_cap", "w_vnn_cap_slope_margin"}) {
+    for (const char* key : {"pressure_reltol", "alpha_p", "rotation_relax", "w_vnn_cap", "w_vnn_cap_slope_margin", "theta"}) {
         if (!pp.contains(key)) { continue; }
         opt.given.emplace_back(key);
         if (pp.countname(key) > 1) { err.emplace_back(std::string("simplec.") + key + " is given more than once"); }
@@ -67,6 +67,10 @@ SimplecOptions read_simplec_options ()
         pp.query("w_vnn_cap", opt.w_vnn_cap);
         pp.query("w_vnn_cap_slope_margin", opt.w_vnn_cap_slope_margin);
         err = check_simplec_options(opt);
+        std::string theta = "solve";
+        pp.query("theta", theta);
+        if (theta == "frozen") { opt.theta_frozen = true; }
+        else if (theta != "solve") { err.emplace_back("simplec.theta = " + theta + ": must be solve or frozen"); }
         // Read but ignored without the cap: refuse it.
         const bool margin_given = std::find(opt.given.begin(), opt.given.end(), "w_vnn_cap_slope_margin") != opt.given.end();
         if (margin_given && opt.w_vnn_cap == 0) {
@@ -303,6 +307,10 @@ SimplecStage::SimplecStage (const SimplecOptions& opt, int sweeps, const Residua
     if (in.closure == nullptr && in.nu == nullptr) {
         amrex::Abort("gust: SimplecStage: without a closure the residual inputs need the diffusivities");
     }
+    if (opt.theta_frozen == in.buoyancy_in_momentum) {
+        amrex::Abort("gust: SimplecStage: simplec.theta = frozen needs the residual inputs without buoyancy in momentum "
+                     "(buoyancy_in_momentum = false), and only it turns that off");
+    }
     if (std::isnan(tke_floor) || !(tke_floor >= 0)) { amrex::Abort("gust: SimplecStage: tke_floor must be >= 0 (turb.tke_floor)"); }
     for (const amrex::Real sc : {in.jvp_scales.velocity, in.jvp_scales.theta, in.jvp_scales.tke}) {
         if (std::isnan(sc) || !(sc > 0 && std::isfinite(sc))) {
@@ -464,6 +472,8 @@ void SimplecStage::iterate (State& q, const amrex::MultiFab& dtau)
     // 2. The residual (the closure's fields at q; the wall state of step 1).
     residual(q, m_in, m_mesh, m_geom, m_R, m_in.closure != nullptr ? &m_cf : nullptr,
              m_in.surface != nullptr ? &m_ss : nullptr, &m_rws);
+    // simplec.theta = frozen: theta is data, not an unknown (no residual, no sweep below).
+    if (m_opt.theta_frozen) { m_R.theta.setVal(0); }
     compute_norms(q);
     // The upwind blend for the next residual, from the cap at q (frozen once r < hybrid_freeze).
     if (!m_sigma.empty() && !m_sigma_frozen) {
@@ -503,15 +513,22 @@ void SimplecStage::iterate (State& q, const amrex::MultiFab& dtau)
         m_w.conv0.define(q.p.boxArray(), q.p.DistributionMap(), 1, 0);
         m_w.conv1.define(q.p.boxArray(), q.p.DistributionMap(), 1, 0);
     }
-    convection(Loc::cell, q.theta, F, m_in.theta, m_mesh, m_geom, m_w.conv0);
-    m_in.bc->fill_ghosts(q, m_in.surface, m_in.buoyancy, false, nullptr);
-    transport_fluxes(q.u, q.v, q.w, m_z, m_mesh, m_geom, m_w.transport);
-    m_in.bc->outflow_transport(m_w.transport);
-    convection(Loc::cell, q.theta, F, m_in.theta, m_mesh, m_geom, m_w.conv1);
-    amrex::MultiFab::Subtract(m_w.conv1, m_w.conv0, 0, 0, 1, 0);
-    amrex::MultiFab::Add(m_R.theta, m_w.conv1, 0, 0, 1, 0);
-    m_info.theta = scalar_sweep(Equation::theta, q.theta, m_R.theta, F, m_z, m_in, dtau, m_mesh, m_geom, m_sweeps, 0, ss, cf, m_w,
-                                m_sweep);
+    if (m_opt.theta_frozen) {
+        // theta is held: only the corrected velocity's transport, for k's rows.
+        m_in.bc->fill_ghosts(q, m_in.surface, m_in.buoyancy, false, nullptr);
+        transport_fluxes(q.u, q.v, q.w, m_z, m_mesh, m_geom, m_w.transport);
+        m_in.bc->outflow_transport(m_w.transport);
+    } else {
+        convection(Loc::cell, q.theta, F, m_in.theta, m_mesh, m_geom, m_w.conv0);
+        m_in.bc->fill_ghosts(q, m_in.surface, m_in.buoyancy, false, nullptr);
+        transport_fluxes(q.u, q.v, q.w, m_z, m_mesh, m_geom, m_w.transport);
+        m_in.bc->outflow_transport(m_w.transport);
+        convection(Loc::cell, q.theta, F, m_in.theta, m_mesh, m_geom, m_w.conv1);
+        amrex::MultiFab::Subtract(m_w.conv1, m_w.conv0, 0, 0, 1, 0);
+        amrex::MultiFab::Add(m_R.theta, m_w.conv1, 0, 0, 1, 0);
+        m_info.theta = scalar_sweep(Equation::theta, q.theta, m_R.theta, F, m_z, m_in, dtau, m_mesh, m_geom, m_sweeps, 0, ss, cf,
+                                    m_w, m_sweep);
+    }
     m_info.tke = scalar_sweep(Equation::tke, q.tke, m_R.tke, F, m_z, m_in, dtau, m_mesh, m_geom, m_sweeps, m_tke_floor, ss, cf, m_w,
                               m_sweep);
     // 6. The nu_t history.

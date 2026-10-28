@@ -1,0 +1,39 @@
+# WINSENT inflow column: a neutral single column on flat ground with Coriolis (48.7 N) and a geostrophic wind,
+# solved with the target wind of the benchmark's high-LAI neutral power law at the lidar, U = 1.033 h^0.323, i.e.
+# 6.50 m/s at 300 m along +x (from 293 deg, the frame's axis). The geostrophic wind is found by GUST
+# (init.column_target_*). The converged table, column_guess.dat (z u v theta k), is the inflow file of the 3-D run.
+# The levels are the 3-D run's (zlevels.txt); the surface roughness is kynema-sgf's effective upstream z0 for the
+# leafy case (0.5 m, winsent_processing.ipynb section 3.5), given on the command line as bc.surface_z0 and
+# bc.inflow_z0. The 3-D field is not needed: steady.max_iterations = 1 on the command line.
+mesh.n_cell        = 8 8 32
+mesh.prob_lo       = 0. 0. 0.
+mesh.prob_hi       = 256. 256. 2400.
+mesh.is_periodic   = 1 1 0
+mesh.max_grid_size = 8
+mesh.zlevels_file  = zlevels.txt
+
+terrain.type = flat
+
+init.first_guess          = column
+init.column_target_u      = 6.50
+init.column_target_v      = 0.
+init.column_target_height = 300.
+
+forcing.coriolis   = 1
+forcing.latitude   = 48.7
+forcing.geostrophic = 1
+forcing.ug         = 8.
+forcing.vg         = 0.
+
+bc.zlo = surface_layer
+bc.zhi = slip_wall
+
+turb.tke_floor     = 1.e-6
+turb.realizability = 0.309
+
+steady.stage = simplec
+
+io.column_guess_file = column_guess.dat
+io.plot_file         = column_plt
+io.turb_plot_file    = column_turb
+io.chk_file          = column_chk

@@ -436,6 +436,9 @@ Quick reference
    * - ``simplec.w_vnn_cap_slope_margin``
      - ``4``
      - The cap's safety margin on sloping ground (0: off)
+   * - ``simplec.theta``
+     - ``solve``
+     - ``frozen``: θ prescribed from the inflow profile, buoyancy in the closure only
    * - **Poisson solver** (`solver`_)
      -
      -
@@ -1240,6 +1243,14 @@ See :doc:`solution_algorithm`. Read with ``steady.stage = simplec`` or ``simplec
        cap on sloping ground so the pressure operator stays definite (:doc:`solution_algorithm`). 0 is the cap of
        #32, which can stall where thin cells meet steep slopes; the run then warns over terrain when the mesh
        aspect ratio is above the tested 50.78. Changes the path, not the answer. May change across a restart.
+   * - ``simplec.theta``
+     - ``solve``
+     - ``solve`` or ``frozen``. ``frozen``: θ is the inflow profile's θ by height above the ground on every sequenced
+       level and is not solved; the momentum equations carry no buoyancy force, the closure keeps :math:`N^2`
+       (:doc:`solution_algorithm`, prescribed potential temperature). Needs grid sequencing (``steady.sequencing = 1``,
+       ``mesh.hierarchy_levels`` > 1); refused with ``steady.stage = simplec_newton``, with ``io.restart`` and with
+       ``init.first_guess = column`` and a non-neutral ``init.column_stability``. With ``frozen``, ``theta`` in
+       ``bc.rayleigh_fields`` and ``bc.zhi_theta_grad`` have no effect.
 
 ``solver``
 ----------

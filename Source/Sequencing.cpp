@@ -71,6 +71,7 @@ ResidualInputs residual_inputs (const RunSetup& s, const Closure& closure, const
     r.theta = s.cin.theta;
     r.hybrid = s.cin.hybrid;
     r.buoyancy = s.fopt.buoyancy;
+    r.buoyancy_in_momentum = !s.simplec.theta_frozen;
     r.coriolis = s.fopt.coriolis;
     r.pressure_gradient = s.fopt.pressure_gradient;
     r.surface = s.surface_layer ? &surf : nullptr;
@@ -231,6 +232,7 @@ LevelSolver::LevelSolver (const RunSetup& s, const Mesh& mesh, const amrex::Geom
                           const amrex::MultiFab* canopy_fine_detJ)
     : bc(s.bin, geom, mesh, s.fopt.coriolis), closure(s.copt), surf(s.surf)
 {
+    bc.set_theta_ground_extension(s.simplec.theta_frozen);
     if (canopy_in != nullptr && canopy_fine_detJ != nullptr) {
         canopy_field.restrict_from(*canopy_in, *canopy_fine_detJ, geom, mesh, ba, dm);
         canopy = &canopy_field;
@@ -313,6 +315,33 @@ IterationLog iteration_log (const std::string& name)
 }
 
 namespace {
+
+//! simplec.theta = frozen: level l's theta set to the inflow profile's theta by
+//! height above that level's ground (the stratified-column path of the first
+//! guess, Initializer.H), in place of the sounding (coarsest level) or the
+//! prolonged field, so every level holds the same prescribed stratification.
+//! The profile is read at the unfloored height (init.z_agl_min = 0), as the
+//! inflow face's ghost cells read it, and without O'Brien (only theta is kept).
+//! Logs the level's frozen theta range and mean (valid cells).
+void reset_frozen_theta (const MeshHierarchy& h, int l, const RunSetup& setup, const InitOptions& iopt,
+                         const InflowProfile& inflow, State& q)
+{
+    if (!setup.simplec.theta_frozen) { return; }
+    InitOptions topt = iopt;
+    topt.z_agl_min = 0;
+    topt.obrien = false;
+    State fg;
+    fg.define(h.boxArray(l), h.DistributionMap(l));
+    amrex::MultiFab::Copy(fg.z_phys_nd, h.z_phys_nd(l), 0, 0, 1, amrex::min(fg.z_phys_nd.nGrowVect(), h.z_phys_nd(l).nGrowVect()));
+    first_guess_state(topt, setup.bin, h.mesh(l), h.geom(l), fg, setup.fopt.coriolis, &inflow, true);
+    amrex::MultiFab::Copy(q.theta, fg.theta, 0, 0, 1, amrex::min(q.theta.nGrowVect(), fg.theta.nGrowVect()));
+    const amrex::Real tmin = q.theta.min(0), tmax = q.theta.max(0);
+    const double tmean = static_cast<double>(q.theta.sum(0)) / static_cast<double>(h.boxArray(l).numPts());
+    char line[200];
+    std::snprintf(line, sizeof(line), "gust: level %d: theta frozen at the inflow profile's theta by height above the ground: "
+                  "min %.15e, max %.15e, mean %.15e K", l, static_cast<double>(tmin), static_cast<double>(tmax), tmean);
+    amrex::Print() << line << "\n";
+}
 
 //! The old "gust: it ..." line (io.iteration_log = full).
 void print_full (const Driver& driver, const SimplecStage& stage, bool last, const std::string& label,
@@ -468,11 +497,13 @@ std::vector<LevelSummary> sequence_coarse_levels (const MeshHierarchy& h, const 
             const InitResult r = initialize_state(iopt, setup.bin, setup.popt, h.mesh(l), h.geom(l), *ql, nullptr,
                                                   setup.fopt.coriolis, column, column_sets_theta(iopt, setup.surf));
             print_initializer(r, iopt, setup.popt, label);
+            reset_frozen_theta(h, l, setup, iopt, ls.bc.profile(), *ql);
         } else {
             const auto poisson = h.make_poisson(l, setup.popt);
             s.prolong = prolong_state(h, l + 1, *coarse, l, *ql, ls.bc, ls.surface(), setup.fopt.buoyancy, *poisson,
                                       setup.copt.tke_floor);
             s.prolonged = true;
+            reset_frozen_theta(h, l, setup, iopt, ls.bc.profile(), *ql);
         }
         coarse.reset();
         Driver& driver = ls.driver();
@@ -527,6 +558,7 @@ std::vector<LevelSummary> sequence_coarse_levels (const MeshHierarchy& h, const 
         s0.prolong = prolong_state(h, 1, *coarse, 0, q, finest.bc, finest.surface(), setup.fopt.buoyancy, poisson,
                                    setup.copt.tke_floor);
     }
+    reset_frozen_theta(h, 0, setup, iopt, finest.bc.profile(), q);
     s0.prolonged = true;
     start_seeded(finest.driver(), ref, seq, cfl_prev);
     out.push_back(s0);

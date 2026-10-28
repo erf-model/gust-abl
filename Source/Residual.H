@@ -113,6 +113,11 @@ struct ResidualInputs
     const amrex::MultiFab* hybrid_sigma{nullptr};
     HybridOptions hybrid;                         //!< convection.hybrid_* (the stage reads them)
     BuoyancyOptions buoyancy;
+    //! false with simplec.theta = frozen: theta's buoyancy acts in the closure
+    //! (N^2) only, not as a force in the w equation (the prescribed
+    //! stratification of van der Laan et al. 2024, whose momentum equations
+    //! carry no buoyancy).
+    bool buoyancy_in_momentum{true};
     CoriolisOptions coriolis;
     //! The constant kinematic pressure-gradient force (m/s^2) on u, v, w (Forcing.H).
     amrex::Array<amrex::Real, 3> pressure_gradient{0, 0, 0};
