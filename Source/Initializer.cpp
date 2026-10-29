@@ -20,7 +20,7 @@ namespace {
 const char* const kKeys[] = {"first_guess", "z_agl_min", "alpha_h", "alpha_v", "k_decay_height", "obrien", "projection",
                              "column_tol", "column_max_iterations", "column_stability", "column_mol",
                              "column_surface_theta", "column_target_u", "column_target_v", "column_target_height",
-                             "column_rib_max", "column_rib_min", "column_time", "column_dt"};
+                             "column_rib_max", "column_rib_min", "column_time", "column_dt", "column_wall_k"};
 
 //! A profile component at every point (ghosts included) of a field of type
 //! T, at the point's height above its column's ground floored at h_min.
@@ -91,6 +91,11 @@ InitOptions read_init_options ()
     pp.query("column_rib_min", opt.column_rib_min);
     pp.query("column_time", opt.column_time);
     pp.query("column_dt", opt.column_dt);
+    std::string wk = "fixed";
+    pp.query("column_wall_k", wk);
+    if (wk == "fixed") { opt.column_wall_k = InitOptions::ColumnWallK::fixed; }
+    else if (wk == "solved") { opt.column_wall_k = InitOptions::ColumnWallK::solved; }
+    else { amrex::Abort("gust: init.column_wall_k = " + wk + ": must be fixed or solved"); }
     pp.query("z_agl_min", opt.z_agl_min);
     pp.query("alpha_h", opt.alpha_h);
     pp.query("alpha_v", opt.alpha_v);
@@ -164,7 +169,7 @@ std::vector<std::string> check_init_options (const InitOptions& opt)
         if (opt.first_guess != InitOptions::FirstGuess::column) {
             for (const char* k : {"column_tol", "column_max_iterations", "column_stability", "column_mol",
                                   "column_surface_theta", "column_target_u", "column_target_v", "column_target_height",
-                                  "column_rib_max", "column_rib_min", "column_time", "column_dt"}) {
+                                  "column_rib_max", "column_rib_min", "column_time", "column_dt", "column_wall_k"}) {
                 if (given(k)) { err.emplace_back(std::string("init.") + k + " has no effect without init.first_guess = column"); }
             }
         } else {
@@ -182,8 +187,10 @@ std::vector<std::string> check_init_options (const InitOptions& opt)
                     err.emplace_back("init.column_mol with init.column_time > 0: the time-marching column takes a fixed surface "
                                      "(init.column_stability = heat_flux or surface_temperature, or the neutral mol with init.column_mol = 0)");
                 }
-            } else if (given("column_dt")) {
-                err.emplace_back("init.column_dt has no effect without init.column_time > 0");
+            } else {
+                for (const char* k : {"column_dt", "column_wall_k"}) {
+                    if (given(k)) { err.emplace_back(std::string("init.") + k + " has no effect without init.column_time > 0"); }
+                }
             }
             if (given("k_decay_height")) {
                 err.emplace_back("init.k_decay_height would decay the column's converged k again: not with init.first_guess = column");

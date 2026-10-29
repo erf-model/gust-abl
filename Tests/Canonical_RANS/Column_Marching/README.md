@@ -43,9 +43,24 @@ GUST's R_B is 8-9 % smaller in magnitude than ERF's in all four cases; the speed
 so the difference is the two closures and surface treatments, not the time step. Between 46 and 73 m the stable
 columns have the same shear as ERF's and a 7-9 % smaller theta difference (GUST's k is 5-8 % higher at 50-200 m);
 the unstable columns have the same theta difference and about 5 % more shear. The common factor is the first cell's
-k: GUST holds the wall value u*^2/Cmu0^2 there, about 1.9 times ERF's evolved first-cell k (0.23 vs 0.12 m^2/s^2 in
-high_stable_G2). The heat budget closes: with zhi_theta_grad = 0 the column's heat content grows by q t to 4e-13.
+k: by default GUST holds the wall value (u*^3 + kappa B z_1)^(2/3)/Cmu0^2 there (B = max(g q/theta0, 0)), about 1.9
+times ERF's evolved first-cell k (0.23 vs 0.12 m^2/s^2 in high_stable_G2). The heat budget closes: with
+zhi_theta_grad = 0 the column's heat content grows by q t to 4e-13.
+
+With `--extra init.column_wall_k=solved` the first cell's k is solved (no k flux through the ground) instead:
+
+| Case | R_B ERF | R_B GUST, fixed | R_B GUST, solved | k_1 ERF | k_1 fixed | k_1 solved (m^2/s^2) |
+|---|---|---|---|---|---|---|
+| high_stable_G2 | +0.1220 | +0.1113 | +0.1135 | 0.122 | 0.231 | 0.160 |
+| low_stable_G3 | +0.0967 | +0.0886 | +0.0904 | 0.106 | 0.201 | 0.138 |
+| high_unstable_lapse0 | -0.2660 | -0.2424 | -0.2453 | 0.207 | 0.393 | 0.254 |
+| low_unstable_lapse0 | -0.3600 | -0.3284 | -0.3320 | 0.239 | 0.457 | 0.292 |
+
+The first-cell k comes to 1.2-1.3 times ERF's, but R_B moves only from 8-9 % to 6.5-8 % below ERF's; the speed at 300
+m and theta change by at most 0.01 m/s and 0.01 K, and steps of 10 and 60 s give the same numbers (R_B within
+0.0004). So the first-cell k is a small part of the R_B difference; the rest is in the closure above it.
 
 ## CTest
 None: the ERF columns are not in the repository. The marching mode is pinned by the unit tests
-`ColumnMarching.*` (the surface-flux budget, the neutral steady limit, the flux surface's closed form, the inputs).
+`ColumnMarching.*` (the surface-flux budget, the neutral steady limit, the flux surface's closed form,
+the solved first-cell k balance of `init.column_wall_k = solved`, the inputs).

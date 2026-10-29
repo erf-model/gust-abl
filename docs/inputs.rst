@@ -145,6 +145,9 @@ Quick reference
    * - ``init.column_time``, ``column_dt``
      - ``0``, ``1``
      - The time-marching column: end time and step (s; 0: the steady column)
+   * - ``init.column_wall_k``
+     - ``fixed``
+     - The time-marching column's first-cell k: the wall value or solved
    * - **Boundary conditions** (`bc`_)
      -
      -
@@ -663,6 +666,12 @@ A restart cannot be combined with ``init.*`` keys.
      - ``1``
      - Finite, > 0 (s); with ``init.column_time`` > 0 only. The step; the last step ends at ``init.column_time``.
        ``init.column_time / init.column_dt`` must be at most 1e7 steps.
+   * - ``init.column_wall_k``
+     - ``fixed``
+     - ``fixed`` or ``solved``; with ``init.column_time`` > 0 only. ``fixed``: the first cell's k is the surface
+       layer's wall value, as in the steady column and the 3-D run. ``solved``: the first cell's k is solved with
+       the k equation of the other cells and no k flux through the ground (:ref:`time-marching column
+       <column-marching>`).
 
 ``bc``
 ------

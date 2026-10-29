@@ -799,7 +799,9 @@ TEST(Initializer, InputsAndPoissonTypes)
         amrex::ParmParse pp("init");
         auto clear = [&] {
             for (const char* k : {"first_guess", "z_agl_min", "alpha_h", "alpha_v", "k_decay_height", "obrien", "projection",
-                                  "column_tol", "column_max_iterations"}) { while (pp.remove(k) > 0) {} }
+                                  "column_tol", "column_max_iterations", "column_time", "column_dt", "column_wall_k"}) {
+                while (pp.remove(k) > 0) {}
+            }
         };
         clear();
         pp.add("first_guess", std::string("profile"));
@@ -1002,7 +1004,9 @@ TEST(Initializer, ColumnGuessAndProjectionSwitch)
         amrex::ParmParse pp("init");
         auto clear = [&] {
             for (const char* kk : {"first_guess", "z_agl_min", "alpha_h", "alpha_v", "k_decay_height", "obrien", "projection",
-                                   "column_tol", "column_max_iterations"}) { while (pp.remove(kk) > 0) {} }
+                                   "column_tol", "column_max_iterations", "column_time", "column_dt", "column_wall_k"}) {
+                while (pp.remove(kk) > 0) {}
+            }
         };
         clear();
         pp.add("first_guess", std::string("column"));
@@ -1025,6 +1029,20 @@ TEST(Initializer, ColumnGuessAndProjectionSwitch)
         clear();
         pp.add("first_guess", std::string("profile"));
         pp.add("column_tol", amrex::Real(1e-6));   // no effect without the column
+        EXPECT_THROW(gust::read_init_options(), std::runtime_error);
+        clear();
+        // init.column_wall_k: fixed (the default) or solved, with init.column_time > 0 only
+        pp.add("first_guess", std::string("column"));
+        pp.add("column_time", amrex::Real(3600));
+        EXPECT_EQ(gust::read_init_options().column_wall_k, InitOptions::ColumnWallK::fixed);
+        pp.add("column_wall_k", std::string("solved"));
+        EXPECT_EQ(gust::read_init_options().column_wall_k, InitOptions::ColumnWallK::solved);
+        while (pp.remove("column_wall_k") > 0) {}
+        pp.add("column_wall_k", std::string("dirichlet"));
+        EXPECT_THROW(gust::read_init_options(), std::runtime_error);
+        clear();
+        pp.add("first_guess", std::string("profile"));
+        pp.add("column_wall_k", std::string("solved"));   // no effect without the column
         EXPECT_THROW(gust::read_init_options(), std::runtime_error);
         clear();
     }

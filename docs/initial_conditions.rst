@@ -188,7 +188,7 @@ for :math:`\theta_s`) and MOST gives :math:`u_*` and :math:`L` from it, as ERF's
 solved by the fixed point under-relaxed by a half (from the previous step's :math:`\zeta`, then from 0 if that
 fails, to :math:`10^{-10}`),
 :math:`\theta_* = -q/u_*`. A downward flux too large for the wind has no root and stops the run, naming
-``bc.surface_heat_flux``. With a slip top, ``bc.zhi_theta_grad = 0`` and no Rayleigh layer on :math:`\theta` the
+``bc.surface_heat_flux`` (at any step, and at the final state). With a slip top, ``bc.zhi_theta_grad = 0`` and no Rayleigh layer on :math:`\theta` the
 column's heat content :math:`\sum \theta\,\Delta z` then grows by :math:`q t` to round-off (the unit test
 ``ColumnMarching.SurfaceFluxBudget``). The target wind and a non-zero ``init.column_mol`` need the steady column; the
 bulk Richardson bounds are refused with ``heat_flux`` (no bulk Richardson number is solved). The log and the table
@@ -202,6 +202,26 @@ column is within 9 % of ERF's bulk Richardson number between 46 and 73 m and wit
 same for steps of 1, 10 and 60 s; a 9 h column of 1 s steps takes about 2 s. The march is first order in time and
 stayed stable up to 3600 s steps; steps up to about 300 s keep the bulk Richardson number within 0.002 of the 1 s
 column, while 3600 s steps damp the inertial oscillation (U(300 m) 1–3 % low).
+
+**The first cell's k.** By default (``init.column_wall_k = fixed``) the marching column holds the first cell's
+:math:`k` at the surface layer's wall value, as the steady column and the 3-D run do:
+
+.. math::
+
+   k_1 = \frac{\left(u_*^3 + \kappa B z_1\right)^{2/3}}{C_{\mu 0}^2}, \qquad B = \max\left(\frac{g q}{\theta_0}, 0\right)
+
+(Axell and Liungman 2001, Eq. 16). ``init.column_wall_k = solved`` solves the first cell's :math:`k` with the
+equation of the other cells instead: no :math:`k` flux through the ground, the shear production from the mean of
+the wall law's gradient at the first centre (:math:`u_*/(\kappa (z_1 + z_0))` when neutral, MOST's otherwise) and the
+layer difference above, the buoyancy production or destruction, the closure's dissipation. The layer difference is
+smaller than the wall law's gradient, so in a neutral surface layer the solved :math:`k_1` settles below the
+log-layer value :math:`u_*^2/C_{\mu 0}^2`: at 0.77 of it for :math:`z_1/z_0 = 5` and 0.74 for :math:`z_1/z_0 \ge 30`
+(a discrete constant-stress layer; 0.76 in ``ColumnMarching.SolvedWallK``), with a :math:`k` minimum at the first
+cell. The closer agreement with ERF's first-cell :math:`k` below is therefore partly this discretisation, not
+evidence that the solved value is the more physical one. In the four WINSENT columns
+the solved first-cell :math:`k` is 1.2–1.3 times ERF's (the wall value is about 1.9 times), and the bulk Richardson
+number moves 1–2 % of its value towards ERF's (6.5–8 % below it, from 8–9 %). The speed at 300 m and :math:`\theta`
+change by at most 0.01 m/s and 0.01 K. The 3-D run keeps the wall value either way.
 
 **Restart.** The checkpoint holds the state, not the adjusted forcing or the column's flux, and ``init.*`` keys are
 refused on a restart. The log lists the inputs a restart deck needs in their place (``forcing.ug``,
