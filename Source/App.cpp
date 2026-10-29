@@ -95,6 +95,18 @@ void run ()
                              "checkpoint, so a restart would not continue the run)");
         }
         simplec = read_simplec_options();
+        if (newton && simplec.theta_frozen) {
+            err.emplace_back("simplec.theta = frozen is not supported with steady.stage = simplec_newton (the Newton stage "
+                             "solves theta)");
+        }
+        if (simplec.theta_frozen && !in.io.restart.empty()) {
+            err.emplace_back("simplec.theta = frozen is not supported with io.restart (theta is held at the first guess)");
+        }
+        if (simplec.theta_frozen && column_sets_theta(iopt, surf)) {
+            err.emplace_back("simplec.theta = frozen is not supported with a stratified column first guess "
+                             "(init.first_guess = column, init.column_stability): the frozen theta is the inflow "
+                             "profile's and would replace the column's");
+        }
         if (newton) {
             newton_opt = read_newton_stage_options(sopt, copt);
         } else {
@@ -177,6 +189,10 @@ void run ()
     const amrex::BoxArray ba = hierarchy_box_array(in.mesh);
     // Grid sequencing runs the coarse levels on a fresh start only.
     const bool sequencing = solve && seq.enabled && in.io.restart.empty();
+    if (simplec.theta_frozen && !(sequencing && in.mesh.hierarchy_levels > 1)) {
+        amrex::Abort("gust: invalid inputs:\n  simplec.theta = frozen needs grid sequencing (steady.sequencing = 1, "
+                     "mesh.hierarchy_levels > 1): the frozen theta is set from the inflow profile on the sequenced levels");
+    }
     if (solve && sopt.sweep == SweepKind::lusgs) {
         // The overlap against the layout (LineSweeps.H), before any work;
         // with sequencing also against every coarse level's boxes.
@@ -486,6 +502,7 @@ void run ()
             ResidualInputs plot_in = res_in;   // the residual the run converged: with the stage's upwind blend
             if (!simplec_stage.hybrid_sigma().empty()) { plot_in.hybrid_sigma = &simplec_stage.hybrid_sigma(); }
             residual(state, plot_in, mesh, geom, R);
+            if (simplec.theta_frozen) { R.theta.setVal(0); }   // theta is data, not an unknown (the stage's R_theta)
             const auto name = write_turbulence_plotfile(in.io.turb_plot_file, state, cf, dist, surface_layer ? &ss : nullptr,
                                                         copt, geom, &R,
                                                         res_in.surface != nullptr ? res_in.surface->z0_map : nullptr);

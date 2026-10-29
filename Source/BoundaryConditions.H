@@ -238,6 +238,13 @@ public:
     [[nodiscard]] bool has_inflow () const;
     [[nodiscard]] bool damping_on () const { return m_in.rayleigh_zdamp > 0 || m_in.sponge_width > 0; }
 
+    //! simplec.theta = frozen: fill theta's two ground ghost layers by the
+    //! linear extension of the column's first two cells (below a ground face
+    //! of the domain), in place of the wall law's gradient, so the first cell's
+    //! centred d theta/dz (the closure's N^2) is the prescribed profile's
+    //! between the first two cells. Off by default; not in homogeneous fills.
+    void set_theta_ground_extension (bool on) { m_theta_ground_extension = on; }
+
     //! The slabs outside the domain of one layout, each with the box that
     //! owns it (the ghost-copy exchange at the end of fill_ghosts).
     struct GhostSlabs
@@ -258,6 +265,7 @@ private:
     const Mesh& m_mesh;   //!< the run's mesh; it outlives this object and its copies
     CoriolisOptions m_coriolis;
     InflowProfile m_profile;
+    bool m_theta_ground_extension{false};   //!< set_theta_ground_extension
     //! Built once per layout: a new BoxArray per fill would rebuild AMReX's
     //! copy pattern every time. The cache holds its layouts (no id reuse).
     mutable std::vector<GhostSlabs> m_ghost_slabs;
