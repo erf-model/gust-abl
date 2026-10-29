@@ -153,7 +153,8 @@ TEST(ColumnMarching, SurfaceTemperature)
 // 0.1 s in 0.01 s steps is 10), and a time below one step is one step of that time (the budget q t holds).
 TEST(ColumnMarching, StepCount)
 {
-    for (const auto& [t, dt, n] : {std::tuple<double, double, int>{9, 0.9, 10}, {0.1, 0.01, 10}, {1e-6, 1000, 1}}) {
+    const std::tuple<double, double, int> cases[] = {{9, 0.9, 10}, {0.1, 0.01, 10}, {1e-6, 1000, 1}};
+    for (const auto& [t, dt, n] : cases) {
         Column c;
         c.heat_flux(0.02, t, dt);
         const auto r = c.run();
