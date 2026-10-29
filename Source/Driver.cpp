@@ -21,7 +21,7 @@ namespace gust {
 namespace {
 
 const char* const kKeys[] = {"residual_tol", "residual_drop_orders", "residual_ref_iterations", "monitor_rel_tol",
-                             "monitor_window", "max_iterations", "cfl0", "cfl_max", "ser_exponent", "ser_max_growth",
+                             "monitor_window", "max_iterations", "cfl0", "cfl_max", "ser_exponent", "ser_max_growth", "dtau_floor",
                              "switch_window", "switch_residual", "switch_back_growth", "zline_sweeps", "sweep", "line_ghosts", "line_overlap",
                              "line_order", "line_alternate", "machine", "nodes", "stage",
                              "newton_preconditioner", "switch_monitor_tol", "newton_fallback_failures",
@@ -83,6 +83,8 @@ std::vector<std::string> check_steady_options (const SteadyOptions& opt)
     bad(opt.ser_exponent, "ser_exponent", "finite and >= 0", [&] { return std::isfinite(opt.ser_exponent) && opt.ser_exponent >= 0; });
     bad(opt.ser_max_growth, "ser_max_growth", "finite and >= 1",
         [&] { return std::isfinite(opt.ser_max_growth) && opt.ser_max_growth >= 1; });
+    bad(opt.dtau_floor, "dtau_floor", "finite and >= 0 (0: no floor)",
+        [&] { return std::isfinite(opt.dtau_floor) && opt.dtau_floor >= 0; });
     if (opt.switch_window < 1) { err.emplace_back("steady.switch_window must be >= 1"); }
     bad(opt.switch_residual, "switch_residual", "> 0 and <= 1",
         [&] { return opt.switch_residual > 0 && opt.switch_residual <= 1; });
@@ -170,6 +172,7 @@ SteadyOptions read_steady_options ()
     pp.query("cfl_max", opt.cfl_max);
     pp.query("ser_exponent", opt.ser_exponent);
     pp.query("ser_max_growth", opt.ser_max_growth);
+    pp.query("dtau_floor", opt.dtau_floor);
     pp.query("switch_window", opt.switch_window);
     pp.query("switch_residual", opt.switch_residual);
     pp.query("switch_back_growth", opt.switch_back_growth);
@@ -410,7 +413,7 @@ SteadyVerdict Driver::step (State& q)
         m_need_init = false;
     }
     const double t0 = amrex::second();
-    local_dtau(q, m_nu, m_mesh, m_geom, m_h.cfl, m_dtau);
+    local_dtau(q, m_nu, m_mesh, m_geom, m_h.cfl, m_dtau, m_opt.dtau_floor);
     stage.iterate(q, m_dtau);
     const std::vector<amrex::Real> res = stage.residual_norms();
     const std::vector<amrex::Real> mon = stage.monitors();

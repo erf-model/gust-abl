@@ -98,6 +98,7 @@ ContinuationOptions continuation_options (const SteadyOptions& steady)
     o.cfl_max = steady.cfl_max;
     o.ser_exponent = steady.ser_exponent;
     o.ser_max_growth = steady.ser_max_growth;
+    o.dtau_floor = steady.dtau_floor;
     return o;
 }
 
@@ -367,7 +368,7 @@ ContinuationStatus Continuation::step (State& q, NewtonPreconditioner* pc)
         in.bc->fill_ghosts(m_qb, in.surface, in.buoyancy);
         const amrex::MultiFab* dtau = nullptr;
         if (!m_st.infinite) {
-            local_dtau(m_qb, m_nu, m_mesh, m_geom, m_st.cfl, m_dtau);
+            local_dtau(m_qb, m_nu, m_mesh, m_geom, m_st.cfl, m_dtau, m_opt.dtau_floor);
             dtau = &m_dtau;
         }
         const NewtonStepInfo info = m_nk.direction(m_qb, dtau, m_dq, pc);

@@ -84,7 +84,7 @@ NewtonStage::NewtonStage (const SteadyOptions& sopt, const NewtonStageOptions& o
     }
     if (m_pc == nullptr) {
         m_own_pc = make_newton_preconditioner(sopt.newton_preconditioner, simplec, sopt.zline_sweeps, m_nin, popt, mesh, geom,
-                                              z_nd, sopt.newton_cfl_max, ba, dm, line_sweep_options(sopt));
+                                              z_nd, sopt.newton_cfl_max, ba, dm, line_sweep_options(sopt), sopt.dtau_floor);
         m_pc = m_own_pc.get();
     }
     m_R.define(ba, dm);

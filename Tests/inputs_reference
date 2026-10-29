@@ -95,8 +95,9 @@
 #
 # init.first_guess = none
 #     none (fluid at rest), profile (the inflow profile by height above the ground) or column (the steady
-#     single-column profile; needs a horizontal forcing and steady.stage = simplec or simplec_newton, see
-#     docs/initial_conditions.rst for the full list).
+#     single-column profile; needs a horizontal forcing and steady.stage = simplec or simplec_newton, and with a
+#     canopy flat terrain and a canopy that is the same in every column; see docs/initial_conditions.rst for the
+#     full list).
 #
 # init.projection = 1
 #     0 or 1: the mass-consistent adjustment. With 0, init.alpha_h and init.alpha_v are refused.
@@ -555,14 +556,20 @@
 #
 # steady.cfl_max = 8    # with lusgs, 10 with zjacobi
 #     Finite, ≥ steady.cfl0. Largest CFL number. The default depends on steady.sweep (the sweep and CFL-cap study on
-#     Askervein, docs/results.rst); a given value is used with either sweep. A dense canopy on steep terrain may
-#     need a lower cap (docs/canopy.rst, steep terrain and the boundaries).
+#     Askervein, docs/results.rst); a given value is used with either sweep. With the step floor off
+#     (steady.dtau_floor = 0) a dense canopy needs a lower cap (docs/canopy.rst, steep terrain and the boundaries).
 #
 # steady.ser_exponent = 1
 #     Finite, ≥ 0. Exponent p of the CFL ramp; 0 holds the CFL at cfl0.
 #
 # steady.ser_max_growth = 2
 #     Finite, ≥ 1. Largest CFL growth factor per iteration.
+#
+# steady.dtau_floor = 0.1
+#     Finite, ≥ 0. The local pseudo-time rate is kept at or above this fraction of the level's fastest convective
+#     rate, U_max / min(Δ x, Δ y), so a cell at rest steps at most 1/dtau_floor times as the fastest cell does
+#     (docs/solution_algorithm.rst, local time step). 0 is the plain local step, the form before the floor (a cell
+#     at rest then steps cfl / 1e-12 s).
 #
 # steady.switch_window = 20
 #     ≥ 1. Iterations below switch_residual before a switch to the next stage; no other switch within this many

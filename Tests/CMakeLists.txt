@@ -45,6 +45,7 @@ add_executable(unit_tests
     Unit_Tests/test_Initializer.cpp
     Unit_Tests/test_ColumnStability.cpp
     Unit_Tests/test_ColumnMarching.cpp
+    Unit_Tests/test_ColumnCanopy.cpp
     Unit_Tests/test_StabilityFunctions.cpp
     Unit_Tests/test_Driver.cpp
     Unit_Tests/test_Predictor.cpp
@@ -819,7 +820,8 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
     # pins which residual sits in which column (u, v, w, tke, theta, p), the
     # line solver and r = 1 of the reference hold. Row 1 has w = p = 0. The
     # values are those of the "full" line (res in the order u v w p theta tke)
-    # on main at 438ad71; p to three digits (it is small after one
+    # on main at 438ad71, with the plain local step (steady.dtau_floor = 0:
+    # the floor moves row 2's values); p to three digits (it is small after one
     # iteration). Only the early rows are pinned: the iteration count of the
     # verdict may move with the compiler's multiply-adds. About 15 s on two
     # ranks.
@@ -828,7 +830,7 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
                          "(?m)^     1  1\\.000e\\+00  zjacobi      2\\.630e-03  3\\.099e-03  0\\.000e\\+00  4\\.308e\\+00  2\\.688e-03  0\\.000e\\+00  1\\.000e\\+00"
                          "(?m)^     2  1\\.000e\\+00  zjacobi      2\\.562e-03  3\\.072e-03  1\\.382e-03  2\\.536e\\+00  1\\.206e-03  7\\.6[0-9][0-9]e-06  1\\.000e\\+00" --
                   COMMAND $<TARGET_FILE:gust> ${FLAT_CASE}/inputs_steady_neutral_flat io.write_plotfile=0 io.write_checkpoint=0
-                          ${GUST_TEST_AMREX_FLAGS})
+                          steady.dtau_floor=0 ${GUST_TEST_AMREX_FLAGS})
     # The column with turb.kappa and turb.Cmu0 off their defaults: the wall
     # model and the inflow profile take the closure's constants, so the first
     # cell is on the wall law with kappa = 0.40 and the wall k is u*^2/0.55^2.
@@ -986,9 +988,19 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
                   COMMAND $<TARGET_FILE:gust> ${CANOPY_DRAG_CASE}/inputs_canopy_drag
                           canopy.file=${CANOPY_DRAG_CASE}/canopy_patches.txt ${GUST_TEST_AMREX_FLAGS})
     set_tests_properties(rt_canopy_tke PROPERTIES ENVIRONMENT PYTHONDONTWRITEBYTECODE=1 TIMEOUT 600)
+    # The column first guess with a uniform canopy (UT-8.5.1; Canonical_RANS/
+    # Canopy_Drag, about 3 min on two ranks): the column's first residuals are
+    # below 2e-3 of the profile's (1e-9 measured), the converged 3-D column is
+    # within 2e-3 of the table (1.3e-3), the column run needs at most 0.7 of the
+    # profile run's iterations (1082 against 2046), and a canopy that differs
+    # between columns is refused.
+    gust_add_test(NAME rt_canopy_column NP 2 LABELS "regression"
+                  PREFIX ${Python3_EXECUTABLE} ${CANOPY_DRAG_CASE}/check_canopy_column.py --tol 2e-3 --max-ratio 0.7 --
+                  COMMAND $<TARGET_FILE:gust> ${CANOPY_DRAG_CASE}/inputs_canopy_column ${GUST_TEST_AMREX_FLAGS})
+    set_tests_properties(rt_canopy_column PROPERTIES ENVIRONMENT PYTHONDONTWRITEBYTECODE=1 TIMEOUT 900)
     # A dense canopy on steep terrain with an inflow face (Canonical_RANS/
     # Forested_Escarpment, the benchmark escarpment in 2-D, about 1 min): steady at
-    # steady.cfl_max 2 within 300 iterations, the same answer on 1, 2 and 4
+    # the default CFL cap within 300 iterations, the same answer on 1, 2 and 4
     # ranks, the canopy slows the wind, a restart bit for bit, and the
     # inflow-face warning with the forest at the inflow.
     # MPI builds only: the script runs 1, 2 and 4 ranks through the launcher's -n.

@@ -657,7 +657,8 @@ TEST(NewtonPreconditioner, ReaderFactoryAndRangeChecks)
     Column col;
     const auto make = [&] (NewtonPreconditionerKind k) {
         return gust::make_newton_preconditioner(k, gust::SimplecOptions{}, 2, col.in, gust::PoissonOptions{},
-                                                     col.c.mesh, col.c.geom, col.c.z, amrex::Real(1e4), col.c.ba, col.c.dm);
+                                                     col.c.mesh, col.c.geom, col.c.z, amrex::Real(1e4), col.c.ba, col.c.dm,
+                                                     gust::LineSweepOptions(), amrex::Real(0));
     };
     EXPECT_EQ(make(NewtonPreconditionerKind::identity), nullptr);
     auto pc = make(NewtonPreconditionerKind::simplec);

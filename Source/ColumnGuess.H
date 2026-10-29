@@ -68,8 +68,19 @@
 // sum(theta dz) grows by q t to round-off. No target wind (init.column_target_*) and no init.column_mol.
 // init.column_wall_k = solved (time-marching only) solves the first cell's k with the others' equation and no k flux
 // through the ground, in place of the wall-k Dirichlet row (fixed, the default).
+//
+// The forest canopy (Canopy.H), when the run has one, is in the column as the layer profile f_k of the level's drag
+// field (ColumnCanopy, from Canopy::column_profile): the momentum equation gains the drag -f_k |W| W, linearised
+// along the wind about the step's start, -f |W_n| W_n - 2 f |W_n| (W - W_n) (the derivative diagonal of the 3-D
+// rows, CanopyDrag.H: at the column's large steps a lagged |W| would hand the balance speed back and forth, the
+// map W -> G / (f |W|), while the derivative form is Newton's method on it), and with canopy.tke the k
+// equation gains ERF's canopy pair (CanopyTke.H), P_c = beta_p f |W|^3 as a source and D_c = beta_d f |W| k on the
+// Patankar diagonal, and the closure's length cap L <= alpha / f (Closure_K.H), the same terms as the 3-D stage's
+// on a flat column, so the first guess and the inflow column carry the forest. The column is horizontally uniform,
+// so the canopy must be: column_canopy stops the run, naming init.first_guess, when f differs between columns.
 
 #include "BoundaryConditions.H"
+#include "Canopy.H"
 #include "Closure.H"
 #include "Driver.H"
 #include "Forcing.H"
@@ -154,6 +165,29 @@ void column_wall_gradients (double ustar, double thstar, double invL, double d, 
 //! column): one message naming the key, else empty.
 std::vector<std::string> check_stable_functions (const InitOptions& iopt, const SurfaceLayerOptions& surf, bool surface_layer);
 
+//! The canopy as the column sees it (above): f per layer of the column's grid (the deck's layers), and the k terms'
+//! options. Empty f: no canopy.
+struct ColumnCanopy
+{
+    std::vector<double> f;
+    CanopyTkeOptions tke;
+};
+
+//! The column's canopy from the level's field (Canopy::column_profile; collective). Aborts, naming
+//! init.first_guess, unless the terrain is flat (flat_terrain: terrain.type = flat; on a terrain-following mesh
+//! even a canopy of uniform height gives each column its own layer profile, and the column sits on the flat levels)
+//! and the canopy is horizontally uniform: a relative spread of f over the columns above kColumnCanopySpread in any
+//! layer is refused, naming canopy.type too.
+ColumnCanopy column_canopy (const Canopy& canopy, const amrex::Geometry& geom, bool flat_terrain);
+
+//! The relative spread of f over the columns the column guess accepts as uniform (a map's inverse-distance
+//! weights of a uniform table reproduce it to rounding).
+constexpr double kColumnCanopySpread = 1.0e-6;
+
+//! The nodal heights of the deck's vertical grid over flat ground (the column's levels, nz + 1 values): the mesh of a
+//! 4 x 4 column, read from its box and shared with every rank; ztop receives the top level.
+std::vector<double> column_flat_levels (const Inputs& in, double& ztop);
+
 //! Why the column cannot be formed from these inputs (empty: it can), each
 //! message naming init.first_guess.
 std::vector<std::string> check_column_guess (const InitOptions& iopt, const SteadyOptions& sopt, const ForcingOptions& fopt,
@@ -162,10 +196,11 @@ std::vector<std::string> check_column_guess (const InitOptions& iopt, const Stea
 //! Solve the column (above) and return its profiles; aborts if it does not
 //! converge within init.column_max_iterations. table_file, when not empty,
 //! receives the table (z u v theta k, one row per line) on the I/O rank.
+//! canopy: the column's canopy (column_canopy), or none (an empty f).
 ColumnGuessResult run_column_guess (const Inputs& in, const InitOptions& iopt, const SteadyOptions& sopt,
                                     const BoundaryInputs& bin, const SurfaceLayerOptions& surf, bool surface_layer,
                                     const ClosureOptions& copt, const ForcingOptions& fopt,
-                                    const std::string& table_file = std::string());
+                                    const std::string& table_file = std::string(), const ColumnCanopy& canopy = ColumnCanopy());
 
 } // namespace gust
 

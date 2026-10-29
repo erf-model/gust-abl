@@ -137,6 +137,14 @@ public:
     //! integral of f over them (their mean Cd LAI) and its largest value.
     [[nodiscard]] std::string summary (const amrex::MultiFab& detJ, const amrex::Geometry& geom) const;
 
+    //! The canopy as one column, for the column first guess (ColumnGuess.H):
+    //! f per layer (index k - the domain's low k), the mean over the domain's
+    //! columns in a fixed order (the same bits on any ranks), and spread, the
+    //! largest over the layers of max - min of f over the columns, relative
+    //! to the largest layer mean (0 for a horizontally uniform canopy, and 0
+    //! when f is 0 everywhere). Collective. Aborts unless active().
+    [[nodiscard]] std::vector<double> column_profile (const amrex::Geometry& geom, double& spread) const;
+
     //! The SHA-256 of the inputs (options and file contents) the field came
     //! from; empty unless active().
     [[nodiscard]] const std::string& input_hash () const { return m_hash; }

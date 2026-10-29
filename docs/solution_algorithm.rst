@@ -38,6 +38,41 @@ In every cell the pseudo-time step is set by a CFL number:
 
 Vertical diffusion is treated implicitly, so it does not limit the step.
 
+**Step floor.** The rate in the denominator is kept at or above a fraction of the level's fastest convective rate
+(``steady.dtau_floor``, :math:`\varphi` = 0.1 by default):
+
+.. math::
+
+   \Delta\tau \le \frac{\mathrm{CFL}\,\min(\Delta x, \Delta y)}{\varphi\, U_{\max}},
+   \qquad U_{\max} = \max_{\text{faces}}\,(|u|, |v|),
+
+so a cell at rest, in a recirculation pocket or under a dense forest canopy, steps at most :math:`1/\varphi` times
+as the fastest cell does, instead of :math:`\mathrm{CFL}/10^{-12}` s. Without the floor such a cell's momentum rows have
+:math:`1/\Delta\tau \to 0`; with a canopy its drag derivative :math:`f(|U| + u_c^2/|U|)` vanishes with the wind as
+well, so the SIMPLEC :math:`d = a_P - \sum a_{nb}` and with it the bound on the pressure correction's velocity update
+in the cell vanish, and the iteration cycles once the CFL cap passes about 3 (:doc:`canopy`, steep terrain and the
+boundaries: the forested escarpment and the same forest on flat ground, both steady at the default cap with the
+floor). This is the observation, not a derivation: a 2-D SIMPLEC model with the same terms (quadratic drag, its
+derivative diagonal, lagged pressure, local steps) converges at every CFL, so what closes the loop in the 3-D solver
+is not identified. :math:`\varphi` from 0.03 to 1 converges them (182 and 256 iterations at 0.1, 124 and 165 at 0.3, 109 and
+101 at 1 on the flat forest and the escarpment). The default 0.1 is the largest value that leaves the empty cases'
+pseudo-time paths close to what they were: the 2-D hill takes 4576 iterations at :math:`\varphi` = 0, 0.1 and 0.3
+and its Newton switch stays near iteration 1812 at 0.1 and 0.3 (4155 at 1); the steep ridge with the :math:`w` cap
+takes 2234 iterations at 0, 2012 at 0.05, 2558 at 0.1 and more than 3500 at 0.3 and 1 (its residual rises to 4 to 6
+before it falls, and the floor lengthens that excursion); the thin-cell cap case is unchanged at 0.1 and 0.3 and
+needs the cap less at 1 (287 iterations without it against 3713). :math:`U_{\max}` is
+one all-reduce per iteration, a maximum, so it is the same on any ranks; ``steady.dtau_floor = 0`` is the plain
+local step, the form before the floor. The floor changes the pseudo-time path, not the converged answer.
+
+**Cost of the global form.** The floor binds wherever a cell's own rate is below :math:`\varphi` of the fastest
+cell's. On a neutral log law (12 m/s aloft, 20 m cells, an 8 m first layer) it binds nowhere at :math:`\varphi` ≤
+0.3; under a 25 m/s low-level jet over a slow surface (0.9 m/s at 4 m) it binds in most of the column at 0.1 and
+shortens the near-ground step 2.8 times, so a stable high-shear run converges at a tenth of the jet's rate there
+(``steady.dtau_floor = 0`` or a smaller value restores the local step). Not tried: a rate from the cell's own face
+speeds (the cell-centred :math:`|u_c|` of a reversal cell is 0 while its faces move, and the arithmetic face mean of
+:math:`\Delta\tau` hands half of a rest cell's step to its neighbours' faces) or a neighbourhood rate, which would
+bound such cells locally with no all-reduce; :math:`\varphi` = 0.05 was not swept on the forest cases.
+
 The CFL number starts small and grows as the residual falls (switched evolution relaxation, SER; Mulder and van Leer
 1985):
 
