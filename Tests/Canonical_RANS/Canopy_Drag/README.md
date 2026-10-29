@@ -29,6 +29,8 @@ drag alone, as before the k terms).
 | `canopy_patches.txt` | The two patches, ERF's `type x y height diameter cd lai laimax`. |
 | `check_canopy_drag.py` | Runs the drag runs below in their own folders and checks them; the exit code is the verdict. |
 | `check_canopy_tke.py` | Runs `on/` and `off/` (`canopy.tke`) to the verdict with the turbulence plotfile and checks the length cap, the crown balance and the crown's eddy viscosity. |
+| `inputs_canopy_column` | The deck of `inputs_canopy_drag` without its canopy line, for `check_canopy_column.py`. |
+| `check_canopy_column.py` | Writes a uniform map canopy (20 m, LAI 3, Cd 0.25 on every column) and runs `column/` (`init.first_guess = column`, with the table `column.txt`), `profile/` and `patches/` (the two-patch canopy with the column guess, refused); checks that the column's first residuals are below 2e-3 of the profile's (1e-9 measured), that the converged 3-D column is within 2e-3 of the table (1.3e-3), that the column run takes at most 0.7 of the profile run's iterations (1082 against 2046), and the refusal (UT-8.5.1, docs/initial_conditions.rst). |
 
 The runs: `derivative/`, `picard/` and `sequenced/` to steady; `none/` for 20 iterations; `first/` for 40
 iterations, then continued from its checkpoint to 80; `other/` continued from the same checkpoint with `picard`;
@@ -76,5 +78,5 @@ At the default verdict (r dropped 4 orders) with both patches at one LAI, the it
 `derivative` 2312, 1737, 1820, 1831; `picard` 2299, 1655, 1855, 2017. Without a canopy the same case takes 3362.
 
 ## CTest
-`rt_canopy_drag` and `rt_canopy_tke` (label `regression`, double precision only; about 4 and 3 minutes on two
-ranks).
+`rt_canopy_drag`, `rt_canopy_tke` and `rt_canopy_column` (label `regression`, double precision only; about 4, 3 and
+3 minutes on two ranks).

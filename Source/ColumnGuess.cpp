@@ -266,10 +266,9 @@ void thomas (std::vector<double>& lower, std::vector<T>& diag, std::vector<doubl
     for (int k = n - 2; k >= 0; --k) { rhs[k] = (rhs[k] - T(upper[k]) * rhs[k + 1]) / diag[k]; }
 }
 
-//! The nodal heights of the deck's vertical grid over flat ground: the mesh
-//! of a 4 x 4 column, read from its box and shared with every rank; ztop
-//! receives the top level (the Rayleigh ramp's end, as the stage's).
-std::vector<double> flat_levels (const Inputs& in, double& ztop)
+} // namespace
+
+std::vector<double> column_flat_levels (const Inputs& in, double& ztop)
 {
     Inputs cin_in = in;
     const int nx = in.mesh.n_cell[0], ny = in.mesh.n_cell[1];
@@ -305,11 +304,32 @@ std::vector<double> flat_levels (const Inputs& in, double& ztop)
     return zn;
 }
 
-} // namespace
+
+ColumnCanopy column_canopy (const Canopy& canopy, const amrex::Geometry& geom, bool flat_terrain)
+{
+    if (!flat_terrain) {
+        amrex::Abort("gust: column guess: init.first_guess = column with a canopy needs flat terrain (terrain.type = flat): "
+                     "the column sits on the flat levels, and on a terrain-following mesh each column has its own layer "
+                     "profile of the canopy; use init.first_guess = profile, or an inflow table");
+    }
+    ColumnCanopy c;
+    double spread = 0;
+    c.f = canopy.column_profile(geom, spread);
+    c.tke = canopy.tke();
+    if (spread > kColumnCanopySpread) {
+        char msg[320];
+        std::snprintf(msg, sizeof(msg), "gust: column guess: init.first_guess = column needs a horizontally uniform canopy, and "
+                      "this one (canopy.type) differs between columns by %.3g of its largest layer mean; use "
+                      "init.first_guess = profile, or a canopy that covers every column alike", spread);
+        amrex::Abort(msg);
+    }
+    return c;
+}
 
 ColumnGuessResult run_column_guess (const Inputs& in, const InitOptions& iopt, const SteadyOptions& sopt,
                                     const BoundaryInputs& bin, const SurfaceLayerOptions& surf, bool surface_layer,
-                                    const ClosureOptions& copt, const ForcingOptions& fopt, const std::string& table_file)
+                                    const ClosureOptions& copt, const ForcingOptions& fopt, const std::string& table_file,
+                                    const ColumnCanopy& canopy)
 {
     {
         const auto err = check_column_guess(iopt, sopt, fopt, bin, surf, surface_layer);
@@ -317,8 +337,17 @@ ColumnGuessResult run_column_guess (const Inputs& in, const InitOptions& iopt, c
     }
     const double t0 = amrex::second();
     double ztop = 0;
-    const std::vector<double> zn = flat_levels(in, ztop);
+    const std::vector<double> zn = column_flat_levels(in, ztop);
     const int nz = static_cast<int>(zn.size()) - 1;
+    // The canopy (the header): f per layer, the k terms and the length cap when canopy.tke is on.
+    const bool has_canopy = !canopy.f.empty();
+    if (has_canopy && static_cast<int>(canopy.f.size()) != nz) {
+        amrex::Abort("gust: column guess: the canopy's column profile is not one value per layer of the column");
+    }
+    const bool canopy_k = has_canopy && canopy.tke.on;
+    const double beta_p = canopy_k ? canopy.tke.beta_p : 0.0, beta_d = canopy_k ? canopy.tke.beta_d : 0.0;
+    const amrex::Real alpha = canopy_k ? static_cast<amrex::Real>(canopy.tke.length_alpha) : amrex::Real(0);
+    auto f_at = [&] (int k) { return has_canopy ? canopy.f[static_cast<std::size_t>(k)] : 0.0; };
     std::vector<double> zc(nz), dzc(nz);
     for (int k = 0; k < nz; ++k) { zc[k] = 0.5 * (zn[k] + zn[k + 1]); dzc[k] = zn[k + 1] - zn[k]; }
     // Face k + 1/2 between cells k and k + 1 (interior faces 0..nz-2): its spacing.
@@ -476,8 +505,12 @@ ColumnGuessResult run_column_guess (const Inputs& in, const InitOptions& iopt, c
             const amrex::Real N2 = static_cast<amrex::Real>(g_over_theta0 * 0.5 * (dthdz[k] + dthdz[k + 1]));
             const amrex::Real S2 = static_cast<amrex::Real>(0.5 * (dWdz2[k] + dWdz2[k + 1]));
             const amrex::Real lg = closure::geom_length(static_cast<amrex::Real>(kappa * (zc[k] + z0)), static_cast<amrex::Real>(copt.max_geom_lscale));
-            const Switches sw = closure::switches_for(static_cast<amrex::Real>(tk[k]), N2, lg, cc);
-            const closure::Point<amrex::Real> p = closure::closure_point<amrex::Real>(static_cast<amrex::Real>(tk[k]), N2, S2, lg, cc, sw);
+            // The canopy's length cap as the 3-D closure applies it (Closure.cpp): the decision with f and alpha,
+            // the capped length alpha / f (ERF's divisor, never zero) where the decision capped the cell.
+            const auto fk = static_cast<amrex::Real>(f_at(k));
+            const Switches sw = closure::switches_for(static_cast<amrex::Real>(tk[k]), N2, lg, cc, fk, alpha);
+            const amrex::Real L_cap = alpha / (amrex::max(fk, amrex::Real(0)) + std::numeric_limits<amrex::Real>::min());
+            const closure::Point<amrex::Real> p = closure::closure_point<amrex::Real>(static_cast<amrex::Real>(tk[k]), N2, S2, lg, cc, sw, L_cap);
             // nu_t relaxed against the previous step's (the lagged closure
             // of a fixed-point iteration cycles at large steps otherwise)
             // (the time-marching column takes the closure's nu_t as it is: time accuracy, as ERF's)
@@ -489,6 +522,8 @@ ColumnGuessResult run_column_guess (const Inputs& in, const InitOptions& iopt, c
             gth[k] = copt.alpha_molecular + static_cast<double>(p.nut_prime / p.nut) * nut;
             Ps[k] = nut * S2; Pb[k] = -static_cast<double>(p.nut_prime / p.nut) * nut * N2; eps[k] = p.eps;
             pat[k] = (eps[k] + std::max(-Pb[k], 0.0)) / static_cast<double>(p.k);
+            // The canopy's short-circuit sink D_c = beta_d f |W| k on the Patankar diagonal (CanopyTke.H).
+            pat[k] += beta_d * f_at(k) * std::abs(W[k]);
         }
         // 3. the implicit steps: diffusion with the arithmetic face mean
         auto faces = [&] (const std::vector<double>& g, std::vector<double>& lower, std::vector<double>& upper, std::vector<double>& diag_add) {
@@ -511,6 +546,12 @@ ColumnGuessResult run_column_guess (const Inputs& in, const InitOptions& iopt, c
             rW[k] = W[k] / dt + cplx(0.0, f) * Wg + F + cuv * cplx(uref[k], vref[k]);
         }
         dW[0] += drag / dzc[0];   // the ground stress -u*^2 U_1/|U_1|
+        // The canopy's drag -f |W| W, linearised along the wind (the header): -f |W_n| W_n - 2 f |W_n| (W - W_n).
+        for (int k = 0; k < nz; ++k) {
+            const double fw = f_at(k) * std::abs(W[k]);
+            dW[k] += 2.0 * fw;
+            rW[k] += fw * W[k];
+        }
         if (top == FaceType::geostrophic || top == FaceType::no_slip_wall) {
             // the top face value: a half-cell Dirichlet coupling
             const cplx Wt = (top == FaceType::geostrophic) ? Wg : cplx(0.0, 0.0);
@@ -547,6 +588,8 @@ ColumnGuessResult run_column_guess (const Inputs& in, const InitOptions& iopt, c
             const double ck = damp_k ? cr[k] : 0.0;
             dK[k] = 1.0 / dt + da[k] + pat[k] + ck;
             rK[k] = tk[k] / dt + Ps[k] + std::max(Pb[k], 0.0) + ck * kref[k];
+            // The canopy's wake production P_c = beta_p f |W|^3 (CanopyTke.H).
+            rK[k] += beta_p * f_at(k) * std::pow(std::abs(W[k]), 3);
         }
         double kw = ustar * ustar / (cc.Cmu0 * cc.Cmu0);
         if (evolve) {   // the surface layer's wall k with a heat flux (Axell and Liungman 2001, Eq. 16; SurfaceLayer.H):

@@ -77,8 +77,9 @@ SimplecPreconditioner::SimplecPreconditioner (const SimplecOptions& opt, int swe
                                               const PoissonOptions& popt, const Mesh& mesh, const amrex::Geometry& geom,
                                               const amrex::MultiFab& z_nd, amrex::Real inf_cfl, const amrex::BoxArray& ba,
                                               const amrex::DistributionMapping& dm, const LineSweepOptions& sweep,
-                                              PressureDenominator denominator)
+                                              PressureDenominator denominator, amrex::Real dtau_floor)
     : m_opt(opt), m_sweeps(sweeps), m_sweep(sweep), m_denominator(denominator), m_in(in), m_mesh(mesh), m_geom(geom), m_z(z_nd), m_inf_cfl(inf_cfl),
+      m_dtau_floor(dtau_floor),
       m_popt(with_reltol(popt, opt.pressure_reltol)),
       m_pbc(in.bc != nullptr ? poisson_bc_from_faces(in.bc->inputs(), geom) : PoissonBC{}),
       m_solver(mesh, geom, z_nd, m_popt)
@@ -129,7 +130,7 @@ void SimplecPreconditioner::setup (const State& q, const amrex::MultiFab* dtau)
         amrex::MultiFab::Copy(m_dtau, *dtau, 0, 0, 1, 0);
     } else {
         const amrex::MultiFab* nu = (m_in.closure != nullptr) ? &m_cf.nu : m_in.nu;
-        local_dtau(m_q0, nu, m_mesh, m_geom, m_inf_cfl, m_dtau);
+        local_dtau(m_q0, nu, m_mesh, m_geom, m_inf_cfl, m_dtau, m_dtau_floor);
     }
     transport_fluxes(m_q0.u, m_q0.v, m_q0.w, m_z, m_mesh, m_geom, m_F0);
     if (m_in.canopy != nullptr) { canopy_rows(*m_in.canopy, m_q0.u, m_q0.v, m_q0.w, m_canopy_rows); }
@@ -228,10 +229,11 @@ std::unique_ptr<NewtonPreconditioner> make_newton_preconditioner (NewtonPrecondi
                                                                   const amrex::Geometry& geom, const amrex::MultiFab& z_nd,
                                                                   amrex::Real inf_cfl, const amrex::BoxArray& ba,
                                                                   const amrex::DistributionMapping& dm,
-                                                                  const LineSweepOptions& sweep)
+                                                                  const LineSweepOptions& sweep, amrex::Real dtau_floor)
 {
     if (kind == NewtonPreconditionerKind::identity) { return nullptr; }
-    return std::make_unique<SimplecPreconditioner>(opt, sweeps, in, popt, mesh, geom, z_nd, inf_cfl, ba, dm, sweep);
+    return std::make_unique<SimplecPreconditioner>(opt, sweeps, in, popt, mesh, geom, z_nd, inf_cfl, ba, dm, sweep,
+                                                   PressureDenominator::diagonal, dtau_floor);
 }
 
 } // namespace gust

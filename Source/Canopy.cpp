@@ -1,6 +1,7 @@
 #include "Canopy.H"
 
 #include "Canopy_K.H"
+#include "Reductions.H"
 #include "Sha256.H"
 #include "SurfaceRoughness.H"
 #include "TerrainSurface.H"
@@ -17,6 +18,7 @@
 #include <cmath>
 #include <cstdio>
 #include <fstream>
+#include <limits>
 #include <memory>
 #include <sstream>
 
@@ -550,6 +552,48 @@ void Canopy::restrict_from (const Canopy& fine, const amrex::MultiFab& fine_detJ
         });
     }
     image_ghost_columns(m_drag, geom);
+}
+
+std::vector<double> Canopy::column_profile (const amrex::Geometry& geom, double& spread) const
+{
+    if (!m_active) { amrex::Abort("gust: Canopy::column_profile needs an active canopy"); }
+    const amrex::Box& dom = geom.Domain();
+    const int klo = dom.smallEnd(2), nz = dom.length(2);
+    // The layer means: the fixed-order sums of the valid cells (one copy of each cell: the field has no z ghosts
+    // and its x, y ghost columns are outside the valid boxes), over the domain's columns.
+    std::vector<double> prof = deterministic_level_sums(m_drag, 0, owner_mask(m_drag, geom.periodicity()), dom);
+    if (static_cast<int>(prof.size()) != nz) { amrex::Abort("gust: Canopy::column_profile: the level sums are not one per layer"); }
+    const double ncols = static_cast<double>(dom.length(0)) * static_cast<double>(dom.length(1));
+    double fmean_max = 0;
+    for (double& v : prof) { v /= ncols; fmean_max = std::max(fmean_max, v); }
+    // The spread per layer: max - min over the columns (order-independent reductions).
+    std::vector<amrex::Real> fmax(static_cast<std::size_t>(nz), std::numeric_limits<amrex::Real>::lowest());
+    std::vector<amrex::Real> fmin(static_cast<std::size_t>(nz), std::numeric_limits<amrex::Real>::max());
+    for (int k = 0; k < nz; ++k) {
+        amrex::ReduceOps<amrex::ReduceOpMax, amrex::ReduceOpMin> ops;
+        amrex::ReduceData<amrex::Real, amrex::Real> data(ops);
+        for (amrex::MFIter mfi(m_drag, false); mfi.isValid(); ++mfi) {
+            amrex::Box b = mfi.validbox();
+            b.setSmall(2, klo + k);
+            b.setBig(2, klo + k);
+            const auto f = m_drag.const_array(mfi);
+            ops.eval(b, data, [=] AMREX_GPU_DEVICE (int i, int j, int kk) -> amrex::GpuTuple<amrex::Real, amrex::Real> {
+                return {f(i, j, kk), f(i, j, kk)};
+            });
+        }
+        const auto r = data.value();
+        fmax[static_cast<std::size_t>(k)] = amrex::get<0>(r);
+        fmin[static_cast<std::size_t>(k)] = amrex::get<1>(r);
+    }
+    const auto comm = amrex::ParallelDescriptor::Communicator();
+    amrex::ParallelAllReduce::Max(fmax.data(), nz, comm);
+    amrex::ParallelAllReduce::Min(fmin.data(), nz, comm);
+    double worst = 0;
+    for (int k = 0; k < nz; ++k) {
+        worst = std::max(worst, static_cast<double>(fmax[static_cast<std::size_t>(k)]) - static_cast<double>(fmin[static_cast<std::size_t>(k)]));
+    }
+    spread = (fmean_max > 0) ? worst / fmean_max : 0.0;
+    return prof;
 }
 
 std::string Canopy::summary (const amrex::MultiFab& detJ, const amrex::Geometry& geom) const

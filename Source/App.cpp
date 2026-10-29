@@ -214,17 +214,48 @@ void run ()
     Mesh mesh;
     mesh.define(ba, dm);
     const bool restart = !in.io.restart.empty();
+    // The canopy's drag field on level 0's mesh (Canopy.H), once the node heights are there: built from the inputs
+    // or, on a restart, after the checkpoint's canopy hash has been checked against them (before the field is
+    // built). The column first guess takes the canopy's layer profile (ColumnGuess.H).
+    Canopy canopy;
+    auto build_canopy = [&] () {
+        if (restart) { Canopy::check_restart(in.io.restart, canopy_opt.active() ? Canopy::hash_inputs(canopy_opt) : ""); }
+        if (!canopy_opt.active()) { return; }
+        canopy.build(canopy_opt, geom, state.z_phys_nd, ba, dm);
+        amrex::Print() << "gust: canopy (canopy.type = " << canopy_opt.type_name << "): " << canopy.summary(mesh.detJ, geom)
+                       << "\ngust: canopy: the drag acts on the momentum equations when a stage runs, "
+                          "canopy.drag_diagonal = " << canopy_diagonal_name(canopy_opt.drag_diagonal) << "\n";
+        const CanopyTkeOptions& t = canopy_opt.tke;
+        if (t.on) {
+            amrex::Print() << "gust: canopy: k terms on (canopy.tke): beta_p " << t.beta_p << ", beta_d " << t.beta_d
+                           << ", length cap alpha / f with canopy.length_alpha " << t.length_alpha << "\n";
+        } else {
+            amrex::Print() << "gust: canopy: k terms off (canopy.tke = off): the drag only\n";
+        }
+    };
     std::unique_ptr<InflowProfile> column;
     if (!restart) {
         mesh.build(in, geom, state.z_phys_nd);
+        build_canopy();
         if (initialize) {
             // The converged column as the profile (ColumnGuess.H), then the
             // mass-consistent initial field (Initializer.H) or the first
             // guess alone (init.projection = 0). With grid sequencing the
             // initializer runs on the coarsest level instead.
             if (iopt.first_guess == InitOptions::FirstGuess::column) {
+                // With a canopy the column carries its layer profile (ColumnGuess.H; a canopy that differs between
+                // columns stops the run there).
+                const ColumnCanopy ccan = canopy.active() ? column_canopy(canopy, geom, in.terrain.type == "flat") : ColumnCanopy();
+                if (canopy.active()) {
+                    int layers = 0;
+                    double fmax = 0;
+                    for (double f : ccan.f) { layers += (f > 0) ? 1 : 0; fmax = std::max(fmax, f); }
+                    amrex::Print() << "gust: column guess: with the canopy's layer profile (f > 0 in " << layers << " of "
+                                   << ccan.f.size() << " layers, largest f " << fmax << " 1/m; the k terms "
+                                   << (ccan.tke.on ? "on" : "off") << ")\n";
+                }
                 const ColumnGuessResult cg = run_column_guess(in, iopt, sopt, bin, surf, surface_layer, copt, fopt,
-                                                            in.io.column_guess_file);
+                                                            in.io.column_guess_file, ccan);
                 char cl[512];
                 if (cg.time > 0) {
                     std::snprintf(cl, sizeof(cl), "gust: column guess: marched to t = %.6g s in %d steps (%.3f s)%s, %d levels, "
@@ -316,23 +347,7 @@ void run ()
         mesh.check_restart(in, geom, state.z_phys_nd);
         amrex::Print() << "gust: restarted from " << in.io.restart
                        << " at step " << state.step << "\n";
-    }
-    // The canopy's drag field on level 0's mesh; a restart continues the same
-    // canopy (checked before the field is built).
-    if (restart) { Canopy::check_restart(in.io.restart, canopy_opt.active() ? Canopy::hash_inputs(canopy_opt) : ""); }
-    Canopy canopy;
-    if (canopy_opt.active()) {
-        canopy.build(canopy_opt, geom, state.z_phys_nd, ba, dm);
-        amrex::Print() << "gust: canopy (canopy.type = " << canopy_opt.type_name << "): " << canopy.summary(mesh.detJ, geom)
-                       << "\ngust: canopy: the drag acts on the momentum equations when a stage runs, "
-                          "canopy.drag_diagonal = " << canopy_diagonal_name(canopy_opt.drag_diagonal) << "\n";
-        const CanopyTkeOptions& t = canopy_opt.tke;
-        if (t.on) {
-            amrex::Print() << "gust: canopy: k terms on (canopy.tke): beta_p " << t.beta_p << ", beta_d " << t.beta_d
-                           << ", length cap alpha / f with canopy.length_alpha " << t.length_alpha << "\n";
-        } else {
-            amrex::Print() << "gust: canopy: k terms off (canopy.tke = off): the drag only\n";
-        }
+        build_canopy();
     }
     const amrex::MultiFab* canopy_plot = canopy.active() ? &canopy.drag() : nullptr;
     // Writing a checkpoint of the same name as the one read would move it to

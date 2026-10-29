@@ -56,6 +56,11 @@ forcing.vg              = -7.380863
 
 turb.tke_floor = 1.e-6
 
+# The plain local step (the form before steady.dtau_floor): the committed
+# inflow table (askervein_cnbl_inflow.txt) is the state of this run at the
+# table's step, which depends on the pseudo-time path; the 3-D case runs from
+# that table to the steady verdict, which the floor does not change.
+steady.dtau_floor = 0
 steady.stage                   = simplec
 steady.sweep                   = zjacobi   # z-line Jacobi sweep (the CPU default is lusgs)
 steady.cfl0                    = 1.

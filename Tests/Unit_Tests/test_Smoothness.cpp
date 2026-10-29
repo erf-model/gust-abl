@@ -151,7 +151,7 @@ NewtonResult run_newton (HillRun& hr, gust::State& q, const gust::ResidualInputs
     auto pc = gust::make_newton_preconditioner(gust::NewtonPreconditionerKind::simplec, hr.s.simplec,
                                                     hr.s.sopt.zline_sweeps, in, hr.s.popt, hr.c.mesh, hr.c.geom, hr.c.z,
                                                     hr.s.sopt.cfl_max, hr.c.ba, hr.c.dm,
-                                                    gust::line_sweep_options(hr.s.sopt));
+                                                    gust::line_sweep_options(hr.s.sopt), hr.s.sopt.dtau_floor);
     gust::Continuation pt(co, no, in, hr.c.mesh, hr.c.geom, &hr.ls->stage().nu(), hr.s.copt.tke_floor, hr.c.ba,
                                hr.c.dm, 0);
     testing::internal::CaptureStdout();

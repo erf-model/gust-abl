@@ -1,0 +1,50 @@
+# The deck of inputs_canopy_drag without the canopy, for check_canopy_column.py
+# (the script gives a uniform map canopy on the command line). Neutral flow
+# over flat ground: 16 x 16 x 40 cells on 1280 m x
+# 1280 m (80 m columns, four boxes), periodic sides, a 2 m first layer stretched by 1.08 (top near
+# 520 m), the surface layer on the ground (z0 = 0.1 m), the geostrophic wind
+# (10, 0) m/s at latitude 90 without buoyancy, a Rayleigh layer on w above
+# 400 m. Patch 1: uniform profile, 20 m, LAI 3; patch 2: Lalic-Mihailovic,
+# 25 m, LAI 6 (C_d LAI up to 1.2, the dense end of PT-8.2.1). The first
+# guess (init.first_guess = profile) is given on the command line, as a
+# restart may not repeat it.
+mesh.n_cell        = 16 16 40
+mesh.prob_lo       = 0. 0. 0.
+mesh.prob_hi       = 1280. 1280. 520.
+mesh.is_periodic   = 1 1 0
+mesh.max_grid_size = 8 8
+mesh.dz0           = 2.
+mesh.stretch_ratio = 1.08
+
+terrain.type = flat
+
+bc.zlo = surface_layer
+bc.zhi = slip_wall
+bc.surface_z0 = 0.1
+bc.theta_profile_z = 0.
+bc.theta_profile   = 300.
+bc.inflow_profile   = log_law
+bc.inflow_ustar     = 0.35
+bc.inflow_z0        = 0.1
+bc.inflow_direction = 0.
+bc.rayleigh_zdamp    = 400.
+bc.rayleigh_dampcoef = 0.2
+bc.rayleigh_fields   = w
+
+forcing.gravity         = 0.
+forcing.coriolis        = 1
+forcing.coriolis_3d     = 0
+forcing.latitude        = 90.
+forcing.rotation_period = 125663.7061435917
+forcing.geostrophic     = 1
+forcing.ug              = 10.
+forcing.vg              = 0.
+
+
+# The default verdict: the periodic geostrophic column's inertial adjustment
+# does not reach 1e-8 in 10000 iterations (docs/canopy.rst, Newton stage).
+turb.tke_floor = 1.e-6
+steady.stage   = simplec
+
+io.plot_file = canopy_column_plt
+io.chk_file  = canopy_column_chk

@@ -7,9 +7,9 @@
 # [2200, 3600] m, with the k terms (canopy.tke = on, the default). Neutral
 # log-law inflow on xlo (u* 0.35 m/s, z0 0.1 m), outflow on xhi, slip top, a
 # Rayleigh layer on w above 1400 m; LU-SGS with grid sequencing over three
-# levels. The CFL cap is 2: with this dense canopy on the slope the iteration
-# cycles at caps of 4 and above and is marginal at 3 (docs/canopy.rst, steep
-# terrain).
+# levels, at the default CFL cap (8) with the default step floor
+# (steady.dtau_floor = 0.1): without the floor this dense canopy cycles at caps
+# of 4 and above (docs/canopy.rst, steep terrain and the boundaries).
 # The first guess is given on the command line, as a restart may not repeat it.
 mesh.n_cell           = 240 8 30
 mesh.prob_lo          = 0. 0. 0.
@@ -49,7 +49,6 @@ turb.realizability = 0.309
 
 steady.stage          = simplec
 steady.sequencing     = 1
-steady.cfl_max        = 2
 
 io.plot_file      = escarpment_plt
 io.turb_plot_file = escarpment_turb

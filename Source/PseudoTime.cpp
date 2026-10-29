@@ -4,17 +4,23 @@
 #include "MassFlux.H"
 #include "Stencil_K.H"
 
+#include <AMReX_ParallelReduce.H>
+#include <AMReX_Reduce.H>
+
 #include <cmath>
 #include <string>
 
 namespace gust {
 
 void local_dtau (const State& q, const amrex::MultiFab* nu, const Mesh& mesh, const amrex::Geometry& geom,
-                 amrex::Real cfl, amrex::MultiFab& dtau)
+                 amrex::Real cfl, amrex::MultiFab& dtau, amrex::Real phi)
 {
     const char* op = "local_dtau";
     if (std::isnan(cfl) || !std::isfinite(cfl) || !(cfl > 0)) {   // isnan first: gcc traps on an ordered compare with NaN
         amrex::Abort(std::string("gust: local_dtau: cfl must be finite and > 0 (got ") + std::to_string(double(cfl)) + ")");
+    }
+    if (std::isnan(phi) || !std::isfinite(phi) || !(phi >= 0)) {
+        amrex::Abort(std::string("gust: local_dtau: phi must be finite and >= 0 (steady.dtau_floor; got ") + std::to_string(double(phi)) + ")");
     }
     check_operator_field(op, "u", q.u, Loc::xface, mesh, 1);
     check_operator_field(op, "v", q.v, Loc::yface, mesh, 1);
@@ -28,7 +34,30 @@ void local_dtau (const State& q, const amrex::MultiFab* nu, const Mesh& mesh, co
     omega_from_w(q.u, q.v, q.w, q.z_phys_nd, mesh, geom, omega, 0);
     const auto dxinv = geom.InvCellSizeArray();
     const amrex::Real diff_h = 2 * (dxinv[0] * dxinv[0] + dxinv[1] * dxinv[1]);
-    const amrex::Real min_rate = kMinRate;   // by value: no namespace constant in the kernel
+    amrex::Real min_rate = kMinRate;   // by value: no namespace constant in the kernel
+    if (phi > 0) {
+        // The step floor (the header): phi U_max / min(dx, dy), U_max over the valid faces of u and v (a maximum:
+        // the same value in any order and on any ranks).
+        amrex::ReduceOps<amrex::ReduceOpMax, amrex::ReduceOpMax> ops;
+        amrex::ReduceData<amrex::Real, amrex::Real> data(ops);
+        for (amrex::MFIter mfi(dtau, false); mfi.isValid(); ++mfi) {
+            const amrex::Box bx_u = amrex::surroundingNodes(mfi.validbox(), 0);
+            const amrex::Box bx_v = amrex::surroundingNodes(mfi.validbox(), 1);
+            const auto u = q.u.const_array(mfi);
+            const auto v = q.v.const_array(mfi);
+            ops.eval(bx_u, data, [=] AMREX_GPU_DEVICE (int i, int j, int k) -> amrex::GpuTuple<amrex::Real, amrex::Real> {
+                return {std::abs(u(i, j, k)), amrex::Real(0)};
+            });
+            ops.eval(bx_v, data, [=] AMREX_GPU_DEVICE (int i, int j, int k) -> amrex::GpuTuple<amrex::Real, amrex::Real> {
+                return {amrex::Real(0), std::abs(v(i, j, k))};
+            });
+        }
+        const auto r = data.value();
+        amrex::Real umax[2] = {amrex::get<0>(r), amrex::get<1>(r)};
+        amrex::ParallelAllReduce::Max(umax, 2, amrex::ParallelDescriptor::Communicator());
+        const amrex::Real dh = amrex::min(geom.CellSize(0), geom.CellSize(1));
+        min_rate = amrex::max(min_rate, phi * amrex::max(umax[0], umax[1]) / dh);
+    }
     const bool has_nu = nu != nullptr;
     for (amrex::MFIter mfi(dtau, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
         const amrex::Box bx = mfi.tilebox();

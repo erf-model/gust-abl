@@ -179,8 +179,8 @@ volumes would keep the drag's integral exactly, as the coarse-level restriction 
 order of the change of :math:`J` between neighbouring cells.
 
 The drag acts on the coarse levels of the grid hierarchy with their restricted field, and in the residual the Newton
-stage differentiates. The column first guess (``init.first_guess = column``) does not include it, so it starts with
-the open-ground wind inside the canopy.
+stage differentiates. The column first guess (``init.first_guess = column``) carries it too, with the canopy's
+:math:`k` terms, for a horizontally uniform canopy on flat terrain (:doc:`initial_conditions`, forest canopy).
 
 Canopy turbulence
 -----------------
@@ -252,51 +252,85 @@ new inputs' answer (except the frozen-decision case above).
 Steep terrain and the boundaries
 --------------------------------
 
-**CFL cap.** A dense canopy on steep terrain can need a lower ``steady.cfl_max`` than the empty domain. On
-``Tests/Canonical_RANS/Forested_Escarpment`` (a 200 m tanh escarpment, steepest slope 22°, with the benchmark canopy:
-uniform, 25 m, LAI 5, :math:`C_d` = 0.15, on the slope and the plateau's edge; 8 m first layer stretched by 1.12; LU-SGS
-with grid sequencing over three levels, 2 ranks), from the inflow profile to the verdict (:math:`r` = 1e-4):
+**CFL cap and the step floor.** Before the local step floor (``steady.dtau_floor``, :doc:`solution_algorithm`) a
+dense canopy needed a lower ``steady.cfl_max`` than the empty domain: on ``Tests/Canonical_RANS/Forested_Escarpment``
+(a 200 m tanh escarpment, steepest slope 22°, with the benchmark canopy: uniform, 25 m, LAI 5, :math:`C_d` = 0.15, on
+the slope and the plateau's edge; 8 m first layer stretched by 1.12; LU-SGS with grid sequencing over three levels, 2
+ranks) the iteration cycled at caps of 4 and above and was marginal at 3 (#77). The cause is not the terrain: the same
+forest on flat ground and on an 11° ramp cycles the same way at the default cap. It is a cell at rest. Under the
+forest, 250 m inside its windward edge and again at its lee edge, the wind in the lowest layers slows to a few
+centimetres per second and reverses. There the convective and diffusive rates of the local pseudo-time step vanish, so
+:math:`\Delta\tau` is unbounded (:math:`\mathrm{CFL}/10^{-12}` s), and the drag's own diagonal
+:math:`f(|U| + u_c^2/|U|)` vanishes with the wind. The momentum rows' :math:`a_P - \sum a_{nb}` then tends to zero,
+the SIMPLEC :math:`d = a_P - \sum a_{nb}` and with it the bound on the pressure correction's velocity update in
+the cell vanish, and the drag reacts to the overshoot at the next step: the :math:`w` and :math:`p` residuals lead a
+cycle of about 40 iterations between :math:`r` 0.1 and 0.5. This is the observation; a 2-D SIMPLEC model with the
+same terms does not reproduce the cycle, so what closes the loop in the 3-D solver is not identified
+(:doc:`solution_algorithm`).
+
+The step floor removes it: a cell at rest now steps at most as the level's fastest cell does, so :math:`a_P` keeps
+at least the free stream's :math:`1/\Delta\tau`. From the inflow profile to the verdict (:math:`r` = 1e-4), 2 ranks:
 
 .. list-table::
    :header-rows: 1
-   :widths: 30 30 40
+   :widths: 30 20 18 14 18
 
-   * - ``steady.cfl_max``
-     - Iterations
-     - Note
-   * - 1.5
-     - 245
-     -
-   * - **2**
-     - **185**
-     - the case's setting
-   * - 2.5
-     - 177
-     -
-   * - 3
-     - 2885
-     -
-   * - 4, 8 (default)
-     - not steady after 3000
-     - a cycle of 40 iterations on level 0, :math:`r` between 0.1 and 0.5
-   * - 8, LAI 0.7 (leafless)
-     - 109
-     -
-   * - 8, no canopy
+   * - Case, ``steady.cfl_max`` = 8
+     - ``dtau_floor`` = 0 (the old step)
+     - **``dtau_floor`` = 0.1 (default)**
+     - ``dtau_floor`` = 0.3 / 1
+     - floor 0, ``cfl_max`` = 2
+   * - Forested escarpment (22°)
+     - not steady after 3000 (a cycle)
+     - **256**
+     - 165 / 101
+     - 185
+   * - The same forest on an 11° ramp
+     - not steady after 500
+     - **192**
+     - 161 / 108
+     - —
+   * - The same forest on flat ground
+     - not steady after 500 (bursts to :math:`r` = 35)
+     - **182**
+     - 124 / 109
+     - —
+   * - The escarpment without the forest
      - 82
-     -
+     - **82**
+     - 84 / 70
+     - —
+   * - Leafless (LAI 0.7), escarpment
+     - 109
+     - —
+     - —
+     - —
 
-The cycle sits in a pocket of reversed flow under the forest at the foot of the slope, where the wind slows against
-the rising ground. It is an instability of the iteration, not an unsteady flow: a steady state exists (the lower caps
-reach it), the period in pseudo-time is not fixed, and the CFL controller moves the step back and forth across a
-fixed-CFL limit of about 3. The w and pressure residuals lead the cycle. The cause of the limit is not known yet. These do
-not remove it at the default cap: the canopy k terms (the drag alone cycles), grid sequencing, the realizability cap,
-the ``picard`` drag diagonal, a diagonal that bounds the drag's lagged cross-couplings, ``simplec.alpha_p`` = 0.5, four
-line sweeps, the z-line Jacobi sweep, ``turb.nut_relax`` = 0.5, first-order upwind convection, and the drag's rate in
-the local pseudo-time step. **Recommendation:** on the one case tested (:math:`C_d` LAI = 0.75 on a 22° slope, 8 m
-first layer, 2-D), the iteration cycles at ``steady.cfl_max`` of 4 and above and is marginal at 3. For a dense canopy on
-steep terrain use 2 to 2.5, and lower the cap if the relative residual stalls between 0.1 and 0.5. Other slopes,
-densities, meshes and 3-D terrain are not measured yet; the cause is the subject of PR-62b.
+Measured on the way (each on the flat and the escarpment cases at the default cap, the floor off): a fixed CFL of 3.5
+or 4 cycles, so the SER controller is not the cause; a floor on the drag diagonal's speed, :math:`\max(|U|, U_{\min})`
+with :math:`U_{\min}` from 0.25 to 4 m/s, also converges (280 to 540 iterations, with bursts; it bounds the same
+:math:`d`, in the canopy cells only, and the fixed point is unchanged to :math:`10^{-11}`); a floor at the face's
+balance speed :math:`\sqrt{|G|/f}` from the residual does not (the residual is small in the cell at rest); a bound
+:math:`d \le 1/(\epsilon a_P)` does not (:math:`a_P` itself is small there); the rate floor at 0.03 to 1 times the
+free stream's converges in every case and at 0.3 to 1 fastest, at 0.01 not. The floor is the general form and takes
+the canopy decks back to the default cap; its default 0.1 is the largest value that leaves the empty cases' paths
+close to what they were (:doc:`solution_algorithm`). ``steady.dtau_floor = 0`` restores the old step, and
+``Tests/Canonical_RANS/Forested_Escarpment`` then needs ``steady.cfl_max`` 2 to 2.5 as before.
+
+**Newton stage.** On ``Tests/Canonical_RANS/Canopy_Drag`` (the two patches, ``canopy.tke = off``, the verdict at
+1e-8) ``steady.stage = simplec_newton`` switches to Newton once :math:`r` has been below 1e-4 for 20 iterations and
+hands back after failed steps, with the canopy and without it (#75). Measured here, two ranks: the switch at
+iteration 1548 (with the step floor at 1; 1859 without); the first Newton step converges its GMRES in 90 iterations with
+the SIMPLEC preconditioner (the drag rows at the step's state) but the line search accepts only :math:`\lambda` =
+1/16 and the residual falls by 1 %; the second step fails after five attempts, the continuation then halves the CFL
+each step and the stage hands back; the run is steady after 4180 iterations (7955 without the floor, 5710 with
+SIMPLEC alone). Without the floor GMRES also stalls at its 2000-iteration limit once the continuation's CFL passes
+16. The same happens with the geostrophic forcing replaced by a pressure gradient (4950 iterations), so the cause is
+neither the drag rows, the rotation nor the preconditioner's convergence at the first step: the Newton direction
+itself is poor on this case. Which term makes it so (the closure's floor and realizability switches in the dense
+patch, where :math:`k` sits at its floor, or the wall law's 0.1 m/s speed floor under the trees) is not found yet.
+Without the canopy SIMPLEC alone does not reach 1e-8 on this periodic geostrophic deck in 10000 iterations (an
+inertial adjustment), as noted in #75.
 
 **Inflow faces and damping layers.** The inflow profile and the damping layers' targets do not feel the drag. The run
 warns, with the count, when canopy cells lie in the first cell column inside an inflow face, or inside the sponge or
