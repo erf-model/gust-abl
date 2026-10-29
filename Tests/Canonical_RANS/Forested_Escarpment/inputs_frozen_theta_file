@@ -1,0 +1,58 @@
+# inputs_frozen_theta with the inflow from a table (bc.inflow_file = frozen_inflow.txt, the WINSENT path), which
+# check_frozen_theta.py writes in the run folder: a log-law wind (u* 0.35 m/s, z0 0.1 m) and a theta of its own,
+# different from bc.theta_profile (the reference sounding), so the frozen theta must come from the table.
+# A forested escarpment, the WINSENT benchmark's Albtrauf in 2-D (the tables
+# from make_case.py, given on the command line from the run folder): a tanh
+# ramp of 200 m (steepest slope 22 deg at x = 3000 m), 6000 m x 200 m with 25 m
+# columns (240 x 8, periodic in y), WINSENT's layers (8 m first layer,
+# stretched by 1.12, 30 layers to about 1930 m). The WINSENT canopy (uniform,
+# 25 m, LAI 5, Cd 0.15) on the slope and the plateau's edge, x in
+# [2200, 3600] m, with the k terms (canopy.tke = on, the default). Neutral
+# log-law inflow on xlo (u* 0.35 m/s, z0 0.1 m), outflow on xhi, slip top, a
+# Rayleigh layer on w above 1400 m; LU-SGS with grid sequencing over three
+# levels. The CFL cap is 2: with this dense canopy on the slope the iteration
+# cycles at caps of 4 and above and is marginal at 3 (docs/canopy.rst, steep
+# terrain).
+# The first guess is given on the command line, as a restart may not repeat it.
+mesh.n_cell           = 240 8 30
+mesh.prob_lo          = 0. 0. 0.
+mesh.prob_hi          = 6000. 200. 1930.
+mesh.is_periodic      = 0 1 0
+mesh.max_grid_size    = 60 8
+mesh.dz0              = 8.
+mesh.stretch_ratio    = 1.12
+mesh.hierarchy_levels = 3
+
+terrain.type      = xyz
+terrain.file      = terrain.xyz
+terrain.smoothing = 0
+
+bc.xlo = inflow
+bc.xhi = outflow
+bc.zlo = surface_layer
+bc.zhi = slip_wall
+bc.surface_z0       = 0.1
+bc.inflow_profile   = file
+bc.inflow_file      = frozen_inflow.txt
+bc.inflow_z0        = 0.1
+bc.theta_profile_z  = 0. 1000. 1100. 2400.
+bc.theta_profile    = 300. 300. 308. 311.9
+bc.rayleigh_zdamp    = 1400.
+bc.rayleigh_dampcoef = 0.2
+bc.rayleigh_fields   = w
+
+canopy.type        = map
+canopy.height_file = canopy_height.xyz
+canopy.lai_file    = canopy_lai.xyz
+canopy.cd          = 0.15
+
+turb.tke_floor     = 1.e-6
+turb.realizability = 0.309
+
+steady.stage          = simplec
+steady.sequencing     = 1
+steady.cfl_max        = 2
+
+io.plot_file      = frozen_plt
+io.turb_plot_file = frozen_turb
+io.chk_file       = frozen_chk

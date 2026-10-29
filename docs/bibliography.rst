@@ -65,6 +65,10 @@ Computational Physics* 190, 229–248.
 Van Doormaal, J. P., Raithby, G. D. (1984). Enhancements of the SIMPLE method for predicting incompressible fluid
 flows. *Numerical Heat Transfer* 7, 147–163.
 
+van der Laan, M. P., Kelly, M., Baungaard, M., Dicholkar, A., Hodgson, E. L. (2024). A simple steady-state inflow
+model of the neutral and stable atmospheric boundary layer applied to wind turbine wake simulations. *Wind Energy
+Science* 9, 1985–2000. https://doi.org/10.5194/wes-9-1985-2024.
+
 Wagenbrenner, N. S., Forthofer, J. M., Page, W. G., Butler, B. W. (2019). Development and evaluation of a
 Reynolds-averaged Navier–Stokes solver in WindNinja for operational wildland fire applications. *Atmosphere* 10,
 672.

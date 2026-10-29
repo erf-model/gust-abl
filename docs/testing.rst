@@ -417,6 +417,89 @@ The one-line mutants of the count behind the canopy's inflow-face and damping-la
    * - Z8
      - The Rayleigh layer counted when it damps only w
 
+The one-line mutants of ``simplec.theta = frozen`` (``Source/Simplec.cpp``, ``Source/Residual.cpp``,
+``Source/Predictor.cpp``, ``Source/Sequencing.cpp``, ``Source/App.cpp``, ``Source/BoundaryConditions.cpp``) by
+``tools/frozen_theta_mutants.py`` (macOS arm64, AppleClang): F1–F7 and F16–F19 against ``FrozenTheta.*`` on two ranks
+with the unit-test flags, F8–F15 and F20–F23 against the CTests ``rt_frozen_theta`` and ``abort_simplec_theta_*``
+(the wiring of the application, which the unit tests do not reach). All 23 are killed.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 6 54 40
+
+   * - Mutant
+     - Change
+     - Killed by
+   * - F1
+     - The buoyancy left in the momentum residual
+     - ``ThetaHeldAndNoBuoyancyInMomentum``
+   * - F2
+     - The predictor's point-implicit buoyancy left in the :math:`w` rows
+     - ``ThetaHeldAndNoBuoyancyInMomentum``
+   * - F3
+     - θ's residual not zeroed
+     - ``ThetaHeldAndNoBuoyancyInMomentum``
+   * - F4
+     - θ swept although frozen
+     - ``ThetaHeldAndNoBuoyancyInMomentum``
+   * - F5
+     - ``simplec.theta = frozen`` read as ``solve``
+     - ``ReaderAndRefusals``
+   * - F6
+     - Any value of ``simplec.theta`` accepted
+     - ``ReaderAndRefusals``
+   * - F7
+     - The stage accepts residual inputs that do not match the option
+     - ``StageRefusesMismatchedResidualInputs``
+   * - F8
+     - The residual inputs keep the momentum buoyancy with frozen θ
+     - ``rt_frozen_theta`` (the stage refuses the run)
+   * - F9
+     - The coarsest level not reset
+     - ``rt_frozen_theta`` (no logged range for level 2)
+   * - F10
+     - A prolonged coarse level not reset
+     - ``rt_frozen_theta`` (no logged range for level 1)
+   * - F11
+     - Level 0 not reset
+     - ``rt_frozen_theta`` (no logged range for level 0; θ is the prolonged field)
+   * - F12
+     - θ from the sounding by absolute height, not by height above the ground
+     - ``rt_frozen_theta`` (θ against the sounding)
+   * - F13
+     - Frozen accepted without grid sequencing
+     - ``abort_simplec_theta_no_sequencing``
+   * - F14
+     - Frozen accepted with the Newton stage
+     - ``abort_simplec_theta_newton``
+   * - F15
+     - Frozen accepted with a restart
+     - ``abort_simplec_theta_restart``
+   * - F16
+     - The ground extension left out of the fill
+     - ``GroundGhostsExtendTheFirstTwoCells``
+   * - F17
+     - The ground extension in homogeneous fills too
+     - ``GroundGhostsExtendTheFirstTwoCells``
+   * - F18
+     - Only the first ghost layer extended
+     - ``GroundGhostsExtendTheFirstTwoCells``
+   * - F19
+     - The extension's slope halved
+     - ``GroundGhostsExtendTheFirstTwoCells``
+   * - F20
+     - Frozen accepted with a stratified column first guess
+     - ``abort_simplec_theta_column``
+   * - F21
+     - The turbulence plotfile's ``R_theta`` not zeroed
+     - ``rt_frozen_theta``
+   * - F22
+     - The frozen θ read at the floored height (``init.z_agl_min``)
+     - ``rt_frozen_theta`` (the file-profile run)
+   * - F23
+     - The levels do not extend θ below the ground
+     - ``rt_frozen_theta`` (first-cell Rt of the file-profile run)
+
 The one-line mutants of the Newton stage (``Source/NewtonStage.cpp`` and the switch rules in ``Source/Driver.cpp``),
 each run against ``Driver.*`` and ``NewtonStage.*`` on two ranks with the unit-test flags by
 ``tools/newton_stage_mutants.py`` (macOS arm64, AppleClang). 13 of 15 are killed. N14 and N15 survive: they matter only
@@ -767,6 +850,11 @@ Current tests
        without ``steady.sequencing = 1``; ``steady.sequencing = 2``; ``steady.sequencing`` without the stage.
        The range test also refuses ``steady.sequencing_cfl_start = previous`` with ``steady.sequencing_hold = 1``,
        and the unused test the two keys without sequencing.
+   * - ``abort_simplec_theta_value``, ``abort_simplec_theta_newton``, ``abort_simplec_theta_restart``,
+       ``abort_simplec_theta_column``, ``abort_simplec_theta_no_sequencing``
+     - ``simplec.theta = fixed`` is refused, naming the key; ``frozen`` is refused with ``steady.stage =
+       simplec_newton``, with ``io.restart``, with a stratified column first guess (the column-target deck with
+       ``init.column_mol = 1000``) and without grid sequencing, each naming the reason.
    * - ``abort_sequencing_hold_value``, ``abort_sequencing_cfl_start_value``
      - ``steady.sequencing_hold = 2`` and ``steady.sequencing_cfl_start = last``: each refused, naming its input.
    * - ``rt_sequencing_hold_kept``, ``rt_sequencing_hold_released``, ``rt_sequencing_cfl_previous``
@@ -914,6 +1002,19 @@ Current tests
        straight, bit for bit; with the forest at the inflow face, the inflow-face warning with its count. Measured: 185
        iterations on 1, 2 and 4 ranks, differences about 4e-11, u 0.72 against 3.52 m/s, 24 canopy cells at the
        inflow face. About 1 min on two ranks; label ``regression``; double only.
+   * - ``rt_frozen_theta``
+     - ``simplec.theta = frozen`` on the forested escarpment with a stable sounding (``inputs_frozen_theta``: 300 K to
+       1000 m, an 8 K inversion to 1100 m, 3 K/km above). ``check_frozen_theta.py``: steady within 400 iterations on 2
+       ranks with a θ residual of 0 in every table row; θ at every cell of the final plotfile equals the sounding at
+       the cell centre's height above the ground (1e-9 K), and on each sequenced level the logged minimum, maximum and
+       mean equal the sounding's over that level's cells, the coarse levels on their own smoothed ground (the level
+       plotfile's ``z_phys_nd``); the turbulence plotfile's ``R_theta`` is 0; the 4-rank run within 1e-9; with θ
+       solved (the default) its residual is not 0. A second deck, ``inputs_frozen_theta_file``, takes the inflow from a
+       table the script writes, whose θ (stable from the ground) differs from the deck's sounding, with
+       ``init.z_agl_min = 5``, 3 iterations: θ is the table's at the unfloored height on every level (1e-9 K), and
+       every first cell has Rt > 0 (the ground ghosts extend the first two cells; the neutral wall's mirror gives 0).
+       Measured: 209 iterations on 2 and 4 ranks, θ within 6e-14 K, ranks within 1.7e-10. About 40 s on two ranks;
+       label ``regression``; double only.
    * - ``rt_canopy_tke``
      - The canopy terms of the k–L closure on ``Tests/Canonical_RANS/Canopy_Drag``. ``check_canopy_tke.py`` runs it
        with ``canopy.tke`` on and off to the verdict (and the turbulence plotfile): in every canopy cell
@@ -1362,6 +1463,23 @@ GoogleTest suite
      - The momentum predictor's :math:`a_P` is that of the run without a canopy plus the rows computed at the state
        before the step, on all three components (the v and w rows do not see the u the step has just updated); a step
        on an increment from zero, as the Newton preconditioner takes, has the same :math:`a_P`.
+   * - ``FrozenTheta.ReaderAndRefusals``
+     - ``simplec.theta``: ``solve`` by default, ``frozen`` when given; ``Frozen``, ``fixed``, an empty value and
+       ``1`` refused naming the key, as are a repeated key and two values.
+   * - ``FrozenTheta.ThetaHeldAndNoBuoyancyInMomentum``
+     - Three iterations of the laminar stage from a random state whose θ is up to 5 K from the reference, on 4
+       boxes: with θ frozen, θ is unchanged to the last bit and its residual is 0 at every iteration, and u, v, w,
+       p and k are bit for bit those of the frozen stage with gravity off; with θ solved, θ moves and w differs.
+   * - ``FrozenTheta.ClosureKeepsTheBuoyancy``
+     - With the k–L closure and θ frozen at a stable 10 K/km, one iteration gives a total :math:`\nu` below 0.9
+       times that with gravity off (the closure's :math:`N^2`).
+   * - ``FrozenTheta.StageRefusesMismatchedResidualInputs``
+     - The stage refuses frozen θ with the momentum buoyancy on, and the momentum buoyancy off without frozen θ.
+   * - ``FrozenTheta.GroundGhostsExtendTheFirstTwoCells``
+     - With the ground extension on, θ's two ground ghost layers are :math:`2\theta_0 - \theta_1` and
+       :math:`3\theta_0 - 2\theta_1` on uniform layers, in every column of 4 boxes (lateral ghost columns
+       included); off, and in a homogeneous fill with it on, the slip ground's mirror (:math:`\theta_0`,
+       :math:`\theta_1`).
    * - ``BoundaryTypes.PoissonTypesMatchErfGetFftBc``
      - The Poisson boundary types of every face type on every face it may take, periodic directions included, equal
        ERF's ``get_fft_bc`` (the copied ``ERF_SolverUtils.H``).

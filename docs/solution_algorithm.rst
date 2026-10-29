@@ -149,6 +149,63 @@ linearised backward Euler step:
 The inertial oscillation is horizontally uniform, so only the level mean uses the long inertial step. Every added
 term vanishes when :math:`R = 0`, so the steady solution does not change.
 
+Prescribed potential temperature
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+With ``simplec.theta = frozen``, :math:`\theta` is data, not an unknown. This is the steady stratified form of
+van der Laan et al. (2024): the stratification is prescribed, and buoyancy acts in the turbulence closure only.
+
+.. math::
+
+   \theta(\mathbf x) = \theta_\mathrm{in}\bigl(h(\mathbf x)\bigr),\qquad
+   R_w = R_w^{\,g=0},\qquad
+   N^2 = \frac{g}{\theta_0}\frac{\partial\theta}{\partial z}\ \text{in } c_\mu,\ c_\mu',\ P_b = -\nu_t' N^2.
+
+- :math:`\theta_\mathrm{in}(h)`: the inflow profile's :math:`\theta` at the height :math:`h` above the ground, for
+  every ``bc.inflow_profile`` and whether or not a face is an inflow face: the file's θ column with ``file``, the
+  sounding ``bc.theta_profile`` (read by height above the ground) with the analytic kinds.
+- :math:`h`: the cell centre's height (the mean of its eight nodes) minus the mean of its four ground nodes, on each
+  level's own ground (the coarse levels' ground is smoothed). It is not floored at ``init.z_agl_min``, as the inflow
+  face's ghost cells read the profile.
+- :math:`R_w^{\,g=0}`: the :math:`w` residual without the buoyancy force :math:`-g(\theta - \theta_\mathrm{ref})/\theta_0`.
+  The predictor's point-implicit buoyancy terms (above) are dropped with it.
+- :math:`N^2`, :math:`c_\mu`, :math:`c_\mu'`, :math:`\nu_t'`, :math:`P_b`: the closure's stability terms
+  (:doc:`turbulence_model`), unchanged; ``forcing.gravity`` and ``forcing.theta0`` still set them.
+
+**What it does.** Every sequenced level sets :math:`\theta` from the inflow profile in place of the sounding or the
+prolonged field, and logs the range and mean it set. The SIMPLEC stage then skips the :math:`\theta` sweep and
+reports a :math:`\theta` residual of 0, so the convergence test (:ref:`convergence-criteria`) covers the momentum,
+the pressure and :math:`k`. The ghost cells of
+:math:`\theta` are filled as usual (the inflow face takes the same profile), except at the ground: there the two
+ghost layers continue the first two cells linearly, so the first cell's centred :math:`\partial\theta/\partial z`
+(its :math:`N^2`) is the profile's between the first two cells. The wall law's gradient would set it instead, and a
+neutral wall would give :math:`N^2 = 0` in the first cell. The surface layer still sees :math:`\theta` through its
+stability (neutral unless ``bc.surface_stability`` is set).
+
+**Why.** A steady solve of :math:`\theta` with a fixed surface heat flux has no steady state: the surface keeps adding
+or removing heat. With buoyancy in the momentum equations as well, the WINSENT stable and unstable cases diverged.
+With :math:`\theta` frozen from a near-1-D column and buoyancy in the closure only, all four converged
+(``Tests/Real_Terrain/WINSENT``; its two neutral cases solve :math:`\theta`). Van der Laan et al. (2024) use the form
+for neutral and stable boundary layers; the unstable WINSENT cases apply it beyond that, with :math:`N^2 < 0` making
+the closure's :math:`P_b` a source of :math:`k`. The cost: the flow cannot change the stratification. A cold pool in a valley or air
+lifted over a ridge keeps the upstream profile by height above the ground, and there are no buoyancy forces, so no
+lee waves, gravity currents or katabatic and anabatic slope flows. Over terrain the omitted force is not small: with
+:math:`\theta` by height above the ground, :math:`\partial\theta/\partial x = -\Gamma\tan\alpha` at fixed
+:math:`z` (:math:`\Gamma` the profile's gradient, :math:`\alpha` the slope), and across an escarpment of height
+:math:`H` the buoyancy :math:`g\Gamma H/\theta_0` can be of the order of the advection :math:`U^2/L`. That field is
+not in hydrostatic balance, which is why it cannot be combined with the buoyancy force. Van der Laan et al. (2024)
+apply the form on flat terrain with a constant :math:`N`.
+
+**Limits.** Refused with ``steady.stage = simplec_newton`` (the Newton stage solves :math:`\theta`), with
+``io.restart`` (the checkpoint holds no record of the option), without grid sequencing (``steady.sequencing = 1``
+and ``mesh.hierarchy_levels`` > 1: the levels set :math:`\theta`), and with a stratified column first guess
+(``init.first_guess = column`` with a non-neutral ``init.column_stability``, whose evolved :math:`\theta` the frozen
+field would replace). With :math:`\theta` frozen, the inputs that act only on the :math:`\theta` equation have no
+effect: a Rayleigh layer or sponge on ``theta`` (``bc.rayleigh_fields``) and the :math:`\theta` gradient through the
+top (``bc.zhi_theta_grad``); ``bc.surface_heat_flux`` still sets the surface layer's stability but adds no heat. A
+checkpoint written with ``frozen`` can be restarted without it; the restart then solves :math:`\theta` from the frozen
+field, with the buoyancy back in the momentum equations.
+
 Vertical-velocity cap
 ^^^^^^^^^^^^^^^^^^^^^
 

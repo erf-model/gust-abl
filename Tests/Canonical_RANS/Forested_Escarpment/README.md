@@ -13,12 +13,19 @@ canopy slows the wind, that a restart continues bit for bit, and that the inflow
 reaches the inflow face. At the default CFL cap (8) the case cycles (docs/canopy.rst, "Steep terrain and the
 boundaries", has the measured caps).
 
+The same escarpment with a stable sounding tests `simplec.theta = frozen` (θ prescribed from the inflow profile by
+height above the ground, buoyancy in the closure only; docs/solution_algorithm.rst, "Prescribed potential
+temperature"): `inputs_frozen_theta` and `check_frozen_theta.py`.
+
 ## Files
 | File | Role |
 |---|---|
 | `make_case.py` | Writes `terrain.xyz`, `canopy_height.xyz` and `canopy_lai.xyz` on 25 m points into a folder; `--forest-at-inflow` extends the forest to the inflow face. |
 | `inputs_forested_escarpment` | The deck (240 x 8 x 30 cells, 6000 m x 200 m), reading the tables from the run folder. `init.first_guess` is given on the command line. |
 | `check_forested_escarpment.py` | Runs the six runs below, each in its own folder with its tables, and checks them; the exit code is the verdict. |
+| `inputs_frozen_theta` | The deck with a stable sounding (300 K to 1000 m, an 8 K inversion to 1100 m, 3 K/km above); `simplec.theta = frozen` on the command line. |
+| `inputs_frozen_theta_file` | The same with the inflow from a table (`frozen_inflow.txt`, written by the check) whose θ differs from the sounding. |
+| `check_frozen_theta.py` | The frozen-θ runs `frozen/` (2 ranks, to the verdict), `np4/`, `file/` (the table deck, `init.z_agl_min = 5`, 3 iterations) and `solve/` (θ solved, 5 iterations), and their checks (its docstring). |
 
 The runs: `np2/`, `np1/`, `np4/` to the verdict on 2, 1 and 4 ranks; `first/` for 40 iterations, then continued from
 its checkpoint to 80; `straight/` for 80 iterations; `inflow/` with the forest at the inflow face, 1 iteration.
@@ -55,5 +62,19 @@ Measured on macOS arm64 (AppleClang, double precision):
 v is rounding noise in this 2-D case (its largest value is about 5e-8), so the velocities are compared against the
 largest |u|.
 
+Frozen θ (`check_frozen_theta.py --max-iterations 400`):
+
+| Check | Measured | Tolerance |
+|---|---|---|
+| Iterations to the verdict on 2 ranks, θ residual | 209, 0 in every row | at most 400, 0 |
+| Level 0 θ against the sounding at each cell's height above the ground | 5.7e-14 K | 1e-9 K |
+| Logged min, max, mean of θ on levels 0, 1, 2 against the sounding over each level's cells | equal to the printed digits | 1e-9 K |
+| Turbulence plotfile `R_theta` | 0 | 0 |
+| 4 ranks against 2 | 1.7e-10 | 1e-9 |
+| Table profile with `init.z_agl_min = 5`: θ against the table at the unfloored height | 5.7e-14 K | 1e-9 K |
+| Table profile: first-cell Rt (the ground ghosts extend the first two cells) | min 0.023 | above 0 |
+| θ solved: θ residual | above 0 in every row | above 0 |
+
 ## CTest
-`rt_forested_escarpment` (label `regression`, double precision only; about 1 minute on two ranks).
+`rt_forested_escarpment` (label `regression`, double precision only; about 1 minute on two ranks) and
+`rt_frozen_theta` (label `regression`; about 30 s on two ranks).

@@ -431,6 +431,39 @@ void BoundaryConditions::outflow_transport (amrex::Array<amrex::MultiFab, AMREX_
     }
 }
 
+namespace {
+
+//! set_theta_ground_extension: theta's two ground ghost layers continue the
+//! first two cells linearly. A free function: nvcc refuses an extended device
+//! lambda in a private member.
+void extend_theta_below_ground (amrex::MultiFab& theta, const amrex::MultiFab& z_nd, const amrex::Geometry& geom)
+{
+    // Every column of the fab (the lateral ghost columns hold their images or
+    // the face fills, done above), both ghost layers, from cells klo and klo+1:
+    // theta(z) = theta_0 + (z - z_0) (theta_1 - theta_0)/(z_1 - z_0), z the
+    // cell-centre heights (the mean of eight nodes; NodeZ clamps laterally).
+    const int klo = geom.Domain().smallEnd(2);
+    for (amrex::MFIter mfi(theta, false); mfi.isValid(); ++mfi) {
+        if (mfi.validbox().smallEnd(2) != klo) { continue; }
+        amrex::Box b = mfi.fabbox();
+        b.setRange(2, klo, 1);
+        const auto a = theta.array(mfi);
+        const amrex::Box zb = z_nd[mfi].box();
+        const NodeZ nz{z_nd.const_array(mfi), amrex::lbound(zb), amrex::ubound(zb)};
+        amrex::ParallelFor(b, [=] AMREX_GPU_DEVICE (int i, int j, int) noexcept
+        {
+            const amrex::Real z0 = point_z<stencil::CC>(nz, i, j, klo), z1 = point_z<stencil::CC>(nz, i, j, klo + 1);
+            const amrex::Real slope = (a(i, j, klo + 1) - a(i, j, klo)) / (z1 - z0);
+            for (int m = 1; m <= 2; ++m) {
+                a(i, j, klo - m) = a(i, j, klo) + (point_z<stencil::CC>(nz, i, j, klo - m) - z0) * slope;
+            }
+        });
+    }
+    amrex::Gpu::streamSynchronize();
+}
+
+} // namespace
+
 void BoundaryConditions::fill_ghosts (State& q, const SurfaceLayerOptions* surface_opt, const BuoyancyOptions& buoyancy,
                                       bool homogeneous, SurfaceState* surface_out) const
 {
@@ -494,8 +527,10 @@ void BoundaryConditions::fill_ghosts (State& q, const SurfaceLayerOptions* surfa
         fill_direction(q, d, m_in, m_geom, prof, m_coriolis, gg, homogeneous);
         if (d == 2) { fill_no_flux_w(q, m_in, m_geom); }
     }
+    if (m_theta_ground_extension && !homogeneous) { extend_theta_below_ground(q.theta, q.z_phys_nd, m_geom); }
     for (auto* mf : fields) { sync_ghost_copies(*mf); }
 }
+
 
 const BoundaryConditions::GhostSlabs& BoundaryConditions::ghost_slabs (const amrex::MultiFab& mf) const
 {

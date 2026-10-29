@@ -15,7 +15,9 @@
 #include "Canopy_K.H"
 #include "MeshHierarchy.H"
 #include "PoissonTestHelpers.H"
+#include "TestHelpers.H"
 
+#include <AMReX_Math.H>
 #include <AMReX_ParmParse.H>
 
 #include <gtest/gtest.h>
@@ -100,7 +102,7 @@ std::string abort_message (const std::function<void()>& f)
 // The largest |column integral of f - cd lai(y)| / (cd lai(y)) over the
 // columns, with lai(y) = lai0 + lai_y y at the column centre, and the
 // number of columns whose integral is not finite.
-struct ColumnError { double max_rel{0}; long bad{0}; };
+struct ColumnError { double max_rel{0}; amrex::Long bad{0}; };
 ColumnError column_error (const amrex::MultiFab& f, const gust::Mesh& mesh, const amrex::Geometry& geom, double cd,
                           double lai0, double lai_y)
 {
@@ -119,7 +121,7 @@ ColumnError column_error (const amrex::MultiFab& f, const gust::Mesh& mesh, cons
             double s = 0;
             for (int k = k0; k <= k1; ++k) { s += static_cast<double>(a(i, j, k)) * static_cast<double>(J(i, j, k)) * dz; }
             const double want = cd * (lai0 + lai_y * (ylo + (j + 0.5) * dy));
-            if (!std::isfinite(s)) { return {0.0, amrex::Long(1)}; }
+            if (amrex::Math::isnan(s) || amrex::Math::isinf(s)) { return {0.0, amrex::Long(1)}; }   // std::isfinite is host only for nvcc with MSVC
             return {std::abs(s - want) / want, amrex::Long(0)};
         });
     }
@@ -132,7 +134,7 @@ ColumnError column_error (const amrex::MultiFab& f, const gust::Mesh& mesh, cons
 
 // Cells with f > 0 whose lower face is at or above the canopy top (h(x) =
 // h0 + h_x x), plus cells with f <= 0 whose lower face is below it.
-long misplaced_cells (const amrex::MultiFab& f, const amrex::MultiFab& z, const amrex::Geometry& geom, double h0, double h_x)
+amrex::Long misplaced_cells (const amrex::MultiFab& f, const amrex::MultiFab& z, const amrex::Geometry& geom, double h0, double h_x)
 {
     const double dx = static_cast<double>(geom.CellSize(0)), xlo = static_cast<double>(geom.ProbLo(0));
     const int k0 = geom.Domain().smallEnd(2);
@@ -538,8 +540,11 @@ TEST(Canopy, OptionChecks)
     EXPECT_NE(first(m).find("cannot both be given"), std::string::npos);
     m = map_options(ok, ok, 0.0, false);
     EXPECT_EQ(first(m), "canopy.cd must be finite and > 0");
-    m = map_options(ok, ok, std::nan(""), false);
-    EXPECT_EQ(first(m), "canopy.cd must be finite and > 0");
+    {
+        const gust::test::ScopedNoInvalidTrap no_trap;   // a NaN input: gcc's ordered compare raises FE_INVALID
+        m = map_options(ok, ok, std::nan(""), false);
+        EXPECT_EQ(first(m), "canopy.cd must be finite and > 0");
+    }
     m = map_options(ok, ok, 0.2, true, 1.0);
     EXPECT_NE(first(m).find("canopy.laimax must satisfy 0 <= laimax < 1"), std::string::npos);
     m = map_options(ok, ok, 0.2, true, -0.1);
@@ -594,7 +599,10 @@ TEST(Canopy, OptionChecks)
     EXPECT_EQ(coef(1, 0, 1), "");
     EXPECT_NE(coef(1.5, 4, 0.04).find("canopy.beta_p must be in [0, 1]"), std::string::npos);
     EXPECT_NE(coef(-0.1, 4, 0.04).find("canopy.beta_p must be in [0, 1]"), std::string::npos);
-    EXPECT_NE(coef(std::nan(""), 4, 0.04).find("canopy.beta_p must be in [0, 1]"), std::string::npos);
+    {
+        const gust::test::ScopedNoInvalidTrap no_trap;   // a NaN input: gcc's ordered compare raises FE_INVALID
+        EXPECT_NE(coef(std::nan(""), 4, 0.04).find("canopy.beta_p must be in [0, 1]"), std::string::npos);
+    }
     EXPECT_NE(coef(1, -1, 0.04).find("canopy.beta_d must be finite and >= 0"), std::string::npos);
     EXPECT_NE(coef(1, INFINITY, 0.04).find("canopy.beta_d must be finite and >= 0"), std::string::npos);
     EXPECT_NE(coef(1, 4, 1.1).find("canopy.length_alpha must be in [0, 1]"), std::string::npos);
