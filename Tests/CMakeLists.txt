@@ -44,6 +44,7 @@ add_executable(unit_tests
     Unit_Tests/test_Closure.cpp
     Unit_Tests/test_Initializer.cpp
     Unit_Tests/test_ColumnStability.cpp
+    Unit_Tests/test_ColumnMarching.cpp
     Unit_Tests/test_StabilityFunctions.cpp
     Unit_Tests/test_Driver.cpp
     Unit_Tests/test_Predictor.cpp

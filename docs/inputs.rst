@@ -142,6 +142,12 @@ Quick reference
    * - ``init.column_rib_max``, ``column_rib_min``
      - ``4``, ``-4``
      - Bounds of the bulk Richardson number at the stratified column's surface
+   * - ``init.column_time``, ``column_dt``
+     - ``0``, ``1``
+     - The time-marching column: end time and step (s; 0: the steady column)
+   * - ``init.column_wall_k``
+     - ``fixed``
+     - The time-marching column's first-cell k: the wall value or solved
    * - **Boundary conditions** (`bc`_)
      -
      -
@@ -622,8 +628,8 @@ A restart cannot be combined with ``init.*`` keys.
      - ``mol``
      - ``mol``, ``heat_flux`` or ``surface_temperature``; ``column`` only. How the column's surface sets θ
        (:ref:`stratified column <column-stability>`). ``heat_flux`` takes ``bc.surface_heat_flux`` and needs
-       ``bc.surface_stability = heat_flux``. Any non-neutral surface needs ``forcing.gravity`` > 0 and a Rayleigh
-       layer on θ (``bc.rayleigh_zdamp`` > 0, ``theta`` in ``bc.rayleigh_fields``).
+       ``bc.surface_stability = heat_flux``. Any non-neutral surface needs ``forcing.gravity`` > 0 and, in the steady
+       column, a Rayleigh layer on θ (``bc.rayleigh_zdamp`` > 0, ``theta`` in ``bc.rayleigh_fields``).
    * - ``init.column_mol``
      - ``0``
      - 0 (neutral: θ held at the sounding, the column before this input) or finite with \|L\| ≥ 1 (m); ``mol`` only.
@@ -651,7 +657,24 @@ A restart cannot be combined with ``init.*`` keys.
        below their 0.2 limit (:ref:`stratified column <column-stability>`).
    * - ``init.column_rib_min``
      - ``-4``
-     - Finite, < 0; a stratified column only. The lower bound (ERF's value).
+     - Finite, < 0; a stratified column only. The lower bound (ERF's value). Both bounds are refused with
+       ``init.column_time`` > 0 and ``heat_flux`` (the flux is given; no bulk Richardson number is solved).
+   * - ``init.column_time``
+     - ``0``
+     - Finite, ≥ 0 (s); ``column`` only. 0: the steady column. > 0: the time-marching column
+       (:ref:`time-marching column <column-marching>`), backward Euler steps of ``init.column_dt`` in physical time
+       to this time; the table is the column at that time. Refused with ``init.column_tol``,
+       ``init.column_max_iterations``, a target wind and a non-zero ``init.column_mol``.
+   * - ``init.column_dt``
+     - ``1``
+     - Finite, > 0 (s); with ``init.column_time`` > 0 only. The step; the last step ends at ``init.column_time``.
+       ``init.column_time / init.column_dt`` must be at most 1e7 steps.
+   * - ``init.column_wall_k``
+     - ``fixed``
+     - ``fixed`` or ``solved``; with ``init.column_time`` > 0 only. ``fixed``: the first cell's k is the surface
+       layer's wall value, as in the steady column and the 3-D run. ``solved``: the first cell's k is solved with
+       the k equation of the other cells and no k flux through the ground (:ref:`time-marching column
+       <column-marching>`).
 
 ``bc``
 ------

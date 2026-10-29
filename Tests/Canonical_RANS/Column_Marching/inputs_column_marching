@@ -1,0 +1,47 @@
+# The time-marching column (init.column_time > 0): the near-1-D ERF column of the benchmark benchmark's stratified
+# inflow (erf_column.py of PR #78, open) solved inside GUST. 240 levels of 10 m to 2400 m over flat ground, z0 = 0.1 m,
+# Coriolis at 48.7 N with a geostrophic wind, a fixed surface heat flux, a slip top with the sounding's gradient above
+# the inversion, no Rayleigh layer; backward Euler steps of 1 s to 9 h (ERF's fixed_dt and stop_time). The sounding
+# is 300 K to 1000 m, 308 K at 1100 m, then 3 K/km (the stable cases) or 0 (the unstable cases).
+# This deck is the high_stable_G2 case (q = -0.004 K m/s); compare_erf_column.py sets the initial state (bc.inflow_file,
+# ERF's plotfile at t = 0) and the other cases on the command line. The 3-D field is not needed:
+# steady.max_iterations = 1.
+mesh.n_cell        = 4 4 240
+mesh.prob_hi       = 64. 64. 2400.
+mesh.is_periodic   = 1 1 0
+mesh.max_grid_size = 4 4
+
+terrain.type = flat
+
+bc.zlo = surface_layer
+bc.zhi = slip_wall
+bc.zhi_theta_grad    = 0.003
+bc.surface_z0        = 0.1
+bc.surface_stability = heat_flux
+bc.surface_heat_flux = -0.004
+bc.theta_profile_z = 0.   1000. 1100. 2400.
+bc.theta_profile   = 300. 300.  308.  311.9
+bc.inflow_profile  = file
+bc.inflow_file     = column_marching_initial.dat
+
+init.first_guess      = column
+init.column_stability = heat_flux
+init.column_time      = 32400.
+init.column_dt        = 1.
+
+forcing.coriolis    = 1
+forcing.latitude    = 48.7
+forcing.geostrophic = 1
+forcing.ug          = 6.69712
+forcing.vg          = -1.42683
+forcing.theta0      = 300.
+
+turb.realizability = 0.309
+
+steady.stage          = simplec
+steady.max_iterations = 1
+
+io.column_guess_file = column_marching_table.dat
+io.plot_file         = column_marching_plt
+io.turb_plot_file    = column_marching_turb
+io.chk_file          = column_marching_chk

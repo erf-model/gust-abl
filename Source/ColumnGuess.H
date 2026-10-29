@@ -57,6 +57,17 @@
 // needs the surface layer with the Dirichlet wall k (neutral, or the column's stability), a
 // horizontal forcing (geostrophic, or a pressure gradient) and the stage;
 // check_column_guess names the key that is missing. Seconds for 64 levels.
+//
+// The time-marching column (init.column_time > 0, the form of ERF's near-1-D column, Tests/.../erf_column.py): the
+// same equations and closure in physical time, init.column_dt per backward Euler step (the last step ends at
+// init.column_time), nu_t not relaxed between steps, no convergence test and no Rayleigh layer on theta needed (a
+// stratified column need not be steady: the table is its state at init.column_time). Its surface is fixed: the neutral
+// wall law (init.column_mol = 0), init.column_surface_theta (surface_temperature) or bc.surface_heat_flux itself
+// (heat_flux: an explicit flux q into the first cell, MOST from column_surface_most_flux, no search for theta_s), so
+// with a slip top, bc.zhi_theta_grad = 0 and no Rayleigh layer on theta the column's heat content
+// sum(theta dz) grows by q t to round-off. No target wind (init.column_target_*) and no init.column_mol.
+// init.column_wall_k = solved (time-marching only) solves the first cell's k with the others' equation and no k flux
+// through the ground, in place of the wall-k Dirichlet row (fixed, the default).
 
 #include "BoundaryConditions.H"
 #include "Closure.H"
@@ -89,6 +100,7 @@ struct ColumnGuessResult
     amrex::Real ug{0}, vg{0}, pressure_gradient_x{0}, pressure_gradient_y{0};
     int target_iterations{0};   //!< the target-wind checks (the forcing adjustments plus one; 0 without a target)
     int flux_iterations{0};     //!< the surface-temperature adjustments of the flux modes (0 otherwise)
+    double time{0};             //!< the time-marching column's end time (s; init.column_time), 0 for the steady column
     //! The table: the ground row (z = 0: u = v = 0, the first cell's theta and
     //! k) then the cell-centre heights above the ground.
     amrex::Vector<amrex::Real> z, u, v, theta, tke;
@@ -116,6 +128,16 @@ constexpr double kRibMaxBusingerDyer = 0.19;
 bool column_surface_most (double kappa, double z0, double z1, double U1, double th1, double theta_s, double grav,
                           double theta0, double den_floor, bool qnse, const StableCoefficients& sc, double rib_min,
                           double rib_max, double& ustar, double& thstar, double& qs, double& invL, double& ch);
+
+//! MOST at the column's surface for a given kinematic heat flux qs (K m/s, upward > 0), the time-marching column's
+//! heat_flux surface (ERF's surface_flux, ERF_MOSTStress.H): zeta = z1/L = -kappa g qs z1 / (theta0 u*^3) with
+//! u* = kappa U1 / (ln - psi_m(zeta)) (above 1e-3 m/s; the denominator above the wall law's floor, as
+//! column_surface_most), solved by the fixed point under-relaxed by a half from the zeta of invL on entry to 1e-10
+//! (zeta clamped to [-100, 100]), and once more from zeta = 0 when that fails (a seed above the upper stable root). Then theta* = -qs/u* and 1/L = zeta/z1. False when the fixed point does not
+//! converge in 20000 passes or zeta reaches the clamp (a downward flux too large for the wind has no root).
+bool column_surface_most_flux (double kappa, double z0, double z1, double U1, double qs, double grav, double theta0,
+                               double den_floor, bool qnse, const StableCoefficients& sc, double& ustar, double& thstar,
+                               double& invL);
 
 //! Whether the 3-D first guess takes theta from the column: a stratified column (column_theta_evolves) whose surface
 //! the 3-D run shares (bc.surface_stability = heat_flux). Otherwise theta is the sounding.
