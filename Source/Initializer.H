@@ -68,6 +68,10 @@ struct InitOptions
     //! flux (heat_flux: bc.surface_heat_flux) or a surface temperature (surface_temperature). Forms of
     //! amrTerrain's 1-D column solver.
     enum class ColumnStability { mol, heat_flux, surface_temperature };
+    //! init.column_wall_k: the first cell's k in the time-marching column (ColumnGuess.H): held at the surface
+    //! layer's wall value (fixed, the default; the steady column and the 3-D wall model always do this), or solved
+    //! with the k equation of the other cells and no k flux through the ground (solved, init.column_time > 0 only).
+    enum class ColumnWallK { fixed, solved };
     FirstGuess first_guess{FirstGuess::none};
     //! init.projection (0 or 1): the mass-consistent correction of the first
     //! guess; 0 keeps the first guess as it is (the stage's own pressure
@@ -88,6 +92,11 @@ struct InitOptions
     //! stratified column's surface solve (ERF's +-4, ERF_MOSTStress.H); Businger-Dyer's stable side is further
     //! capped at 0.19, below its 0.2 limit (ColumnGuess.H column_surface_most).
     amrex::Real column_rib_max{4}, column_rib_min{-4};
+    //! init.column_time (s, >= 0; 0: the steady column, the default) and init.column_dt (s, > 0): the column's
+    //! time-marching mode, backward Euler steps of column_dt in physical time to column_time (ColumnGuess.H), the
+    //! form of ERF's near-1-D column (erf_column.py) for a stratified column that has no steady state.
+    amrex::Real column_time{0}, column_dt{1};
+    ColumnWallK column_wall_k{ColumnWallK::fixed};
     amrex::Real z_agl_min{0};
     amrex::Real alpha_h{1};
     amrex::Real alpha_v{1};

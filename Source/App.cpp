@@ -226,18 +226,32 @@ void run ()
                 const ColumnGuessResult cg = run_column_guess(in, iopt, sopt, bin, surf, surface_layer, copt, fopt,
                                                             in.io.column_guess_file);
                 char cl[512];
-                std::snprintf(cl, sizeof(cl), "gust: column guess: converged after %d steps in %d columns (%.3f s), %d levels, "
-                              "u* %.4f m/s, u %.4f v %.4f m/s at the top\n", cg.iterations, cg.columns, cg.wall_seconds,
-                              static_cast<int>(cg.z.size()) - 1, static_cast<double>(cg.ustar), static_cast<double>(cg.u.back()),
-                              static_cast<double>(cg.v.back()));
+                if (cg.time > 0) {
+                    std::snprintf(cl, sizeof(cl), "gust: column guess: marched to t = %.6g s in %d steps (%.3f s)%s, %d levels, "
+                                  "u* %.4f m/s, u %.4f v %.4f m/s at the top\n", cg.time, cg.iterations, cg.wall_seconds,
+                                  iopt.column_wall_k == InitOptions::ColumnWallK::solved ? " with the first cell's k solved" : "",
+                                  static_cast<int>(cg.z.size()) - 1, static_cast<double>(cg.ustar),
+                                  static_cast<double>(cg.u.back()), static_cast<double>(cg.v.back()));
+                } else {
+                    std::snprintf(cl, sizeof(cl), "gust: column guess: converged after %d steps in %d columns (%.3f s), %d levels, "
+                                  "u* %.4f m/s, u %.4f v %.4f m/s at the top\n", cg.iterations, cg.columns, cg.wall_seconds,
+                                  static_cast<int>(cg.z.size()) - 1, static_cast<double>(cg.ustar),
+                                  static_cast<double>(cg.u.back()), static_cast<double>(cg.v.back()));
+                }
                 amrex::Print() << cl;
                 // What a restart deck needs (init.* keys are refused there and the checkpoint holds the state only).
                 std::string restart_lines;
                 if (column_theta_evolves(iopt, surf)) {
-                    std::snprintf(cl, sizeof(cl), "gust: column guess: surface heat flux %.4e K m/s, L %.4g m, surface theta %.4f K "
-                                  "after %d surface adjustments\n", static_cast<double>(cg.heat_flux),
-                                  cg.inv_L != 0 ? 1.0 / static_cast<double>(cg.inv_L) : std::numeric_limits<double>::infinity(),
-                                  static_cast<double>(cg.theta_surface), cg.flux_iterations);
+                    const double L = cg.inv_L != 0 ? 1.0 / static_cast<double>(cg.inv_L) : std::numeric_limits<double>::infinity();
+                    if (cg.time > 0) {
+                        std::snprintf(cl, sizeof(cl), "gust: column guess: at t = %.6g s: surface heat flux %.4e K m/s, L %.4g m, "
+                                      "surface theta %.4f K\n", cg.time, static_cast<double>(cg.heat_flux), L,
+                                      static_cast<double>(cg.theta_surface));
+                    } else {
+                        std::snprintf(cl, sizeof(cl), "gust: column guess: surface heat flux %.4e K m/s, L %.4g m, surface theta %.4f K "
+                                      "after %d surface adjustments\n", static_cast<double>(cg.heat_flux), L,
+                                      static_cast<double>(cg.theta_surface), cg.flux_iterations);
+                    }
                     amrex::Print() << cl;
                     const bool mol = iopt.column_stability == InitOptions::ColumnStability::mol;
                     if (surf.stability == SurfaceLayerOptions::Stability::heat_flux) {
@@ -247,6 +261,9 @@ void run ()
                             std::snprintf(cl, sizeof(cl), "  bc.surface_heat_flux = %.9g\n", static_cast<double>(cg.heat_flux));
                             restart_lines += cl;
                         }
+                    } else if (cg.time > 0) {
+                        amrex::Print() << "gust: column guess: the 3-D surface is neutral; the flux above is the time-marching "
+                                          "column's at init.column_time only\n";
                     } else {
                         amrex::Print() << "gust: column guess: the 3-D surface is neutral; for the same surface set "
                                           "bc.surface_stability = heat_flux"
@@ -281,7 +298,7 @@ void run ()
                     amrex::Print() << "gust: column guess: a restart from this run's checkpoints needs these inputs in place of "
                                       "the init.* keys:\n" << restart_lines;
                 }
-                if (cg.tol > static_cast<double>(iopt.column_tol)) {
+                if (cg.time == 0 && cg.tol > static_cast<double>(iopt.column_tol)) {
                     std::snprintf(cl, sizeof(cl), "gust: column guess: init.column_tol = %.3e lifted to %.3e (100 epsilon of Real)\n",
                                   static_cast<double>(iopt.column_tol), cg.tol);
                     amrex::Print() << cl;
