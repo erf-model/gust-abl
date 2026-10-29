@@ -255,6 +255,61 @@ TEST (PseudoTime, LocalStepMatchesTheAnalyticLimits)
     EXPECT_THROW(gust::local_dtau(q, nullptr, c.mesh, c.geom, amrex::Real(1), bad), std::runtime_error);
 }
 
+// The step floor (steady.dtau_floor = phi, PseudoTime.H): the rate is at least phi U_max / min(dx, dy), U_max the
+// largest |u|, |v| on the level's faces. Half the domain moves at U in x (the other half is at rest, no diffusion): the
+// cells at rest get CFL min(dx, dy) / (phi U), the moving cells keep their own CFL dx / U (U/dx > phi U/min(dx, dy)
+// here, dx = 62.5 m, dy = 50 m); with the motion in y the rest cells follow V (the maximum is over both components);
+// phi = 0 gives CFL / kMinRate at rest; a negative or NaN floor is refused. The mesh is 16 x 16 x 8 over 1000 m x
+// 800 m in four 8 x 8 boxes, so dy < dx and the moving half (i < 8) and the half at rest lie in different boxes,
+// which on 2 and 4 ranks puts whole ranks at rest: U_max needs its all-reduce (a mutant without it survives on a
+// single box, as does one that takes dx for min(dx, dy) when dx is the smaller spacing).
+TEST (PseudoTime, StepFloorFollowsTheFastestCell)
+{
+    PCase c;
+    c.in.mesh.n_cell = amrex::IntVect(16, 16, 8);
+    c.in.mesh.prob_hi = {1000, 800, 500};
+    c.in.mesh.is_periodic = {1, 1, 0};
+    c.in.mesh.max_grid_size = {8, 8};
+    c.make([] (double, double) { return 0.0; });
+    gust::trtest::smooth_vertical_ghost_nodes(c);
+    ASSERT_EQ(c.ba.size(), 4);
+    const auto dx = c.geom.CellSizeArray();
+    const double dh = std::min(double(dx[0]), double(dx[1]));
+    ASSERT_LT(dx[1], dx[0]);
+    gust::State q;
+    define_state(q, c);
+    const double U = 6, V = 4, CFL = 1.5, PHI = 0.5;
+    const amrex::Box dom = c.geom.Domain();
+    amrex::Box lo_x = amrex::surroundingNodes(dom, 0);
+    lo_x.setBig(0, dom.smallEnd(0) + dom.length(0) / 2 - 1);   // faces 0..7: cells 0..6 move, cell 7 half, 8.. at rest
+    amrex::Box lo_y = amrex::surroundingNodes(dom, 1);
+    lo_y.setBig(1, dom.smallEnd(1) + dom.length(1) / 2 - 1);
+    amrex::MultiFab dtau;
+    // the motion in x
+    q.u.setVal(0.0); q.v.setVal(0.0); q.w.setVal(0.0);
+    q.u.setVal(amrex::Real(U), lo_x, 0, 1);
+    gust::local_dtau(q, nullptr, c.mesh, c.geom, amrex::Real(CFL), dtau, amrex::Real(PHI));
+    const double rest = CFL * dh / (PHI * U), moving = CFL * double(dx[0]) / U;
+    ASSERT_GT(U / double(dx[0]), PHI * U / dh);
+    EXPECT_NEAR(dtau.max(0), rest, tol(1e-14, 1e-6) * rest);
+    EXPECT_NEAR(dtau.min(0), moving, tol(1e-14, 1e-6) * moving);
+    // the motion in y: the rest cells follow V
+    q.u.setVal(0.0);
+    q.v.setVal(amrex::Real(V), lo_y, 0, 1);
+    gust::local_dtau(q, nullptr, c.mesh, c.geom, amrex::Real(CFL), dtau, amrex::Real(PHI));
+    const double rest_v = CFL * dh / (PHI * V);
+    EXPECT_NEAR(dtau.max(0), rest_v, tol(1e-14, 1e-6) * rest_v);
+    // no floor: the plain step at rest
+    gust::local_dtau(q, nullptr, c.mesh, c.geom, amrex::Real(CFL), dtau, amrex::Real(0));
+    EXPECT_EQ(dtau.max(0), amrex::Real(CFL) / gust::kMinRate);
+    // refused floors
+    EXPECT_THROW(gust::local_dtau(q, nullptr, c.mesh, c.geom, amrex::Real(CFL), dtau, amrex::Real(-1)), std::runtime_error);
+    EXPECT_THROW(gust::local_dtau(q, nullptr, c.mesh, c.geom, amrex::Real(CFL), dtau,
+                                  std::numeric_limits<amrex::Real>::quiet_NaN()), std::runtime_error);
+    EXPECT_THROW(gust::local_dtau(q, nullptr, c.mesh, c.geom, amrex::Real(CFL), dtau,
+                                  std::numeric_limits<amrex::Real>::infinity()), std::runtime_error);
+}
+
 // ---------------------------------------------------------------------------
 // The SER ramp on a geometric residual history (rate 1/4): cfl0
 // through the reference iterations, then cfl0 r^-p capped by the growth per

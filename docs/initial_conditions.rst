@@ -77,6 +77,23 @@ complex number :math:`u + iv`, and for :math:`k`:
   :doc:`turbulence_model`.
 - The ground uses the neutral log law; the top and the Rayleigh layer are those of the case.
 
+**Forest canopy.** When the run has a canopy (:doc:`canopy`) the column carries it: the layer profile :math:`f_k`
+of the level's drag field (its mean over the domain's columns) enters the momentum equation as the drag
+:math:`-f_k |W| W`, linearised along the wind about each step's start (the derivative diagonal of the 3-D rows; a
+lagged :math:`|W|` would hand the balance speed back and forth at the column's large steps), and with ``canopy.tke``
+the :math:`k` equation gains the wake production :math:`\beta_p f |W|^3`, the short-circuit sink
+:math:`\beta_d f |W| k` on the Patankar diagonal and the closure's length cap :math:`L \le \alpha/f`, the same terms
+as the 3-D stage's on a flat column. The first guess and an inflow column made from it then carry the forest: on
+``Tests/Canonical_RANS/Canopy_Drag`` with a uniform 20 m canopy (LAI 3) the 3-D run starts from the column with
+first residuals of :math:`10^{-9}` against 1 from the profile, and reaches the verdict in 1082 iterations against
+2046 (``rt_canopy_column``). The column is horizontally uniform and sits on the flat levels, so the canopy must be
+the same in every column and the terrain flat: on a terrain-following mesh even a canopy of uniform height gives
+each column its own layer profile, and a canopy whose :math:`f` differs between columns (a forest on part of the
+domain) stops the run, naming ``init.first_guess`` (use ``profile`` there, or an inflow table). Deep inside a dense
+uniform canopy the column's balances are closed forms, :math:`|W| = \sqrt{F/f}` for a pressure-gradient force
+:math:`F` and :math:`\beta_p |W|^3 = \beta_d |W| k + C_{\mu 0}^3 k^{3/2}/\alpha`, which the unit tests
+``ColumnCanopy.*`` pin.
+
 The column is marched to steady state with implicit (backward Euler) steps that grow from 10 s to :math:`10^5` s. It
 has converged when the largest change of :math:`u, v` and :math:`k` over a step, relative to their scale, is below
 ``init.column_tol``. This typically takes 100–200 steps and a few hundredths of a second. If it has not converged
@@ -98,7 +115,8 @@ An inflow face keeps the case's inflow profile; the solver reconciles the two.
 - a ``slip_wall``, ``geostrophic`` or ``no_slip_wall`` top;
 - ``bc.rayleigh_fields`` either containing both ``u`` and ``v`` or neither;
 - with a pressure gradient but no Coriolis force: a neutral sounding or a Rayleigh layer on ``u`` and ``v`` (the
-  steady column only).
+  steady column only);
+- with a forest canopy (:doc:`canopy`): flat terrain and a canopy that is the same in every column (below).
 
 ``init.k_decay_height`` cannot be used with it. Otherwise the run stops with a message naming
 ``init.first_guess``.

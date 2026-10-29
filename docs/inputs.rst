@@ -376,6 +376,9 @@ Quick reference
    * - ``steady.ser_exponent``, ``steady.ser_max_growth``
      - ``1``, ``2``
      - CFL ramp exponent and largest growth per iteration
+   * - ``steady.dtau_floor``
+     - ``0.1``
+     - Local step floor: a cell steps at most as the level's fastest cell does, 1/``dtau_floor`` times (0: off)
    * - ``steady.switch_window``, ``steady.switch_residual``, ``steady.switch_back_growth``
      - ``20``, ``1e-4``, ``10``
      - Stage-switching rules (``simplec_newton`` only)
@@ -593,8 +596,9 @@ A restart cannot be combined with ``init.*`` keys.
    * - ``init.first_guess``
      - ``none``
      - ``none`` (fluid at rest), ``profile`` (the inflow profile by height above the ground) or ``column`` (the
-       steady single-column profile; needs a horizontal forcing and ``steady.stage = simplec`` or ``simplec_newton``, see
-       :doc:`initial_conditions` for the full list).
+       steady single-column profile; needs a horizontal forcing and ``steady.stage = simplec`` or ``simplec_newton``, and
+       with a canopy flat terrain and a canopy that is the same in every column; see :doc:`initial_conditions` for
+       the full list).
    * - ``init.projection``
      - ``1``
      - 0 or 1: the mass-consistent adjustment. With 0, ``init.alpha_h`` and ``init.alpha_v`` are refused.
@@ -1090,14 +1094,20 @@ writes them and stops; the other ``steady.*`` keys are then refused.
    * - ``steady.cfl_max``
      - ``8`` with ``lusgs``, ``10`` with ``zjacobi``
      - Finite, ≥ ``steady.cfl0``. Largest CFL number. The default depends on ``steady.sweep`` (the sweep and
-       CFL-cap study on Askervein, :doc:`results`); a given value is used with either sweep. A dense canopy on steep
-       terrain may need a lower cap (:doc:`canopy`, steep terrain and the boundaries).
+       CFL-cap study on Askervein, :doc:`results`); a given value is used with either sweep. With the step floor off
+       (``steady.dtau_floor = 0``) a dense canopy needs a lower cap (:doc:`canopy`, steep terrain and the boundaries).
    * - ``steady.ser_exponent``
      - ``1``
      - Finite, ≥ 0. Exponent :math:`p` of the CFL ramp; 0 holds the CFL at ``cfl0``.
    * - ``steady.ser_max_growth``
      - ``2``
      - Finite, ≥ 1. Largest CFL growth factor per iteration.
+   * - ``steady.dtau_floor``
+     - ``0.1``
+     - Finite, ≥ 0. The local pseudo-time rate is kept at or above this fraction of the level's fastest convective
+       rate, :math:`U_{\max} / \min(\Delta x, \Delta y)`, so a cell at rest steps at most ``1/dtau_floor`` times
+       as the fastest cell does (:doc:`solution_algorithm`, local time step). 0 is the plain local step, the form
+       before the floor (a cell at rest then steps ``cfl`` / 1e-12 s).
    * - ``steady.switch_window``
      - ``20``
      - ≥ 1. Iterations below ``switch_residual`` before a switch to the next stage; no other switch within this many

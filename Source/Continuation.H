@@ -72,6 +72,7 @@ struct ContinuationOptions
     amrex::Real cfl_max{10};                  //!< steady.cfl_max
     amrex::Real ser_exponent{1};              //!< steady.ser_exponent
     amrex::Real ser_max_growth{2};            //!< steady.ser_max_growth
+    amrex::Real dtau_floor{amrex::Real(0.1)};   //!< steady.dtau_floor (PseudoTime.H)
     // The new keys.
     amrex::Real armijo_c{amrex::Real(1.0e-4)};  //!< steady.newton_armijo_c (> 0, < 0.5)
     amrex::Real backtrack{amrex::Real(0.5)};    //!< steady.newton_backtrack (> 0, < 1): lambda <- backtrack lambda
