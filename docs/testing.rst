@@ -417,6 +417,69 @@ The one-line mutants of the count behind the canopy's inflow-face and damping-la
    * - Z8
      - The Rayleigh layer counted when it damps only w
 
+The one-line mutants of the local step floor (``Source/PseudoTime.cpp``), the canopy in the column first guess
+(``Source/ColumnGuess.cpp``) and the canopy's column profile (``Source/Canopy.cpp``), each run against
+``PseudoTime.StepFloor*``, ``ColumnCanopy.*`` and ``Canopy.ColumnProfile*`` on two and four ranks by
+``tools/step_floor_mutants.py`` (macOS arm64, AppleClang). All 16 are killed. F3 and F4 survived the test's first
+mesh (one box, dx the smaller spacing); the test now uses four boxes with dy < dx.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 6 50 44
+
+   * - Mutant
+     - Change
+     - Failing tests
+   * - F1
+     - The floor ignored
+     - ``StepFloorFollowsTheFastestCell``
+   * - F2
+     - :math:`U_{\max}` from u alone
+     - ``StepFloorFollowsTheFastestCell`` (the motion in y)
+   * - F3
+     - dx for min(dx, dy)
+     - ``StepFloorFollowsTheFastestCell``
+   * - F4
+     - No all-reduce of :math:`U_{\max}`
+     - ``StepFloorFollowsTheFastestCell`` (2 and 4 ranks)
+   * - F5
+     - A negative floor accepted
+     - ``StepFloorFollowsTheFastestCell``
+   * - C1
+     - The column's drag dropped
+     - ``DeepCanopyBalancesAreClosedForms``, ``NoCanopyAndZeroCanopyAgreeBitForBit``
+   * - C2
+     - Picard drag (:math:`|W|` lagged)
+     - ``DeepCanopyBalancesAreClosedForms`` (no convergence at the column's steps)
+   * - C3
+     - No wake production
+     - ``DeepCanopyBalancesAreClosedForms``
+   * - C4
+     - No short-circuit sink
+     - ``DeepCanopyBalancesAreClosedForms``, ``KTermsOffKeepsTheDragOnly``
+   * - C5
+     - No length cap
+     - ``DeepCanopyBalancesAreClosedForms``
+   * - C6
+     - The profile's size unchecked
+     - ``ProfileMustBeOnePerLayer``
+   * - C7
+     - A non-uniform canopy accepted
+     - ``ColumnProfileIsTheLayerMeanAndSpread``
+   * - C8
+     - The terrain unchecked
+     - ``ColumnProfileIsTheLayerMeanAndSpread``
+   * - P1
+     - The layer sum, not the mean
+     - ``ColumnProfileIsTheLayerMeanAndSpread``
+   * - P2
+     - The spread absolute, not relative
+     - ``ColumnProfileIsTheLayerMeanAndSpread``
+   * - P3
+     - The spread from the maximum alone
+     - ``ColumnProfileIsTheLayerMeanAndSpread``
+
+
 The one-line mutants of ``simplec.theta = frozen`` (``Source/Simplec.cpp``, ``Source/Residual.cpp``,
 ``Source/Predictor.cpp``, ``Source/Sequencing.cpp``, ``Source/App.cpp``, ``Source/BoundaryConditions.cpp``) by
 ``tools/frozen_theta_mutants.py`` (macOS arm64, AppleClang): F1–F7 and F16–F19 against ``FrozenTheta.*`` on two ranks
@@ -995,13 +1058,15 @@ Current tests
    * - ``rt_forested_escarpment``
      - A dense canopy on steep terrain with an inflow face (``Tests/Canonical_RANS/Forested_Escarpment``, the WINSENT
        Albtrauf in 2-D: a 200 m tanh escarpment, steepest slope 22°, the WINSENT canopy on the slope, WINSENT's layers,
-       inflow and outflow faces, LU-SGS with grid sequencing at ``steady.cfl_max`` 2). ``check_forested_escarpment.py``:
+       inflow and outflow faces, LU-SGS with grid sequencing at the default CFL cap and step floor; before the floor
+       the deck needed ``steady.cfl_max`` 2, :doc:`canopy`). ``check_forested_escarpment.py``:
        steady within 300 iterations on 2 ranks with no boundary-zone warning; the 1- and 4-rank runs within 1e-9
        (velocities against the largest :math:`|u|`, p and k against their own largest values);
        12 m above the ground, u in the forest below half of u upstream; a run of 40 iterations continued to 80 equals 80
-       straight, bit for bit; with the forest at the inflow face, the inflow-face warning with its count. Measured: 185
-       iterations on 1, 2 and 4 ranks, differences about 4e-11, u 0.72 against 3.52 m/s, 24 canopy cells at the
-       inflow face. About 1 min on two ranks; label ``regression``; double only.
+       straight, bit for bit; with the forest at the inflow face, the inflow-face warning with its count. Measured:
+       256 iterations on 1, 2 and 4 ranks, differences 1.6e-11 and 4.4e-11, u 0.72 against 3.52 m/s, 24 canopy cells at
+       the inflow face (185 iterations at ``steady.cfl_max`` 2 before the floor). About 1 min on two ranks; label
+       ``regression``; double only.
    * - ``rt_frozen_theta``
      - ``simplec.theta = frozen`` on the forested escarpment with a stable sounding (``inputs_frozen_theta``: 300 K to
        1000 m, an 8 K inversion to 1100 m, 3 K/km above). ``check_frozen_theta.py``: steady within 400 iterations on 2
@@ -1023,6 +1088,17 @@ Current tests
        Measured: 5586 and 5710 iterations, 176 cells at the cap, :math:`\nu_t` 0.033 against 3.99 m²/s. The local
        balance :math:`k = \kappa_c|U|^2` is pinned by ``CanopyTke.CappedBalanceIsKappaU2``; at the crown the shear
        layer above adds production and transport. About 3 min on two ranks; label ``regression``; double only.
+   * - ``rt_canopy_column``
+     - The column first guess with a uniform canopy (UT-8.5.1, :doc:`initial_conditions`) on
+       ``Tests/Canonical_RANS/Canopy_Drag`` (``inputs_canopy_column``, the drag deck without its canopy line, and a
+       uniform map canopy of 20 m, LAI 3, :math:`C_d` 0.25 the script writes). ``check_canopy_column.py`` runs
+       ``init.first_guess = column`` and ``profile`` to the verdict: the column run's first u and v residuals are
+       below 2e-3 of the profile run's (the column is the stage's steady column: the drag, the k terms and the length
+       cap are the 3-D ones on a flat column), the converged 3-D u and v (the mean over the periodic domain) are
+       within 2e-3 of the column table at every level, relative to the table's largest speed, and the column run
+       takes at most 0.7 of the profile run's iterations; the two-patch canopy with the column guess is refused,
+       naming ``init.first_guess``. Measured: first residuals 1.4e-9 and 4.5e-10 against 1.2 and 2.4e-3, the 3-D
+       column within 1.3e-3, 1082 against 2046 iterations. About 3 min on two ranks; label ``regression``; double only.
    * - ``rt_thin_cell_w_vnn_cap``
      - The w rows' VNN cap on a flat inflow/outflow strip with a 0.7 m first cell
        (``Tests/Canonical_RANS/Thin_Cell_Flat/inputs_thin_cell_flat``: 16 × 2 × 40, dx/dz₀ = 134, line LU-SGS with
@@ -1661,6 +1737,12 @@ GoogleTest suite
      - The split anisotropic operator (``z_cross`` set, :math:`\beta_v = 0.36`) on a Gaussian hill varying in x and y
        keeps the mesh's x and y mirror symmetries within 1e-12 of max :math:`|\phi|`; the cross kernel's first
        transcription broke the y symmetry at the 1e-4 level.
+   * - ``PseudoTime.StepFloorFollowsTheFastestCell``
+     - The step floor (``steady.dtau_floor``): with half the domain moving at U in x and the rest at rest, the cells at
+       rest get CFL min(dx, dy)/(φ U) and the moving cells keep CFL dx/U (dx = 62.5 m, dy = 50 m, so min(dx, dy) is
+       not dx; 16 × 16 × 8 cells in four 8 × 8 boxes); with the motion in y the rest cells follow V; φ = 0 gives
+       CFL/1e-12 at rest; a negative, NaN or infinite floor is refused. On 2 and 4 ranks whole ranks are at rest,
+       so the maximum needs its all-reduce.
    * - ``PseudoTime.LocalStepMatchesTheAnalyticLimits``
      - The local pseudo-time step on known fields: uniform :math:`(u, v, w)` and :math:`\nu` on a flat uniform mesh
        give :math:`\mathrm{CFL} / (|u|/\Delta x + |v|/\Delta y + |w|/\Delta z + 2\nu(1/\Delta x^2 + 1/\Delta y^2))` in
@@ -1890,6 +1972,20 @@ GoogleTest suite
        ``init.column_rib_max``), QNSE at Rib = 1 and the −4 bound (``SurfaceSolveMatchesTheClosedForm``); QNSE's ψ on
        the stable side (``QnseStableColumn``); the input checks, including the Rayleigh layer on θ, the 3-D refusals
        of a target, the flux hand-off of ``mol`` and the Rib bounds.
+   * - ``ColumnCanopy.*``
+     - The column first guess with a canopy (UT-8.5.1's 1-D part): under a dense uniform canopy (f = 0.5 1/m over
+       the lowest 40 of 64 layers, a pressure-gradient force F, no rotation) the layers at 10 to 30 m have
+       :math:`|W| = \sqrt{F/f}` and :math:`k` the root of :math:`\beta_p |W|^3 = \beta_d |W| k + C_{\mu 0}^3
+       k^{3/2}/\alpha`, both within 1e-3 (double), and v = 0; with ``canopy.tke = off`` the speed lies above
+       :math:`\sqrt{F/f}` by less than a factor 2.5 at 10 to 20 m (the diffusion of the larger k; 34 % at 10 m to about 110 % at 20 m) and k is above 0.3 and 100 times the
+       value with the terms on; a canopy of f = 0 everywhere gives the no-canopy table bit for bit and the dense
+       forest's first cell is below 0.2 of the bare column's; a profile that is not one value per layer is refused.
+   * - ``Canopy.ColumnProfileIsTheLayerMeanAndSpread``
+     - ``Canopy::column_profile`` and ``column_canopy`` (UT-8.5.1's field side): a uniform 20 m map canopy gives in
+       every layer the uniform profile's cell mean from the flat mesh's levels (1e-12) and a spread of 0, and
+       ``column_canopy`` returns it; a map with LAI 3 on one half of the domain and 6 on the other gives the mean of
+       LAI 4.5 and the spread 3/4.5, and ``column_canopy`` refuses it, naming ``init.first_guess``; on terrain it
+       refuses the uniform one too, naming ``terrain.type``. On 1, 2 and 4 ranks (the halves in different boxes).
    * - ``ColumnMarching.*``
      - The time-marching column (``init.column_time``) on the same 64 × 1 m column without the Rayleigh layer on θ:
        with a fixed flux (0.02 and −0.002 K m/s) for 3605 s in 10 s steps (361 steps, the last of 5 s) the heat

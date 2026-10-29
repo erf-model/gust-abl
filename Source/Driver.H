@@ -64,6 +64,9 @@ struct SteadyOptions
     amrex::Real cfl_max{10};             //!< steady.cfl_max (>= cfl0): the SER cap
     amrex::Real ser_exponent{1};         //!< steady.ser_exponent p (>= 0): CFL = cfl0 r^-p
     amrex::Real ser_max_growth{2};       //!< steady.ser_max_growth (>= 1): CFL_{n+1} <= growth CFL_n
+    //! steady.dtau_floor (finite, >= 0; 0.1): the local step's rate floor, phi times the level's fastest convective
+    //! rate (PseudoTime.H); 0 is the plain local step.
+    amrex::Real dtau_floor{amrex::Real(0.1)};
     int switch_window{20};               //!< steady.switch_window (>= 1): hysteresis window, iterations
     amrex::Real switch_residual{amrex::Real(1.0e-4)};  //!< steady.switch_residual (> 0, <= 1): r_n at which to go forward
     amrex::Real switch_back_growth{10};  //!< steady.switch_back_growth (> 1): growth of r_n over a window that sends back

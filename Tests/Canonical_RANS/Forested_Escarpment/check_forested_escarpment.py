@@ -18,7 +18,7 @@ flags. The script writes the tables with make_case.py in each run directory
   inflow/   the forest extended to the inflow face, 1 iteration.
 
 and checks:
-  - the 2-rank run is steady within N iterations at the deck's CFL cap (2),
+  - the 2-rank run is steady within N iterations at the default CFL cap (8),
     and logs no inflow-face or damping-layer warning;
   - the 1- and 4-rank runs reach the same answer: u, v and w within 1e-9 of
     the largest |u|, p and k within 1e-9 of their own largest values (v is

@@ -8,10 +8,11 @@ WINSENT canopy (uniform profile, 25 m, LAI 5, C_d 0.15) on the slope and the pla
 WINSENT's layers (8 m first layer stretched by 1.12, about three layers in the canopy), neutral log-law inflow on the
 low x face, outflow on the high x face, periodic in y, LU-SGS with grid sequencing over three levels.
 
-The check shows that the case converges at `steady.cfl_max = 2` with the same answer on 1, 2 and 4 ranks, that the
-canopy slows the wind, that a restart continues bit for bit, and that the inflow-face warning fires when the forest
-reaches the inflow face. At the default CFL cap (8) the case cycles (docs/canopy.rst, "Steep terrain and the
-boundaries", has the measured caps).
+The check shows that the case converges at the default CFL cap (8) with the default step floor
+(`steady.dtau_floor = 0.1`) with the same answer on 1, 2 and 4 ranks, that the canopy slows the wind, that a restart
+continues bit for bit, and that the inflow-face warning fires when the forest reaches the inflow face. Without the
+floor (`steady.dtau_floor = 0`, the step before PR-62b) the case cycles at caps of 4 and above and needs
+`steady.cfl_max` 2 to 2.5 (docs/canopy.rst, "Steep terrain and the boundaries", has the cause and the measurements).
 
 The same escarpment with a stable sounding tests `simplec.theta = frozen` (θ prescribed from the inflow profile by
 height above the ground, buoyancy in the closure only; docs/solution_algorithm.rst, "Prescribed potential
@@ -21,7 +22,7 @@ temperature"): `inputs_frozen_theta` and `check_frozen_theta.py`.
 | File | Role |
 |---|---|
 | `make_case.py` | Writes `terrain.xyz`, `canopy_height.xyz` and `canopy_lai.xyz` on 25 m points into a folder; `--forest-at-inflow` extends the forest to the inflow face. |
-| `inputs_forested_escarpment` | The deck (240 x 8 x 30 cells, 6000 m x 200 m), reading the tables from the run folder. `init.first_guess` is given on the command line. |
+| `inputs_forested_escarpment` | The deck (240 x 8 x 30 cells, 6000 m x 200 m, the default CFL cap and step floor), reading the tables from the run folder. `init.first_guess` is given on the command line. |
 | `check_forested_escarpment.py` | Runs the six runs below, each in its own folder with its tables, and checks them; the exit code is the verdict. |
 | `inputs_frozen_theta` | The deck with a stable sounding (300 K to 1000 m, an 8 K inversion to 1100 m, 3 K/km above); `simplec.theta = frozen` on the command line. |
 | `inputs_frozen_theta_file` | The same with the inflow from a table (`frozen_inflow.txt`, written by the check) whose θ differs from the sounding. |
@@ -52,9 +53,9 @@ Measured on macOS arm64 (AppleClang, double precision):
 
 | Check | Measured | Tolerance |
 |---|---|---|
-| Iterations to the verdict on 2 ranks | 185 | at most 300 |
+| Iterations to the verdict on 2 ranks | 256 | at most 300 |
 | Boundary-zone warnings (forest away from the inflow) | none | none |
-| 1 and 4 ranks against 2, max difference (velocities over max \|u\|, p and k over their own max) | about 4e-11 (185 iterations each) | 1e-9 |
+| 1 and 4 ranks against 2, max difference (velocities over max \|u\|, p and k over their own max) | 1.6e-11 and 4.4e-11 (256 iterations each) | 1e-9 |
 | u 12 m above the ground, forest (column at x = 2912.5 m) / upstream (x = 1512.5 m) | 0.72 / 3.52 m/s (0.20) | below 0.5 |
 | Restart: continued vs straight, every field | 0 | bit for bit |
 | Forest at the inflow face: canopy cells in the warning | 24 | more than 0 |

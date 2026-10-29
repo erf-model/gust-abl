@@ -12,6 +12,7 @@
 //   a restart with another canopy is refused (UT-8.1.7);
 //   the inputs and files are checked.
 #include "Canopy.H"
+#include "ColumnGuess.H"
 #include "Canopy_K.H"
 #include "MeshHierarchy.H"
 #include "PoissonTestHelpers.H"
@@ -344,6 +345,54 @@ TEST(Canopy, ColumnIntegralIsCdLai)
             EXPECT_EQ(e.bad, 0);
             EXPECT_LT(e.max_rel, rtol) << "profile " << (lm ? "lalic_mihailovic" : "uniform") << ", cd map " << cd_map;
             EXPECT_EQ(misplaced_cells(can.drag(), c.z, c.geom, 17.3, 0.01), 0);
+        }
+    }
+}
+
+// UT-8.5.1 (the field's side): the canopy as one column (Canopy::column_profile, ColumnGuess.H column_canopy). A
+// uniform map (20 m, LAI 3, Cd 0.15) gives, in every layer, the mean f = Cd LAI (F(z_t/h) - F(z_b/h)) / (z_t - z_b) of
+// the uniform profile from the flat mesh's levels (Cd LAI / h in the cells below the top, the covered share in the
+// cell the top cuts, 0 above) and a spread of 0; a map whose LAI is 3 on one half of the domain and 6 on the other
+// gives the mean of LAI 4.5 and the spread (6 - 3) / 4.5 in every canopy layer. column_canopy accepts the first and
+// refuses the second, naming init.first_guess. Both on 1, 2 and 4 ranks (the halves lie in different boxes).
+TEST(Canopy, ColumnProfileIsTheLayerMeanAndSpread)
+{
+    const int n = 16;
+    PCase c = make_case(n, 8, true, flat);
+    const double h = 20.0, cd = 0.15;
+    const std::string hf = write_map("h20u.xyz", n, [] (double, double) { return 20.0; });
+    const std::string lu = write_map("lai3u.xyz", n, [] (double, double) { return 3.0; });
+    const std::string lh = write_map("lai36.xyz", n, [] (double x, double) { return x < 200.0 ? 3.0 : 6.0; });
+    // The flat mesh's levels: the nodal heights of any column (z has ghost nodes; the valid nodes of the first box).
+    double ztop = 0;
+    const std::vector<double> zn = gust::column_flat_levels(c.in, ztop);
+    auto expected = [&] (double lai, int k) {
+        const double zb = zn[static_cast<std::size_t>(k)], zt = zn[static_cast<std::size_t>(k) + 1];
+        const double fb = std::min(std::max(zb / h, 0.0), 1.0), ft = std::min(std::max(zt / h, 0.0), 1.0);
+        return cd * lai * (ft - fb) / (zt - zb);
+    };
+    for (const bool uniform : {true, false}) {
+        gust::Canopy can;
+        can.build(map_options(hf, uniform ? lu : lh, cd, false), c.geom, c.z, c.ba, c.dm);
+        double spread = -1;
+        const std::vector<double> prof = can.column_profile(c.geom, spread);
+        ASSERT_EQ(static_cast<int>(prof.size()), c.geom.Domain().length(2));
+        const double lai = uniform ? 3.0 : 4.5;
+        for (std::size_t k = 0; k < prof.size(); ++k) {
+            const double want = expected(lai, static_cast<int>(k));
+            EXPECT_NEAR(prof[k], want, rtol * std::max(want, cd * lai / h)) << "layer " << k;
+        }
+        if (uniform) {
+            EXPECT_EQ(spread, 0.0);
+            const gust::ColumnCanopy cc = gust::column_canopy(can, c.geom, true);
+            EXPECT_EQ(cc.f, prof);
+            EXPECT_EQ(cc.tke.on, can.tke().on);
+            const std::string hill = abort_message([&] { (void) gust::column_canopy(can, c.geom, false); });
+            EXPECT_NE(hill.find("needs flat terrain (terrain.type = flat)"), std::string::npos) << hill;
+        } else {
+            EXPECT_NEAR(spread, 3.0 / 4.5, rtol);
+            const std::string msg = abort_message([&] { (void) gust::column_canopy(can, c.geom, true); });
+            EXPECT_NE(msg.find("init.first_guess = column needs a horizontally uniform canopy"), std::string::npos) << msg;
         }
     }
 }

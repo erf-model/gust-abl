@@ -128,14 +128,16 @@ public:
     //! opt.pressure_reltol), z_nd (the mesh's node heights), sweep
     //! (steady.sweep and steady.line_*); inf_cfl (finite and > 0, the
     //! caller's steady.cfl_max): the CFL of the step used when setup gets
-    //! none. mesh, geom, z_nd and in's pointees are referenced: they must
+    //! none, with the step floor dtau_floor (steady.dtau_floor, PseudoTime.H;
+    //! 0: none). mesh, geom, z_nd and in's pointees are referenced: they must
     //! outlive the object. The fields are allocated on ba, dm (the state's
     //! layout). Aborts as SimplecStage does, and on a bad inf_cfl.
     SimplecPreconditioner (const SimplecOptions& opt, int sweeps, const ResidualInputs& in, const PoissonOptions& popt,
                            const Mesh& mesh, const amrex::Geometry& geom, const amrex::MultiFab& z_nd,
                            amrex::Real inf_cfl, const amrex::BoxArray& ba, const amrex::DistributionMapping& dm,
                            const LineSweepOptions& sweep = LineSweepOptions(),
-                           PressureDenominator denominator = PressureDenominator::diagonal);
+                           PressureDenominator denominator = PressureDenominator::diagonal,
+                           amrex::Real dtau_floor = 0);   // the tests' default; the stage passes steady.dtau_floor
 
     //! q: on ba, dm with its ghost cells filled (NewtonKrylov fills them);
     //! dtau: cell-centred (finite, > 0) or null.
@@ -164,6 +166,7 @@ private:
     amrex::Geometry m_geom;
     const amrex::MultiFab& m_z;
     amrex::Real m_inf_cfl;
+    amrex::Real m_dtau_floor;   //!< steady.dtau_floor for the step at m_inf_cfl
     PoissonOptions m_popt;
     PoissonBC m_pbc;
     PoissonSolver m_solver;
@@ -199,7 +202,8 @@ std::unique_ptr<NewtonPreconditioner> make_newton_preconditioner (NewtonPrecondi
                                                                   const amrex::Geometry& geom, const amrex::MultiFab& z_nd,
                                                                   amrex::Real inf_cfl, const amrex::BoxArray& ba,
                                                                   const amrex::DistributionMapping& dm,
-                                                                  const LineSweepOptions& sweep = LineSweepOptions());
+                                                                  const LineSweepOptions& sweep,
+                                                                  amrex::Real dtau_floor);
 
 } // namespace gust
 
