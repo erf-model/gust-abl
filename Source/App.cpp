@@ -211,8 +211,9 @@ void run ()
                                                             in.io.column_guess_file);
                 char cl[512];
                 if (cg.time > 0) {
-                    std::snprintf(cl, sizeof(cl), "gust: column guess: marched to t = %.6g s in %d steps (%.3f s), %d levels, "
+                    std::snprintf(cl, sizeof(cl), "gust: column guess: marched to t = %.6g s in %d steps (%.3f s)%s, %d levels, "
                                   "u* %.4f m/s, u %.4f v %.4f m/s at the top\n", cg.time, cg.iterations, cg.wall_seconds,
+                                  iopt.column_wall_k == InitOptions::ColumnWallK::solved ? " with the first cell's k solved" : "",
                                   static_cast<int>(cg.z.size()) - 1, static_cast<double>(cg.ustar),
                                   static_cast<double>(cg.u.back()), static_cast<double>(cg.v.back()));
                 } else {

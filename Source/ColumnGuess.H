@@ -66,6 +66,8 @@
 // (heat_flux: an explicit flux q into the first cell, MOST from column_surface_most_flux, no search for theta_s), so
 // with a slip top, bc.zhi_theta_grad = 0 and no Rayleigh layer on theta the column's heat content
 // sum(theta dz) grows by q t to round-off. No target wind (init.column_target_*) and no init.column_mol.
+// init.column_wall_k = solved (time-marching only) solves the first cell's k with the others' equation and no k flux
+// through the ground, in place of the wall-k Dirichlet row (fixed, the default).
 
 #include "BoundaryConditions.H"
 #include "Closure.H"

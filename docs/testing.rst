@@ -1779,11 +1779,16 @@ GoogleTest suite
        the neutral column marched to 2e6 s equals the steady column (1e-6 m/s); the flux surface meets MOST's closed
        form (Businger–Dyer stable, ERF's unstable ψ) and returns its flux through the surface-temperature solve
        (1e-7), a seed above the upper stable root still finds the root, and a downward flux too large for the wind has
-       no root (the column stops, naming the time and ``bc.surface_heat_flux``); ``surface_temperature`` keeps its
+       no root (the column stops, naming the time and ``bc.surface_heat_flux``, also when only the final state has none); ``surface_temperature`` keeps its
        θ_s and reports the final state's MOST surface (1e-6); the step count (9 s in 0.9 s steps is 10 steps; a time
-       below one step is one step); the input checks. Eight one-line mutants are caught (the flux term, the last
-       step's length, the sign of ζ, the Rayleigh check, the retry seed, the one-step floor, the final surface, the
-       Richardson-bound refusal).
+       below one step is one step); with ``init.column_wall_k = solved`` the neutral column marched to its steady
+       state satisfies the first cell's discrete k balance with no ground flux, rebuilt with the closure's point
+       kernels (1e-6 of the production; ``SolvedWallK``), and the heated column keeps the heat budget; the input
+       checks (and ``Initializer.ColumnGuessAndProjectionSwitch`` reads ``init.column_wall_k``). Fourteen one-line
+       mutants are caught (the flux term, the last step's length, the sign of ζ, the Rayleigh check, the retry seed,
+       the one-step floor, the final surface, the Richardson-bound refusal, the solved k ignored, a ground k flux, no
+       wall shear at the ground face, the ``init.column_wall_k`` refusal without ``init.column_time``, ``solved`` read
+       as ``fixed``, the final state's MOST check).
    * - ``StabilityFunctions.*``, ``SurfaceLayer.QnseFrictionVelocity``, ``SurfaceLayer.StableFunctionsKeysAreRead``,
        ``BoundaryFill.GroundGradientIsTheWallLaw``
      - QNSE's φ and ψ against Python values at ζ = 0.1–100 (1e-14) and with distinct coefficients per function, ψ

@@ -4,6 +4,7 @@
 // gradient and a Rayleigh layer on u, v and k (not theta) above 48 m: the column's only heat source is the surface.
 
 #include "BoundaryConditions.H"
+#include "Closure_K.H"
 #include "ColumnGuess.H"
 #include "ERF_MOSTUtils.H"
 #include "Initializer.H"
@@ -15,6 +16,7 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <complex>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -187,6 +189,60 @@ TEST(ColumnMarching, NeutralReachesTheSteadyColumn)
     EXPECT_NEAR(static_cast<double>(rm.ustar), static_cast<double>(rs.ustar), tol(1e-7, 1e-4));
 }
 
+// init.column_wall_k = solved: the first cell's k is solved with no k flux through the ground. The neutral column
+// marched to its steady state then satisfies the first cell's discrete k balance with no ground term,
+//   gamma_f (k_2 - k_1) / (dz dz_f) + P_1 - eps_1 = 0,  gamma_f = (gamma_k,1 + gamma_k,2) / 2,
+// rebuilt here from the table with the closure's point kernels (S^2 from the wall law's gradient u*/(kappa (z_1 + z0))
+// at the ground face and the layers' differences above, as the column's). The fixed wall value u*^2/Cmu0^2 is not
+// a solution of it (k_1 is 0.76 of it here). With a heat flux the solved k_1 is below the wall value
+// (u*^3 + kappa B z_1)^(2/3)/Cmu0^2, and the heat budget is q t as with the fixed one.
+TEST(ColumnMarching, SolvedWallK)
+{
+    Column m;
+    m.io.column_time = amrex::Real(2.0e6);
+    m.io.column_dt = amrex::Real(200);
+    m.io.column_wall_k = InitOptions::ColumnWallK::solved;
+    const auto r = m.run();
+    const gust::ClosureConstants cc = gust::closure_constants(m.copt);
+    const double z0 = 0.1, us = static_cast<double>(r.ustar);
+    auto at = [&] (std::size_t i) { return std::complex<double>(static_cast<double>(r.u[i]), static_cast<double>(r.v[i])); };
+    // the closure at cells 1 and 2 of the table (centres 0.5 and 1.5 m): S^2 the mean of the cell's two faces
+    const double s0 = std::pow(us / (kappa * (0.5 + z0)), 2), s1 = std::norm(at(2) - at(1)), s2 = std::norm(at(3) - at(2));
+    auto point = [&] (std::size_t i, double S2) {
+        const auto k = r.tke[i];
+        const amrex::Real lg = gust::closure::geom_length(static_cast<amrex::Real>(kappa * (static_cast<double>(r.z[i]) + z0)),
+                                                          static_cast<amrex::Real>(m.copt.max_geom_lscale));
+        const auto sw = gust::closure::switches_for(k, 0, lg, cc);
+        return gust::closure::closure_point<amrex::Real>(k, 0, static_cast<amrex::Real>(S2), lg, cc, sw);
+    };
+    const auto p1 = point(1, 0.5 * (s0 + s1)), p2 = point(2, 0.5 * (s1 + s2));
+    const double g1 = static_cast<double>(m.copt.nu_molecular + p1.nut / m.copt.sigma_k);
+    const double g2 = static_cast<double>(m.copt.nu_molecular + p2.nut / m.copt.sigma_k);
+    const double k1 = static_cast<double>(r.tke[1]), k2 = static_cast<double>(r.tke[2]);
+    const double P1 = static_cast<double>(p1.nut) * 0.5 * (s0 + s1), eps1 = static_cast<double>(p1.eps);
+    const double balance = 0.5 * (g1 + g2) * (k2 - k1) + P1 - eps1;
+    EXPECT_NEAR(balance / P1, 0, tol(1e-6, 1e-3)) << P1 << " " << eps1;
+    const double kw = us * us / static_cast<double>(cc.Cmu0 * cc.Cmu0);
+    EXPECT_NEAR(k1 / kw, 0.76, 0.02);
+    EXPECT_EQ(r.tke[0], r.tke[1]);   // the table's ground row repeats the first cell
+
+    Column f;   // the default holds the wall value
+    f.io.column_time = amrex::Real(2.0e6);
+    f.io.column_dt = amrex::Real(200);
+    const auto rf = f.run();
+    const double usf = static_cast<double>(rf.ustar);
+    EXPECT_NEAR(static_cast<double>(rf.tke[1]), usf * usf / static_cast<double>(cc.Cmu0 * cc.Cmu0), tol(1e-12, 1e-6));
+
+    Column h;
+    h.heat_flux(0.02, 3605, 10);
+    h.io.column_wall_k = InitOptions::ColumnWallK::solved;
+    const auto rh = h.run();
+    const double uh = static_cast<double>(rh.ustar);
+    const double kwh = std::pow(uh * uh * uh + kappa * g / theta0 * 0.02 * 0.5, 2.0 / 3.0) / static_cast<double>(cc.Cmu0 * cc.Cmu0);
+    EXPECT_LT(static_cast<double>(rh.tke[1]), 0.85 * kwh);
+    EXPECT_NEAR(heat_content(rh), 0.02 * 3605, tol(1e-8 * 0.02 * 3605, 2e-3));
+}
+
 // The surface for a given flux (column_surface_most_flux). With Businger-Dyer's stable psi = -5 zeta, u* = kappa U1 /
 // (ln + 5 zeta) and zeta = -kappa g q z1 / (theta0 u*^3); on the unstable side the same with ERF's psi_m. The surface
 // temperature that gives this flux (theta_1 - theta_s = theta* (ln - psi_h) / kappa) gives the same flux back through
@@ -226,6 +282,15 @@ TEST(ColumnMarching, FluxSurfaceMatchesTheClosedForm)
     try { (void)c.run(); } catch (const std::exception& e) { m = e.what(); }
     EXPECT_NE(m.find("at t = 60 s the surface flux"), std::string::npos) << m;
     EXPECT_NE(m.find("bc.surface_heat_flux"), std::string::npos) << m;
+    // ending at 60 s, every step has a root but the final state does not: the run stops there too (it returned
+    // u* = 1e-3 and the clamp's 1/L before)
+    Column e;
+    e.heat_flux(-0.5, 60, 10);
+    m = "no abort";
+    try { (void)e.run(); } catch (const std::exception& x) { m = x.what(); }
+    EXPECT_NE(m.find("at t = 60 s (the end)"), std::string::npos) << m;
+    e.io.column_time = 50;
+    EXPECT_NO_THROW((void)e.run());
 }
 
 // The inputs: init.column_time >= 0 and init.column_dt > 0, finite, at most 1e7 steps; init.column_dt without a time,
@@ -267,7 +332,18 @@ TEST(ColumnMarching, InputChecks)
     io.column_time = 0;
     io.given = {"column_dt"};
     EXPECT_TRUE(mentions(gust::check_init_options(io), "init.column_dt has no effect"));
+    io.given = {"column_wall_k"};
+    EXPECT_TRUE(mentions(gust::check_init_options(io), "init.column_wall_k has no effect without init.column_time > 0"));
+    io.column_time = 3600;
+    EXPECT_TRUE(gust::check_init_options(io).empty());
+    io.column_time = 0;
     InitOptions none;
+    none.given = {"column_wall_k"};
+    EXPECT_TRUE(mentions(gust::check_init_options(none), "init.column_wall_k has no effect"));
+    InitOptions prof;
+    prof.first_guess = InitOptions::FirstGuess::profile;
+    prof.given = {"column_wall_k"};
+    EXPECT_TRUE(mentions(gust::check_init_options(prof), "init.column_wall_k has no effect without init.first_guess = column"));
     none.given = {"column_time"};
     EXPECT_TRUE(mentions(gust::check_init_options(none), "init.column_time has no effect"));
 

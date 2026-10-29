@@ -385,6 +385,7 @@ ColumnGuessResult run_column_guess (const Inputs& in, const InitOptions& iopt, c
     // with heat_flux the surface takes bc.surface_heat_flux itself (an explicit flux, column_surface_most_flux), no
     // search for theta_s.
     const bool marching = iopt.column_time > 0;
+    const bool solved_k1 = marching && iopt.column_wall_k == InitOptions::ColumnWallK::solved;
     const bool fixed_flux = marching && evolve && iopt.column_stability == CS::heat_flux;
     const double q_fixed = fixed_flux ? static_cast<double>(surf.heat_flux) : 0.0;
     const double t_end = static_cast<double>(iopt.column_time), dt_fixed = static_cast<double>(iopt.column_dt);
@@ -539,7 +540,7 @@ ColumnGuessResult run_column_guess (const Inputs& in, const InitOptions& iopt, c
             thomas(lo, dT, up, rT);
             th_new = rT;
         }
-        // k: the wall-k Dirichlet row, the Patankar sinks
+        // k: the wall-k Dirichlet row (init.column_wall_k = fixed), the Patankar sinks
         faces(gk, lo, up, da);
         std::vector<double> dK(nz), rK(nz);
         for (int k = 0; k < nz; ++k) {
@@ -553,7 +554,9 @@ ColumnGuessResult run_column_guess (const Inputs& in, const InitOptions& iopt, c
             kw = std::pow(ustar * ustar * ustar + kappa * std::max(grav / theta0 * qs, 0.0) * zc[0], 2.0 / 3.0)
                / (cc.Cmu0 * cc.Cmu0);
         }
-        dK[0] = 1.0; up[0] = 0.0; rK[0] = kw;
+        // init.column_wall_k = solved (time-marching only): the first cell keeps its k equation, with no k flux
+        // through the ground (faces() gives the ground face none) and the shear of the wall law at face 0 in S^2
+        if (!solved_k1) { dK[0] = 1.0; up[0] = 0.0; rK[0] = kw; }
         thomas(lo, dK, up, rK);
         // 4. the change, the update, the step
         const double uscale = std::max(std::abs(Wg), std::max(std::abs(F) * 1.0e3, U1));
@@ -756,12 +759,20 @@ ColumnGuessResult run_column_guess (const Inputs& in, const InitOptions& iopt, c
         double thstar = 0;
         if (!evolve) {
             ustar = kappa * U1 / std::max(std::log((zc[0] + z0) / z0), den_floor);
-        } else if (fixed_flux) {
-            column_surface_most_flux(kappa, z0, zc[0], U1, qs, grav, theta0, den_floor, qnse, sc, ustar, thstar, invL);
         } else {
-            column_surface_most(kappa, z0, zc[0], U1, th[0], theta_s, grav, theta0, den_floor, qnse, sc,
-                                static_cast<double>(iopt.column_rib_min), static_cast<double>(iopt.column_rib_max), ustar,
-                                thstar, qs, invL, ch);
+            // the final state's surface has a MOST solution too (the last step's may not carry over to it)
+            const bool ok = fixed_flux
+                ? column_surface_most_flux(kappa, z0, zc[0], U1, qs, grav, theta0, den_floor, qnse, sc, ustar, thstar, invL)
+                : column_surface_most(kappa, z0, zc[0], U1, th[0], theta_s, grav, theta0, den_floor, qnse, sc,
+                                      static_cast<double>(iopt.column_rib_min), static_cast<double>(iopt.column_rib_max),
+                                      ustar, thstar, qs, invL, ch);
+            if (!ok) {
+                char msg[320];
+                std::snprintf(msg, sizeof(msg), "gust: column guess: at t = %.6g s (the end) the first cell's wind %.4g m/s has "
+                              "no Monin-Obukhov solution for the surface (%s): a smaller init.column_dt, or a smaller flux "
+                              "or a stronger wind", t_end, U1, fixed_flux ? "bc.surface_heat_flux" : "init.column_surface_theta");
+                amrex::Abort(msg);
+            }
         }
     }
     if (fixed_flux) {   // the surface temperature MOST gives the fixed flux, for the report: theta_1 - theta* (ln - psi_h) / kappa
@@ -797,9 +808,9 @@ ColumnGuessResult run_column_guess (const Inputs& in, const InitOptions& iopt, c
         bool ok = fh != nullptr;
         if (ok) {
             if (marching) {
-                std::fprintf(fh, "# the column at t = %.6g s (init.first_guess = column, init.column_time): z u v theta k; "
+                std::fprintf(fh, "# the column at t = %.6g s (init.first_guess = column, init.column_time%s): z u v theta k; "
                              "u* %.6e m/s, %d steps; surface heat flux %.6e K m/s, 1/L %.6e 1/m, surface theta %.6f K\n",
-                             res.time, static_cast<double>(res.ustar), res.iterations, static_cast<double>(res.heat_flux),
+                             res.time, solved_k1 ? ", init.column_wall_k = solved" : "", static_cast<double>(res.ustar), res.iterations, static_cast<double>(res.heat_flux),
                              static_cast<double>(res.inv_L), static_cast<double>(res.theta_surface));
             } else {
                 std::fprintf(fh, "# the converged column (init.first_guess = column): z u v theta k; u* %.6e m/s, %d steps; "
