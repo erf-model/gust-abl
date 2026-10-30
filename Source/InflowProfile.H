@@ -83,6 +83,9 @@ struct InflowTable
 //! heights that do not start at 0 and increase strictly, theta <= 0, k < 0,
 //! or fewer than two rows. Local: no communication.
 InflowTable parse_inflow_table (const std::string& text, const std::string& file);
+//! Read a bc.inflow_file on the I/O rank, broadcast it (collective) and parse it.
+//! Aborts, naming the key, on a file that cannot be read.
+InflowTable read_inflow_table (const std::string& file);
 
 //! The profile, ready to evaluate on the device: the analytic kinds from
 //! their parameters, a file as a table copied to the device.
