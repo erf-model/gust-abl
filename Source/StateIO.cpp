@@ -43,11 +43,11 @@ const amrex::Vector<std::string>& plot_var_names ()
 
 std::string write_plotfile (const std::string& prefix, const State& state,
                             const amrex::Geometry& geom, const amrex::MultiFab* detJ,
-                            const amrex::MultiFab* canopy_drag)
+                            const amrex::MultiFab* canopy_drag, const amrex::MultiFab* canopy_lad)
 {
     const std::string name = amrex::Concatenate(prefix, state.step, 5);
     const amrex::BoxArray& ba = state.p.boxArray();
-    const int ncomp = 7 + (detJ ? 1 : 0) + (canopy_drag ? 1 : 0);
+    const int ncomp = 7 + (detJ ? 1 : 0) + (canopy_drag ? 1 : 0) + (canopy_lad ? 1 : 0);
     amrex::MultiFab plt(ba, state.p.DistributionMap(), ncomp, 0);
 
     for (amrex::MFIter mfi(plt, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
@@ -85,6 +85,10 @@ std::string write_plotfile (const std::string& prefix, const State& state,
     if (canopy_drag != nullptr) {
         amrex::MultiFab::Copy(plt, *canopy_drag, 0, static_cast<int>(names.size()), 1, 0);
         names.emplace_back("canopy_drag");
+    }
+    if (canopy_lad != nullptr) {
+        amrex::MultiFab::Copy(plt, *canopy_lad, 0, static_cast<int>(names.size()), 1, 0);
+        names.emplace_back("canopy_lad");
     }
     amrex::WriteSingleLevelPlotfile(name, plt, names, geom, 0.0, state.step);
     amrex::VisMF::Write(state.z_phys_nd, name + "/Level_0/z_phys_nd");

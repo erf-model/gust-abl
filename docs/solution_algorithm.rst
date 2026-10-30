@@ -239,7 +239,9 @@ field would replace). With :math:`\theta` frozen, the inputs that act only on th
 effect: a Rayleigh layer or sponge on ``theta`` (``bc.rayleigh_fields``) and the :math:`\theta` gradient through the
 top (``bc.zhi_theta_grad``); ``bc.surface_heat_flux`` still sets the surface layer's stability but adds no heat. A
 checkpoint written with ``frozen`` can be restarted without it; the restart then solves :math:`\theta` from the frozen
-field, with the buoyancy back in the momentum equations.
+field, with the buoyancy back in the momentum equations. With the leaves' heat exchange (``canopy.heat = fixed``),
+``canopy.heat_frozen = blend`` sets :math:`\theta` in the canopy between the frozen field and the leaves' :math:`\theta`
+each iteration, and ``skip`` (the default) leaves it out (:doc:`canopy`, canopy heat).
 
 Vertical-velocity cap
 ^^^^^^^^^^^^^^^^^^^^^

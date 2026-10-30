@@ -249,6 +249,102 @@ the default ``on``, a run with a canopy gives other answers than it did with #75
 checkpoint's canopy hash: like the ``turb.*`` inputs, they may change across a restart, which then converges to the
 new inputs' answer (except the frozen-decision case above).
 
+Canopy heat
+-----------
+
+With ``canopy.heat = fixed`` the leaves exchange sensible heat with the air at a fixed leaf temperature. This is the
+steady form of ERF's fixed-leaf-temperature canopy biophysics (``Source/SourceTerms/ERF_CanopyBiophysics.H`` in ERF,
+erf-model/ERF#3897, from the ICLASS canopy model). The :math:`\theta` equation gains
+
+.. math::
+
+   S_\theta = \lambda\,(\theta_l - \theta),\qquad
+   \lambda = \frac{2a}{r_b},\qquad
+   r_b = C_b\sqrt{\frac{l_w}{\max(|U|, U_{\min})}}.
+
+- :math:`a`: the leaf area density (1/m), the cell means of the drag field with :math:`C_d = 1` (ERF's frontal area
+  density). A patch with :math:`C_d = 0` has no drag but still has leaves.
+- :math:`\theta_l`: ``canopy.leaf_theta``, the leaves' potential temperature (K).
+- :math:`|U|`: the cell-centred wind, from the means of the cell's faces.
+- :math:`r_b`: the leaf boundary-layer resistance (s/m), with ERF's constants :math:`C_b` = 100 s\ :sup:`1/2`/m,
+  leaf width :math:`l_w` = 0.05 m and :math:`U_{\min}` = 0.01 m/s. The factor 2 counts both sides of a leaf.
+
+ERF adds :math:`2\rho c_p (T_l - T)\,a / (r_b\,c_p\,\Pi)` to :math:`\rho\theta`, with :math:`T = \Pi\theta`; the
+density, :math:`c_p` and the Exner function :math:`\Pi` cancel. ERF's transpiration term (with moisture) is not here:
+GUST carries no water vapour.
+
+**Implicit side.** :math:`\lambda` does not depend on :math:`\theta`, so the :math:`\theta` rows' diagonal gains
+:math:`\lambda`, the exact derivative. Its dependence on the wind is lagged, as the drag's is. :math:`\lambda \ge 0`,
+so the diagonal stays positive, and the source pulls :math:`\theta` towards :math:`\theta_l`. The coarse levels of
+grid sequencing restrict :math:`a` as they restrict :math:`f`, keeping each layer's integral.
+
+**With** ``simplec.theta = frozen``. :math:`\theta` is then data, with no equation for the source to act in
+(:doc:`solution_algorithm`). ``canopy.heat_frozen`` chooses what happens:
+
+- ``skip`` (default): the leaf heat is left out; the run warns at start-up.
+- ``blend``: in the canopy :math:`\theta` is the steady point balance of the leaf exchange and of turbulent mixing
+  towards the frozen profile :math:`\theta_f`, the mixing taken as a relaxation at the eddy turnover rate
+  :math:`\varepsilon/k`:
+
+  .. math::
+
+     0 = \lambda(\theta_l - \theta) + \frac{\varepsilon}{k}(\theta_f - \theta)
+     \quad\Rightarrow\quad
+     \theta = \theta_f + w\,(\theta_l - \theta_f),\qquad
+     w = \frac{\lambda k}{\varepsilon + \lambda k} = \frac{\mathrm{Da}}{1 + \mathrm{Da}},\qquad
+     \mathrm{Da} = \frac{\lambda k}{\varepsilon}.
+
+  :math:`k` (at ``turb.tke_floor`` where below it, as :math:`\varepsilon` takes it) and :math:`\varepsilon` are the
+  closure's at the iteration's state; :math:`\varepsilon` does not include the canopy's short-circuit sink, which
+  is the wake turbulence's cascade, not the renewal of the canopy air. The blend is set once per SIMPLEC iteration,
+  after the pressure correction. :math:`w = 0` where :math:`a = 0`, so :math:`\theta` outside the canopy
+  is :math:`\theta_f` bit for bit; :math:`0 \le w < 1`, and :math:`w` grows smoothly with the foliage and falls with
+  the turbulence. There is no new input, but the rate :math:`\varepsilon/k` is a modelling choice: in a canopy it
+  lies between the flushing rate :math:`u_*/h` (about 4 times slower) and :math:`\nu_t/L^2` (about 3 times
+  faster), and close to the inverse Lagrangian time scale :math:`u_*/(0.3h)` (Raupach 1989), so :math:`\mathrm{Da}`
+  is uncertain by about a factor of 3. With leaves cooler than the frozen air the loop
+  :math:`\theta \to N^2 \to k \to w` is monotone (a cooler canopy damps :math:`k`, which raises :math:`w`); with
+  thin cells and weak shear at the canopy top it can have a second fixed point with :math:`k` near its floor. The
+  blended :math:`\theta` enters the closure's :math:`N^2` like the
+  frozen field; buoyancy stays out of the momentum equations. The log's :math:`\theta` residual stays 0, as
+  with ``frozen`` alone. A uniform profile has a jump in :math:`a` at the canopy top, so :math:`\theta`
+  can jump there too; the Lalic–Mihailovic profile tapers to the top.
+
+**Leaves warmer than the air, θ solved.** On ``Tests/Canonical_RANS/Forested_Escarpment`` (neutral 300 K air, the
+LAI 5 forest, 2 ranks, default CFL cap 8) the iterations to the verdict are:
+
+.. list-table::
+   :header-rows: 1
+
+   * - Leaves
+     - 298 K
+     - 300 K
+     - 300.25 K
+     - 300.5 K
+     - 301 K
+     - 301.5 K
+     - 302 K
+   * - Iterations
+     - 201
+     - 249
+     - 240
+     - 239
+     - 225
+     - 204
+     - not steady (600; and 1500 at cap 2)
+
+Without the heat the case takes 256. At 302 K :math:`r` cycles between 0.3 and 0.4, and a lower CFL cap does not
+change that: the onset lies between 1.5 and 2 K above the air. The heated canopy air is unstably stratified, with
+buoyancy in the momentum equations; in the top canopy cells the closure's :math:`R_t` reaches its lower smoothing
+bound, so the closure cannot mix more, and a steady state, if one exists, is not one pseudo-time can reach. For warm leaves use ``simplec.theta = frozen`` with
+``canopy.heat_frozen = blend``, which converged in 212 iterations with leaves at 304 K on the stable deck of the same
+case.
+
+**Costs and limits.** One cell kernel per residual and one per linearisation. The plotfile carries the leaf area
+density as ``canopy_lad`` when ``canopy.heat`` is on. The column first guess
+(``init.first_guess = column``) does not carry the leaf heat. The checkpoint's canopy hash does not include these
+inputs: like ``canopy.tke``, they may change across a restart.
+
 Steep terrain and the boundaries
 --------------------------------
 
@@ -369,3 +465,7 @@ Differences from ERF
 - ERF reads gridded maps from NetCDF on a uniform grid and interpolates them bilinearly; GUST reads point files and
   uses inverse-distance weighting, as for the terrain and the roughness map, and needs no NetCDF.
 - In a periodic direction GUST uses the nearest periodic image of a patch; ERF uses the plain distance.
+- The leaf heat (``canopy.heat``) uses the cell mean of the leaf area density, as the drag does, so drag and heat
+  see the same leaves; ERF uses the centre value of its frontal area density. ERF's transpiration term (with
+  moisture) is not ported. The constants of the leaf resistance are ERF's (:math:`C_b` = 100): its
+  :math:`r_b` is about 3 times below a laminar flat plate's per side, at the high-conductance end of field values.

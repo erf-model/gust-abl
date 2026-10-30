@@ -348,7 +348,7 @@ MomentumPredictorResult momentum_predictor (State& q, const ResidualFields& R,
             // change where theta's operator is stiff (the diffusion of a
             // kink), where dtau R_theta alone would be far too large.
             amrex::MultiFab At;
-            implicit_rows(F, q.z_phys_nd, in, Equation::theta, mesh, geom, At, surface, fields);
+            implicit_rows(F, q.z_phys_nd, in, Equation::theta, mesh, geom, At, surface, fields, canopy);
             for (amrex::MFIter mfi(*aps[c], amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
                 const auto p = aps[c]->array(mfi);
                 const auto dd = ds[c]->array(mfi);

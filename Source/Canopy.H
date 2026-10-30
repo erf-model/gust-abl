@@ -35,6 +35,11 @@
 // integral over the fine cells it covers (the coarse ground is smoothed, so
 // the coarse cell's own volume can differ from theirs).
 //
+// With canopy.heat = fixed (CanopyHeat.H) the canopy also holds the leaf
+// area density a (1/m), the same cell means with Cd = 1 (ERF's frontal area
+// density, ERF_ForestDrag.cpp), on the same layout and with the same coarse
+// level rule; its column integral is LAI.
+//
 // Restart: the checkpoint holds the SHA-256 of the canopy inputs (the
 // options and the contents of the files read); a restart with other inputs,
 // or with a canopy where the checkpoint has none or the reverse, is refused.
@@ -66,6 +71,26 @@ struct CanopyTkeOptions
     double length_alpha{0.04}; //!< canopy.length_alpha, [0, 1] (0: no length cap)
 };
 
+//! canopy.heat: the leaves' sensible heat exchange with the air (CanopyHeat.H).
+enum class CanopyHeatMode { off, fixed };
+//! canopy.heat_frozen: what the leaf heat does with simplec.theta = frozen.
+enum class CanopyFrozenHeat { skip, blend };
+
+//! The range of canopy.leaf_theta (K): a potential temperature in kelvin (a value in degrees Celsius is refused).
+inline constexpr double kLeafThetaMin = 150.0;
+inline constexpr double kLeafThetaMax = 400.0;
+
+//! The canopy heat inputs: canopy.heat, canopy.leaf_theta, canopy.heat_frozen.
+struct CanopyHeatOptions
+{
+    std::string name{"off"};          //!< canopy.heat as given
+    CanopyHeatMode mode{CanopyHeatMode::off};
+    double leaf_theta{0};             //!< canopy.leaf_theta (K), in [150, 400], required with fixed
+    std::string frozen_name{"skip"};  //!< canopy.heat_frozen as given
+    CanopyFrozenHeat frozen{CanopyFrozenHeat::skip};
+    [[nodiscard]] bool on () const { return mode != CanopyHeatMode::off; }
+};
+
 //! The canopy.* inputs (read_canopy_options) and the IDW keys they share.
 struct CanopyOptions
 {
@@ -82,6 +107,7 @@ struct CanopyOptions
     std::string drag_diagonal_name{"derivative"};   //!< canopy.drag_diagonal as given
     CanopyDiagonal drag_diagonal{CanopyDiagonal::derivative};   //!< canopy.drag_diagonal
     CanopyTkeOptions tke;      //!< canopy.tke, beta_p, beta_d, length_alpha (CanopyTke.H)
+    CanopyHeatOptions heat;    //!< canopy.heat, leaf_theta, heat_frozen (CanopyHeat.H)
     int idw_neighbors{6};      //!< terrain.idw_neighbors (map)
     double idw_power{2};       //!< terrain.idw_power (map)
     std::vector<std::string> given;   //!< canopy.* keys in the inputs
@@ -132,6 +158,10 @@ public:
     [[nodiscard]] CanopyDiagonal drag_diagonal () const { return m_diagonal; }
     //! The canopy terms of the closure (a coarse level takes level 0's).
     [[nodiscard]] const CanopyTkeOptions& tke () const { return m_tke; }
+    //! The canopy heat options (a coarse level takes level 0's).
+    [[nodiscard]] const CanopyHeatOptions& heat () const { return m_heat; }
+    //! The leaf area density a (1/m), as drag(); empty unless heat().on().
+    [[nodiscard]] const amrex::MultiFab& lad () const { return m_lad; }
 
     //! The log line: the largest f, the columns with canopy, the mean column
     //! integral of f over them (their mean Cd LAI) and its largest value.
@@ -163,9 +193,11 @@ public:
 private:
     bool m_active{false};
     amrex::MultiFab m_drag;
+    amrex::MultiFab m_lad;     //!< the leaf area density, with canopy.heat on
     std::string m_hash;
     CanopyDiagonal m_diagonal{CanopyDiagonal::derivative};
     CanopyTkeOptions m_tke;
+    CanopyHeatOptions m_heat;
 };
 
 //! The canopy file name in a checkpoint directory.

@@ -57,6 +57,7 @@
 namespace gust {
 
 class CanopyFaceDrag;
+class CanopyHeat;
 struct CanopyRows;
 
 class BoundaryConditions;
@@ -138,6 +139,11 @@ struct ResidualInputs
     //! residual adds f_c |U| u_c to the momentum rows, and implicit_rows the
     //! diagonal of its option at the solver's linearisation state (CanopyRows).
     const CanopyFaceDrag* canopy{nullptr};
+    //! The leaves' heat exchange (CanopyHeat.H); null: none. The residual adds
+    //! lambda (theta - theta_l) to R_theta, and implicit_rows the theta rows'
+    //! lambda at the solver's linearisation state (CanopyRows::theta). Needs
+    //! canopy as well.
+    const CanopyHeat* canopy_heat{nullptr};
 };
 
 //! Scratch fields of residual() and jvp, kept between calls so that a
@@ -219,7 +225,8 @@ void implicit_rows (const amrex::Array<const amrex::MultiFab*, AMREX_SPACEDIM>& 
 //! diagonal gains the point-implicit source term dSdk. With a canopy
 //! (in.canopy) the momentum rows need canopy, the drag's diagonal at the
 //! solver's linearisation state (canopy_rows, CanopyDrag.H): their a_P
-//! gains it.
+//! gains it. With the leaf heat (in.canopy_heat) the theta rows need canopy
+//! too, with its theta diagonal (canopy_heat_rows, CanopyHeat.H).
 void line_jacobian (const amrex::Array<const amrex::MultiFab*, AMREX_SPACEDIM>& F, const amrex::MultiFab& z_nd,
                     const ResidualInputs& in, Equation eq, int dir, const Mesh& mesh, const amrex::Geometry& geom,
                     amrex::MultiFab& tri, const SurfaceState* surface = nullptr, const ClosureFields* fields = nullptr,
