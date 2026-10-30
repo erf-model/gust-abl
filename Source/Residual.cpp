@@ -1,6 +1,7 @@
 #include "Residual.H"
 
 #include "CanopyDrag.H"
+#include "CanopyHeat.H"
 
 #include "Diffusion.H"
 #include "ImplicitOperator.H"
@@ -310,6 +311,11 @@ void residual (const State& q, const ResidualInputs& in, const Mesh& mesh, const
     if (in.surface != nullptr) { apply_wall_k(*ssp, *in.surface, q.tke, R.tke); }
     // The canopy drag before the boundary rows, which replace their rows' residuals.
     if (in.canopy != nullptr) { add_canopy_drag(*in.canopy, q.u, q.v, q.w, R.u, R.v, R.w); }
+    // The leaves' heat exchange, also before the boundary rows (CanopyHeat.H).
+    if (in.canopy_heat != nullptr && in.canopy == nullptr) {
+        amrex::Abort("gust: residual: the leaf heat (canopy_heat) needs the canopy drag (canopy) as well");
+    }
+    if (in.canopy_heat != nullptr) { add_canopy_heat(*in.canopy_heat, q, R.theta); }
     if (in.bc != nullptr) {
         in.bc->add_damping(q, R);
         in.bc->apply_rows(q, R);
@@ -335,8 +341,9 @@ void line_jacobian (const State& q, const ResidualInputs& in, Equation eq, int d
     if (in.closure != nullptr) { evaluate_closure(q, in, mesh, geom, cf); }
     CanopyRows rows;
     if (in.canopy != nullptr) { canopy_rows(*in.canopy, q.u, q.v, q.w, rows); }
+    if (in.canopy_heat != nullptr) { canopy_heat_rows(*in.canopy_heat, q.u, q.v, q.w, rows); }
     line_jacobian({&F[0], &F[1], &F[2]}, q.z_phys_nd, in, eq, dir, mesh, geom, tri, wall ? &ss : nullptr,
-                  in.closure != nullptr ? &cf : nullptr, in.canopy != nullptr ? &rows : nullptr);
+                  in.closure != nullptr ? &cf : nullptr, (in.canopy != nullptr || in.canopy_heat != nullptr) ? &rows : nullptr);
 }
 
 void implicit_rows (const amrex::Array<const amrex::MultiFab*, AMREX_SPACEDIM>& F, const amrex::MultiFab& z_nd,
@@ -381,6 +388,15 @@ void implicit_rows (const amrex::Array<const amrex::MultiFab*, AMREX_SPACEDIM>& 
             amrex::Abort("gust: implicit_rows: the canopy rows are not on the equation's layout");
         }
         amrex::MultiFab::Add(A, ap, 0, coef_P, 1, 0);
+    }
+    if (in.canopy_heat != nullptr && eq == Equation::theta) {
+        if (canopy == nullptr || canopy->theta.empty()) {
+            amrex::Abort("gust: implicit_rows: with the leaf heat the theta rows need its diagonal (canopy_heat_rows)");
+        }
+        if (canopy->theta.boxArray() != A.boxArray() || canopy->theta.DistributionMap() != A.DistributionMap()) {
+            amrex::Abort("gust: implicit_rows: the canopy heat rows are not on the equation's layout");
+        }
+        amrex::MultiFab::Add(A, canopy->theta, 0, coef_P, 1, 0);
     }
     // Last: the Dirichlet rows become identity rows.
     if (in.bc != nullptr) { in.bc->apply_to_implicit(eq, loc, z_nd, A); }

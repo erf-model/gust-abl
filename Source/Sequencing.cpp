@@ -265,6 +265,11 @@ LevelSolver::LevelSolver (const RunSetup& s, const Mesh& mesh, const amrex::Geom
     if (canopy != nullptr) {
         canopy_faces.build(*canopy, geom);
         res_in.canopy = &canopy_faces;
+        const CanopyHeatOptions& ho = canopy->heat();
+        if (ho.on() && !(s.simplec.theta_frozen && ho.frozen == CanopyFrozenHeat::skip)) {
+            canopy_heat.build(*canopy);
+            res_in.canopy_heat = &canopy_heat;
+        }
         const CanopyTkeOptions& t = canopy->tke();
         if (t.on) {
             closure.set_canopy(&canopy->drag(), static_cast<amrex::Real>(t.beta_p), static_cast<amrex::Real>(t.beta_d),

@@ -824,8 +824,9 @@ See :doc:`canopy`. The canopy's drag field is built in every run (with or withou
 plotfile as ``canopy_drag``; its drag acts on the momentum equations and, with ``canopy.tke``, on the k–L closure. A
 key that has no effect with the chosen ``canopy.type``, ``canopy.profile`` or ``canopy.tke`` is refused. A restart
 refuses a canopy geometry other than that of the run it continues (``canopy.type`` and the keys that build the drag
-field); ``canopy.drag_diagonal`` and the closure's canopy terms (``canopy.tke``, ``canopy.beta_p``,
-``canopy.beta_d``, ``canopy.length_alpha``) may change across a restart, as the ``turb.*`` inputs may (the closure's
+field); ``canopy.drag_diagonal``, the closure's canopy terms (``canopy.tke``, ``canopy.beta_p``,
+``canopy.beta_d``, ``canopy.length_alpha``) and the leaf heat (``canopy.heat``, ``canopy.leaf_theta``; ``canopy.heat_frozen`` needs frozen θ, which does
+not restart) may change across a restart, as the ``turb.*`` inputs may (the closure's
 inputs then change the answer, not only the path; a checkpoint of fully frozen closure decisions keeps
 ``canopy.length_alpha``, :doc:`canopy`).
 
@@ -896,6 +897,22 @@ inputs then change the answer, not only the path; a checkpoint of fully frozen c
        the cap off and keeps the sources (ERF's ``erf.forest_canopy_length_alpha``). ``canopy.beta_p``,
        ``canopy.beta_d`` and ``canopy.length_alpha`` all 0 with ``canopy.tke = on`` is refused (it changes
        nothing).
+   * - ``canopy.heat``
+     - ``off``
+     - ``off`` or ``fixed``; ``patches`` or ``map``. The leaves' sensible heat exchange with the air at a fixed leaf
+       temperature (:doc:`canopy`): :math:`\theta` gains :math:`\lambda(\theta_l - \theta)`,
+       :math:`\lambda = 2a/r_b`. ``off`` leaves :math:`\theta` as without it, bit for bit.
+   * - ``canopy.leaf_theta``
+     - none
+     - In [150, 400] (K: a value in °C is refused); required with ``canopy.heat = fixed`` and refused otherwise. The
+       leaves' potential temperature :math:`\theta_l` (ERF's ``erf.forest_leaf_theta_fixed``); "fixed" names this
+       fixed leaf temperature.
+   * - ``canopy.heat_frozen``
+     - ``skip``
+     - ``skip`` or ``blend``; ``canopy.heat = fixed`` with ``simplec.theta = frozen`` only (refused otherwise).
+       ``skip``: the leaf heat is left out, with a warning. ``blend``: in the canopy :math:`\theta` is set each
+       iteration to :math:`\theta_f + w(\theta_l - \theta_f)`, :math:`w = \lambda k/(\varepsilon + \lambda k)`, from
+       the frozen :math:`\theta_f` (:doc:`canopy`).
 
 ``forcing``
 -----------
@@ -1279,7 +1296,8 @@ See :doc:`solution_algorithm`. Read with ``steady.stage = simplec`` or ``simplec
    * - ``simplec.theta``
      - ``solve``
      - ``solve`` or ``frozen``. ``frozen``: θ is the inflow profile's θ by height above the ground on every sequenced
-       level and is not solved; the momentum equations carry no buoyancy force, the closure keeps :math:`N^2`
+       level and is not solved (in a canopy with ``canopy.heat_frozen = blend``, blended towards the leaves' θ,
+       :doc:`canopy`); the momentum equations carry no buoyancy force, the closure keeps :math:`N^2`
        (:doc:`solution_algorithm`, prescribed potential temperature). Needs grid sequencing (``steady.sequencing = 1``,
        ``mesh.hierarchy_levels`` > 1); refused with ``steady.stage = simplec_newton``, with ``io.restart`` and with
        ``init.first_guess = column`` and a non-neutral ``init.column_stability``. With ``frozen``, ``theta`` in

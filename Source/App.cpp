@@ -154,6 +154,11 @@ void run ()
     // the stage writes the drag field with its plotfile.
     const CanopyOptions canopy_opt = read_canopy_options(in.terrain.idw_neighbors, static_cast<double>(in.terrain.idw_power));
     for (auto& e : check_canopy_options(canopy_opt)) { err.push_back(std::move(e)); }
+    if (solve && canopy_opt.active() && canopy_opt.heat.on() && !simplec.theta_frozen
+        && std::find(canopy_opt.given.begin(), canopy_opt.given.end(), "heat_frozen") != canopy_opt.given.end()) {
+        err.emplace_back("canopy.heat_frozen has no effect without simplec.theta = frozen (theta is solved, and the leaf "
+                         "heat acts in its equation)");
+    }
     for (const auto& e : unknown_inputs(parmparse_entries())) {
         // The stage's namespaces were reported above with their reason.
         bool reported = false;
@@ -232,6 +237,23 @@ void run ()
         } else {
             amrex::Print() << "gust: canopy: k terms off (canopy.tke = off): the drag only\n";
         }
+        const CanopyHeatOptions& hh = canopy_opt.heat;
+        if (!hh.on()) {
+            amrex::Print() << "gust: canopy: leaf heat off (canopy.heat = off)\n";
+        } else if (!solve) {
+            amrex::Print() << "gust: canopy: leaf heat (canopy.heat = fixed, canopy.leaf_theta " << hh.leaf_theta
+                           << " K) acts on theta when a stage runs; the leaf area density is written as canopy_lad\n";
+        } else if (!simplec.theta_frozen) {
+            amrex::Print() << "gust: canopy: leaf heat on (canopy.heat = fixed): theta relaxes towards canopy.leaf_theta "
+                           << hh.leaf_theta << " K at the rate 2 a / r_b\n";
+        } else if (hh.frozen == CanopyFrozenHeat::skip) {
+            amrex::Print() << "gust: WARNING: canopy.heat = fixed with simplec.theta = frozen and canopy.heat_frozen = skip: "
+                           << "theta is not solved, so the leaf heat is left out; canopy.heat_frozen = blend sets theta in "
+                           << "the canopy from the leaf exchange instead\n";
+        } else {
+            amrex::Print() << "gust: canopy: leaf heat with theta frozen (canopy.heat_frozen = blend): in the canopy theta = "
+                           << "theta_f + w (" << hh.leaf_theta << " K - theta_f), w = lambda k / (eps + lambda k)\n";
+        }
     };
     std::unique_ptr<InflowProfile> column;
     if (!restart) {
@@ -252,7 +274,8 @@ void run ()
                     for (double f : ccan.f) { layers += (f > 0) ? 1 : 0; fmax = std::max(fmax, f); }
                     amrex::Print() << "gust: column guess: with the canopy's layer profile (f > 0 in " << layers << " of "
                                    << ccan.f.size() << " layers, largest f " << fmax << " 1/m; the k terms "
-                                   << (ccan.tke.on ? "on" : "off") << ")\n";
+                                   << (ccan.tke.on ? "on" : "off")
+                                   << (canopy.heat().on() ? "; the leaf heat is not in the column" : "") << ")\n";
                 }
                 const ColumnGuessResult cg = run_column_guess(in, iopt, sopt, bin, surf, surface_layer, copt, fopt,
                                                             in.io.column_guess_file, ccan);
@@ -350,6 +373,7 @@ void run ()
         build_canopy();
     }
     const amrex::MultiFab* canopy_plot = canopy.active() ? &canopy.drag() : nullptr;
+    const amrex::MultiFab* lad_plot = (canopy.active() && canopy.heat().on()) ? &canopy.lad() : nullptr;
     // Writing a checkpoint of the same name as the one read would move it to
     // <name>.old.NNNN: refused (checked at the final step, after the solve).
     // The file system decides whether the two paths name one directory
@@ -505,7 +529,7 @@ void run ()
         if (!levels.empty()) { amrex::Print() << sequencing_report(levels, driver.history(), status, sopt.criterion.residual_ref_iterations); }
         check_overwrite();   // the step is final here, before any output
         if (in.io.write_plotfile == 1) {
-            const auto name = write_plotfile(in.io.plot_file, state, geom, &mesh.detJ, canopy_plot);
+            const auto name = write_plotfile(in.io.plot_file, state, geom, &mesh.detJ, canopy_plot, lad_plot);
             amrex::Print() << "gust: wrote " << name << "\n";
             write_hierarchy();
         }
@@ -546,7 +570,7 @@ void run ()
 
     // No stage: the run writes its state and stops.
     if (in.io.write_plotfile == 1) {
-        const auto name = write_plotfile(in.io.plot_file, state, geom, &mesh.detJ, canopy_plot);
+        const auto name = write_plotfile(in.io.plot_file, state, geom, &mesh.detJ, canopy_plot, lad_plot);
         amrex::Print() << "gust: wrote " << name << "\n";
         write_hierarchy();
     }

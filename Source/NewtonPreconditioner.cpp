@@ -1,5 +1,6 @@
 #include "NewtonPreconditioner.H"
 
+#include "CanopyHeat.H"
 #include "Convection.H"
 #include "MassFlux.H"
 #include "PseudoTime.H"
@@ -134,6 +135,7 @@ void SimplecPreconditioner::setup (const State& q, const amrex::MultiFab* dtau)
     }
     transport_fluxes(m_q0.u, m_q0.v, m_q0.w, m_z, m_mesh, m_geom, m_F0);
     if (m_in.canopy != nullptr) { canopy_rows(*m_in.canopy, m_q0.u, m_q0.v, m_q0.w, m_canopy_rows); }
+    if (m_in.canopy_heat != nullptr) { canopy_heat_rows(*m_in.canopy_heat, m_q0.u, m_q0.v, m_q0.w, m_canopy_rows); }
     m_in.bc->outflow_transport(m_F0);
     // Once per setup, face_dtau checks m_dtau, the bound of the sweeps too (scalar_sweep repeats it in debug builds only).
     face_dtau(m_dtau, m_mesh, m_geom, m_w.dtau_faces);
@@ -167,7 +169,7 @@ void SimplecPreconditioner::apply (NewtonVector& dq, const NewtonVector& r)
     m_info.predictor = momentum_predictor(m_d, m_R, F0, m_in, m_w.dtau_faces, m_mesh, m_geom, m_sweeps, m_pf, ss, cf,
                                           m_opt.rotation_relax, m_sweep, m_opt.w_vnn_cap,
                                           m_opt.w_vnn_cap_slope_margin,
-                                          m_in.canopy != nullptr ? &m_canopy_rows : nullptr);
+                                          (m_in.canopy != nullptr || m_in.canopy_heat != nullptr) ? &m_canopy_rows : nullptr);
 
     // 2. The pressure correction of du*, with r_p as the source: the
     // homogeneous fill gives du*'s ghost cells (theta back to 0 first).
@@ -209,7 +211,7 @@ void SimplecPreconditioner::apply (NewtonVector& dq, const NewtonVector& r)
     // the transport of the Newton system's theta and k blocks.
     const amrex::Array<const amrex::MultiFab*, 3>& Fs = linear ? F0 : F1;
     m_info.theta = scalar_sweep(Equation::theta, m_d.theta, m_R.theta, Fs, m_z, m_in, m_dtau, m_mesh, m_geom, m_sweeps, 0, ss, cf,
-                                m_w, m_sweep);
+                                m_w, m_sweep, true, m_in.canopy_heat != nullptr ? &m_canopy_rows : nullptr);
     m_info.tke = scalar_sweep(Equation::tke, m_d.tke, m_R.tke, Fs, m_z, m_in, m_dtau, m_mesh, m_geom, m_sweeps, 0, ss, cf, m_w,
                               m_sweep, false);
 

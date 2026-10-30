@@ -27,7 +27,7 @@ namespace gust {
 namespace {
 
 const char* const kCanopyKeys[] = {"type", "file", "height_file", "lai_file", "cd", "cd_file", "profile", "laimax", "drag_diagonal", "tke", "beta_p", "beta_d",
-                                  "length_alpha"};
+                                  "length_alpha", "heat", "leaf_theta", "heat_frozen"};
 constexpr const char* kCanopyMagic = "gust_canopy";
 constexpr int kCanopyVersion = 1;
 
@@ -238,6 +238,44 @@ void fill_patch_drag (amrex::MultiFab& f, const amrex::Geometry& geom, const amr
     amrex::Gpu::streamSynchronize();
 }
 
+// sum(f detJ) / r^2 over each coarse cell's fine cells, on the fine boxes
+// coarsened (local to each box), then copied to the level's layout (which
+// may be gathered on one box) and divided by the coarse detJ.
+void restrict_field (const amrex::MultiFab& ff, const amrex::MultiFab& fine_detJ, const amrex::Geometry& geom,
+                     const Mesh& mesh, const amrex::BoxArray& cell_ba, const amrex::DistributionMapping& dm, int rx, int ry,
+                     amrex::MultiFab& out)
+{
+    const amrex::IntVect ratio(rx, ry, 1);
+    amrex::MultiFab sum(amrex::coarsen(ff.boxArray(), ratio), ff.DistributionMap(), 1, 0);
+    const amrex::Real inv = amrex::Real(1) / static_cast<amrex::Real>(rx * ry);
+    for (amrex::MFIter mfi(sum, false); mfi.isValid(); ++mfi) {
+        const auto s = sum.array(mfi);
+        const auto f = ff.const_array(mfi);
+        const auto J = fine_detJ.const_array(mfi);
+        amrex::ParallelFor(mfi.validbox(), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+        {
+            amrex::Real a = 0;
+            for (int b = 0; b < ry; ++b) {
+                for (int c = 0; c < rx; ++c) { a += f(rx * i + c, ry * j + b, k) * J(rx * i + c, ry * j + b, k); }
+            }
+            s(i, j, k) = a * inv;
+        });
+    }
+    out.clear();
+    out.define(cell_ba, dm, 1, amrex::IntVect(1, 1, 0));
+    out.setVal(0);
+    out.ParallelCopy(sum, 0, 0, 1);
+    for (amrex::MFIter mfi(out, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
+        const auto d = out.array(mfi);
+        const auto J = mesh.detJ.const_array(mfi);
+        amrex::ParallelFor(mfi.tilebox(), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+        {
+            d(i, j, k) /= J(i, j, k);
+        });
+    }
+    image_ghost_columns(out, geom);
+}
+
 } // namespace
 
 CanopyOptions read_canopy_options (int idw_neighbors, double idw_power)
@@ -264,6 +302,10 @@ CanopyOptions read_canopy_options (int idw_neighbors, double idw_power)
     pp.query("drag_diagonal", opt.drag_diagonal_name);
     pp.query("tke", opt.tke.name);
     opt.tke.on = (opt.tke.name != "off");
+    pp.query("heat", opt.heat.name);
+    if (opt.heat.name == "fixed") { opt.heat.mode = CanopyHeatMode::fixed; }
+    pp.query("heat_frozen", opt.heat.frozen_name);
+    if (opt.heat.frozen_name == "blend") { opt.heat.frozen = CanopyFrozenHeat::blend; }
     if (opt.drag_diagonal_name == "picard") { opt.drag_diagonal = CanopyDiagonal::picard; }
     if (opt.drag_diagonal_name == "none") { opt.drag_diagonal = CanopyDiagonal::none; }
     // The numbers as text first: a value that is not a number is reported with the others.
@@ -278,6 +320,7 @@ CanopyOptions read_canopy_options (int idw_neighbors, double idw_power)
     number("beta_p", opt.tke.beta_p);
     number("beta_d", opt.tke.beta_d);
     number("length_alpha", opt.tke.length_alpha);
+    number("leaf_theta", opt.heat.leaf_theta);
     if (opt.type_name == "patches") { opt.type = CanopyType::patches; }
     if (opt.type_name == "map") { opt.type = CanopyType::map; }
     if (opt.profile_name == "lalic_mihailovic") { opt.profile = CanopyProfile::lalic_mihailovic; }
@@ -334,6 +377,25 @@ std::vector<std::string> check_canopy_options (const CanopyOptions& opt)
         if (t.beta_p == 0 && t.beta_d == 0 && t.length_alpha == 0) {
             err.emplace_back("canopy.tke = on with canopy.beta_p, canopy.beta_d and canopy.length_alpha all 0 changes "
                              "nothing; set canopy.tke = off");
+        }
+    }
+    // The leaves' heat exchange (CanopyHeat.H).
+    const CanopyHeatOptions& h = opt.heat;
+    if (h.name != "off" && h.name != "fixed") {
+        err.emplace_back("canopy.heat must be off or fixed (got " + h.name + ")");
+    } else if (!h.on()) {
+        no_effect("leaf_theta", "with canopy.heat = off");
+        no_effect("heat_frozen", "with canopy.heat = off");
+    } else {
+        if (!given("leaf_theta")) {
+            err.emplace_back("canopy.heat = fixed needs canopy.leaf_theta, the leaves' potential temperature (K)");
+        } else if (!(h.leaf_theta >= kLeafThetaMin && h.leaf_theta <= kLeafThetaMax)) {
+            err.emplace_back("canopy.leaf_theta must be in [" + std::to_string(int(kLeafThetaMin)) + ", "
+                             + std::to_string(int(kLeafThetaMax)) + "] K, a potential temperature in kelvin (got "
+                             + std::to_string(h.leaf_theta) + ")");
+        }
+        if (h.frozen_name != "skip" && h.frozen_name != "blend") {
+            err.emplace_back("canopy.heat_frozen must be skip or blend (got " + h.frozen_name + ")");
         }
     }
     if (opt.type == CanopyType::patches) {
@@ -456,12 +518,24 @@ void Canopy::build (const CanopyOptions& opt, const amrex::Geometry& geom, const
     m_hash = hash_inputs(opt);
     m_diagonal = opt.drag_diagonal;
     m_tke = opt.tke;
+    m_heat = opt.heat;
     m_drag.clear();
     m_drag.define(cell_ba, dm, 1, amrex::IntVect(1, 1, 0));
     m_drag.setVal(0);
+    m_lad.clear();
+    if (m_heat.on()) {
+        m_lad.define(cell_ba, dm, 1, amrex::IntVect(1, 1, 0));
+        m_lad.setVal(0);
+    }
     const int k0 = geom.Domain().smallEnd(2);
     if (opt.type == CanopyType::patches) {
-        fill_patch_drag(m_drag, geom, z_nd, k0, read_canopy_patches(opt.file, "canopy.file"));
+        std::vector<CanopyPatch> patches = read_canopy_patches(opt.file, "canopy.file");
+        fill_patch_drag(m_drag, geom, z_nd, k0, patches);
+        if (m_heat.on()) {
+            // The leaf area density: the same cell means with Cd = 1.
+            for (auto& p : patches) { p.cd = 1; }
+            fill_patch_drag(m_lad, geom, z_nd, k0, patches);
+        }
     } else {
         // Each column's height, LAI and Cd, by IDW on the host (as the
         // roughness map), on the ground slab of the cells.
@@ -491,13 +565,22 @@ void Canopy::build (const CanopyOptions& opt, const amrex::Geometry& geom, const
             // h is freed at the end of this iteration: the copy must be done.
             amrex::Gpu::streamSynchronize();
         }
-        if (opt.profile == CanopyProfile::uniform) {
-            fill_map_drag(m_drag, cols, z_nd, k0, UniformFraction{});
-        } else {
-            fill_map_drag(m_drag, cols, z_nd, k0, LmFraction{make_lm_profile(opt.laimax)});
+        auto fill = [&] (amrex::MultiFab& f) {
+            if (opt.profile == CanopyProfile::uniform) {
+                fill_map_drag(f, cols, z_nd, k0, UniformFraction{});
+            } else {
+                fill_map_drag(f, cols, z_nd, k0, LmFraction{make_lm_profile(opt.laimax)});
+            }
+        };
+        fill(m_drag);
+        if (m_heat.on()) {
+            // The leaf area density: the same cell means with Cd = 1.
+            cols.setVal(1, 2, 1);
+            fill(m_lad);
         }
     }
     image_ghost_columns(m_drag, geom);
+    if (m_heat.on()) { image_ghost_columns(m_lad, geom); }
 }
 
 void Canopy::restrict_from (const Canopy& fine, const amrex::MultiFab& fine_detJ, const amrex::Geometry& geom,
@@ -520,38 +603,10 @@ void Canopy::restrict_from (const Canopy& fine, const amrex::MultiFab& fine_detJ
     m_hash = fine.m_hash;
     m_diagonal = fine.m_diagonal;
     m_tke = fine.m_tke;
-    // sum(f detJ) / r^2 over each coarse cell's fine cells, on the fine boxes
-    // coarsened (local to each box), then copied to the level's layout (which
-    // may be gathered on one box) and divided by the coarse detJ.
-    const amrex::IntVect ratio(rx, ry, 1);
-    amrex::MultiFab sum(amrex::coarsen(ff.boxArray(), ratio), ff.DistributionMap(), 1, 0);
-    const amrex::Real inv = amrex::Real(1) / static_cast<amrex::Real>(rx * ry);
-    for (amrex::MFIter mfi(sum, false); mfi.isValid(); ++mfi) {
-        const auto s = sum.array(mfi);
-        const auto f = ff.const_array(mfi);
-        const auto J = fine_detJ.const_array(mfi);
-        amrex::ParallelFor(mfi.validbox(), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
-        {
-            amrex::Real a = 0;
-            for (int b = 0; b < ry; ++b) {
-                for (int c = 0; c < rx; ++c) { a += f(rx * i + c, ry * j + b, k) * J(rx * i + c, ry * j + b, k); }
-            }
-            s(i, j, k) = a * inv;
-        });
-    }
-    m_drag.clear();
-    m_drag.define(cell_ba, dm, 1, amrex::IntVect(1, 1, 0));
-    m_drag.setVal(0);
-    m_drag.ParallelCopy(sum, 0, 0, 1);
-    for (amrex::MFIter mfi(m_drag, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
-        const auto d = m_drag.array(mfi);
-        const auto J = mesh.detJ.const_array(mfi);
-        amrex::ParallelFor(mfi.tilebox(), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
-        {
-            d(i, j, k) /= J(i, j, k);
-        });
-    }
-    image_ghost_columns(m_drag, geom);
+    m_heat = fine.m_heat;
+    restrict_field(ff, fine_detJ, geom, mesh, cell_ba, dm, rx, ry, m_drag);
+    m_lad.clear();
+    if (m_heat.on()) { restrict_field(fine.m_lad, fine_detJ, geom, mesh, cell_ba, dm, rx, ry, m_lad); }
 }
 
 std::vector<double> Canopy::column_profile (const amrex::Geometry& geom, double& spread) const
