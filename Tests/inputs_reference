@@ -399,6 +399,18 @@
 #     λ k), from the frozen θ_f (docs/canopy.rst).
 
 # ==================================================================================================================
+# abl
+# ==================================================================================================================
+# See named-setups, docs/howto.rst. Read with the SIMPLEC stage only; refused otherwise. Without these keys nothing
+# is checked and no default changes. A name that the deck's other inputs contradict stops the run.
+#
+# abl.drive =    # none
+#     inflow_only, couette, pressure_driven, geostrophic_column or geostrophic_inflow.
+#
+# abl.theta =    # none
+#     neutral, capped, frozen or surface_flux. abl.drive = couette needs neutral.
+
+# ==================================================================================================================
 # forcing
 # ==================================================================================================================
 # See docs/governing_equations.rst. Read with the SIMPLEC stage only.

@@ -1,5 +1,6 @@
 #include "App.H"
 
+#include "AblSetup.H"
 #include "BoundaryConditions.H"
 #include "Canopy.H"
 #include "CanopyDrag.H"
@@ -51,6 +52,14 @@ void run ()
     // stage also the closure (turb.*), the forcing (forcing.*), the
     // convection (convection.*), the stage's own (simplec.*) and the driver's
     // (steady.*).
+    // The named set-up (AblSetup.H) gives its keys their defaults before any reader.
+    const AblSetupOptions abl = read_abl_setup_options();
+    if (!abl.errors.empty()) {
+        std::string all = "gust: invalid inputs:";
+        for (const auto& e : abl.errors) { all += "\n  " + e; }
+        amrex::Abort(all);
+    }
+    apply_abl_setup_defaults(abl);
     const Inputs in = parse_inputs();
     auto err = validate(in);
     const InitOptions iopt = read_init_options();
@@ -183,6 +192,23 @@ void run ()
         err.emplace_back("io.column_guess_file has no effect without init.first_guess = column");
     }
     for (const auto& e : check_stable_functions(iopt, surf, surface_layer)) { err.push_back(e); }
+    {
+        AblSetupFacts facts;
+        facts.bc = bin;
+        facts.forcing = fopt;
+        facts.init = iopt;
+        facts.surface = surf;
+        facts.simplec = simplec;
+        if (solve && abl.active() && bin.inflow.kind == InflowProfileOptions::Kind::file && !bin.inflow.file.empty()) {
+            facts.inflow_table_theta = read_inflow_table(bin.inflow.file).theta;
+        }
+        facts.max_geom_lscale = copt.max_geom_lscale;
+        facts.surface_layer = surface_layer;
+        facts.restart = !in.io.restart.empty();
+        facts.solve = solve;
+        facts.canopy_heat = canopy_opt.active() && canopy_opt.heat.on();
+        for (auto& e : check_abl_setup(abl, facts)) { err.push_back(std::move(e)); }
+    }
     if (!err.empty()) {
         std::string all = "gust: invalid inputs:";
         for (const auto& e : err) { all += "\n  " + e; }
@@ -211,6 +237,10 @@ void run ()
     }
     const amrex::DistributionMapping dm(ba);
 
+    if (abl.active()) {
+        amrex::Print() << "gust: set-up: abl.drive = " << abl_drive_name(abl.drive) << ", abl.theta = "
+                       << abl_theta_name(abl.theta) << "\n";
+    }
     amrex::Print() << "gust: " << in.mesh.n_cell << " cells, " << ba.size()
                    << " boxes (each spans the full z column)\n";
 

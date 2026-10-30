@@ -143,6 +143,81 @@ Add Coriolis forcing and a geostrophic wind
 Start such cases from the single-column profile, ``init.first_guess = column`` (:doc:`initial_conditions`). It
 removes the slow inertial adjustment and typically halves the iterations.
 
+.. _named-setups:
+
+Name the boundary-layer set-up
+------------------------------
+
+``abl.drive`` says what pushes the flow and ``abl.theta`` how :math:`\theta` is treated. Neither adds physics. A name
+gives the keys below a default when the deck leaves them out, then checks the deck's final inputs. A key that
+contradicts the name stops the run, naming the name and the key. A named run matches the same deck with the keys written out, bit
+for bit. Other values, such as ``forcing.latitude``, ``forcing.ug`` and ``bc.inflow_ustar``, stay in the deck.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 26 30 24
+
+   * - ``abl.drive``
+     - Defaults it sets
+     - The deck must have
+     - Use and limit
+   * - ``inflow_only``
+     - none
+     - An inflow face; no Coriolis, no pressure gradient
+     - Short domains. The profile decays with fetch.
+   * - ``couette``
+     - ``bc.inflow_tke_length = unbounded``, ``turb.max_geom_lscale = 1e6``
+     - Log-law inflow, a surface layer with a uniform ``bc.surface_z0`` equal to ``bc.inflow_z0``, ``bc.zhi = no_slip_wall``
+       with a ``bc.zhi_wall_velocity`` along ``bc.inflow_direction``; no Coriolis,
+       no pressure gradient; ``abl.theta = neutral``
+     - A constant-stress layer with little drift. The lid is artificial, and its speed is not checked against the log law.
+   * - ``pressure_driven``
+     - none
+     - A horizontal ``forcing.pressure_gradient``, ``bc.zhi = slip_wall``; no Coriolis. Over a uniform :math:`\theta`, no
+       Rayleigh layer on :math:`u, v`; over a stratified one, a Rayleigh layer on :math:`u, v` (above an inversion the
+       wind has no steady state without it, and :math:`u_*^2 = F H` then does not hold)
+     - Shallow domains, :math:`u_*^2 = F H`. The wind does not turn with height.
+   * - ``geostrophic_column``
+     - ``forcing.coriolis = 1``, ``forcing.geostrophic = 1``
+     - ``forcing.ug``, ``forcing.vg`` or, without inflow faces, ``init.column_target_*``; ``init.first_guess = column`` or a restart; inflow faces take
+       ``bc.inflow_profile = file``; no pressure gradient
+     - Deep domains (top near 1.5 km or higher). The table comes from an earlier periodic run's
+       ``io.column_guess_file``.
+   * - ``geostrophic_inflow``
+     - ``forcing.coriolis = 1``, ``forcing.geostrophic = 1``
+     - ``forcing.ug`` or ``forcing.vg``; an inflow face; no pressure gradient
+     - Rotation with a given inflow, such as a measured one. An inflow that is not in balance turns over the fetch.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 26 54
+
+   * - ``abl.theta``
+     - Defaults it sets
+     - The deck must have
+   * - ``neutral``
+     - none
+     - Uniform ``bc.theta_profile`` (and table), a neutral surface, a neutral column first guess, no ``bc.zhi_theta_grad``, ``simplec.theta = solve``, no ``canopy.heat``
+   * - ``capped``
+     - ``bc.rayleigh_fields = w theta``
+     - A sounding (or table) that rises and never falls, a neutral column first guess, ``bc.zhi_theta_grad`` > 0 and a Rayleigh layer on :math:`w` and
+       :math:`\theta` (the heat through the top needs a sink), a neutral surface, ``simplec.theta = solve``
+   * - ``frozen``
+     - ``simplec.theta = frozen``
+     - A stratified ``bc.theta_profile`` or table (``geostrophic_column``: a table), a neutral surface and column. The
+       limits of ``simplec.theta = frozen`` apply: grid sequencing, no restart, no Newton stage.
+   * - ``surface_flux``
+     - ``bc.surface_stability = heat_flux``
+     - A surface layer with a non-zero ``bc.surface_heat_flux`` or ``init.column_mol``; a heat sink, an outflow face,
+       a Rayleigh layer on :math:`\theta` or a marching column (``init.column_time`` > 0); ``simplec.theta = solve``.
+       A column first guess also needs the ``init.column_stability`` that :doc:`initial_conditions` gives.
+
+With ``bc.inflow_profile = file`` the air's :math:`\theta` is the table's, and ``bc.theta_profile`` is the reference
+only. ``capped``, ``frozen`` and ``surface_flux`` refuse ``forcing.gravity = 0``. The two keys can be used alone; every pair
+is allowed except ``couette`` with anything but ``neutral``. The named set-ups do not cover a geostrophic wind that
+varies with height. Coriolis without a geostrophic wind, and Coriolis with a pressure gradient, have no name: the
+former has nothing to balance the Coriolis force and the latter duplicates geostrophic forcing.
+
 .. _converge-faster:
 
 Converge faster
