@@ -18,6 +18,10 @@ The same escarpment with a stable sounding tests `simplec.theta = frozen` (θ pr
 height above the ground, buoyancy in the closure only; docs/solution_algorithm.rst, "Prescribed potential
 temperature"): `inputs_frozen_theta` and `check_frozen_theta.py`.
 
+Both decks also test the leaves' heat exchange (`canopy.heat = fixed`, docs/canopy.rst, "Canopy heat"):
+`check_canopy_heat.py` runs θ solved with leaves cooler than the air, and θ frozen with `canopy.heat_frozen = skip`
+and `blend`.
+
 ## Files
 | File | Role |
 |---|---|
@@ -26,6 +30,7 @@ temperature"): `inputs_frozen_theta` and `check_frozen_theta.py`.
 | `check_forested_escarpment.py` | Runs the six runs below, each in its own folder with its tables, and checks them; the exit code is the verdict. |
 | `inputs_frozen_theta` | The deck with a stable sounding (300 K to 1000 m, an 8 K inversion to 1100 m, 3 K/km above); `simplec.theta = frozen` on the command line. |
 | `inputs_frozen_theta_file` | The same with the inflow from a table (`frozen_inflow.txt`, written by the check) whose θ differs from the sounding. |
+| `check_canopy_heat.py` | The leaf-heat runs `cool/` (θ solved, leaves at 298 K, 2 ranks), `cool_np4/`, `frozen/` (frozen θ, no heat), `skip/` and `blend/` (frozen θ, leaves at 304 K), each to the verdict, and their checks (its docstring). |
 | `check_frozen_theta.py` | The frozen-θ runs `frozen/` (2 ranks, to the verdict), `np4/`, `file/` (the table deck, `init.z_agl_min = 5`, 3 iterations) and `solve/` (θ solved, 5 iterations), and their checks (its docstring). |
 
 The runs: `np2/`, `np1/`, `np4/` to the verdict on 2, 1 and 4 ranks; `first/` for 40 iterations, then continued from
@@ -76,6 +81,23 @@ Frozen θ (`check_frozen_theta.py --max-iterations 400`):
 | Table profile: first-cell Rt (the ground ghosts extend the first two cells) | min 0.023 | above 0 |
 | θ solved: θ residual | above 0 in every row | above 0 |
 
+Canopy heat (`check_canopy_heat.py --max-iterations 400`):
+
+| Check | Measured | Tolerance |
+|---|---|---|
+| Iterations to the verdict: cool, cool on 4 ranks, frozen, skip, blend | 201, 201, 209, 209, 212 | at most 400 |
+| cool: θ range (leaves 298 K, air 300 K) | 298.00028 to 300.00000003 K | within [298, 300] K ± 1e-6 K |
+| cool: θ upstream of the forest (x < 2000 m) against 300 K | 1.5e-8 K | 1e-3 K |
+| cool: 4 ranks against 2 (u, v, w, p, k; θ) | 4.2e-11; 5.9e-9 K | 1e-9; 1e-7 K |
+| skip: warning, and every field against the frozen run | logged, 0 | logged, bit for bit |
+| blend: θ outside the canopy against the frozen run | 0 (56072 cells) | bit for bit |
+| blend: θ in the canopy between θ_f and 304 K; largest weight w | yes (1528 cells); 0.69 | yes; above 0.05 |
+
+With the leaves warmer than the air and θ solved (buoyancy in the momentum equations) the run converges up to
+301.5 K over the neutral 300 K air (204 iterations) and does not settle at 302 K: r cycles between 0.3 and 0.4, also
+at `steady.cfl_max = 2` for 1500 iterations (docs/canopy.rst has the sweep). The heated canopy air is
+unstably stratified; the check does not run that case. θ frozen with `blend` is the route for warm leaves.
+
 ## CTest
 `rt_forested_escarpment` (label `regression`, double precision only; about 1 minute on two ranks) and
-`rt_frozen_theta` (label `regression`; about 30 s on two ranks).
+`rt_frozen_theta` (label `regression`; about 30 s on two ranks) and `rt_canopy_heat` (label `regression`; about 2 min).
