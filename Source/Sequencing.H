@@ -62,6 +62,7 @@
 #include "BoundaryConditions.H"
 #include "Canopy.H"
 #include "CanopyDrag.H"
+#include "CanopyHeat.H"
 #include "Closure.H"
 #include "Convection.H"
 #include "Driver.H"
@@ -199,6 +200,9 @@ public:
     const Canopy* canopy{nullptr};
     //! The canopy's drag on the velocity faces (CanopyDrag.H), res_in.canopy; empty without a canopy.
     CanopyFaceDrag canopy_faces;
+    //! The leaves' heat exchange (CanopyHeat.H), res_in.canopy_heat; unused without canopy.heat, and
+    //! with simplec.theta = frozen and canopy.heat_frozen = skip.
+    CanopyHeat canopy_heat;
     ResidualInputs res_in;
 
     [[nodiscard]] Driver& driver () { return *m_driver; }

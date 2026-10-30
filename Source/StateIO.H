@@ -18,11 +18,12 @@ const amrex::Vector<std::string>& plot_var_names ();
 //! the nodal heights go to <plotfile>/Level_0/z_phys_nd as a VisMF MultiFab,
 //! ghost nodes included. With detJ (the mesh's cell volume factor), it is
 //! added as an eighth variable "detJ". With canopy_drag (the canopy's drag
-//! field f, Canopy.H) it is added after them as "canopy_drag". Returns the
-//! directory name.
+//! field f, Canopy.H) it is added after them as "canopy_drag", and with
+//! canopy_lad (the leaf area density, with canopy.heat on) as "canopy_lad".
+//! Returns the directory name.
 std::string write_plotfile (const std::string& prefix, const State& state,
                             const amrex::Geometry& geom, const amrex::MultiFab* detJ = nullptr,
-                            const amrex::MultiFab* canopy_drag = nullptr);
+                            const amrex::MultiFab* canopy_drag = nullptr, const amrex::MultiFab* canopy_lad = nullptr);
 
 //! Write <prefix>NNNNN: a text Header (format version, bytes per real, step,
 //! mesh in hex floats, BoxArray) and every State field as a VisMF MultiFab

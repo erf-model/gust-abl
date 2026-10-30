@@ -75,6 +75,9 @@ void add_canopy_drag_to_implicit (const CanopyFaceDrag& drag, int c, const amrex
 struct CanopyRows
 {
     amrex::Array<amrex::MultiFab, AMREX_SPACEDIM> ap;
+    //! The theta rows' diagonal of the leaf heat (canopy_heat_rows, CanopyHeat.H) on the cells; empty without it.
+    //! Like ap, it is the caller's to refresh at each linearisation state (implicit_rows checks only its layout).
+    amrex::MultiFab theta;
 };
 
 //! rows.ap[c] = the diagonal of drag.diagonal() at (u, v, w) (defined here if

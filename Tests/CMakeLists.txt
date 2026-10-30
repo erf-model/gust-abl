@@ -39,6 +39,7 @@ add_executable(unit_tests
     Unit_Tests/test_SurfaceRoughness.cpp
     Unit_Tests/test_Canopy.cpp
     Unit_Tests/test_CanopyDrag.cpp
+    Unit_Tests/test_CanopyHeat.cpp
     Unit_Tests/test_CanopyTke.cpp
     Unit_Tests/test_BoundaryConditions.cpp
     Unit_Tests/test_Closure.cpp
@@ -269,6 +270,24 @@ gust_add_test(NAME abort_canopy_inputs NP 1 LABELS "regression;smoke"
                      "canopy\\.beta_p must be in \\[0, 1\\]"
                      "canopy\\.leaf_area.*not an input of namespace 'canopy'" --
               COMMAND $<TARGET_FILE:gust> ${CANOPY_CASE}/inputs_abort_canopy ${GUST_TEST_AMREX_FLAGS})
+# The leaf heat's inputs (CanopyHeat.H): a missing leaf temperature, a bad canopy.heat_frozen and
+# canopy.heat_frozen without simplec.theta = frozen.
+gust_add_test(NAME abort_canopy_heat_inputs NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT}
+                     "canopy\\.heat = fixed needs canopy\\.leaf_theta"
+                     "canopy\\.heat_frozen must be skip or blend \\(got relax\\)" --
+              COMMAND $<TARGET_FILE:gust> ${CANOPY_CASE}/inputs_canopy canopy.file=${CANOPY_CASE}/canopy_patches.txt
+                      canopy.heat=fixed canopy.heat_frozen=relax ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_canopy_heat_celsius NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT}
+                     "canopy\\.leaf_theta must be in \\[150, 400\\] K, a potential temperature in kelvin \\(got 25" --
+              COMMAND $<TARGET_FILE:gust> ${CANOPY_CASE}/inputs_canopy canopy.file=${CANOPY_CASE}/canopy_patches.txt
+                      canopy.heat=fixed canopy.leaf_theta=25 ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_canopy_heat_frozen_unused NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT}
+                     "canopy\\.heat_frozen has no effect without simplec\\.theta = frozen" --
+              COMMAND $<TARGET_FILE:gust> ${ESCARPMENT_CASE}/inputs_forested_escarpment init.first_guess=profile
+                      canopy.heat=fixed canopy.leaf_theta=302 canopy.heat_frozen=blend ${GUST_TEST_AMREX_FLAGS})
 
 # --- Decks that must abort, with the input named ------------------------------
 gust_add_test(NAME abort_unknown_key NP 1 LABELS "regression;smoke"
@@ -1018,6 +1037,14 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
                       PREFIX ${Python3_EXECUTABLE} ${ESCARPMENT_CASE}/check_frozen_theta.py --max-iterations 400 --
                       COMMAND $<TARGET_FILE:gust> ${ESCARPMENT_CASE}/inputs_frozen_theta ${GUST_TEST_AMREX_FLAGS})
         set_tests_properties(rt_frozen_theta PROPERTIES ENVIRONMENT PYTHONDONTWRITEBYTECODE=1 TIMEOUT 900)
+        # The leaves' heat exchange on the same escarpment (check_canopy_heat.py, about 2 min): theta solved
+        # with leaves cooler than the air stays between the two and has the same answer on 2 and 4 ranks; with
+        # theta frozen, canopy.heat_frozen = skip gives the frozen run bit for bit and blend changes theta in
+        # the canopy only, between the frozen theta and the leaves'.
+        gust_add_test(NAME rt_canopy_heat NP 2 LABELS "regression"
+                      PREFIX ${Python3_EXECUTABLE} ${ESCARPMENT_CASE}/check_canopy_heat.py --max-iterations 400 --
+                      COMMAND $<TARGET_FILE:gust> ${GUST_TEST_AMREX_FLAGS})
+        set_tests_properties(rt_canopy_heat PROPERTIES ENVIRONMENT PYTHONDONTWRITEBYTECODE=1 TIMEOUT 900)
     endif()
     # The slope margin of the cap on a steep ridge with a 0.4 m
     # first cell (Canonical_RANS/Steep_Ridge_Thin_Cell). With the default margin

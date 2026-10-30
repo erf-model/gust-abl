@@ -1,6 +1,7 @@
 #include "Simplec.H"
 
 #include "CVFluxes.H"
+#include "CanopyHeat.H"
 #include "Convection.H"
 #include "ImplicitOperator.H"
 #include "MassFlux.H"
@@ -224,7 +225,8 @@ ScalarSweepResult scalar_sweep (Equation eq, amrex::MultiFab& field, const amrex
                                 const amrex::Array<const amrex::MultiFab*, AMREX_SPACEDIM>& F, const amrex::MultiFab& z_nd,
                                 const ResidualInputs& in, const amrex::MultiFab& dtau, const Mesh& mesh,
                                 const amrex::Geometry& geom, int sweeps, amrex::Real floor, const SurfaceState* surface,
-                                const ClosureFields* fields, SimplecWorkspace& w, const LineSweepOptions& sweep, bool clip)
+                                const ClosureFields* fields, SimplecWorkspace& w, const LineSweepOptions& sweep, bool clip,
+                                const CanopyRows* canopy)
 {
     const char* op = "scalar_sweep";
     if (eq != Equation::theta && eq != Equation::tke) { amrex::Abort("gust: scalar_sweep: eq must be theta or tke"); }
@@ -237,7 +239,7 @@ ScalarSweepResult scalar_sweep (Equation eq, amrex::MultiFab& field, const amrex
     require_positive(op, {"dtau"}, {&dtau}, false);
 #endif
     ScalarSweepResult res;
-    implicit_rows(F, z_nd, in, eq, mesh, geom, w.A, surface, fields);
+    implicit_rows(F, z_nd, in, eq, mesh, geom, w.A, surface, fields, canopy);
     const amrex::BoxArray& ba = field.boxArray();
     const amrex::DistributionMapping& dm = field.DistributionMap();
     if (w.ap.empty()) {
@@ -310,6 +312,15 @@ SimplecStage::SimplecStage (const SimplecOptions& opt, int sweeps, const Residua
     if (opt.theta_frozen == in.buoyancy_in_momentum) {
         amrex::Abort("gust: SimplecStage: simplec.theta = frozen needs the residual inputs without buoyancy in momentum "
                      "(buoyancy_in_momentum = false), and only it turns that off");
+    }
+    if (opt.theta_frozen && in.canopy_heat != nullptr) {
+        // The leaf heat with theta frozen is the blend (CanopyHeat.H); skip passes no canopy_heat.
+        if (in.canopy_heat->frozen() != CanopyFrozenHeat::blend) {
+            amrex::Abort("gust: SimplecStage: simplec.theta = frozen takes the leaf heat only with canopy.heat_frozen = blend");
+        }
+        if (closure == nullptr) {
+            amrex::Abort("gust: SimplecStage: canopy.heat_frozen = blend needs the k-L closure (its k and eps)");
+        }
     }
     if (std::isnan(tke_floor) || !(tke_floor >= 0)) { amrex::Abort("gust: SimplecStage: tke_floor must be >= 0 (turb.tke_floor)"); }
     for (const amrex::Real sc : {in.jvp_scales.velocity, in.jvp_scales.theta, in.jvp_scales.tke}) {
@@ -498,9 +509,10 @@ void SimplecStage::iterate (State& q, const amrex::MultiFab& dtau)
     const ClosureFields* cf = (m_in.closure != nullptr) ? &m_cf : nullptr;
     // The canopy drag's diagonal at q, before the predictor updates any component.
     if (m_in.canopy != nullptr) { canopy_rows(*m_in.canopy, q.u, q.v, q.w, m_canopy_rows); }
+    if (m_in.canopy_heat != nullptr) { canopy_heat_rows(*m_in.canopy_heat, q.u, q.v, q.w, m_canopy_rows); }
     m_info.predictor = momentum_predictor(q, m_R, F, m_in, m_w.dtau_faces, m_mesh, m_geom, m_sweeps, m_pf, ss, cf, m_opt.rotation_relax,
                                           m_sweep, m_opt.w_vnn_cap, m_opt.w_vnn_cap_slope_margin,
-                                          m_in.canopy != nullptr ? &m_canopy_rows : nullptr);
+                                          (m_in.canopy != nullptr || m_in.canopy_heat != nullptr) ? &m_canopy_rows : nullptr);
     // 4. The pressure correction on u* (its ghosts refilled first).
     m_in.bc->fill_ghosts(q, m_in.surface, m_in.buoyancy, false, nullptr);
     m_info.pressure = pressure_correction(q, m_pf, m_solver, m_pbc, m_opt.alpha_p, m_mesh, m_geom, m_w);
@@ -518,6 +530,18 @@ void SimplecStage::iterate (State& q, const amrex::MultiFab& dtau)
         m_in.bc->fill_ghosts(q, m_in.surface, m_in.buoyancy, false, nullptr);
         transport_fluxes(q.u, q.v, q.w, m_z, m_mesh, m_geom, m_w.transport);
         m_in.bc->outflow_transport(m_w.transport);
+        if (m_in.canopy_heat != nullptr) {
+            // canopy.heat_frozen = blend (CanopyHeat.H): the frozen field is theta at this stage's first
+            // iteration (the level's reset_frozen_theta, Sequencing.cpp); the blend uses the corrected
+            // velocity and the closure's k and eps of step 2. The ghosts are filled at step 1 of the next
+            // iteration.
+            if (m_theta_frozen.empty()) {
+                m_theta_frozen.define(q.theta.boxArray(), q.theta.DistributionMap(), 1, 0);
+                amrex::MultiFab::Copy(m_theta_frozen, q.theta, 0, 0, 1, 0);
+            }
+            m_info.theta = ScalarSweepResult();
+            m_info.theta.max_dq = blend_frozen_theta(*m_in.canopy_heat, m_theta_frozen, m_cf.eps, m_tke_floor, q);
+        }
     } else {
         convection(Loc::cell, q.theta, F, m_in.theta, m_mesh, m_geom, m_w.conv0);
         m_in.bc->fill_ghosts(q, m_in.surface, m_in.buoyancy, false, nullptr);
@@ -527,7 +551,7 @@ void SimplecStage::iterate (State& q, const amrex::MultiFab& dtau)
         amrex::MultiFab::Subtract(m_w.conv1, m_w.conv0, 0, 0, 1, 0);
         amrex::MultiFab::Add(m_R.theta, m_w.conv1, 0, 0, 1, 0);
         m_info.theta = scalar_sweep(Equation::theta, q.theta, m_R.theta, F, m_z, m_in, dtau, m_mesh, m_geom, m_sweeps, 0, ss, cf,
-                                    m_w, m_sweep);
+                                    m_w, m_sweep, true, m_in.canopy_heat != nullptr ? &m_canopy_rows : nullptr);
     }
     m_info.tke = scalar_sweep(Equation::tke, q.tke, m_R.tke, F, m_z, m_in, dtau, m_mesh, m_geom, m_sweeps, m_tke_floor, ss, cf, m_w,
                               m_sweep);

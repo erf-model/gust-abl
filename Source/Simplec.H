@@ -160,14 +160,15 @@ struct ScalarSweepResult
 //! with the surface state and the closure's fields at the state (both as for
 //! implicit_rows), dtau the cell-centred step, sweeps >= 1. For tke the
 //! result is clipped at floor (>= 0) unless clip is false (the Newton
-//! preconditioner's increment, which has no floor). The field's ghosts are
-//! not refilled.
+//! preconditioner's increment, which has no floor). canopy: the theta rows'
+//! leaf heat diagonal (needed for theta with in.canopy_heat, CanopyHeat.H).
+//! The field's ghosts are not refilled.
 ScalarSweepResult scalar_sweep (Equation eq, amrex::MultiFab& field, const amrex::MultiFab& R_eq,
                                 const amrex::Array<const amrex::MultiFab*, AMREX_SPACEDIM>& F, const amrex::MultiFab& z_nd,
                                 const ResidualInputs& in, const amrex::MultiFab& dtau, const Mesh& mesh,
                                 const amrex::Geometry& geom, int sweeps, amrex::Real floor, const SurfaceState* surface,
                                 const ClosureFields* fields, SimplecWorkspace& w, const LineSweepOptions& sweep = LineSweepOptions(),
-                                bool clip = true);
+                                bool clip = true, const CanopyRows* canopy = nullptr);
 
 //! The residual names and monitors every steady stage reports (the
 //! driver requires them to agree across its stages): u, v, w, p, theta, tke;
@@ -258,6 +259,8 @@ private:
     ClosureFields m_cf;
     SurfaceState m_ss;
     CanopyRows m_canopy_rows;   //!< the canopy drag's diagonal at q (CanopyDrag.H), each predictor step
+    //! canopy.heat_frozen = blend: the frozen theta of the level (theta at the stage's first iteration).
+    amrex::MultiFab m_theta_frozen;
     PredictorFields m_pf;
     SimplecWorkspace m_w;
     ResidualWorkspace m_rws;    //!< the residual's scratch
