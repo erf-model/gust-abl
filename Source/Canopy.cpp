@@ -389,7 +389,7 @@ std::vector<std::string> check_canopy_options (const CanopyOptions& opt)
     } else {
         if (!given("leaf_theta")) {
             err.emplace_back("canopy.heat = fixed needs canopy.leaf_theta, the leaves' potential temperature (K)");
-        } else if (!(h.leaf_theta >= kLeafThetaMin && h.leaf_theta <= kLeafThetaMax)) {
+        } else if (!std::isfinite(h.leaf_theta) || !(h.leaf_theta >= kLeafThetaMin && h.leaf_theta <= kLeafThetaMax)) {
             err.emplace_back("canopy.leaf_theta must be in [" + std::to_string(int(kLeafThetaMin)) + ", "
                              + std::to_string(int(kLeafThetaMax)) + "] K, a potential temperature in kelvin (got "
                              + std::to_string(h.leaf_theta) + ")");

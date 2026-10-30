@@ -23,6 +23,7 @@
 #include "PoissonTestHelpers.H"
 #include "Reductions.H"
 #include "Residual.H"
+#include "TestHelpers.H"
 
 #include <gtest/gtest.h>
 
@@ -532,9 +533,15 @@ TEST(CanopyHeat, OptionChecks)
     };
     gust::CanopyOptions o = patch_options(true);
     EXPECT_EQ(errors(o), "");
-    for (const double bad : {-1.0, 25.0, 149.9, 400.1, std::nan(""), HUGE_VAL}) {
+    for (const double bad : {-1.0, 25.0, 149.9, 400.1, HUGE_VAL}) {
         o.heat.leaf_theta = bad;
         EXPECT_NE(errors(o).find("canopy.leaf_theta must be in [150, 400] K"), std::string::npos) << bad;
+    }
+    {
+        // A NaN raises FE_INVALID in the check's comparisons; the CI builds trap it.
+        const gust::test::ScopedNoInvalidTrap no_trap;
+        o.heat.leaf_theta = std::nan("");
+        EXPECT_NE(errors(o).find("canopy.leaf_theta must be in [150, 400] K"), std::string::npos);
     }
     o.heat.leaf_theta = 150;
     EXPECT_EQ(errors(o), "");
