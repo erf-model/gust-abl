@@ -116,6 +116,32 @@ InflowTable parse_inflow_table (const std::string& text, const std::string& file
     return tab;
 }
 
+InflowTable read_inflow_table (const std::string& file)
+{
+    // The file, read on the I/O rank and broadcast; every rank parses the
+    // same text, so every rank accepts or refuses it alike.
+    std::string text;
+    int readable = 1;
+    if (amrex::ParallelDescriptor::IOProcessor()) {
+        std::ifstream is(file, std::ios::binary);
+        if (is) {
+            std::ostringstream ss;
+            ss << is.rdbuf();
+            text = ss.str();
+        } else {
+            readable = 0;
+        }
+    }
+    const int root = amrex::ParallelDescriptor::IOProcessorNumber();
+    amrex::ParallelDescriptor::Bcast(&readable, 1, root);
+    if (readable == 0) { amrex::Abort("gust: bc.inflow_file = " + file + ": cannot be opened"); }
+    amrex::Long n = static_cast<amrex::Long>(text.size());
+    amrex::ParallelDescriptor::Bcast(&n, 1, root);
+    text.resize(static_cast<std::size_t>(n));
+    if (n > 0) { amrex::ParallelDescriptor::Bcast(text.data(), static_cast<std::size_t>(n), root); }
+    return parse_inflow_table(text, file);
+}
+
 InflowProfile::InflowProfile (const InflowProfileOptions& opt, const ReferenceProfile& theta_ref)
     : m_opt(opt)
 {
@@ -130,28 +156,7 @@ InflowProfile::InflowProfile (const InflowProfileOptions& opt, const ReferencePr
     amrex::Gpu::copy(amrex::Gpu::hostToDevice, theta_ref.theta.begin(), theta_ref.theta.end(), m_rt.begin());
     if (opt.kind != InflowProfileOptions::Kind::file) { return; }
 
-    // The file, read on the I/O rank and broadcast; every rank parses the
-    // same text, so every rank accepts or refuses it alike.
-    std::string text;
-    int readable = 1;
-    if (amrex::ParallelDescriptor::IOProcessor()) {
-        std::ifstream is(opt.file, std::ios::binary);
-        if (is) {
-            std::ostringstream ss;
-            ss << is.rdbuf();
-            text = ss.str();
-        } else {
-            readable = 0;
-        }
-    }
-    const int root = amrex::ParallelDescriptor::IOProcessorNumber();
-    amrex::ParallelDescriptor::Bcast(&readable, 1, root);
-    if (readable == 0) { amrex::Abort("gust: bc.inflow_file = " + opt.file + ": cannot be opened"); }
-    amrex::Long n = static_cast<amrex::Long>(text.size());
-    amrex::ParallelDescriptor::Bcast(&n, 1, root);
-    text.resize(static_cast<std::size_t>(n));
-    if (n > 0) { amrex::ParallelDescriptor::Bcast(text.data(), static_cast<std::size_t>(n), root); }
-    InflowTable tab = parse_inflow_table(text, opt.file);
+    InflowTable tab = read_inflow_table(opt.file);
     const int ncol = tab.ncol;
     const amrex::Vector<amrex::Real>& z = tab.z;
     const amrex::Vector<amrex::Real>& u = tab.u;

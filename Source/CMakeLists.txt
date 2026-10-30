@@ -2,6 +2,7 @@
 # same compiled code.
 set(GUST_SOURCES
     Inputs.cpp
+    AblSetup.cpp
     State.cpp
     StateIO.cpp
     Reductions.cpp

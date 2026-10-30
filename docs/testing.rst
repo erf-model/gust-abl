@@ -837,6 +837,12 @@ Current tests
    * - ``smoke_clean``, ``smoke_run``, ``smoke_restart``, ``smoke_restart_matches``
      - A 2-rank run; a 3-rank restart on another box layout, whose log must show the restart; the two plotfiles
        identical under ``amrex_fcompare`` at zero tolerance.
+   * - ``rt_abl_explicit``, ``rt_abl_named``, ``rt_abl_named_matches``, ``rt_abl_pressure_driven``, ``abort_abl_names``,
+       ``abort_abl_contradiction``, ``abort_abl_deck_value``, ``abort_abl_no_inflow``, ``abort_abl_couette_stratified``,
+       ``abort_abl_capped_no_sink``, ``abort_abl_no_stage``
+     - The named set-ups (``Tests/Infrastructure/Abl_Setup``, :ref:`named-setups`): a column under
+       ``abl.drive = geostrophic_column`` equals the deck with the keys written out at zero tolerance; the neutral
+       column under ``pressure_driven`` reaches :math:`u_*^2 = F H`; decks that contradict a name stop, naming the input.
    * - ``canopy_clean``, ``canopy_run``, ``canopy_column_integrals``, ``canopy_check_detects_change``,
        ``canopy_restart``, ``canopy_restart_matches``
      - The canopy's drag field (``Tests/Infrastructure/Canopy_Field``): four ERF-format patches on a stretched,

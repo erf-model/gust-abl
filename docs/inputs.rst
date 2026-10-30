@@ -259,6 +259,15 @@ Quick reference
    * - ``canopy.beta_p``, ``canopy.beta_d``, ``canopy.length_alpha``
      - ``1``, ``4``, ``0.04``
      - Wake production fraction, short-circuit coefficient, length cap :math:`L \le \alpha/f`
+   * - **Named set-ups** (`abl`_)
+     -
+     -
+   * - ``abl.drive``
+     - none
+     - What pushes the flow: a name that sets defaults and checks the deck
+   * - ``abl.theta``
+     - none
+     - How θ is treated: a name that sets defaults and checks the deck
    * - **Forcing** (`forcing`_)
      -
      -
@@ -913,6 +922,26 @@ inputs then change the answer, not only the path; a checkpoint of fully frozen c
        ``skip``: the leaf heat is left out, with a warning. ``blend``: in the canopy :math:`\theta` is set each
        iteration to :math:`\theta_f + w(\theta_l - \theta_f)`, :math:`w = \lambda k/(\varepsilon + \lambda k)`, from
        the frozen :math:`\theta_f` (:doc:`canopy`).
+
+``abl``
+-------
+
+See :ref:`named-setups`. Read with the SIMPLEC stage only; refused otherwise. Without these keys nothing is checked
+and no default changes. A name that the deck's other inputs contradict stops the run.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 14 56
+
+   * - Input
+     - Default
+     - Range and meaning
+   * - ``abl.drive``
+     - none
+     - ``inflow_only``, ``couette``, ``pressure_driven``, ``geostrophic_column`` or ``geostrophic_inflow``.
+   * - ``abl.theta``
+     - none
+     - ``neutral``, ``capped``, ``frozen`` or ``surface_flux``. ``abl.drive = couette`` needs ``neutral``.
 
 ``forcing``
 -----------

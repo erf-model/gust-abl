@@ -19,6 +19,7 @@ add_subdirectory(${PROJECT_SOURCE_DIR}/external/googletest
 add_executable(unit_tests
     Unit_Tests/main.cpp
     Unit_Tests/test_Inputs.cpp
+    Unit_Tests/test_AblSetup.cpp
     Unit_Tests/test_IO.cpp
     Unit_Tests/test_Reductions.cpp
     Unit_Tests/test_SteadyCriterion.cpp
@@ -140,6 +141,7 @@ endfunction()
 # One folder per case (see Tests/README.md): its decks, check script and golds.
 set(SMOKE_CASE          ${CMAKE_CURRENT_SOURCE_DIR}/Infrastructure/Smoke_Restart)
 set(VALIDATION_CASE     ${CMAKE_CURRENT_SOURCE_DIR}/Infrastructure/Input_Validation)
+set(ABL_SETUP_CASE      ${CMAKE_CURRENT_SOURCE_DIR}/Infrastructure/Abl_Setup)
 set(CANOPY_CASE         ${CMAKE_CURRENT_SOURCE_DIR}/Infrastructure/Canopy_Field)
 set(REFAVG_CASE         ${CMAKE_CURRENT_SOURCE_DIR}/Infrastructure/Reference_Archive)
 set(KESTREL_CASE        ${CMAKE_CURRENT_SOURCE_DIR}/Infrastructure/Kestrel_Dryrun)
@@ -288,6 +290,62 @@ gust_add_test(NAME abort_canopy_heat_frozen_unused NP 1 LABELS "regression;smoke
                      "canopy\\.heat_frozen has no effect without simplec\\.theta = frozen" --
               COMMAND $<TARGET_FILE:gust> ${ESCARPMENT_CASE}/inputs_forested_escarpment init.first_guess=profile
                       canopy.heat=fixed canopy.leaf_theta=302 canopy.heat_frozen=blend ${GUST_TEST_AMREX_FLAGS})
+
+# --- The named set-ups abl.drive and abl.theta (AblSetup.H) --------------------
+# A name adds no physics: the named run equals the deck with the keys written
+# out, at zero tolerance.
+set(ABL_SETUP_DIR ${CMAKE_CURRENT_BINARY_DIR}/run/abl_setup)
+gust_add_test(NAME rt_abl_explicit NP 2 LABELS "regression;smoke" RUN_DIR ${ABL_SETUP_DIR}/explicit
+              FIXTURES_SETUP abl_explicit
+              COMMAND $<TARGET_FILE:gust> ${ABL_SETUP_CASE}/inputs_abl_column
+                      forcing.coriolis=1 forcing.geostrophic=1 ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME rt_abl_named NP 2 LABELS "regression;smoke" RUN_DIR ${ABL_SETUP_DIR}/named
+              FIXTURES_SETUP abl_named
+              PREFIX ${EXPECT_ABORT} --success
+                     "set-up: abl\\.drive = geostrophic_column, abl\\.theta = neutral" --
+              COMMAND $<TARGET_FILE:gust> ${ABL_SETUP_CASE}/inputs_abl_column
+                      abl.drive=geostrophic_column abl.theta=neutral ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME rt_abl_named_matches NP 1 LABELS "regression;smoke" RUN_DIR ${ABL_SETUP_DIR}
+              FIXTURES_REQUIRED "abl_explicit;abl_named"
+              COMMAND ${FCOMPARE} explicit/abl_column_plt00020 named/abl_column_plt00020)
+gust_add_test(NAME abort_abl_names NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT}
+                     "abl\\.drive = ekman: must be inflow_only"
+                     "abl\\.theta = warm: must be neutral" --
+              COMMAND $<TARGET_FILE:gust> ${ABL_SETUP_CASE}/inputs_abl_column forcing.coriolis=1 forcing.geostrophic=1
+                      abl.drive=ekman abl.theta=warm ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_abl_contradiction NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT}
+                     "abl\\.drive = pressure_driven refuses forcing\\.coriolis = 1"
+                     "abl\\.drive = pressure_driven needs a non-zero horizontal forcing\\.pressure_gradient" --
+              COMMAND $<TARGET_FILE:gust> ${ABL_SETUP_CASE}/inputs_abl_column
+                      abl.drive=pressure_driven forcing.coriolis=1 forcing.geostrophic=1 ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_abl_deck_value NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT}
+                     "abl\\.drive = geostrophic_column refuses forcing\\.coriolis = 0"
+                     "!has no effect" --
+              COMMAND $<TARGET_FILE:gust> ${ABL_SETUP_CASE}/inputs_abl_column
+                      abl.drive=geostrophic_column forcing.coriolis=0 ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_abl_no_inflow NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT}
+                     "abl\\.drive = inflow_only needs an inflow face"
+                     "abl\\.drive = inflow_only refuses a non-zero forcing\\.pressure_gradient" --
+              COMMAND $<TARGET_FILE:gust> ${COLUMN_CASE}/inputs_steady_column abl.drive=inflow_only ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_abl_couette_stratified NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT}
+                     "abl\\.drive = couette needs abl\\.theta = neutral" --
+              COMMAND $<TARGET_FILE:gust> ${COLUMN_CASE}/inputs_steady_column abl.drive=couette abl.theta=capped
+                      ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_abl_capped_no_sink NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT}
+                     "abl\\.theta = capped needs a Rayleigh layer on w and theta" --
+              COMMAND $<TARGET_FILE:gust> ${COLUMN_CASE}/inputs_steady_column abl.theta=capped bc.zhi_theta_grad=0.003
+                      ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_abl_no_stage NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT}
+                     "abl\\.drive has no effect without steady\\.stage = simplec" --
+              COMMAND $<TARGET_FILE:gust> ${VALIDATION_CASE}/inputs_abort_no_stage abl.drive=inflow_only
+                      ${GUST_TEST_AMREX_FLAGS})
 
 # --- Decks that must abort, with the input named ------------------------------
 gust_add_test(NAME abort_unknown_key NP 1 LABELS "regression;smoke"
@@ -830,6 +888,12 @@ endif()
 # precision only (six orders and 1e-8 are below single's floor); the restart
 # chain below runs in both.
 if(GUST_PRECISION STREQUAL "DOUBLE")
+    # The closed form through the name: abl.drive = pressure_driven only checks this deck.
+    gust_add_test(NAME rt_abl_pressure_driven NP 2 LABELS "regression;smoke"
+                  PREFIX ${Python3_EXECUTABLE} ${COLUMN_CASE}/check_steady_column.py
+                         --ustar 0.35 --z0 0.1 --force 1.225e-4 --height 1000 --dz 15.625 --orders 6 --
+                  COMMAND $<TARGET_FILE:gust> ${COLUMN_CASE}/inputs_steady_column abl.drive=pressure_driven
+                          abl.theta=neutral ${GUST_TEST_AMREX_FLAGS})
     gust_add_test(NAME rt_steady_column NP 2 LABELS "regression;smoke"
                   PREFIX ${Python3_EXECUTABLE} ${COLUMN_CASE}/check_steady_column.py
                          --ustar 0.35 --z0 0.1 --force 1.225e-4 --height 1000 --dz 15.625 --orders 6 --
