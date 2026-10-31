@@ -1061,6 +1061,15 @@ Current tests
        (p) and 2.6e-9 (velocities); with sequencing within 1.2e-8 (p) and 9.2e-11 (velocities); u 1.14 against
        2.16 m/s (ratio 0.53); r = 3.1e3 explicit against 0.16 after 20 iterations. About 4 min on two ranks; label
        ``regression`` (the run time); double only.
+   * - ``rt_homogeneous_canopy``
+     - A uniform canopy under a pressure gradient (``Tests/Canonical_RANS/Homogeneous_Canopy``): the momentum budget,
+       :math:`U = \sqrt{F/f}` deep in the canopy, the exponential upper canopy, :math:`\beta`, and LAI 10 on 1, 2 and 4 ranks.
+   * - ``rt_forest_edge``
+     - A forest-clearing-forest pattern (``Tests/Canonical_RANS/Forest_Edge``): the momentum budget, the volume flux, the
+       adjustment length at LAI 2 against Dupont and Brunet (2008), shorter at LAI 5, 1, 2 and 4 ranks. About 12 min, ``regression``, MPI builds.
+   * - ``rt_forested_hill``
+     - A canopy on cosine hills (``Tests/Canonical_RANS/Forested_Hill``): the lower-canopy balance of Finnigan and Belcher
+       (2004), lee reversal on the geometry of Poggi et al. (2008) at four times its drag, 1, 2 and 4 ranks. About 3 min, ``regression``, MPI builds.
    * - ``rt_forested_escarpment``
      - A dense canopy on steep terrain with an inflow face (``Tests/Canonical_RANS/Forested_Escarpment``, the WINSENT
        Albtrauf in 2-D: a 200 m tanh escarpment, steepest slope 22°, the WINSENT canopy on the slope, WINSENT's layers,
