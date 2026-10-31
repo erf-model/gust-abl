@@ -111,7 +111,7 @@ void transport_fluxes (const amrex::MultiFab& u, const amrex::MultiFab& v, const
         check_operator_field("transport_fluxes", "F", F[d], velocity_loc(d), mesh, 1);
     }
     const amrex::MultiFab* vel[2] = {&u, &v};
-    const amrex::MultiFab* area[2] = {&mesh.ax, &mesh.ay};
+    const amrex::MultiFab* area[2] = {&mesh.flux_area(0), &mesh.flux_area(1)};
     for (int d = 0; d < 2; ++d) {
         for (amrex::MFIter mfi(F[d], false); mfi.isValid(); ++mfi) {
             const auto f = F[d].array(mfi);
@@ -124,6 +124,8 @@ void transport_fluxes (const amrex::MultiFab& u, const amrex::MultiFab& v, const
         }
     }
     omega_from_w(u, v, w, z_nd, mesh, geom, F[2], 1);
+    // Buildings: the z-faces' open part (Mesh::set_open_faces); x and y have it in their areas.
+    if (mesh.has_open_faces()) { amrex::MultiFab::Multiply(F[2], mesh.open_fraction(2), 0, 0, 1, 1); }
 }
 
 void velocity_divergence (const amrex::MultiFab& u, const amrex::MultiFab& v, const amrex::MultiFab& w,

@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "BoundaryConditions.H"
+#include "BuildingForcing.H"
 #include "CVFluxes.H"
 #include "ImplicitOperator.H"
 #include "LineSolve_K.H"
@@ -184,6 +185,10 @@ MomentumPredictorResult momentum_predictor (State& q, const ResidualFields& R,
         // fraction).
         amrex::MultiFab mask;
         if (in.bc != nullptr) { in.bc->dirichlet_rows(eqs[c], loc, mesh, mask); }
+        if (in.buildings != nullptr) {
+            if (mask.empty()) { amrex::Abort("gust: momentum_predictor: buildings need the boundary conditions (in.bc)"); }
+            in.buildings->add_fixed_rows(c, mask);
+        }
         const bool has_mask = !mask.empty();
         for (amrex::MFIter mfi(*aps[c], amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
             const auto p = aps[c]->array(mfi);

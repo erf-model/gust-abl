@@ -121,6 +121,11 @@ struct PoissonResult
 //! or back end B (the default gmres_mlmg), AMReX's
 //! MLTerrainPoisson with multigrid; PoissonOptions::backend chooses.
 //!
+//! With buildings (Mesh::set_open_faces, docs/buildings.rst) the areas are the open ones, so
+//! blocked faces carry nothing, a solid cell's row is phi = rhs (0), and the mean of the
+//! singular problem is over the fluid cells. GMRES runs on ERF's operator with either back
+//! end; its FFT or multigrid preconditioner does not know the mask, and back end mlmg aborts.
+//!
 //! Solves  A phi = rhs  with
 //!   A phi = (1/J) [ d_xi (a_x beta_x f_x) + d_eta (a_y beta_y f_y) + d_zeta (a_z g_z) ],
 //! where f = -flux(phi) are ERF's face gradients of phi on the terrain-following
@@ -169,6 +174,7 @@ private:
     PoissonResult solve_mlmg (amrex::MultiFab& rhs, amrex::MultiFab& phi, const FaceCoeffs& coeffs,
                               const PoissonBC& bc, amrex::Array<amrex::MultiFab, AMREX_SPACEDIM>* fluxes,
                               PoissonResult res);
+    void make_multigrid (const PoissonBC& bc);
     void check_layout (const amrex::MultiFab& mf, const char* what) const;
 
     const Mesh& m_mesh;
@@ -179,6 +185,9 @@ private:
     // Premultiplied areas a beta (beta = 1 copies when no coefficients are
     // given, so switching coefficients on and off never rebuilds the operator).
     amrex::MultiFab m_ax, m_ay, m_az;
+    // With buildings (Mesh::set_open_faces): the multigrid preconditioner's areas, which
+    // keep every face, and J over the fluid cells.
+    amrex::MultiFab m_pc_ax, m_pc_ay, m_pc_az, m_J_fluid;
     // z-faces: beta_z - z_cross (only used when z_cross is given).
     amrex::MultiFab m_dcross;
     bool m_split{false};

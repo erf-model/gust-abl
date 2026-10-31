@@ -398,4 +398,34 @@ amrex::Real free_stream_divergence (const Mesh& mesh, const amrex::Geometry& geo
     return m;
 }
 
+void Mesh::set_open_faces (const amrex::MultiFab& beta_x, const amrex::MultiFab& beta_y, const amrex::MultiFab& beta_z,
+                           const amrex::MultiFab& beta_cell, const amrex::Geometry& geom)
+{
+    const amrex::MultiFab* b[3] = {&beta_x, &beta_y, &beta_z};
+    const amrex::MultiFab* a[3] = {&ax, &ay, &az};
+    for (int d = 0; d < 3; ++d) {
+        if (b[d]->boxArray() != a[d]->boxArray() || b[d]->DistributionMap() != a[d]->DistributionMap()) {
+            amrex::Abort("gust: Mesh::set_open_faces: the face fractions are not on the mesh's layout");
+        }
+        const auto sd = static_cast<std::size_t>(d);
+        m_open[sd].define(a[d]->boxArray(), a[d]->DistributionMap(), 1, a[d]->nGrowVect());
+        m_open[sd].setVal(1.0);
+        amrex::MultiFab::LinComb(m_open[sd], 1.0, m_open[sd], 0, -1.0, *b[d], 0, 0, 1, 0);
+        m_open[sd].FillBoundary(geom.periodicity());
+        m_flux_area[sd].define(a[d]->boxArray(), a[d]->DistributionMap(), 1, a[d]->nGrowVect());
+        amrex::MultiFab::Copy(m_flux_area[sd], *a[d], 0, 0, 1, a[d]->nGrowVect());
+        amrex::MultiFab::Multiply(m_flux_area[sd], m_open[sd], 0, 0, 1, a[d]->nGrowVect());
+    }
+    m_fluid.define(detJ.boxArray(), detJ.DistributionMap(), 1, 0);
+    for (amrex::MFIter mfi(m_fluid, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
+        const auto f = m_fluid.array(mfi);
+        const auto bc = beta_cell.const_array(mfi);
+        amrex::ParallelFor(mfi.tilebox(), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+        {
+            f(i, j, k) = bc(i, j, k) < amrex::Real(1) ? amrex::Real(1) : amrex::Real(0);
+        });
+    }
+    m_has_open = true;
+}
+
 } // namespace gust

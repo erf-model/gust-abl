@@ -5,7 +5,7 @@
 // (docs/buildings.rst): solid fractions and the wall cells of the form 7
 // immersed wall law (ERF erf.if_wall_form = fraction_stress, Kynema-SGF
 // wall_form 7). The ground keeps its body-fitted wall law and is not blanked.
-// The geometry does not act on the flow yet, so a run with a stage refuses it.
+// BuildingForcing.H has how it acts on momentum.
 //
 // buildings.file, heights above the local ground, buildings.format:
 //   erf  ERF's text format (erf.buildings_file_name): nx, ny, the nx x values,
@@ -69,6 +69,8 @@ enum BuildingWallComp { kWallMask = 0, kWallD1x, kWallD2x, kWallD1y, kWallD2y, k
 enum BuildingWallBit { kWallRoof = 1, kWallXlo = 2, kWallXhi = 4, kWallYlo = 8, kWallYhi = 16, kWallUnder = 32 };
 
 enum class BuildingsType { none, immersed_forcing };
+//! buildings.wall_form: the form 7 wall law on the fixed rows, or the fixed rows alone.
+enum class BuildingWallForm { fraction_stress, drag };
 
 //! The buildings.* inputs (read_buildings_options).
 struct BuildingsOptions
@@ -78,6 +80,9 @@ struct BuildingsOptions
     std::string file;                //!< buildings.file
     std::string format{"erf"};       //!< buildings.format: erf or xyz
     double small_volfrac{0.005};     //!< buildings.small_volfrac, in [0, 0.5)
+    double z0{0.1};                  //!< buildings.z0 (m), > 0: the roughness of the wall law
+    std::string wall_form_name{"fraction_stress"};   //!< buildings.wall_form as given
+    BuildingWallForm wall_form{BuildingWallForm::fraction_stress};
     std::vector<std::string> given;  //!< buildings.* keys in the inputs
     std::vector<std::string> parse_errors;   //!< value counts and repeats
     [[nodiscard]] bool active () const { return type != BuildingsType::none; }

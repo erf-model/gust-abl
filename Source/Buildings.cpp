@@ -23,7 +23,7 @@ namespace gust {
 
 namespace {
 
-const char* const kBuildingsKeys[] = {"type", "file", "format", "small_volfrac"};
+const char* const kBuildingsKeys[] = {"type", "file", "format", "small_volfrac", "z0", "wall_form"};
 constexpr const char* kBuildingsMagic = "gust_buildings";
 constexpr int kBuildingsVersion = 1;
 
@@ -230,6 +230,11 @@ BuildingsOptions read_buildings_options ()
     if (pp.query("small_volfrac", s) && !parse_number(s, opt.small_volfrac)) {
         opt.parse_errors.emplace_back("buildings.small_volfrac = " + s + " is not a number");
     }
+    if (pp.query("z0", s) && !parse_number(s, opt.z0)) {
+        opt.parse_errors.emplace_back("buildings.z0 = " + s + " is not a number");
+    }
+    pp.query("wall_form", opt.wall_form_name);
+    if (opt.wall_form_name == "drag") { opt.wall_form = BuildingWallForm::drag; }
     if (opt.type_name == "immersed_forcing") { opt.type = BuildingsType::immersed_forcing; }
     return opt;
 }
@@ -248,6 +253,15 @@ std::vector<std::string> check_buildings_options (const BuildingsOptions& opt)
             }
         }
         return err;
+    }
+    if (!(opt.z0 > 0) || !std::isfinite(opt.z0)) {
+        err.emplace_back("buildings.z0 must be finite and > 0 (got " + std::to_string(opt.z0) + ")");
+    }
+    if (opt.wall_form_name != "fraction_stress" && opt.wall_form_name != "drag") {
+        err.emplace_back("buildings.wall_form must be fraction_stress or drag (got " + opt.wall_form_name + ")");
+    }
+    if (opt.wall_form == BuildingWallForm::drag && has(opt.given, "z0")) {
+        err.emplace_back("buildings.z0 has no effect with buildings.wall_form = drag (no wall law)");
     }
     if (opt.file.empty()) {
         err.emplace_back("buildings.file is required with buildings.type = immersed_forcing");
@@ -302,7 +316,8 @@ std::string Buildings::hash_inputs (const BuildingsOptions& opt)
     bcast(h);
     if (h.empty()) { amrex::Abort("gust: buildings.file = " + opt.file + ": cannot be read"); }
     return sha256_hex(std::string(kBuildingsMagic) + " " + std::to_string(kBuildingsVersion) + "\ntype " + opt.type_name
-                      + "\nformat " + opt.format + "\nfile " + h + "\nsmall_volfrac " + hexfloat(opt.small_volfrac) + "\n");
+                      + "\nformat " + opt.format + "\nfile " + h + "\nsmall_volfrac " + hexfloat(opt.small_volfrac) + "\nz0 " + hexfloat(opt.z0)
+                      + "\nwall_form " + opt.wall_form_name + "\n");
 }
 
 void Buildings::build (const BuildingsOptions& opt, const amrex::Geometry& geom, const amrex::MultiFab& z_nd,

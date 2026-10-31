@@ -1,0 +1,41 @@
+# One block (30 x 30 m, 20 m high) on flat ground in a log-law wind, 5 m cells:
+# solid rows, masked pressure correction and the form 7 roof law on one level. Not a
+# validation (PR-44 has those); the deck pins that the iteration converges and that no
+# air passes through the walls. buildings.file on the command line: cube.txt.
+mesh.n_cell        = 48 24 24
+mesh.prob_lo       = 0. 0. 0.
+mesh.prob_hi       = 240. 120. 120.
+mesh.is_periodic   = 0 1 0
+mesh.max_grid_size = 16 12
+
+terrain.type = flat
+
+bc.xlo = inflow
+bc.xhi = outflow
+bc.zlo = surface_layer
+bc.zhi = slip_wall
+bc.surface_z0       = 0.1
+bc.inflow_profile   = log_law
+bc.inflow_ustar     = 0.4
+bc.inflow_z0        = 0.1
+bc.inflow_direction = 0.
+bc.theta_profile_z  = 0.
+bc.theta_profile    = 300.
+
+forcing.gravity = 0.
+turb.tke_floor  = 1.e-6
+turb.max_geom_lscale = 40.
+
+buildings.type = immersed_forcing
+buildings.z0   = 0.1
+
+init.first_guess = profile
+
+steady.stage          = simplec
+steady.sweep          = zjacobi
+steady.zline_sweeps   = 3
+steady.cfl_max        = 8
+steady.max_iterations = 300
+
+io.plot_file = cube_plt
+io.write_checkpoint = 0
