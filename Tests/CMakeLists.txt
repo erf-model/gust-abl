@@ -38,6 +38,7 @@ add_executable(unit_tests
     Unit_Tests/test_ResidualWorkspace.cpp
     Unit_Tests/test_SurfaceLayer.cpp
     Unit_Tests/test_SurfaceRoughness.cpp
+    Unit_Tests/test_Buildings.cpp
     Unit_Tests/test_Canopy.cpp
     Unit_Tests/test_CanopyDrag.cpp
     Unit_Tests/test_CanopyHeat.cpp
@@ -221,6 +222,65 @@ gust_add_test(NAME smoke_restart NP 3 LABELS "regression;smoke" RUN_DIR ${SMOKE_
 gust_add_test(NAME smoke_restart_matches NP 1 LABELS "regression;smoke" RUN_DIR ${SMOKE_DIR}
               FIXTURES_REQUIRED smoke_restart
               COMMAND ${FCOMPARE} --allow_diff_grids smoke_plt00000 restart_plt00000)
+
+# --- The building geometry (Buildings.H): plotfile, restart, refusals --------
+set(BUILDINGS_CASE ${CMAKE_CURRENT_SOURCE_DIR}/Infrastructure/Building_Field)
+set(BUILDINGS_DIR ${CMAKE_CURRENT_BINARY_DIR}/run/buildings)
+add_test(NAME buildings_clean
+         COMMAND ${Python3_EXECUTABLE} -c
+                 "import shutil, os, sys; shutil.rmtree(sys.argv[1], ignore_errors=True); os.makedirs(sys.argv[1])"
+                 ${BUILDINGS_DIR})
+set_tests_properties(buildings_clean PROPERTIES LABELS "regression;smoke" FIXTURES_SETUP buildings_clean)
+gust_add_test(NAME buildings_run NP 2 LABELS "regression;smoke" RUN_DIR ${BUILDINGS_DIR}
+              FIXTURES_REQUIRED buildings_clean FIXTURES_SETUP buildings
+              COMMAND $<TARGET_FILE:gust> ${BUILDINGS_CASE}/inputs_buildings buildings.file=${BUILDINGS_CASE}/building_map.txt
+                      ${GUST_TEST_AMREX_FLAGS})
+# Every column's integral of building_beta is the height map's mean over the column.
+gust_add_test(NAME buildings_column_volume NP 1 LABELS "regression;smoke" RUN_DIR ${BUILDINGS_DIR}
+              FIXTURES_REQUIRED buildings
+              COMMAND ${Python3_EXECUTABLE} ${BUILDINGS_CASE}/check_buildings.py buildings_plt00000
+                      ${BUILDINGS_CASE}/building_map.txt)
+gust_add_test(NAME buildings_check_detects_change NP 1 LABELS "regression;smoke" RUN_DIR ${BUILDINGS_DIR}
+              FIXTURES_REQUIRED buildings
+              COMMAND ${Python3_EXECUTABLE} ${BUILDINGS_CASE}/check_buildings.py buildings_plt00000
+                      ${BUILDINGS_CASE}/building_map_changed.txt)
+set_tests_properties(buildings_check_detects_change PROPERTIES WILL_FAIL TRUE)
+gust_add_test(NAME buildings_restart NP 3 LABELS "regression;smoke" RUN_DIR ${BUILDINGS_DIR}
+              FIXTURES_REQUIRED buildings FIXTURES_SETUP buildings_restart
+              PREFIX ${EXPECT_ABORT} --success "restarted from buildings_chk00000 at step 0" --
+              COMMAND $<TARGET_FILE:gust> ${BUILDINGS_CASE}/inputs_restart buildings.file=${BUILDINGS_CASE}/building_map.txt
+                      ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME buildings_restart_matches NP 1 LABELS "regression;smoke" RUN_DIR ${BUILDINGS_DIR}
+              FIXTURES_REQUIRED buildings_restart
+              COMMAND ${FCOMPARE} --allow_diff_grids buildings_plt00000 buildings_restart_plt00000)
+gust_add_test(NAME abort_buildings_restart_changed NP 1 LABELS "regression;smoke" RUN_DIR ${BUILDINGS_DIR}
+              FIXTURES_REQUIRED buildings
+              PREFIX ${EXPECT_ABORT} "io\\.restart = buildings_chk00000: the buildings inputs differ from the checkpoint's" --
+              COMMAND $<TARGET_FILE:gust> ${BUILDINGS_CASE}/inputs_restart buildings.file=${BUILDINGS_CASE}/building_map_changed.txt
+                      io.write_plotfile=0 ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_buildings_restart_none NP 1 LABELS "regression;smoke" RUN_DIR ${BUILDINGS_DIR}
+              FIXTURES_REQUIRED buildings
+              PREFIX ${EXPECT_ABORT} "the checkpoint was written with buildings; give the run's buildings\\.\\* inputs" --
+              COMMAND $<TARGET_FILE:gust> ${BUILDINGS_CASE}/inputs_restart_none ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_buildings_inputs NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT}
+                     "buildings\\.file is required with buildings\\.type = immersed_forcing"
+                     "buildings\\.format must be erf or xyz \\(got csv\\)"
+                     "buildings\\.small_volfrac must be in .0, 0\\.5\\)"
+                     "buildings\\.height.*not an input of namespace 'buildings'" --
+              COMMAND $<TARGET_FILE:gust> ${BUILDINGS_CASE}/inputs_buildings buildings.format=csv buildings.small_volfrac=0.5
+                      buildings.height=3 ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_buildings_type NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT}
+                     "buildings\\.type must be none or immersed_forcing \\(got foo\\)"
+                     "buildings\\.small_volfrac = abc is not a number"
+                     "buildings\\.file is given more than once" --
+              COMMAND $<TARGET_FILE:gust> ${BUILDINGS_CASE}/inputs_restart_none buildings.type=foo buildings.small_volfrac=abc
+                      buildings.file=a buildings.file=b ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_buildings_with_stage NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT} "the buildings do not act on the flow yet" --
+              COMMAND $<TARGET_FILE:gust> ${BUILDINGS_CASE}/inputs_buildings buildings.file=${BUILDINGS_CASE}/building_map.txt
+                      steady.stage=simplec ${GUST_TEST_AMREX_FLAGS})
 
 # --- The canopy's drag field (Canopy.H): plotfile, restart, refusals ---------
 set(CANOPY_DIR ${CMAKE_CURRENT_BINARY_DIR}/run/canopy)

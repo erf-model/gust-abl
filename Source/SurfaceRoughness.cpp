@@ -36,18 +36,18 @@ void image_ghost_columns (amrex::MultiFab& z0, const amrex::Geometry& geom)
         const amrex::Box fb = mfi.fabbox();
         // Two passes so that a corner reads a column already set: x first
         // (rows inside the domain in y), then y (every column).
-        amrex::ParallelFor(fb, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+        amrex::ParallelFor(fb, z0.nComp(), [=] AMREX_GPU_DEVICE (int i, int j, int k, int n) noexcept
         {
             const bool outx = !perx && (i < dom.smallEnd(0) || i > dom.bigEnd(0));
             const bool iny = pery || (j >= dom.smallEnd(1) && j <= dom.bigEnd(1));
-            if (outx && iny) { a(i, j, k) = a(amrex::max(dom.smallEnd(0), amrex::min(dom.bigEnd(0), i)), j, k); }
+            if (outx && iny) { a(i, j, k, n) = a(amrex::max(dom.smallEnd(0), amrex::min(dom.bigEnd(0), i)), j, k, n); }
         });
-        amrex::ParallelFor(fb, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+        amrex::ParallelFor(fb, z0.nComp(), [=] AMREX_GPU_DEVICE (int i, int j, int k, int n) noexcept
         {
             const bool outy = !pery && (j < dom.smallEnd(1) || j > dom.bigEnd(1));
             if (outy) {
                 const int ic = perx ? i : amrex::max(dom.smallEnd(0), amrex::min(dom.bigEnd(0), i));
-                a(i, j, k) = a(ic, amrex::max(dom.smallEnd(1), amrex::min(dom.bigEnd(1), j)), k);
+                a(i, j, k, n) = a(ic, amrex::max(dom.smallEnd(1), amrex::min(dom.bigEnd(1), j)), k, n);
             }
         });
     }

@@ -851,6 +851,12 @@ Current tests
        vertical shape is checked by the unit tests; maps are covered by the unit tests only); the same
        check against the patch file with one LAI changed fails (expected); a 3-rank restart on another layout with the
        same canopy gives the same plotfile at zero tolerance.
+   * - ``buildings_clean``, ``buildings_run``, ``buildings_column_volume``, ``buildings_check_detects_change``,
+       ``buildings_restart``, ``buildings_restart_matches``, ``abort_buildings_restart_changed``,
+       ``abort_buildings_restart_none``, ``abort_buildings_inputs``, ``abort_buildings_type``,
+       ``abort_buildings_with_stage``
+     - The building geometry (:doc:`buildings`): each column's volume against the height map, the wall mask, a restart on
+       another layout, and the refusals.
    * - ``abort_canopy_restart_changed``, ``abort_canopy_restart_none``, ``abort_canopy_inputs``
      - A restart with one patch's LAI changed, and one without a canopy, stop naming ``io.restart``; a deck of canopy
        mistakes stops, naming each input.

@@ -2,6 +2,7 @@
 
 #include "AblSetup.H"
 #include "BoundaryConditions.H"
+#include "Buildings.H"
 #include "Canopy.H"
 #include "CanopyDrag.H"
 #include "Closure.H"
@@ -163,6 +164,13 @@ void run ()
     // the stage writes the drag field with its plotfile.
     const CanopyOptions canopy_opt = read_canopy_options(in.terrain.idw_neighbors, static_cast<double>(in.terrain.idw_power));
     for (auto& e : check_canopy_options(canopy_opt)) { err.push_back(std::move(e)); }
+    // The buildings (Buildings.H): the geometry alone so far, written with the plotfile of a run without a stage.
+    const BuildingsOptions buildings_opt = read_buildings_options();
+    for (auto& e : check_buildings_options(buildings_opt)) { err.push_back(std::move(e)); }
+    if (solve && buildings_opt.active()) {
+        err.emplace_back("buildings.type = immersed_forcing: the buildings do not act on the flow yet, so a run with a stage "
+                         "would ignore them; run without a stage to write the geometry");
+    }
     if (solve && canopy_opt.active() && canopy_opt.heat.on() && !simplec.theta_frozen
         && std::find(canopy_opt.given.begin(), canopy_opt.given.end(), "heat_frozen") != canopy_opt.given.end()) {
         err.emplace_back("canopy.heat_frozen has no effect without simplec.theta = frozen (theta is solved, and the leaf "
@@ -253,7 +261,14 @@ void run ()
     // or, on a restart, after the checkpoint's canopy hash has been checked against them (before the field is
     // built). The column first guess takes the canopy's layer profile (ColumnGuess.H).
     Canopy canopy;
+    Buildings buildings;
     auto build_canopy = [&] () {
+        if (restart) { Buildings::check_restart(in.io.restart, buildings_opt.active() ? Buildings::hash_inputs(buildings_opt) : ""); }
+        if (buildings_opt.active()) {
+            buildings.build(buildings_opt, geom, state.z_phys_nd, ba, dm);
+            amrex::Print() << "gust: buildings (buildings.type = " << buildings_opt.type_name << "): "
+                           << buildings.summary(mesh.detJ, geom) << "\n";
+        }
         if (restart) { Canopy::check_restart(in.io.restart, canopy_opt.active() ? Canopy::hash_inputs(canopy_opt) : ""); }
         if (!canopy_opt.active()) { return; }
         canopy.build(canopy_opt, geom, state.z_phys_nd, ba, dm);
@@ -404,6 +419,8 @@ void run ()
     }
     const amrex::MultiFab* canopy_plot = canopy.active() ? &canopy.drag() : nullptr;
     const amrex::MultiFab* lad_plot = (canopy.active() && canopy.heat().on()) ? &canopy.lad() : nullptr;
+    const amrex::MultiFab* beta_plot = buildings.active() ? &buildings.beta() : nullptr;
+    const amrex::MultiFab* wall_plot = buildings.active() ? &buildings.wall() : nullptr;
     // Writing a checkpoint of the same name as the one read would move it to
     // <name>.old.NNNN: refused (checked at the final step, after the solve).
     // The file system decides whether the two paths name one directory
@@ -559,7 +576,7 @@ void run ()
         if (!levels.empty()) { amrex::Print() << sequencing_report(levels, driver.history(), status, sopt.criterion.residual_ref_iterations); }
         check_overwrite();   // the step is final here, before any output
         if (in.io.write_plotfile == 1) {
-            const auto name = write_plotfile(in.io.plot_file, state, geom, &mesh.detJ, canopy_plot, lad_plot);
+            const auto name = write_plotfile(in.io.plot_file, state, geom, &mesh.detJ, canopy_plot, lad_plot, beta_plot, wall_plot);
             amrex::Print() << "gust: wrote " << name << "\n";
             write_hierarchy();
         }
@@ -573,6 +590,7 @@ void run ()
             write_driver_history(name, driver.history());
             closure.write_checkpoint(name);
             canopy.write_checkpoint(name);
+            buildings.write_checkpoint(name);
             if (newton_stage != nullptr) { newton_stage->write_checkpoint(name); }
             amrex::Print() << "gust: wrote " << name << "\n";
         }
@@ -600,13 +618,14 @@ void run ()
 
     // No stage: the run writes its state and stops.
     if (in.io.write_plotfile == 1) {
-        const auto name = write_plotfile(in.io.plot_file, state, geom, &mesh.detJ, canopy_plot, lad_plot);
+        const auto name = write_plotfile(in.io.plot_file, state, geom, &mesh.detJ, canopy_plot, lad_plot, beta_plot, wall_plot);
         amrex::Print() << "gust: wrote " << name << "\n";
         write_hierarchy();
     }
     if (in.io.write_checkpoint == 1) {
         const auto name = write_checkpoint(in.io.chk_file, state, in.mesh);
         canopy.write_checkpoint(name);
+        buildings.write_checkpoint(name);
         amrex::Print() << "gust: wrote " << name << "\n";
     }
 }

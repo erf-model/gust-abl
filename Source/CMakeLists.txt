@@ -25,6 +25,7 @@ set(GUST_SOURCES
     Residual.cpp
     SurfaceLayer.cpp
     SurfaceRoughness.cpp
+    Buildings.cpp
     Canopy.cpp
     CanopyDrag.cpp
     CanopyHeat.cpp

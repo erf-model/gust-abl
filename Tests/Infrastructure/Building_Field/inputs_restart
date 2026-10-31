@@ -1,0 +1,16 @@
+# Restart from inputs_buildings' checkpoint on another layout with the same
+# buildings (buildings.file on the command line): accepted; the plotfile matches.
+mesh.n_cell        = 32 24 20
+mesh.prob_lo       = 0. 0. 0.
+mesh.prob_hi       = 640. 480. 400.
+mesh.is_periodic   = 1 0 0
+mesh.max_grid_size = 16 12
+mesh.dz0           = 1.
+mesh.stretch_ratio = 1.12
+
+buildings.type = immersed_forcing
+buildings.small_volfrac = 0
+
+io.restart          = buildings_chk00000
+io.plot_file        = buildings_restart_plt
+io.write_checkpoint = 0

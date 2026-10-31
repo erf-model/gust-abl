@@ -259,6 +259,21 @@ Quick reference
    * - ``canopy.beta_p``, ``canopy.beta_d``, ``canopy.length_alpha``
      - ``1``, ``4``, ``0.04``
      - Wake production fraction, short-circuit coefficient, length cap :math:`L \le \alpha/f`
+   * - **Buildings** (`buildings`_)
+     -
+     -
+   * - ``buildings.type``
+     - ``none``
+     - ``none`` or ``immersed_forcing``
+   * - ``buildings.file``
+     - required when on
+     - Height map, heights above the local ground (m)
+   * - ``buildings.format``
+     - ``erf``
+     - ``erf`` (ERF's text layout) or ``xyz`` (``x y height [zstart]`` lines)
+   * - ``buildings.small_volfrac``
+     - ``0.005``
+     - Solid fractions within this of 0 or 1 become 0 or 1
    * - **Named set-ups** (`abl`_)
      -
      -
@@ -922,6 +937,34 @@ inputs then change the answer, not only the path; a checkpoint of fully frozen c
        ``skip``: the leaf heat is left out, with a warning. ``blend``: in the canopy :math:`\theta` is set each
        iteration to :math:`\theta_f + w(\theta_l - \theta_f)`, :math:`w = \lambda k/(\varepsilon + \lambda k)`, from
        the frozen :math:`\theta_f` (:doc:`canopy`).
+
+``buildings``
+-------------
+
+See :doc:`buildings`. The geometry is built in a run without ``steady.stage`` and written to the plotfile as
+``building_beta`` and ``building_wall``. It does not act on the flow yet, so a run with a stage refuses
+``buildings.type = immersed_forcing``. A key that has no effect with ``buildings.type = none`` is refused. A restart
+refuses buildings other than those of the run it continues.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 26 12 62
+
+   * - Input
+     - Default
+     - Meaning and range
+   * - ``buildings.type``
+     - ``none``
+     - ``none`` or ``immersed_forcing``.
+   * - ``buildings.file``
+     - required when on
+     - The height map, readable. Heights above the local ground (m), finite and ≥ 0. At least one building in the domain, none reaching the top layer, and in a periodic direction the map no wider than the domain.
+   * - ``buildings.format``
+     - ``erf``
+     - ``erf``: ``nx``, ``ny``, the x values, the y values, the heights with x the slow index. ``xyz``: ``x y height`` or ``x y height zstart`` lines holding each point of a rectangular grid once, in any order; solid from ``zstart`` (≥ 0, and below ``height`` where ``height`` > 0; default 0) to ``height``.
+   * - ``buildings.small_volfrac``
+     - ``0.005``
+     - In [0, 0.5). Below it a fraction is 0, within it of 1 the fraction is 1. At 0, round-off alone is clipped.
 
 ``abl``
 -------

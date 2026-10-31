@@ -1,0 +1,12 @@
+# Restart from inputs_buildings' checkpoint without buildings: refused.
+mesh.n_cell        = 32 24 20
+mesh.prob_lo       = 0. 0. 0.
+mesh.prob_hi       = 640. 480. 400.
+mesh.is_periodic   = 1 0 0
+mesh.max_grid_size = 8
+mesh.dz0           = 1.
+mesh.stretch_ratio = 1.12
+
+io.restart          = buildings_chk00000
+io.write_plotfile   = 0
+io.write_checkpoint = 0

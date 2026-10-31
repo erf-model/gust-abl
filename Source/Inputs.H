@@ -15,7 +15,7 @@ namespace gust {
 inline const std::vector<std::string>& owned_namespaces ()
 {
     static const std::vector<std::string> ns{
-        "mesh", "terrain", "init", "turb", "bc", "steady", "solver", "io", "forcing", "convection", "simplec", "canopy", "abl"};
+        "mesh", "terrain", "init", "turb", "bc", "steady", "solver", "io", "forcing", "convection", "simplec", "canopy", "buildings", "abl"};
     return ns;
 }
 
