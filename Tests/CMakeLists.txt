@@ -1089,6 +1089,20 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
                       PREFIX ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Homogeneous_Canopy/check_homogeneous_canopy.py --
                       COMMAND $<TARGET_FILE:gust> ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Homogeneous_Canopy/inputs_homogeneous_canopy ${GUST_TEST_AMREX_FLAGS})
         set_tests_properties(rt_homogeneous_canopy PROPERTIES ENVIRONMENT PYTHONDONTWRITEBYTECODE=1 TIMEOUT 1800)
+        # A forest-clearing-forest pattern (Canonical_RANS/Forest_Edge, about 12 min):
+        # budget, volume flux, the adjustment length against Dupont and Brunet (2008).
+        gust_add_test(NAME rt_forest_edge NP 2 LABELS "regression"
+                      PREFIX ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Forest_Edge/check_forest_edge.py --
+                      COMMAND $<TARGET_FILE:gust> ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Forest_Edge/inputs_forest_edge steady.max_iterations=8000 ${GUST_TEST_AMREX_FLAGS})
+        set_tests_properties(rt_forest_edge PROPERTIES ENVIRONMENT PYTHONDONTWRITEBYTECODE=1 TIMEOUT 3600)
+        # A canopy on cosine hills (Canonical_RANS/Forested_Hill, about 3 min): the
+        # lower-canopy balance, lee reversal, 1, 2 and 4 ranks at the verdict.
+        gust_add_test(NAME rt_forested_hill NP 2 LABELS "regression"
+                      PREFIX ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Forested_Hill/check_forested_hill.py
+                             --flume ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Forested_Hill/inputs_flume_hill
+                             --deep ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Forested_Hill/inputs_deep_hill --
+                      COMMAND $<TARGET_FILE:gust> steady.max_iterations=20000 ${GUST_TEST_AMREX_FLAGS})
+        set_tests_properties(rt_forested_hill PROPERTIES ENVIRONMENT PYTHONDONTWRITEBYTECODE=1 TIMEOUT 1800)
     endif()
     # A dense canopy on steep terrain with an inflow face (Canonical_RANS/
     # Forested_Escarpment, the benchmark escarpment in 2-D, about 1 min): steady at
