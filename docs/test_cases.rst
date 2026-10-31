@@ -52,12 +52,6 @@ Steady cases
      - A steep escarpment (Bolund) and a double ridge (Perdigão). Flow separation in the lee may prevent a steady
        solution.
      - Planned
-   * - 7
-     - WINSENT Phase I (``Tests/Real_Terrain/WINSENT``)
-     - A forested escarpment (the Albtrauf) with LAI 5.0 and 0.7, neutral, stable and unstable; the stratified cases
-       with θ prescribed from ERF columns (``simplec.theta = frozen``, :doc:`solution_algorithm`). Set-up, recipe and
-       results in the case README.
-     - None (access-restricted data); the option: ``rt_frozen_theta``
 
 **Case 5b.** Case 5 keeps the potential temperature, gravity, Coriolis forcing at 57.2° N and the flat case's
 sounding: an inversion from 700 m, 0.03 K/m above, the top raised to 1599 m and Rayleigh damping above 1200 m. The

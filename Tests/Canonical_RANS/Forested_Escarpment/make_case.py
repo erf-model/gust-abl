@@ -7,7 +7,7 @@ Writes, on 25 m points that cover the domain and two cells beyond it:
   terrain.xyz        z = H/2 (1 + tanh((x - xc)/L)), H = 200 m, L = 250 m, xc = 3000 m
                      (steepest slope 22 deg, at x = xc), constant in y;
   canopy_height.xyz  25 m on the forest, 0 elsewhere;
-  canopy_lai.xyz     5 on the forest, 0 elsewhere (the WINSENT leafy state);
+  canopy_lai.xyz     5 on the forest, 0 elsewhere;
 the forest covering x in [2200, 3600] m (the slope and the plateau's edge; the
 inflow at x = 0 is open ground). --forest-at-inflow extends it to x = 0 (the
 deck the inflow-face warning must flag).

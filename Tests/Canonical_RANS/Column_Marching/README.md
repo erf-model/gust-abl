@@ -1,8 +1,8 @@
 # Column_Marching
 
 ## Purpose
-The time-marching column (`init.column_time` > 0, `init.column_dt`) against ERF's near-1-D columns of the WINSENT
-benchmark's stratified inflow. The ERF columns come from `erf_column.py` (PR #78, open at the time of writing; `Tests/Real_Terrain/WINSENT` there):
+The time-marching column (`init.column_time` > 0, `init.column_dt`) against ERF's near-1-D columns with a
+stratified inflow. The ERF columns are local runs, not in the repository:
 2 x 2 x 240 cells of 10 m, ERF's one-equation k closure, MOST with z0 = 0.1 m and a fixed kinematic surface heat
 flux, Coriolis at 48.7 N with a geostrophic wind, 300 K to an 8 K inversion at 1000-1100 m, then 3 K/km (stable) or
 0 (unstable) above, 9 h in 1 s steps. GUST marches the same column (240 levels to 2400 m, the same forcing, surface
@@ -16,9 +16,8 @@ flux and sounding, starting from ERF's state at t = 0) with backward Euler steps
 | `compare_erf_column.py` | Per case: reads ERF's run folder (inputs, input_sounding, plotfiles), writes ERF's state at t = 0 as `bc.inflow_file`, runs a copy of the deck with the case's values, and prints R_B between 46 and 73 m, the speed at 300 m and theta at 10 and 100 m for both. |
 
 ## Data and acknowledgements
-No downloaded dataset is used. The ERF columns are local runs of `erf_column.py` with the ERF code
-(https://github.com/erf-model/ERF); they are not in the repository. The forcing of each case (the geostrophic wind
-and the flux) is the WINSENT set-up of PR #78 (open).
+No downloaded dataset is used. The ERF columns are local runs of the ERF code
+(https://github.com/erf-model/ERF); they are not in the repository.
 
 ## How to run
 ```bash

@@ -350,7 +350,7 @@ Steep terrain and the boundaries
 
 **CFL cap and the step floor.** Before the local step floor (``steady.dtau_floor``, :doc:`solution_algorithm`) a
 dense canopy needed a lower ``steady.cfl_max`` than the empty domain: on ``Tests/Canonical_RANS/Forested_Escarpment``
-(a 200 m tanh escarpment, steepest slope 22°, with the WINSENT canopy: uniform, 25 m, LAI 5, :math:`C_d` = 0.15, on
+(a 200 m tanh escarpment, steepest slope 22°, with a canopy: uniform, 25 m, LAI 5, :math:`C_d` = 0.15, on
 the slope and the plateau's edge; 8 m first layer stretched by 1.12; LU-SGS with grid sequencing over three levels, 2
 ranks) the iteration cycled at caps of 4 and above and was marginal at 3 (#77). The cause is not the terrain: the same
 forest on flat ground and on an 11° ramp cycles the same way at the default cap. It is a cell at rest. Under the

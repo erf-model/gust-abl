@@ -1,11 +1,9 @@
 # Forested_Escarpment
 
 ## Purpose
-A dense forest canopy on steep terrain with an inflow face: the WINSENT benchmark's forested Albtrauf in 2-D, the
-set-up the WINSENT runs need before they start (the ERF set-up of that benchmark is in ERF's
-`Exec/CanonicalTests/Real_Terrain/WINSENT`). A tanh escarpment of 200 m (steepest slope 22° at x = 3000 m) carries the
-WINSENT canopy (uniform profile, 25 m, LAI 5, C_d 0.15) on the slope and the plateau's edge, x in [2200, 3600] m.
-WINSENT's layers (8 m first layer stretched by 1.12, about three layers in the canopy), neutral log-law inflow on the
+A dense forest canopy on steep terrain with an inflow face: a made-up case in 2-D. A tanh escarpment of 200 m (steepest slope 22° at x = 3000 m) carries a
+canopy (uniform profile, 25 m, LAI 5, C_d 0.15) on the slope and the plateau's edge, x in [2200, 3600] m.
+Layers (8 m first layer stretched by 1.12, about three layers in the canopy), neutral log-law inflow on the
 low x face, outflow on the high x face, periodic in y, LU-SGS with grid sequencing over three levels.
 
 The check shows that the case converges at the default CFL cap (8) with the default step floor
@@ -37,11 +35,7 @@ The runs: `np2/`, `np1/`, `np4/` to the verdict on 2, 1 and 4 ranks; `first/` fo
 its checkpoint to 80; `straight/` for 80 iterations; `inflow/` with the forest at the inflow face, 1 iteration.
 
 ## Data and acknowledgements
-No external data: the terrain and the forest are made up. The canopy's height, LAI and drag coefficient follow the
-WINSENT complex terrain benchmark, Phase I (A. Rettenmeier, S. Lott, H. Knaus, J. Hohaus, Zenodo,
-https://doi.org/10.5281/zenodo.23097333, CC BY 4.0; https://winsent-benchmark.readthedocs.io): its prescribed leafy
-LAI of 5.0 and the ERF set-up's assumed 25 m beech canopy and C_d of 0.15. We thank the ZSW team and the IEA Wind Task 57
-JAM benchmark for the benchmark description.
+No external data: the terrain and the forest are made up.
 
 ## How to run
 ```bash

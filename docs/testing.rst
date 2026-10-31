@@ -1062,8 +1062,8 @@ Current tests
        2.16 m/s (ratio 0.53); r = 3.1e3 explicit against 0.16 after 20 iterations. About 4 min on two ranks; label
        ``regression`` (the run time); double only.
    * - ``rt_forested_escarpment``
-     - A dense canopy on steep terrain with an inflow face (``Tests/Canonical_RANS/Forested_Escarpment``, the WINSENT
-       Albtrauf in 2-D: a 200 m tanh escarpment, steepest slope 22°, the WINSENT canopy on the slope, WINSENT's layers,
+     - A dense canopy on steep terrain with an inflow face (``Tests/Canonical_RANS/Forested_Escarpment``: a
+       200 m tanh escarpment in 2-D, steepest slope 22°, a canopy on the slope, stretched layers,
        inflow and outflow faces, LU-SGS with grid sequencing at the default CFL cap and step floor; before the floor
        the deck needed ``steady.cfl_max`` 2, :doc:`canopy`). ``check_forested_escarpment.py``:
        steady within 300 iterations on 2 ranks with no boundary-zone warning; the 1- and 4-rank runs within 1e-9

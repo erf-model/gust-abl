@@ -1,5 +1,5 @@
-# The time-marching column (init.column_time > 0): the near-1-D ERF column of the WINSENT benchmark's stratified
-# inflow (erf_column.py of PR #78, open) solved inside GUST. 240 levels of 10 m to 2400 m over flat ground, z0 = 0.1 m,
+# The time-marching column (init.column_time > 0): a near-1-D ERF column with a stratified
+# inflow solved inside GUST. 240 levels of 10 m to 2400 m over flat ground, z0 = 0.1 m,
 # Coriolis at 48.7 N with a geostrophic wind, a fixed surface heat flux, a slip top with the sounding's gradient above
 # the inversion, no Rayleigh layer; backward Euler steps of 1 s to 9 h (ERF's fixed_dt and stop_time). The sounding
 # is 300 K to 1000 m, 308 K at 1100 m, then 3 K/km (the stable cases) or 0 (the unstable cases).
