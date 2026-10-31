@@ -1081,6 +1081,15 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
                   PREFIX ${Python3_EXECUTABLE} ${CANOPY_DRAG_CASE}/check_canopy_column.py --tol 2e-3 --max-ratio 0.7 --
                   COMMAND $<TARGET_FILE:gust> ${CANOPY_DRAG_CASE}/inputs_canopy_column ${GUST_TEST_AMREX_FLAGS})
     set_tests_properties(rt_canopy_column PROPERTIES ENVIRONMENT PYTHONDONTWRITEBYTECODE=1 TIMEOUT 900)
+    # A uniform canopy under a pressure gradient against the canopy-flow relations
+    # (Canonical_RANS/Homogeneous_Canopy): momentum budget, U = sqrt(F/f) deep in
+    # the canopy, the exponential upper canopy, beta, and LAI 10 on 1, 2, 4 ranks.
+    if(GUST_MPI)
+        gust_add_test(NAME rt_homogeneous_canopy NP 2 LABELS "regression"
+                      PREFIX ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Homogeneous_Canopy/check_homogeneous_canopy.py --
+                      COMMAND $<TARGET_FILE:gust> ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Homogeneous_Canopy/inputs_homogeneous_canopy ${GUST_TEST_AMREX_FLAGS})
+        set_tests_properties(rt_homogeneous_canopy PROPERTIES ENVIRONMENT PYTHONDONTWRITEBYTECODE=1 TIMEOUT 1800)
+    endif()
     # A dense canopy on steep terrain with an inflow face (Canonical_RANS/
     # Forested_Escarpment, the WINSENT Albtrauf in 2-D, about 1 min): steady at
     # the default CFL cap within 300 iterations, the same answer on 1, 2 and 4
