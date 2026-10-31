@@ -192,7 +192,7 @@ over a neutral 3-D surface.
 **Time-marching column.** ``init.column_time`` > 0 marches the same column in physical time instead: backward Euler
 steps of ``init.column_dt`` (the last step ends at ``init.column_time``), :math:`\nu_t` taken from the closure at
 each step without the steady column's relaxation, and no convergence test. It is the form of ERF's near-1-D column
-(the benchmark stratified inflow): a column heated or cooled at a fixed rate has no steady state, so it needs no
+with a stratified inflow: a column heated or cooled at a fixed rate has no steady state, so it needs no
 Rayleigh layer on :math:`\theta`, and the table is its state at ``init.column_time``. The surface is fixed: the
 neutral wall law (``mol`` with ``init.column_mol = 0``, :math:`\theta` held), ``surface_temperature``, or
 ``heat_flux``, where the flux :math:`q` = ``bc.surface_heat_flux`` enters the first cell as given (explicit, no search
@@ -213,9 +213,9 @@ bulk Richardson bounds are refused with ``heat_flux`` (no bulk Richardson number
 header give the surface of the final state; with ``surface_temperature`` the flux printed is the one at
 ``init.column_time`` only. The 3-D run is steady and has no such time: a marched :math:`\theta` with a fixed flux and
 no heat sink is not a steady state of a periodic deck. The table is meant as the ``bc.inflow_file`` of a deck with an
-inflow face (the benchmark runs, with ``simplec.theta = frozen``, PR #78), or as a first guess alone (the example deck
+inflow face (with ``simplec.theta = frozen``), or as a first guess alone (the example deck
 stops after one iteration, ``steady.max_iterations = 1``).
-On the four benchmark stratified columns (240 × 10 m levels, 9 h, ``Tests/Canonical_RANS/Column_Marching``) the
+On four stratified columns (240 × 10 m levels, 9 h, ``Tests/Canonical_RANS/Column_Marching``) the
 column is within 9 % of ERF's bulk Richardson number between 46 and 73 m and within 1 % of its speed at 300 m, the
 same for steps of 1, 10 and 60 s; a 9 h column of 1 s steps takes about 2 s. The march is first order in time and
 stayed stable up to 3600 s steps; steps up to about 300 s keep the bulk Richardson number within 0.002 of the 1 s
@@ -236,7 +236,7 @@ smaller than the wall law's gradient, so in a neutral surface layer the solved :
 log-layer value :math:`u_*^2/C_{\mu 0}^2`: at 0.77 of it for :math:`z_1/z_0 = 5` and 0.74 for :math:`z_1/z_0 \ge 30`
 (a discrete constant-stress layer; 0.76 in ``ColumnMarching.SolvedWallK``), with a :math:`k` minimum at the first
 cell. The closer agreement with ERF's first-cell :math:`k` below is therefore partly this discretisation, not
-evidence that the solved value is the more physical one. In the four benchmark columns
+evidence that the solved value is the more physical one. In the four columns
 the solved first-cell :math:`k` is 1.2–1.3 times ERF's (the wall value is about 1.9 times), and the bulk Richardson
 number moves 1–2 % of its value towards ERF's (6.5–8 % below it, from 8–9 %). The speed at 300 m and :math:`\theta`
 change by at most 0.01 m/s and 0.01 K. The 3-D run keeps the wall value either way.

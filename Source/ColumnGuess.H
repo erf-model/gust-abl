@@ -58,7 +58,7 @@
 // horizontal forcing (geostrophic, or a pressure gradient) and the stage;
 // check_column_guess names the key that is missing. Seconds for 64 levels.
 //
-// The time-marching column (init.column_time > 0, the form of ERF's near-1-D column, Tests/.../erf_column.py): the
+// The time-marching column (init.column_time > 0, the form of ERF's near-1-D column): the
 // same equations and closure in physical time, init.column_dt per backward Euler step (the last step ends at
 // init.column_time), nu_t not relaxed between steps, no convergence test and no Rayleigh layer on theta needed (a
 // stratified column need not be steady: the table is its state at init.column_time). Its surface is fixed: the neutral

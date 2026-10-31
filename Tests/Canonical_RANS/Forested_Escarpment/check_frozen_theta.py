@@ -274,7 +274,7 @@ def main(argv):
     print("  frozen: turbulence plotfile max |R_theta| = %s (0): %s"
           % ("%.3e" % rmax if turb else "no plotfile", "pass" if good else "FAIL"))
 
-    # The benchmark path: theta from an inflow table (not the deck's sounding), with init.z_agl_min given.
+    # Theta from an inflow table (not the deck's sounding), with init.z_agl_min given.
     file_cmd = list(cmd)
     file_cmd[-1 - next(k for k, a in enumerate(reversed(file_cmd)) if a.endswith("inputs_frozen_theta"))] = \
         os.path.join(HERE, "inputs_frozen_theta_file")

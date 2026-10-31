@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""GUST's time-marching column (init.column_time) against ERF's near-1-D columns of the benchmark stratified inflow.
+"""GUST's time-marching column (init.column_time) against ERF's near-1-D columns with a stratified inflow.
 
-For each case, the ERF run folder (erf_column.py of PR #78, open: inputs, input_sounding, plt00000 ... and history.txt)
+For each case, the ERF run folder (inputs, input_sounding, plt00000 ... and history.txt)
 gives the forcing, the surface flux, the sounding and the initial state (the plotfile at t = 0, the horizontal mean of
 its 2 x 2 columns). This script writes that state as the GUST deck's bc.inflow_file, runs a copy of inputs_column_marching
 with the case's values, and compares the column at 9 h with ERF's: the bulk Richardson number between
---za and --zb and the speed at 300 m (erf_column.py's definitions), plus theta at 10 and 100 m.
+--za and --zb and the speed at 300 m (as in the ERF runs), plus theta at 10 and 100 m.
 """
 import argparse
 import math
@@ -25,7 +25,7 @@ CASES = ["high_stable_G2/q-0.004", "low_stable_G3/q-0.0025", "high_unstable_laps
 
 
 def read_erf_mean(plt):
-    """Horizontal means of ERF's plotfile: z (cell centres), u, v, theta, k (erf_column.py read_columns)."""
+    """Horizontal means of ERF's plotfile: z (cell centres), u, v, theta, k."""
     hdr = ep._read_header(plt)
     names = hdr["names"]
     ncomp, _, boxes, fabs = ep._read_cell_h(os.path.join(plt, "Level_0"))

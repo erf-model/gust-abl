@@ -218,10 +218,9 @@ neutral wall would give :math:`N^2 = 0` in the first cell. The surface layer sti
 stability (neutral unless ``bc.surface_stability`` is set).
 
 **Why.** A steady solve of :math:`\theta` with a fixed surface heat flux has no steady state: the surface keeps adding
-or removing heat. With buoyancy in the momentum equations as well, the benchmark stable and unstable cases diverged.
-With :math:`\theta` frozen from a near-1-D column and buoyancy in the closure only, all four converged
-(``Tests/Real_Terrain/benchmark``; its two neutral cases solve :math:`\theta`). Van der Laan et al. (2024) use the form
-for neutral and stable boundary layers; the unstable benchmark cases apply it beyond that, with :math:`N^2 < 0` making
+or removing heat. With buoyancy in the momentum equations as well, stable and unstable cases on a forested escarpment diverged.
+With :math:`\theta` frozen from a near-1-D column and buoyancy in the closure only, all four converged. Van der Laan et al. (2024) use the form
+for neutral and stable boundary layers; the unstable cases apply it beyond that, with :math:`N^2 < 0` making
 the closure's :math:`P_b` a source of :math:`k`. The cost: the flow cannot change the stratification. A cold pool in a valley or air
 lifted over a ridge keeps the upstream profile by height above the ground, and there are no buoyancy forces, so no
 lee waves, gravity currents or katabatic and anabatic slope flows. Over terrain the omitted force is not small: with
