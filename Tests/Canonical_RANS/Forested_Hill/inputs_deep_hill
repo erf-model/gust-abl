@@ -1,0 +1,37 @@
+# A deep canopy on a long gentle hill (Canonical_RANS/Forested_Hill), regime I of Finnigan and Belcher
+# (2004): a train of cosine hills, H = 4 m, L = 40 m (one period 160 m), a uniform canopy 20 m tall,
+# L_c = 10 m with LAI 10. 40 x 4 x 39 cells, a 1 m first layer stretched by 1.07 to about 186 m. The check
+# gives the tables and the LAI.
+mesh.n_cell = 40 4 39
+mesh.prob_lo = 0. 0. 0.
+mesh.prob_hi = 160. 16. 186.
+mesh.is_periodic = 1 1 0
+mesh.max_grid_size = 20 4
+mesh.dz0 = 1.
+mesh.stretch_ratio = 1.07
+terrain.type = xyz
+terrain.file = t.xyz
+terrain.smoothing = 0
+abl.drive = pressure_driven
+abl.theta = neutral
+init.first_guess = profile
+bc.zlo = surface_layer
+bc.zhi = slip_wall
+bc.surface_z0 = 0.001
+bc.theta_profile_z = 0.
+bc.theta_profile = 300.
+bc.inflow_profile = log_law
+bc.inflow_ustar = 0.5
+bc.inflow_z0 = 0.001
+bc.inflow_direction = 0.
+forcing.gravity = 0.
+forcing.pressure_gradient = 1.25e-3 0. 0.
+canopy.type = map
+canopy.height_file = h.xyz
+canopy.lai_file = lai.xyz
+canopy.cd = 0.2
+turb.tke_floor = 1.e-6
+steady.stage = simplec
+steady.dtau_floor = 1
+io.plot_file = hill_plt
+io.chk_file = hill_chk
