@@ -15,7 +15,7 @@ lai10/), and LAI 10 again on 1 and 4 ranks (lai10_np1/, lai10_np4/), and checks:
   - at LAI 2 and 5 the upper canopy (U/U_h >= 0.35) is exponential (Inoue 1963),
     with the rate n = f h / (2 beta^2), beta = u*(h) / U_h, u*(h)^2 = F (H - h).
     LAI 10 is printed only: its e-folding depth is about 2.5 layers;
-  - beta in the range of the published neutral values;
+  - beta in [0.25, 0.40], around the values of about 0.3 in Poggi et al. (2008);
   - LAI 10 gives the same answer on 1, 2 and 4 ranks.
 The exit code is the verdict.
 """
@@ -30,7 +30,7 @@ sys.path.insert(0, os.path.join(HERE, "..", "..", "..", "extern_erf"))
 import erf_plotfile as ep  # noqa: E402
 
 F, HC, CD, Z0, KAPPA, DZ0, RATIO = 1.25e-3, 20.0, 0.2, 0.01, 0.4, 0.25, 1.02
-TOL_BUDGET, TOL_DEEP, TOL_N, TOL_FIT, BETA_RANGE, TOL_RANKS = 0.01, 0.02, 0.15, 0.05, (0.25, 0.45), 1e-8
+TOL_BUDGET, TOL_DEEP, TOL_N, TOL_FIT, BETA_RANGE, TOL_RANKS = 0.01, 0.02, 0.15, 0.05, (0.25, 0.40), 1e-8
 
 
 def with_ranks(cmd, n):

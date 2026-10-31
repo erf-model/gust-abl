@@ -16,6 +16,7 @@ With θ solved, or with buoyancy in the momentum equations, these four cases did
 |---|---|
 | `prepare_gust.py` | Turns one ERF case folder (from ERF's `Exec/CanonicalTests/Real_Terrain/WINSENT/prepare_winsent.py`) into GUST's tables; `--roughness` adds the roughness map, `--canopy-height 15` the uniform 15 m forest of the runs below. |
 | `inputs_winsent_z0map` | The deck of all six runs: the roughness map of the kynema-sgf WINSENT runs (`roughness.xyz`). `steady.cfl_max`, `steady.max_iterations` and, for the stratified cases, `simplec.theta` go on the command line. |
+| `make_z0_only.py` | A copy of a neutral case folder with the forest as roughness and no canopy keys. |
 | `inputs_winsent` | The same deck with ERF's uniform z0 = 0.1 m (the first neutral runs). |
 | `inputs_winsent_column` | The neutral inflow column: flat ground, Coriolis at 48.7° N, the geostrophic wind found for a target wind at 300 m. |
 | `column_inflow.py` | Runs the neutral column (`--scale G`: G times the benchmark power law at 300 m) and writes the inflow `z u v theta k`, turned to the lidar's direction. |
@@ -49,7 +50,9 @@ cell.
 - **Inflow (xlo):** a column profile `z u v theta k`, turned at each height to the lidar's direction. Outflow on xhi,
   periodic in y, slip top, Rayleigh layer on w above 1900 m.
 - **Solver:** SIMPLEC with LU-SGS lines, `steady.cfl_max = 2` (the dense canopy on the steep slope,
-  `docs/canopy.rst`), realizability 0.309, stop at the default tolerances.
+  `docs/canopy.rst`), realizability 0.309, stop at the default tolerances. These are the settings of the submitted
+  runs. On the current step `steady.dtau_floor=1` replaces `steady.cfl_max=2` (cap 8): neutral 221 to 226 iterations,
+  stable 211, and the neutral high LAI case keeps its L140 score (100–400 m, bias 0.00, RMS 0.49 m/s).
 
 | Case | Inflow column | Geostrophic wind (m/s, case frame) | Surface flux (K m/s) | Column R_B (46–73 m) | `simplec.theta` |
 |---|---|---|---|---|---|
@@ -150,6 +153,18 @@ What the numbers show:
   frozen.
 - A 0.9 G column for high LAI, stable, cycles instead of converging; lowering the eddy-viscosity relaxation
   (`turb.nut_relax` 0.6) did not remove the cycle.
+
+**Canopy against roughness (PT-8.6.1).** High LAI, neutral, on 8 ranks with `steady.dtau_floor=1`: the chosen canopy, and the same
+case with the forest as z0 = 1.5 m (0.1 of the 15 m trees) where LAI ≥ 2.5 and no canopy keys (`make_z0_only.py`).
+
+| Run | Iterations | L140 bias (m/s) | L140 RMS (m/s) | L140 speed at 100 m | MMNW speed at 11 / 25 / 46 / 98 m |
+|---|---|---|---|---|---|
+| Canopy | 221, verdict | 0.00 | 0.49 | 3.58 m/s | 0.54 / 2.63 / 4.86 / 6.21 m/s |
+| z0 = 1.5 m | 3000, **no verdict** | +0.01 | 0.41 | 3.75 m/s | 2.85 / 4.34 / 5.31 / 6.26 m/s |
+
+The z0 run stays between r = 1.1e-4 and 2.4e-4 from about iteration 380 to the limit; its last field is the one scored.
+At L140 the two differ by at most 0.17 m/s, so the lidar does not separate them, and the 15 m height and the inflow are fitted
+to this lidar. They differ in the lowest 50 m at MMNW, inside and just above the forest, where this comparison has no measurement.
 
 ## CTest
 None for the six cases (the data are not in the repository). The option they use, `simplec.theta = frozen`, is
