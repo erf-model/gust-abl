@@ -399,6 +399,29 @@
 #     λ k), from the frozen θ_f (docs/canopy.rst).
 
 # ==================================================================================================================
+# buildings
+# ==================================================================================================================
+# See docs/buildings.rst. The geometry is built in a run without steady.stage and written to the plotfile as
+# building_beta and building_wall. It does not act on the flow yet, so a run with a stage refuses buildings.type =
+# immersed_forcing. A key that has no effect with buildings.type = none is refused. A restart refuses buildings
+# other than those of the run it continues.
+#
+# buildings.type = none
+#     none or immersed_forcing.
+#
+# buildings.file =    # required when on
+#     The height map, readable. Heights above the local ground (m), finite and ≥ 0. At least one building in the
+#     domain, none reaching the top layer, and in a periodic direction the map no wider than the domain.
+#
+# buildings.format = erf
+#     erf: nx, ny, the x values, the y values, the heights with x the slow index. xyz: x y height or x y height
+#     zstart lines holding each point of a rectangular grid once, in any order; solid from zstart (≥ 0, and below
+#     height where height > 0; default 0) to height.
+#
+# buildings.small_volfrac = 0.005
+#     In [0, 0.5). Below it a fraction is 0, within it of 1 the fraction is 1. At 0, round-off alone is clipped.
+
+# ==================================================================================================================
 # abl
 # ==================================================================================================================
 # See named-setups, docs/howto.rst. Read with the SIMPLEC stage only; refused otherwise. Without these keys nothing

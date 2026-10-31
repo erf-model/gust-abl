@@ -61,9 +61,9 @@ struct ScopedKeys
 
 TEST (Inputs, OwnedNamespacesAreThoseOfThisVersion)
 {
-    // The original eight plus the SIMPLEC stage's forcing, convection and simplec, the forest canopy and the named set-ups.
+    // The original eight plus the SIMPLEC stage's forcing, convection and simplec, the forest canopy, the buildings and the named set-ups.
     const std::vector<std::string> expect{
-        "mesh", "terrain", "init", "turb", "bc", "steady", "solver", "io", "forcing", "convection", "simplec", "canopy", "abl"};
+        "mesh", "terrain", "init", "turb", "bc", "steady", "solver", "io", "forcing", "convection", "simplec", "canopy", "buildings", "abl"};
     EXPECT_EQ(gust::owned_namespaces(), expect);
 }
 

@@ -90,6 +90,7 @@ Contents
    terrain_coordinates
    boundary_conditions
    canopy
+   buildings
 
 .. toctree::
    :maxdepth: 2

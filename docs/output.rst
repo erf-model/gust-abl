@@ -59,6 +59,12 @@ It can be read with yt, ParaView, VisIt or AMReX's ``amrex_fcompare``.
    * - ``canopy_drag``
      - With ``canopy.type`` other than ``none``: the canopy's drag field :math:`f = C_d a` (1/m), the mean over the
        cell (:doc:`canopy`).
+   * - ``canopy_lad``
+     - With ``canopy.heat = fixed``: the leaf area density :math:`a` (1/m) (:doc:`canopy`).
+   * - ``building_beta``
+     - With ``buildings.type`` other than ``none``: the cell's solid fraction (:doc:`buildings`).
+   * - ``building_wall``
+     - With ``buildings.type`` other than ``none``: the sum of the bits of the cell's walls (:doc:`buildings`).
 
 The node heights themselves, ghost nodes included, are written to ``Level_0/z_phys_nd`` inside the plotfile as a
 VisMF MultiFab.
