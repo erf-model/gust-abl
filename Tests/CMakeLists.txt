@@ -1105,7 +1105,7 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
         set_tests_properties(rt_forested_hill PROPERTIES ENVIRONMENT PYTHONDONTWRITEBYTECODE=1 TIMEOUT 1800)
     endif()
     # A dense canopy on steep terrain with an inflow face (Canonical_RANS/
-    # Forested_Escarpment, the benchmark escarpment in 2-D, about 1 min): steady at
+    # Forested_Escarpment, about 1 min): steady at
     # the default CFL cap within 300 iterations, the same answer on 1, 2 and 4
     # ranks, the canopy slows the wind, a restart bit for bit, and the
     # inflow-face warning with the forest at the inflow.

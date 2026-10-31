@@ -14,7 +14,7 @@ et al. 2003; Dupont and Brunet 2008).
 |---|---|
 | `inputs_forest_edge` | The deck: 115 x 4 x 49 cells (6 m columns, four uneven boxes), a 1 m first layer stretched by 1.05 (top at 198.4 m), `steady.dtau_floor = 1`. |
 | `check_forest_edge.py` | Writes the canopy tables on the columns' centres, runs LAI 2 and 5 and LAI 2 on 1 and 4 ranks to the verdict, and checks them; the exit code is the verdict. |
-| `mesh_study.py` | The 3 m mesh and the benchmark-mesh pair below, with their decks and tables (not a CTest). |
+| `mesh_study.py` | The 3 m mesh, with its deck and table (not a CTest). |
 
 ## Data and acknowledgements
 No data files; the measurements appear in the papers as figures and are not compared here. The geometry and the
@@ -43,24 +43,6 @@ x0 is the origin of the internal boundary layer, a different length and an order
 Dupont and Brunet's denser case 2 gives 8 h, with another leaf profile; 7.14 h here is not checked against it.
 On 1 and 4 ranks at LAI 2 at the verdict the velocities differ by 1.4e-7 and 1.5e-8 of the largest u, within 1e-6.
 A 3 m mesh (`mesh_study.py`, 17898 iterations to the verdict) also gives 8.42 h.
-
-**On benchmark's mesh** (`mesh_study.py`). The same pattern with benchmark's canopy (15 m, LAI 5, C_d 0.15, a 704 m period), on
-its 32 m columns and its layers (8 m first layer, about two layers in the canopy, top 2400 m), against 5.5 m columns and a 1 m
-first layer (top 2330 m), u* = 0.5 m/s. Neither reached the verdict in 20000 iterations (r = 3.5e-5, 3.8e-5):
-
-| Quantity | benchmark mesh | Fine mesh |
-|---|---|---|
-| Adjustment length | 124 m | 121 m |
-| Peak w/u_ref at the canopy top | 0.063 | 0.100 |
-| u_ref | 2.87 m/s | 2.65 m/s |
-| u(h) / u_ref, 112 m behind the edge | 0.42 | 0.50 |
-| u(h/2) / u_ref, 112 m behind the edge | 0.18 | 0.09 |
-| u(2 h) / u_ref, 112 m behind the edge | 0.99 | 1.00 |
-| u(60 m) / u_ref, 112 m behind the edge | 1.44 | 1.43 |
-
-The adjustment lengths agree within a column of the coarse mesh, and the winds at 2 h and 60 m, relative to u_ref, within 1 %.
-The coarse mesh does not resolve the canopy's wind or the peak of w, and u_ref is 8 % higher on it. This is flat ground; it does
-not test the benchmark slopes.
 
 **Limits.**
 - Dupont and Brunet set C_d LAI equal to that of Raupach et al. (1987) without giving the value here. **C_d 0.2 is an

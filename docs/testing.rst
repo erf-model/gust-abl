@@ -1071,8 +1071,8 @@ Current tests
      - A canopy on cosine hills (``Tests/Canonical_RANS/Forested_Hill``): the lower-canopy balance of Finnigan and Belcher
        (2004), lee reversal on the geometry of Poggi et al. (2008) at four times its drag, 1, 2 and 4 ranks. About 3 min, ``regression``, MPI builds.
    * - ``rt_forested_escarpment``
-     - A dense canopy on steep terrain with an inflow face (``Tests/Canonical_RANS/Forested_Escarpment``, the benchmark
-       escarpment in 2-D: a 200 m tanh escarpment, steepest slope 22°, the benchmark canopy on the slope, benchmark's layers,
+     - A dense canopy on steep terrain with an inflow face (``Tests/Canonical_RANS/Forested_Escarpment``: a
+       200 m tanh escarpment in 2-D, steepest slope 22°, a canopy on the slope, stretched layers,
        inflow and outflow faces, LU-SGS with grid sequencing at the default CFL cap and step floor; before the floor
        the deck needed ``steady.cfl_max`` 2, :doc:`canopy`). ``check_forested_escarpment.py``:
        steady within 300 iterations on 2 ranks with no boundary-zone warning; the 1- and 4-rank runs within 1e-9

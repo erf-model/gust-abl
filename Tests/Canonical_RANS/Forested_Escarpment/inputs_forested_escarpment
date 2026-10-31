@@ -1,8 +1,8 @@
-# A forested escarpment, the benchmark benchmark's escarpment in 2-D (the tables
+# A made-up forested escarpment in 2-D (the tables
 # from make_case.py, given on the command line from the run folder): a tanh
 # ramp of 200 m (steepest slope 22 deg at x = 3000 m), 6000 m x 200 m with 25 m
-# columns (240 x 8, periodic in y), benchmark's layers (8 m first layer,
-# stretched by 1.12, 30 layers to about 1930 m). The benchmark canopy (uniform,
+# columns (240 x 8, periodic in y), layers (8 m first layer,
+# stretched by 1.12, 30 layers to about 1930 m). A canopy (uniform,
 # 25 m, LAI 5, Cd 0.15) on the slope and the plateau's edge, x in
 # [2200, 3600] m, with the k terms (canopy.tke = on, the default). Neutral
 # log-law inflow on xlo (u* 0.35 m/s, z0 0.1 m), outflow on xhi, slip top, a

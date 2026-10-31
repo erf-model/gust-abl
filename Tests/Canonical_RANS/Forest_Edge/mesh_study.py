@@ -6,10 +6,6 @@
 Builds its decks from inputs_forest_edge and runs, each in its own folder:
 
   edge_3m/         the deck's pattern on 3 m columns, LAI 2;
-  benchmark_coarse/  benchmark's canopy (15 m, LAI 5, C_d 0.15; 704 m period, 320 m forest) on its
-                   32 m columns and its layers (an 8 m first layer, top 2400 m);
-  benchmark_fine/    the same canopy on 5.5 m columns (319 m forest), a 1 m first layer stretched
-                   by 1.08 (top 2330 m).
 
 Prints, for each: iterations, the last r, u_ref, the peak w/u_ref and the adjustment length, and winds
 112 m behind the edge. The exit code is 0.
@@ -25,17 +21,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "..", "..", "extern_erf"))
 import erf_plotfile as ep  # noqa: E402
 
-ZLEVELS = [0.00, 8.00, 16.95, 26.98, 38.19, 50.75, 64.80, 80.52, 98.12, 117.82, 139.87, 164.55, 192.17, 223.09,
-           257.69, 296.41, 339.75, 388.27, 442.56, 503.33, 571.35, 647.47, 732.68, 828.04, 934.77, 1054.23,
-           1187.93, 1337.58, 1505.07, 1692.53, 1902.34, 2137.17, 2400.00]
 CASES = {
-    # name: nx, ny, dx, h, lai, cd, L, forest, top, F, mesh lines replaced
+    # name: nx, ny, dx, h, lai, cd, L, forest, F, mesh lines replaced
     "edge_3m": dict(nx=230, ny=4, dx=3.0, h=18.0, lai=2.0, cd=0.2, L=690.0, forest=306.0, F=1.25e-3,
-                    nz=49, mgs="58 4", hi="690. 12. 200.", layers=None),
-    "benchmark_coarse": dict(nx=22, ny=4, dx=32.0, h=15.0, lai=5.0, cd=0.15, L=704.0, forest=320.0, F=1.0417e-4,
-                           nz=32, mgs="11 4", hi="704. 128. 2400.", layers="zlevels.txt"),
-    "benchmark_fine": dict(nx=128, ny=4, dx=5.5, h=15.0, lai=5.0, cd=0.15, L=704.0, forest=319.0, F=1.0729e-4,
-                         nz=68, mgs="64 4", hi="704. 22. 2330.", layers=1.08),
+                    nz=49, mgs="58 4", hi="690. 12. 200."),
 }
 
 
@@ -50,12 +39,6 @@ def write_case(name, c, base):
             ln = "mesh.prob_hi = " + c["hi"]
         elif key == "mesh.max_grid_size":
             ln = "mesh.max_grid_size = " + c["mgs"]
-        elif key == "mesh.dz0" and c["layers"] == "zlevels.txt":
-            ln = "mesh.zlevels_file = zlevels.txt"
-        elif key == "mesh.stretch_ratio" and c["layers"] == "zlevels.txt":
-            continue
-        elif key == "mesh.stretch_ratio" and c["layers"]:
-            ln = "mesh.stretch_ratio = %g" % c["layers"]
         elif key == "canopy.cd":
             ln = "canopy.cd = %g" % c["cd"]
         elif key == "forcing.pressure_gradient":
@@ -63,9 +46,6 @@ def write_case(name, c, base):
         out.append(ln)
     with open(os.path.join(name, "deck"), "w") as f:
         f.write("\n".join(out) + "\n")
-    if c["layers"] == "zlevels.txt":
-        with open(os.path.join(name, "zlevels.txt"), "w") as f:
-            f.write("\n".join("%.2f" % z for z in ZLEVELS) + "\n")
     dx, dy = c["dx"], (float(c["hi"].split()[1]) / c["ny"])
     with open(os.path.join(name, "h.xyz"), "w") as h, open(os.path.join(name, "lai.xyz"), "w") as a:
         for j in range(-2, c["ny"] + 2):

@@ -350,7 +350,7 @@ Steep terrain and the boundaries
 
 **CFL cap and the step floor.** Before the local step floor (``steady.dtau_floor``, :doc:`solution_algorithm`) a
 dense canopy needed a lower ``steady.cfl_max`` than the empty domain: on ``Tests/Canonical_RANS/Forested_Escarpment``
-(a 200 m tanh escarpment, steepest slope 22°, with the benchmark canopy: uniform, 25 m, LAI 5, :math:`C_d` = 0.15, on
+(a 200 m tanh escarpment, steepest slope 22°, with a canopy: uniform, 25 m, LAI 5, :math:`C_d` = 0.15, on
 the slope and the plateau's edge; 8 m first layer stretched by 1.12; LU-SGS with grid sequencing over three levels, 2
 ranks) the iteration cycled at caps of 4 and above and was marginal at 3 (#77). The cause is not the terrain: the same
 forest on flat ground and on an 11° ramp cycles the same way at the default cap. It is a cell at rest. Under the
@@ -413,15 +413,14 @@ the canopy decks back to the default cap; its default 0.1 is the largest value t
 close to what they were (:doc:`solution_algorithm`). ``steady.dtau_floor = 0`` restores the old step, and
 ``Tests/Canonical_RANS/Forested_Escarpment`` then needs ``steady.cfl_max`` 2 to 2.5 as before.
 
-**Dense canopies: use** ``steady.dtau_floor = 1``. The default 0.1 is not enough on the 3-D benchmark forest
-(``Tests/Real_Terrain/benchmark``, high LAI, 8 ranks, cap 8). The neutral case cycles on the coarsest sequencing level
+**Dense canopies: use** ``steady.dtau_floor = 1``. The default 0.1 is not enough on a 3-D forested escarpment
+(LAI 5, 8 ranks, cap 8). The neutral case cycles on the coarsest sequencing level
 (128 m cells) for more than 1430 iterations, and the stable case settles at :math:`r = 1.1\times10^{-4}` with the
 :math:`k` residual 10 % above its tolerance. 0.3 does not leave the coarse level in about 1360 iterations. 1 reaches
-the verdict in 226 (neutral) and 211 (stable) iterations; the submitted runs at cap 2 on the old step took 360 and 398.
+the verdict in 226 (neutral) and 211 (stable) iterations; cap 2 on the old step took 360 and 398.
 
 **Validation.** ``Tests/Canonical_RANS/Homogeneous_Canopy`` (the balance deep in the canopy, the exponential upper canopy,
-ERF on the same column), ``Tests/Canonical_RANS/Forest_Edge`` (the adjustment length behind a leading edge, also on
-benchmark's mesh) and ``Tests/Canonical_RANS/Forested_Hill`` (the lower-canopy balance and lee reversal) hold the numbers
+ERF on the same column), ``Tests/Canonical_RANS/Forest_Edge`` (the adjustment length behind a leading edge) and ``Tests/Canonical_RANS/Forested_Hill`` (the lower-canopy balance and lee reversal) hold the numbers
 and their limits. The low-:math:`k` zone behind a forest edge seen in LES is absent here, and the
 flume geometry of Poggi et al. (2008) with a uniform canopy does not reverse at its published drag or twice it, and does at four times.
 

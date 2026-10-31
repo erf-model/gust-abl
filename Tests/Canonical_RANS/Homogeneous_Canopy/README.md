@@ -53,7 +53,7 @@ Finnigan's own value has not been read from the paper.
 `canopy.length_alpha = 0`. It does not detect `canopy.beta_d = 2` or a ground z0 of 0.1 m: these move the numbers by less than
 their tolerances.
 
-**ERF on the same column** (`compare_erf.py`; the benchmark ERF build, 2 x 2 x 200 cells of 1 m,
+**ERF on the same column** (`compare_erf.py`; an ERF build, 2 x 2 x 200 cells of 1 m,
 12000 s from rest). GUST minus ERF:
 
 | LAI | u(h/4) | u(h/2) | u(h) | k(h) | u(1.5 h) | u(5 h) | ERF drift in its last 6000 s at 5 h |
