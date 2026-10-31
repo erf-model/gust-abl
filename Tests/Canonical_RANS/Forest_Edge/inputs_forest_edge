@@ -1,0 +1,45 @@
+# A forest-clearing-forest pattern in a neutral flow driven by a constant pressure gradient over
+# flat ground (Canonical_RANS/Forest_Edge), the geometry of Dupont and Brunet (2008) sec. 2: 690 m
+# periodic in x, an 18 m forest, a 21.2 h clearing (384 m and 306 m on the columns). 115 x 4 cells (6 m columns), a 1 m
+# first layer stretched by 1.05 to 198.4 m, the surface layer on the ground (z0 = 0.01 m), a slip
+# lid: u*^2 = F H with F = 1.25e-3 m/s^2. The check gives the canopy tables and the LAI.
+mesh.n_cell        = 115 4 49
+mesh.prob_lo       = 0. 0. 0.
+mesh.prob_hi       = 690. 24. 200.
+mesh.is_periodic   = 1 1 0
+mesh.max_grid_size = 29 4
+mesh.dz0           = 1.
+mesh.stretch_ratio = 1.05
+
+terrain.type = flat
+
+abl.drive = pressure_driven
+abl.theta = neutral
+
+init.first_guess = profile
+
+bc.zlo = surface_layer
+bc.zhi = slip_wall
+bc.surface_z0 = 0.01
+bc.theta_profile_z = 0.
+bc.theta_profile   = 300.
+bc.inflow_profile   = log_law
+bc.inflow_ustar     = 0.5
+bc.inflow_z0        = 0.01
+bc.inflow_direction = 0.
+
+forcing.gravity           = 0.
+forcing.pressure_gradient = 1.25e-3 0. 0.
+
+canopy.type        = map
+canopy.height_file = h.xyz
+canopy.lai_file    = lai.xyz
+canopy.cd          = 0.2
+
+turb.tke_floor = 1.e-6
+
+steady.stage      = simplec
+steady.dtau_floor = 1
+
+io.plot_file = edge_plt
+io.chk_file  = edge_chk
