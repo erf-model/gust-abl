@@ -213,6 +213,7 @@ TEST (BuildingForcing, SinkDiagonalAndClosedFace)
         EXPECT_EQ(value_at(Ru, 4, 3, 1), U) << "u inside the block";
         EXPECT_EQ(value_at(Rw, 3, 3, 2), 0.0) << "the roof's z-face";
         EXPECT_EQ(value_at(Rw, 3, 3, 3), 7.0) << "the partial cell's top is open";
+        EXPECT_EQ(value_at(Rw, 3, 3, 0), 7.0) << "w on the ground stays the boundary conditions' row";
 
         // a_P gains r; the closed face's coupling goes; the identity on a blocked face.
         amrex::MultiFab A(c.mesh.ax.boxArray(), c.dm, gust::n_implicit_coefs, 0);
@@ -234,6 +235,7 @@ TEST (BuildingForcing, SinkDiagonalAndClosedFace)
         f.add_fixed_rows(2, mask);
         EXPECT_EQ(value_at(mask, 3, 3, 2), 1.0);
         EXPECT_EQ(value_at(mask, 3, 3, 3), 0.0);
+        EXPECT_EQ(value_at(mask, 3, 3, 0), 0.0) << "nor is the ground's w a fixed row here";
 
         amrex::MultiFab Gu(amrex::convert(c.ba, amrex::IntVect(1, 0, 1)), c.dm, 1, 0), Gv(amrex::convert(c.ba, amrex::IntVect(0, 1, 1)), c.dm, 1, 0);
         Gu.setVal(2);

@@ -109,6 +109,8 @@ Momentum
 with no :math:`1/\Delta\tau`, and the SIMPLEC denominator is zero. This is the steady limit of ERF's
 ``if_implicit_projection``. No drag coefficient enters, so the answer does not depend on one.
 
+The ground's ``w`` stays the boundary conditions' row under a building too, as they set it from the terrain's slope.
+
 **Mass fluxes.** A partial face's flux is scaled by its open fraction :math:`1 - \beta_f`. The metric itself is unchanged,
 as the pressure gradient reads it.
 
@@ -142,6 +144,12 @@ viscous fluxes to the zero velocity, as Kynema-SGF's laminar pathway.
 
    One block in a log-law wind (``Tests/Canonical_RANS/Building_Cube``), with the fixed rows and the roof's wall law. The
    sides have no wall law yet and :math:`k` no building terms, so this shows the method working, not a validated flow.
+
+.. figure:: figures/buildings/block_on_hill.png
+   :width: 100%
+
+   The same block on a ridge's windward flank (``Tests/Canonical_RANS/Building_Hill``), with its floor and roof following
+   the ground. The same limits apply.
 
 Limits
 ------

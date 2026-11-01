@@ -5,7 +5,8 @@
 //
 // - a blocked face (fraction 1) is a fixed row, u = 0: R = u and the identity in the
 //   implicit rows, no 1/dtau, d = 0 in SIMPLEC, the steady limit of ERF's
-//   if_implicit_projection, with no drag coefficient;
+//   if_implicit_projection, with no drag coefficient; w on the ground stays the
+//   boundary conditions' row, as they set it from the slope;
 // - partial faces carry the open part of the mass flux (Mesh::set_open_faces);
 // - buildings.wall_form = fraction_stress: a roof or underside takes the form 7 wall
 //   law (ERF erf.if_wall_form = fraction_stress, Kynema-SGF wall_form 7), neutral:

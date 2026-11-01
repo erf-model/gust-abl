@@ -305,6 +305,22 @@ gust_add_test(NAME building_cube_run NP 2 LABELS "regression;smoke" RUN_DIR ${BU
 gust_add_test(NAME building_cube_flow NP 1 LABELS "regression;smoke" RUN_DIR ${BUILDING_CUBE_DIR}
               FIXTURES_REQUIRED building_cube
               COMMAND ${Python3_EXECUTABLE} ${BUILDING_CUBE_CASE}/check_cube.py --latest cube_plt)
+# --- The same block on a ridge: heights from the local ground ------------------
+set(BUILDING_HILL_CASE ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Building_Hill)
+set(BUILDING_HILL_DIR ${CMAKE_CURRENT_BINARY_DIR}/run/building_hill)
+add_test(NAME building_hill_clean
+         COMMAND ${Python3_EXECUTABLE} -c
+                 "import shutil, os, sys; shutil.rmtree(sys.argv[1], ignore_errors=True); os.makedirs(sys.argv[1])"
+                 ${BUILDING_HILL_DIR})
+set_tests_properties(building_hill_clean PROPERTIES LABELS "regression;smoke" FIXTURES_SETUP building_hill_clean)
+gust_add_test(NAME building_hill_run NP 2 LABELS "regression;smoke" RUN_DIR ${BUILDING_HILL_DIR}
+              FIXTURES_REQUIRED building_hill_clean FIXTURES_SETUP building_hill
+              PREFIX ${EXPECT_ABORT} --success "gust: steady after" --
+              COMMAND $<TARGET_FILE:gust> ${BUILDING_HILL_CASE}/inputs_block_hill buildings.file=${BUILDING_HILL_CASE}/block.txt
+                      ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME building_hill_flow NP 1 LABELS "regression;smoke" RUN_DIR ${BUILDING_HILL_DIR}
+              FIXTURES_REQUIRED building_hill
+              COMMAND ${Python3_EXECUTABLE} ${BUILDING_HILL_CASE}/check_block_hill.py block_hill_plt)
 gust_add_test(NAME abort_buildings_newton NP 1 LABELS "regression;smoke"
               PREFIX ${EXPECT_ABORT} "buildings\\.type = immersed_forcing is not supported with steady\\.stage = simplec_newton" --
               COMMAND $<TARGET_FILE:gust> ${BUILDING_CUBE_CASE}/inputs_abort_newton buildings.file=${BUILDING_CUBE_CASE}/cube.txt

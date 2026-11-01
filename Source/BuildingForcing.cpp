@@ -5,8 +5,20 @@
 #include <AMReX_iMultiFab.H>
 
 #include <cmath>
+#include <limits>
 
 namespace gust {
+
+namespace {
+
+//! The row the boundary conditions own among component c's: w on the ground, where they
+//! set w from the terrain's slope. A fixed w = 0 there would fight them on a slope.
+int ground_row (int c, const amrex::Geometry& geom)
+{
+    return c == 2 ? geom.Domain().smallEnd(2) : std::numeric_limits<int>::min();
+}
+
+} // namespace
 
 void BuildingForcing::build (const Buildings& b, const BuildingsOptions& opt, const amrex::Geometry& geom, const amrex::MultiFab& detJ)
 {
@@ -118,9 +130,10 @@ void BuildingForcing::apply_rows (const amrex::MultiFab& u, const amrex::MultiFa
             const auto a = R[c]->array(mfi);
             const auto x = q[c]->const_array(mfi);
             const auto b = m_b->beta_face(c).const_array(mfi);
+            const int kg = ground_row(c, m_geom);
             amrex::ParallelFor(mfi.tilebox(), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
             {
-                if (b(i, j, k) == amrex::Real(1)) { a(i, j, k) = x(i, j, k); }
+                if (b(i, j, k) == amrex::Real(1) && k != kg) { a(i, j, k) = x(i, j, k); }
             });
         }
     }
@@ -145,9 +158,10 @@ void BuildingForcing::add_to_implicit (int c, const amrex::MultiFab& open_z, amr
     for (amrex::MFIter mfi(A, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
         const auto a = A.array(mfi);
         const auto b = m_b->beta_face(c).const_array(mfi);
+        const int kg = ground_row(c, m_geom);
         amrex::ParallelFor(mfi.tilebox(), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
         {
-            if (b(i, j, k) == amrex::Real(1)) {
+            if (b(i, j, k) == amrex::Real(1) && k != kg) {
                 for (int n = 0; n < n_implicit_coefs; ++n) { a(i, j, k, n) = 0; }
                 a(i, j, k, coef_P) = 1;
             }
@@ -160,9 +174,10 @@ void BuildingForcing::add_fixed_rows (int c, amrex::MultiFab& mask) const
     for (amrex::MFIter mfi(mask, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
         const auto m = mask.array(mfi);
         const auto b = m_b->beta_face(c).const_array(mfi);
+        const int kg = ground_row(c, m_geom);
         amrex::ParallelFor(mfi.tilebox(), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
         {
-            if (b(i, j, k) == amrex::Real(1)) { m(i, j, k) = 1; }
+            if (b(i, j, k) == amrex::Real(1) && k != kg) { m(i, j, k) = 1; }
         });
     }
 }
