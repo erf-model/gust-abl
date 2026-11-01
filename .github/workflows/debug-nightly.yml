@@ -1,0 +1,60 @@
+name: Debug nightly
+
+# GCC Debug with AMReX_TESTING (assertions and SNaN fills). It takes about five
+# hours, so it runs once a night on main or by hand, not on every pull request.
+on:
+  schedule:
+    - cron: '0 7 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CCACHE_DIR: ${{ github.workspace }}/.ccache
+  CCACHE_COMPRESS: "true"
+  CCACHE_MAXSIZE: "1G"
+
+jobs:
+  debug:
+    name: CPU gcc Debug (AMReX_TESTING)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build ccache \
+            libopenmpi-dev openmpi-bin libfftw3-dev
+
+      - name: Set up ccache
+        uses: actions/cache@v4
+        with:
+          path: .ccache
+          key: ccache-gcc-Debug-${{ github.sha }}
+          restore-keys: ccache-gcc-Debug-
+
+      - name: Configure
+        run: |
+          cmake -S . -B build-ci -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DGUST_MPI=ON \
+            -DGUST_TESTING=ON \
+            -DGUST_MPIEXEC_PREFLAGS=--oversubscribe \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+
+      - name: Build
+        run: cmake --build build-ci --parallel
+
+      - name: Unit and smoke tests
+        run: ctest --test-dir build-ci -L "unit|smoke" --output-on-failure
+
+      - name: Print AMReX backtraces
+        if: failure()
+        run: find build-ci -name 'Backtrace.*' -print -exec head -60 {} \;

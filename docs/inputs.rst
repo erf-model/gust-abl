@@ -274,6 +274,12 @@ Quick reference
    * - ``buildings.small_volfrac``
      - ``0.005``
      - Solid fractions within this of 0 or 1 become 0 or 1
+   * - ``buildings.z0``
+     - ``0.1``
+     - Roughness of the wall law on buildings (m)
+   * - ``buildings.wall_form``
+     - ``fraction_stress``
+     - ``fraction_stress`` (form 7 wall law) or ``drag`` (fixed rows alone)
    * - **Named set-ups** (`abl`_)
      -
      -
@@ -942,8 +948,8 @@ inputs then change the answer, not only the path; a checkpoint of fully frozen c
 -------------
 
 See :doc:`buildings`. The geometry is built in a run without ``steady.stage`` and written to the plotfile as
-``building_beta`` and ``building_wall``. It does not act on the flow yet, so a run with a stage refuses
-``buildings.type = immersed_forcing``. A key that has no effect with ``buildings.type = none`` is refused. A restart
+``building_beta`` and ``building_wall``. With a stage it acts on momentum: SIMPLEC, z-line sweeps, one level, and
+``solver.poisson_backend`` other than ``mlmg``; others are refused. A key that has no effect with ``buildings.type = none`` is refused. A restart
 refuses buildings other than those of the run it continues.
 
 .. list-table::
@@ -965,6 +971,12 @@ refuses buildings other than those of the run it continues.
    * - ``buildings.small_volfrac``
      - ``0.005``
      - In [0, 0.5). Below it a fraction is 0, within it of 1 the fraction is 1. At 0, round-off alone is clipped.
+   * - ``buildings.z0``
+     - ``0.1``
+     - Finite and > 0 (m). Refused with ``buildings.wall_form = drag``.
+   * - ``buildings.wall_form``
+     - ``fraction_stress``
+     - ``fraction_stress``: the form 7 wall law on roofs and undersides, with the fixed rows. ``drag``: the fixed rows alone.
 
 ``abl``
 -------

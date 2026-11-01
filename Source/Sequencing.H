@@ -60,6 +60,7 @@
 // previous; cfl0). See check_sequencing_options.
 
 #include "BoundaryConditions.H"
+#include "BuildingForcing.H"
 #include "Canopy.H"
 #include "CanopyDrag.H"
 #include "CanopyHeat.H"
@@ -181,7 +182,7 @@ public:
     LevelSolver (const RunSetup& setup, const Mesh& mesh, const amrex::Geometry& geom, const amrex::MultiFab& z_nd,
                  const amrex::BoxArray& ba, const amrex::DistributionMapping& dm, const std::string& label,
                  bool newton = false, const amrex::MultiFab* z0_fine = nullptr, const Canopy* canopy = nullptr,
-                 const amrex::MultiFab* canopy_fine_detJ = nullptr);
+                 const amrex::MultiFab* canopy_fine_detJ = nullptr, BuildingForcing* buildings = nullptr);
     // res_in, the stage's copy of it and the driver's diffusivity point into
     // this object: it can be neither copied nor moved.
     LevelSolver (const LevelSolver&) = delete;

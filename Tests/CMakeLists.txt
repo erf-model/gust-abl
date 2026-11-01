@@ -38,6 +38,7 @@ add_executable(unit_tests
     Unit_Tests/test_ResidualWorkspace.cpp
     Unit_Tests/test_SurfaceLayer.cpp
     Unit_Tests/test_SurfaceRoughness.cpp
+    Unit_Tests/test_BuildingForcing.cpp
     Unit_Tests/test_Buildings.cpp
     Unit_Tests/test_Canopy.cpp
     Unit_Tests/test_CanopyDrag.cpp
@@ -277,10 +278,67 @@ gust_add_test(NAME abort_buildings_type NP 1 LABELS "regression;smoke"
                      "buildings\\.file is given more than once" --
               COMMAND $<TARGET_FILE:gust> ${BUILDINGS_CASE}/inputs_restart_none buildings.type=foo buildings.small_volfrac=abc
                       buildings.file=a buildings.file=b ${GUST_TEST_AMREX_FLAGS})
-gust_add_test(NAME abort_buildings_with_stage NP 1 LABELS "regression;smoke"
-              PREFIX ${EXPECT_ABORT} "the buildings do not act on the flow yet" --
+gust_add_test(NAME abort_buildings_wall_inputs NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT}
+                     "buildings\\.z0 must be finite and > 0"
+                     "buildings\\.wall_form must be fraction_stress or drag \\(got foo\\)" --
               COMMAND $<TARGET_FILE:gust> ${BUILDINGS_CASE}/inputs_buildings buildings.file=${BUILDINGS_CASE}/building_map.txt
-                      steady.stage=simplec ${GUST_TEST_AMREX_FLAGS})
+                      buildings.z0=0 buildings.wall_form=foo ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_buildings_z0_with_drag NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT} "buildings\\.z0 has no effect with buildings\\.wall_form = drag" --
+              COMMAND $<TARGET_FILE:gust> ${BUILDINGS_CASE}/inputs_buildings buildings.file=${BUILDINGS_CASE}/building_map.txt
+                      buildings.z0=1 buildings.wall_form=drag ${GUST_TEST_AMREX_FLAGS})
+
+# --- One block in a log-law wind (BuildingForcing.H) ---------------------------
+set(BUILDING_CUBE_CASE ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Building_Cube)
+set(BUILDING_CUBE_DIR ${CMAKE_CURRENT_BINARY_DIR}/run/building_cube)
+add_test(NAME building_cube_clean
+         COMMAND ${Python3_EXECUTABLE} -c
+                 "import shutil, os, sys; shutil.rmtree(sys.argv[1], ignore_errors=True); os.makedirs(sys.argv[1])"
+                 ${BUILDING_CUBE_DIR})
+set_tests_properties(building_cube_clean PROPERTIES LABELS "regression;smoke" FIXTURES_SETUP building_cube_clean)
+gust_add_test(NAME building_cube_run NP 2 LABELS "regression;smoke" RUN_DIR ${BUILDING_CUBE_DIR}
+              FIXTURES_REQUIRED building_cube_clean FIXTURES_SETUP building_cube
+              PREFIX ${EXPECT_ABORT} --success "gust: steady after" --
+              COMMAND $<TARGET_FILE:gust> ${BUILDING_CUBE_CASE}/inputs_cube buildings.file=${BUILDING_CUBE_CASE}/cube.txt
+                      ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME building_cube_flow NP 1 LABELS "regression;smoke" RUN_DIR ${BUILDING_CUBE_DIR}
+              FIXTURES_REQUIRED building_cube
+              COMMAND ${Python3_EXECUTABLE} ${BUILDING_CUBE_CASE}/check_cube.py --latest cube_plt)
+# --- The same block on a ridge: heights from the local ground ------------------
+set(BUILDING_HILL_CASE ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Building_Hill)
+set(BUILDING_HILL_DIR ${CMAKE_CURRENT_BINARY_DIR}/run/building_hill)
+add_test(NAME building_hill_clean
+         COMMAND ${Python3_EXECUTABLE} -c
+                 "import shutil, os, sys; shutil.rmtree(sys.argv[1], ignore_errors=True); os.makedirs(sys.argv[1])"
+                 ${BUILDING_HILL_DIR})
+set_tests_properties(building_hill_clean PROPERTIES LABELS "regression;smoke" FIXTURES_SETUP building_hill_clean)
+gust_add_test(NAME building_hill_run NP 2 LABELS "regression;smoke" RUN_DIR ${BUILDING_HILL_DIR}
+              FIXTURES_REQUIRED building_hill_clean FIXTURES_SETUP building_hill
+              PREFIX ${EXPECT_ABORT} --success --timeout 3600 "gust: steady after" --
+              COMMAND $<TARGET_FILE:gust> ${BUILDING_HILL_CASE}/inputs_block_hill buildings.file=${BUILDING_HILL_CASE}/block.txt
+                      ${GUST_TEST_AMREX_FLAGS})
+# About 30 s in Release; the gcc Debug job needs several minutes more than the default 300 s.
+set_tests_properties(building_hill_run PROPERTIES TIMEOUT 3600)
+gust_add_test(NAME building_hill_flow NP 1 LABELS "regression;smoke" RUN_DIR ${BUILDING_HILL_DIR}
+              FIXTURES_REQUIRED building_hill
+              COMMAND ${Python3_EXECUTABLE} ${BUILDING_HILL_CASE}/check_block_hill.py block_hill_plt)
+gust_add_test(NAME abort_buildings_newton NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT} "buildings\\.type = immersed_forcing is not supported with steady\\.stage = simplec_newton" --
+              COMMAND $<TARGET_FILE:gust> ${BUILDING_CUBE_CASE}/inputs_abort_newton buildings.file=${BUILDING_CUBE_CASE}/cube.txt
+                      ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_buildings_lusgs NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT} "buildings\\.type = immersed_forcing needs z-line sweeps" --
+              COMMAND $<TARGET_FILE:gust> ${BUILDING_CUBE_CASE}/inputs_abort_lusgs buildings.file=${BUILDING_CUBE_CASE}/cube.txt
+                      ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_buildings_levels NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT} "buildings\\.type = immersed_forcing needs mesh\\.hierarchy_levels = 1" --
+              COMMAND $<TARGET_FILE:gust> ${BUILDING_CUBE_CASE}/inputs_cube buildings.file=${BUILDING_CUBE_CASE}/cube.txt
+                      mesh.hierarchy_levels=2 ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_buildings_mlmg NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT} "solver\\.poisson_backend = mlmg cannot solve with buildings" --
+              COMMAND $<TARGET_FILE:gust> ${BUILDING_CUBE_CASE}/inputs_cube buildings.file=${BUILDING_CUBE_CASE}/cube.txt
+                      solver.poisson_backend=mlmg ${GUST_TEST_AMREX_FLAGS})
 
 # --- The canopy's drag field (Canopy.H): plotfile, restart, refusals ---------
 set(CANOPY_DIR ${CMAKE_CURRENT_BINARY_DIR}/run/canopy)

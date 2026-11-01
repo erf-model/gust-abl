@@ -7,6 +7,7 @@
 #include <AMReX_MultiFab.H>
 #include <AMReX_Vector.H>
 
+#include <array>
 #include <limits>
 #include <string>
 
@@ -105,6 +106,25 @@ public:
     //! kernels (CUDA does not allow them in private member functions).
     void make_quality (const amrex::Geometry& geom, const amrex::MultiFab& z_phys_nd);
 
+    //! Close the faces that buildings block (PR-39, docs/buildings.rst): from now on
+    //! the mass fluxes and the pressure correction use flux_area(d) = a_d (1 - beta_face[d])
+    //! and fluid() masks the solid cells. The metric ax, ay, az stay as they are: the
+    //! pressure gradient and the slopes read them. Call it after the wall distance
+    //! and the first guess, whose Poisson solves know nothing of the buildings.
+    void set_open_faces (const amrex::MultiFab& beta_x, const amrex::MultiFab& beta_y, const amrex::MultiFab& beta_z,
+                         const amrex::MultiFab& beta_cell, const amrex::Geometry& geom);
+    [[nodiscard]] bool has_open_faces () const { return m_has_open; }
+    //! The area of the mass flux through the d-faces: the metric without buildings.
+    [[nodiscard]] const amrex::MultiFab& flux_area (int d) const
+    {
+        const amrex::MultiFab& a = (d == 0) ? ax : (d == 1) ? ay : az;
+        return m_has_open ? m_flux_area[static_cast<std::size_t>(d)] : a;
+    }
+    //! 1 - beta_face[d], with the ghost layers of the areas: periodic images, else 1.
+    [[nodiscard]] const amrex::MultiFab& open_fraction (int d) const { return m_open[static_cast<std::size_t>(d)]; }
+    //! 1 in a cell with fluid, 0 in a solid one (no ghost cells).
+    [[nodiscard]] const amrex::MultiFab& fluid () const { return m_fluid; }
+
     amrex::MultiFab detJ;
     amrex::MultiFab ax, ay, az;
     amrex::MultiFab z_cc;
@@ -116,6 +136,9 @@ private:
     MeshQuality m_quality;
     amrex::Real m_min_detJ{0};
     int m_smoothing{1};
+    bool m_has_open{false};
+    std::array<amrex::MultiFab, 3> m_open, m_flux_area;
+    amrex::MultiFab m_fluid;
 };
 
 //! Free-stream residual of the metric terms: for a uniform physical velocity

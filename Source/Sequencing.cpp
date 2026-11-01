@@ -229,7 +229,7 @@ LooseStop loose_stop (const SteadyHistory& h, const SteadyParams& p, const std::
 LevelSolver::LevelSolver (const RunSetup& s, const Mesh& mesh, const amrex::Geometry& geom, const amrex::MultiFab& z_nd,
                           const amrex::BoxArray& ba, const amrex::DistributionMapping& dm, const std::string& label,
                           bool newton, const amrex::MultiFab* z0_fine, const Canopy* canopy_in,
-                          const amrex::MultiFab* canopy_fine_detJ)
+                          const amrex::MultiFab* canopy_fine_detJ, BuildingForcing* buildings)
     : bc(s.bin, geom, mesh, s.fopt.coriolis), closure(s.copt), surf(s.surf)
 {
     bc.set_theta_ground_extension(s.simplec.theta_frozen);
@@ -262,6 +262,7 @@ LevelSolver::LevelSolver (const RunSetup& s, const Mesh& mesh, const amrex::Geom
         height_above_ground(z_nd, dist);
     }
     res_in = residual_inputs(s, closure, dist, bc, surf);
+    res_in.buildings = buildings;
     if (canopy != nullptr) {
         canopy_faces.build(*canopy, geom);
         res_in.canopy = &canopy_faces;

@@ -3,6 +3,7 @@
 #include "AblSetup.H"
 #include "BoundaryConditions.H"
 #include "Buildings.H"
+#include "BuildingForcing.H"
 #include "Canopy.H"
 #include "CanopyDrag.H"
 #include "Closure.H"
@@ -164,12 +165,16 @@ void run ()
     // the stage writes the drag field with its plotfile.
     const CanopyOptions canopy_opt = read_canopy_options(in.terrain.idw_neighbors, static_cast<double>(in.terrain.idw_power));
     for (auto& e : check_canopy_options(canopy_opt)) { err.push_back(std::move(e)); }
-    // The buildings (Buildings.H): the geometry alone so far, written with the plotfile of a run without a stage.
+    // The buildings (Buildings.H, BuildingForcing.H). PR-39: one level and SIMPLEC with z-line sweeps (PR-43 the rest).
     const BuildingsOptions buildings_opt = read_buildings_options();
     for (auto& e : check_buildings_options(buildings_opt)) { err.push_back(std::move(e)); }
     if (solve && buildings_opt.active()) {
-        err.emplace_back("buildings.type = immersed_forcing: the buildings do not act on the flow yet, so a run with a stage "
-                         "would ignore them; run without a stage to write the geometry");
+        if (newton) { err.emplace_back("buildings.type = immersed_forcing is not supported with steady.stage = simplec_newton yet"); }
+        if (sopt.sweep != SweepKind::zjacobi) { err.emplace_back("buildings.type = immersed_forcing needs z-line sweeps (steady.sweep) for now"); }
+        if (in.mesh.hierarchy_levels > 1) { err.emplace_back("buildings.type = immersed_forcing needs mesh.hierarchy_levels = 1 for now"); }
+        if (popt.backend == "mlmg") {
+            err.emplace_back("solver.poisson_backend = mlmg cannot solve with buildings (no solid cells in its operator); use gmres_mlmg or gmres_fft");
+        }
     }
     if (solve && canopy_opt.active() && canopy_opt.heat.on() && !simplec.theta_frozen
         && std::find(canopy_opt.given.begin(), canopy_opt.given.end(), "heat_frozen") != canopy_opt.given.end()) {
@@ -488,8 +493,22 @@ void run ()
         setup.sopt = sopt;
         setup.newton = newton_opt;
         setup.log = iteration_log(in.io.iteration_log);
+        BuildingForcing building_forcing;
+        if (buildings.active()) {
+            const amrex::Long sealed = count_sealed_fluid_cells(buildings, geom);
+            if (sealed > 0) {
+                amrex::Abort("gust: buildings.file = " + buildings_opt.file + ": " + std::to_string(sealed)
+                             + " fluid cells are sealed off by buildings; the pressure correction cannot solve there. Open "
+                               "the pocket, or fill it in the map");
+            }
+            building_forcing.build(buildings, buildings_opt, geom, mesh.detJ);
+        }
         LevelSolver level0(setup, mesh, geom, state.z_phys_nd, ba, dm, "", newton, nullptr,
-                           canopy.active() ? &canopy : nullptr);
+                           canopy.active() ? &canopy : nullptr, nullptr, buildings.active() ? &building_forcing : nullptr);
+        if (buildings.active()) {
+            // After the wall distance above: its Poisson solve does not see the buildings.
+            mesh.set_open_faces(buildings.beta_face(0), buildings.beta_face(1), buildings.beta_face(2), buildings.beta(), geom);
+        }
         NewtonStage* newton_stage = level0.newton_stage();
         const BoundaryConditions& bc = level0.bc;
         Closure& closure = level0.closure;

@@ -1,7 +1,7 @@
 Continuous integration
 ======================
 
-Every pull request runs two workflows.
+Every pull request runs ``ci.yml`` and ``docs.yml``.
 
 ``.github/workflows/ci.yml``
 ----------------------------
@@ -12,9 +12,10 @@ Every pull request runs two workflows.
 
    * - Job
      - What it does
-   * - CPU (GCC Release, GCC Debug with ``AMReX_TESTING``, Clang Release)
+   * - CPU (GCC Release, Clang Release)
      - Builds with Open MPI, runs ``ctest -L "unit|smoke"`` (4-rank tests on 2 cores with ``--oversubscribe``),
-       and checks that the tests left the working tree clean. Linux GCC traps floating-point exceptions.
+       and checks that the tests left the working tree clean. Both Linux jobs trap floating-point exceptions;
+       Clang builds with ``-ffp-exception-behavior=maytrap``, so it does not add invalid operations of its own.
    * - Single precision
      - Compiles only. The steady stop needs double precision.
    * - CUDA sm_90
@@ -33,6 +34,12 @@ Every pull request runs two workflows.
        changes to copied files (:doc:`extraction`).
    * - Spelling and whitespace
      - ``codespell`` (settings in ``.codespellrc``) and no trailing whitespace.
+
+``.github/workflows/debug-nightly.yml``
+---------------------------------------
+
+GCC Debug with ``AMReX_TESTING`` runs the same tests. It takes about five hours, so it runs nightly on ``main`` or
+by hand (``workflow_dispatch``), not on pull requests.
 
 ``.github/workflows/docs.yml``
 ------------------------------

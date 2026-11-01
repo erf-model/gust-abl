@@ -25,13 +25,14 @@ env:
 jobs:
   # ---------------------------------------------------------------------
   # CPU with MPI, double precision: build, then the unit and smoke tests.
+  # GCC Debug runs in debug-nightly.yml.
   # The unit tests run on 1, 2 and 4 ranks; the runners have 2 cores, so
   # Open MPI gets --oversubscribe. GCC on Linux traps floating-point
   # exceptions (amrex.fpe_trap_invalid=1 in every test), which macOS does
   # not, so this is where an invalid operation shows up.
   # ---------------------------------------------------------------------
   cpu:
-    name: CPU ${{ matrix.compiler }} ${{ matrix.build_type }}${{ matrix.testing && ' (AMReX_TESTING)' || '' }}
+    name: CPU ${{ matrix.compiler }} ${{ matrix.build_type }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -39,13 +40,8 @@ jobs:
         include:
           - compiler: gcc
             build_type: Release
-            testing: false
-          - compiler: gcc
-            build_type: Debug
-            testing: true
           - compiler: clang
             build_type: Release
-            testing: false
 
     steps:
       - name: Checkout (with submodules)
@@ -72,11 +68,15 @@ jobs:
           if [ "${{ matrix.compiler }}" = clang ]; then
             export CC=clang CXX=clang++
             export OMPI_CC=clang OMPI_CXX=clang++
+            # The tests trap invalid operations. Clang assumes traps are off and
+            # clang 21 packs divisions with an unused 0/0 lane; gcc's default
+            # -ftrapping-math does not. This keeps real invalid operations trapping.
+            export CXXFLAGS=-ffp-exception-behavior=maytrap
           fi
           cmake -S . -B build-ci -G Ninja \
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
             -DGUST_MPI=ON \
-            -DGUST_TESTING=${{ matrix.testing && 'ON' || 'OFF' }} \
+            -DGUST_TESTING=OFF \
             -DGUST_MPIEXEC_PREFLAGS=--oversubscribe \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
@@ -86,6 +86,11 @@ jobs:
 
       - name: Unit and smoke tests
         run: ctest --test-dir build-ci -L "unit|smoke" --output-on-failure
+
+      # AMReX writes the failing frames here; they are lost with the runner otherwise.
+      - name: Print AMReX backtraces
+        if: failure()
+        run: find build-ci -name 'Backtrace.*' -print -exec head -60 {} \;
 
       # Tests write only under build-ci/, which is ignored; anything else
       # they leave behind would land in a commit.
@@ -150,6 +155,14 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
+      # The device link writes several GB per executable to /tmp; the runner's
+      # free disk ran out in it. These preinstalled toolchains are not used here.
+      - name: Free disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
+          df -h /
+
       - name: Checkout (with submodules)
         uses: actions/checkout@v4
         with:

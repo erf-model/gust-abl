@@ -1,5 +1,6 @@
 #include "Residual.H"
 
+#include "BuildingForcing.H"
 #include "CanopyDrag.H"
 #include "CanopyHeat.H"
 
@@ -262,6 +263,8 @@ void residual (const State& q, const ResidualInputs& in, const Mesh& mesh, const
 #endif
         set_ground_fluxes(*ssp, *in.surface, Gm[0][2], Gm[1][2], Gt[2], Gk[2]);
     }
+    // The roofs' stress replaces the viscous flux through them (BuildingForcing.H).
+    if (in.buildings != nullptr) { in.buildings->close_viscous_fluxes(mesh.open_fraction(2), Gm[0][2], Gm[1][2]); }
     for (int c = 0; c < 3; ++c) {
         flux_divergence(velocity_loc(c), Gm[c], mesh, geom, tmp[c]);
         amrex::MultiFab::Subtract(*Rm[c], tmp[c], 0, 0, 1, 0);
@@ -316,10 +319,15 @@ void residual (const State& q, const ResidualInputs& in, const Mesh& mesh, const
         amrex::Abort("gust: residual: the leaf heat (canopy_heat) needs the canopy drag (canopy) as well");
     }
     if (in.canopy_heat != nullptr) { add_canopy_heat(*in.canopy_heat, q, R.theta); }
+    if (in.buildings != nullptr) {
+        in.buildings->update(q.u, q.v);
+        in.buildings->add_sink(q.u, q.v, R.u, R.v);
+    }
     if (in.bc != nullptr) {
         in.bc->add_damping(q, R);
         in.bc->apply_rows(q, R);
     }
+    if (in.buildings != nullptr) { in.buildings->apply_rows(q.u, q.v, q.w, R.u, R.v, R.w); }
 
     // A face shared by two boxes (or a periodic image) gets one value: the two
     // copies can differ in the last bits where a compiler contracts
@@ -400,6 +408,9 @@ void implicit_rows (const amrex::Array<const amrex::MultiFab*, AMREX_SPACEDIM>& 
     }
     // Last: the Dirichlet rows become identity rows.
     if (in.bc != nullptr) { in.bc->apply_to_implicit(eq, loc, z_nd, A); }
+    if (in.buildings != nullptr && momentum) {
+        in.buildings->add_to_implicit((eq == Equation::u) ? 0 : (eq == Equation::v) ? 1 : 2, mesh.open_fraction(2), A);
+    }
 }
 
 void line_jacobian (const amrex::Array<const amrex::MultiFab*, AMREX_SPACEDIM>& F, const amrex::MultiFab& z_nd,

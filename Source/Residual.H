@@ -56,6 +56,7 @@
 
 namespace gust {
 
+class BuildingForcing;
 class CanopyFaceDrag;
 class CanopyHeat;
 struct CanopyRows;
@@ -144,6 +145,9 @@ struct ResidualInputs
     //! lambda at the solver's linearisation state (CanopyRows::theta). Needs
     //! canopy as well.
     const CanopyHeat* canopy_heat{nullptr};
+    //! The buildings' momentum terms (BuildingForcing.H); null: none. The residual updates
+    //! their rates at q, so implicit_rows then has them at the linearisation state.
+    BuildingForcing* buildings{nullptr};
 };
 
 //! Scratch fields of residual() and jvp, kept between calls so that a

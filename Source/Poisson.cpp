@@ -126,6 +126,21 @@ void fill_bc_ghosts (amrex::MultiFab& phi, const amrex::Geometry& geom, const Po
     }
 }
 
+// The solid cells' rows of A phi = rhs are phi = rhs: their faces carry nothing
+// (Mesh::flux_area), so the operator's row there is 0.
+void solid_identity_rows (amrex::MultiFab& lhs, const amrex::MultiFab& x, const amrex::MultiFab& fluid)
+{
+    for (amrex::MFIter mfi(lhs, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
+        const auto y = lhs.array(mfi);
+        const auto xa = x.const_array(mfi);
+        const auto f = fluid.const_array(mfi);
+        amrex::ParallelFor(mfi.tilebox(), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+        {
+            if (f(i, j, k) == amrex::Real(0)) { y(i, j, k) = xa(i, j, k); }
+        });
+    }
+}
+
 } // namespace
 
 // The linear operator for amrex::GMRES: ERF's TerrainPoisson, with
@@ -141,9 +156,10 @@ public:
 
     Op (TerrainPoisson& tp, const amrex::Geometry& geom, const Mesh& mesh, const amrex::MultiFab& z,
         const amrex::MultiFab* dcross, const amrex::MultiFab* beta_cell, const PoissonBC& bc,
-        const amrex::MultiFab& ax, const amrex::MultiFab& ay, const amrex::MultiFab& az)
+        const amrex::MultiFab& ax, const amrex::MultiFab& ay, const amrex::MultiFab& az,
+        const amrex::MultiFab* fluid = nullptr, amrex::MLMG* mg = nullptr)
         : m_tp(tp), m_geom(geom), m_mesh(mesh), m_z(z), m_dcross(dcross), m_beta_cell(beta_cell), m_bc(bc),
-          m_ax(ax), m_ay(ay), m_az(az),
+          m_ax(ax), m_ay(ay), m_az(az), m_fluid(fluid), m_mg(mg),
           m_dir_ground(bc.face[amrex::Orientation(2, amrex::Orientation::low)] == PoissonFace::dirichlet)
     {}
 
@@ -155,6 +171,7 @@ public:
             m_tp.apply(lhs, rhs);   // fills rhs's ghosts for the boundary conditions
         }
         if (m_dcross != nullptr) { add_cross(lhs, rhs); }
+        if (m_fluid != nullptr) { solid_identity_rows(lhs, rhs, *m_fluid); }
     }
 
     // A phi with phi = 0 on the ground: ERF's kernel with an odd ghost below
@@ -276,14 +293,21 @@ public:
 
     void precond (amrex::MultiFab& lhs, amrex::MultiFab const& rhs)
     {
-        if (m_beta_cell == nullptr) {
+        if (m_mg != nullptr) {
+            // One cycle of the multigrid on the operator without the mask.
+            lhs.setVal(0.0);
+            amrex::MultiFab& x = lhs;
+            m_mg->precond({&x}, {&rhs}, amrex::Real(0), amrex::Real(0));
+        } else if (m_beta_cell == nullptr) {
             m_tp.precond(lhs, rhs);
-            return;
+        } else {
+            amrex::MultiFab scaled(rhs.boxArray(), rhs.DistributionMap(), 1, 0);
+            amrex::MultiFab::Copy(scaled, rhs, 0, 0, 1, 0);
+            amrex::MultiFab::Divide(scaled, *m_beta_cell, 0, 0, 1, 0);
+            m_tp.precond(lhs, scaled);
         }
-        amrex::MultiFab scaled(rhs.boxArray(), rhs.DistributionMap(), 1, 0);
-        amrex::MultiFab::Copy(scaled, rhs, 0, 0, 1, 0);
-        amrex::MultiFab::Divide(scaled, *m_beta_cell, 0, 0, 1, 0);
-        m_tp.precond(lhs, scaled);
+        // The preconditioners do not know the mask: nothing reaches a solid cell.
+        if (m_fluid != nullptr) { amrex::MultiFab::Multiply(lhs, *m_fluid, 0, 0, 1, 0); }
     }
 
     void assign (amrex::MultiFab& lhs, amrex::MultiFab const& rhs) { m_tp.assign(lhs, rhs); }
@@ -311,6 +335,8 @@ private:
     const amrex::MultiFab& m_ax;
     const amrex::MultiFab& m_ay;
     const amrex::MultiFab& m_az;
+    const amrex::MultiFab* m_fluid;
+    amrex::MLMG* m_mg;
     bool m_dir_ground;
 };
 
@@ -429,7 +455,13 @@ void PoissonSolver::prepare (const FaceCoeffs& coeffs, const PoissonBC& bc)
     }
     const amrex::MultiFab* b[4] = {coeffs.x, coeffs.y, coeffs.z, coeffs.z_cross};
     const char* bname[4] = {"FaceCoeffs::x", "FaceCoeffs::y", "FaceCoeffs::z", "FaceCoeffs::z_cross"};
-    const amrex::MultiFab* a[3] = {&m_mesh.ax, &m_mesh.ay, &m_mesh.az};
+    const amrex::MultiFab* a[3] = {&m_mesh.flux_area(0), &m_mesh.flux_area(1), &m_mesh.flux_area(2)};
+    const bool masked = m_mesh.has_open_faces();
+    if (masked && m_opt.backend == "mlmg") {
+        amrex::Abort("gust: solver.poisson_backend = mlmg cannot solve with buildings: its operator has no solid cells; "
+                     "use gmres_mlmg or gmres_fft");
+    }
+    if (masked && coeffs.z_cross != nullptr) { amrex::Abort("gust: FaceCoeffs::z_cross with buildings is not supported"); }
     for (int d = 0; d < 4; ++d) {
         if (b[d] == nullptr) { continue; }
         const amrex::MultiFab& ref = *a[d < 3 ? d : 2];
@@ -458,6 +490,20 @@ void PoissonSolver::prepare (const FaceCoeffs& coeffs, const PoissonBC& bc)
     for (int d = 0; d < 3; ++d) {
         amrex::MultiFab::Copy(*ab[d], *a[d], 0, 0, 1, 0);
         if (b[d] != nullptr) { amrex::MultiFab::Multiply(*ab[d], *b[d], 0, 0, 1, 0); }
+    }
+    // Buildings: the multigrid preconditioner keeps every face (a solid row of zeros
+    // would have no diagonal), and J counts the fluid cells only in the mean.
+    if (masked) {
+        const amrex::MultiFab* metric[3] = {&m_mesh.ax, &m_mesh.ay, &m_mesh.az};
+        amrex::MultiFab* pc[3] = {&m_pc_ax, &m_pc_ay, &m_pc_az};
+        for (int d = 0; d < 3; ++d) {
+            if (!pc[d]->ok()) { pc[d]->define(metric[d]->boxArray(), metric[d]->DistributionMap(), 1, 0); }
+            amrex::MultiFab::Copy(*pc[d], *metric[d], 0, 0, 1, 0);
+            if (b[d] != nullptr) { amrex::MultiFab::Multiply(*pc[d], *b[d], 0, 0, 1, 0); }
+        }
+        if (!m_J_fluid.ok()) { m_J_fluid.define(m_mesh.detJ.boxArray(), m_mesh.detJ.DistributionMap(), 1, 0); }
+        amrex::MultiFab::Copy(m_J_fluid, m_mesh.detJ, 0, 0, 1, 0);
+        amrex::MultiFab::Multiply(m_J_fluid, m_mesh.fluid(), 0, 0, 1, 0);
     }
 
     // z_cross: the z-face correction beta_z - z_cross (back end A, Neumann
@@ -490,7 +536,7 @@ void PoissonSolver::prepare (const FaceCoeffs& coeffs, const PoissonBC& bc)
         fill_beta_cell(m_beta_cell, coeffs.x, coeffs.y);
     }
 
-    if (m_opt.backend != "gmres_fft") { return; }   // back end B builds its own operator
+    if (m_opt.backend != "gmres_fft" && !masked) { return; }   // back end B builds its own operator
     if (m_op && m_op_bc == bc && m_op_ratio == coeffs.precond_ratio) { return; }
 
     // ERF's boundary names: Outflow/Open map to a Dirichlet (odd) face, any
@@ -561,16 +607,29 @@ PoissonResult PoissonSolver::solve (amrex::MultiFab& rhs, amrex::MultiFab& phi, 
 
     PoissonResult res;
     res.singular = !is_dirichlet_anywhere(bc);
+    const bool masked = m_mesh.has_open_faces();
+    // With buildings phi = 0 is the solid cells' equation, and J over the fluid cells the left null vector.
+    const amrex::MultiFab& J_mean = masked ? m_J_fluid : m_mesh.detJ;
     if (res.singular) {
         // Only the mean-free part of rhs is in the range of A (J is its left
         // null vector).
-        res.removed_mean = weighted_mean(rhs, m_mesh.detJ);
+        res.removed_mean = weighted_mean(rhs, J_mean);
         rhs.plus(-res.removed_mean, 0, 1, 0);
     }
-    if (m_opt.backend != "gmres_fft") { return solve_mlmg(rhs, phi, coeffs, bc, fluxes, res); }
+    if (masked) { amrex::MultiFab::Multiply(rhs, m_mesh.fluid(), 0, 0, 1, 0); }
+    if (m_opt.backend != "gmres_fft" && !masked) { return solve_mlmg(rhs, phi, coeffs, bc, fluxes, res); }
 
+    std::unique_ptr<amrex::MLMG> mg;
+    if (m_opt.backend == "gmres_mlmg") {
+        make_multigrid(bc);
+        m_ml->setAreas(0, {&m_pc_ax, &m_pc_ay, &m_pc_az});
+        mg = std::make_unique<amrex::MLMG>(*m_ml);
+        mg->preparePrecond();
+        mg->setPrecondIter(1);
+        mg->setVerbose(m_opt.verbose);
+    }
     Op op(*m_op, m_geom, m_mesh, m_z, m_split ? &m_dcross : nullptr, m_scaled_precond ? &m_beta_cell : nullptr,
-          bc, m_ax, m_ay, m_az);
+          bc, m_ax, m_ay, m_az, masked ? &m_mesh.fluid() : nullptr, mg.get());
 
     amrex::GMRES<amrex::MultiFab, Op> gmres;
     gmres.define(op);
@@ -579,15 +638,23 @@ PoissonResult PoissonSolver::solve (amrex::MultiFab& rhs, amrex::MultiFab& phi, 
     gmres.setMaxIters(m_opt.max_iter);
     // The preconditioner is a fixed linear map, so standard (not flexible)
     // GMRES applies; flexible GMRES would keep restart more vectors.
-    gmres.setFlexible(false);
-    m_op->usePrecond(m_opt.precond == "fft");
-    gmres.solve(phi, rhs, m_opt.reltol, m_opt.abstol, m_opt.max_iter);
+    // The multigrid cycle's bottom solver (BiCGStab) is not a fixed linear map: flexible.
+    gmres.setFlexible(mg != nullptr);
+    m_op->usePrecond(mg == nullptr && m_opt.precond == "fft");
+    {
+        // As in solve_mlmg: the multigrid's smoother reads uninitialized vector lanes.
+        const auto prev_fpe = amrex::disableFPExcept(amrex::FPExcept::invalid);
+        gmres.solve(phi, rhs, m_opt.reltol, m_opt.abstol, m_opt.max_iter);
+        std::feclearexcept(FE_ALL_EXCEPT);
+        amrex::setFPExcept(prev_fpe);
+    }
 
     res.iterations = gmres.getNumIters();
     res.initial_residual = gmres.getInitialResidualNorm();
     if (res.singular) {
-        phi.plus(-weighted_mean(phi, m_mesh.detJ), 0, 1, 0);
+        phi.plus(-weighted_mean(phi, J_mean), 0, 1, 0);
     }
+    if (masked) { amrex::MultiFab::Multiply(phi, m_mesh.fluid(), 0, 0, 1, 0); }
     // The true residual, not GMRES's estimate.
     amrex::MultiFab r(rhs.boxArray(), rhs.DistributionMap(), 1, 0);
     op.apply(r, phi);
@@ -624,9 +691,7 @@ PoissonResult PoissonSolver::solve (amrex::MultiFab& rhs, amrex::MultiFab& phi, 
     return res;
 }
 
-PoissonResult PoissonSolver::solve_mlmg (amrex::MultiFab& rhs, amrex::MultiFab& phi, const FaceCoeffs& coeffs,
-                                         const PoissonBC& bc,
-                                         amrex::Array<amrex::MultiFab, AMREX_SPACEDIM>* fluxes, PoissonResult res)
+void PoissonSolver::make_multigrid (const PoissonBC& bc)
 {
     const amrex::BoxArray& ba = m_mesh.detJ.boxArray();
     const amrex::DistributionMapping& dm = m_mesh.detJ.DistributionMap();
@@ -658,6 +723,15 @@ PoissonResult PoissonSolver::solve_mlmg (amrex::MultiFab& rhs, amrex::MultiFab& 
         m_ml_ba = ba;
         m_ml_dm = dm;
     }
+}
+
+PoissonResult PoissonSolver::solve_mlmg (amrex::MultiFab& rhs, amrex::MultiFab& phi, const FaceCoeffs& coeffs,
+                                         const PoissonBC& bc,
+                                         amrex::Array<amrex::MultiFab, AMREX_SPACEDIM>* fluxes, PoissonResult res)
+{
+    make_multigrid(bc);
+    const amrex::BoxArray& ba = m_mesh.detJ.boxArray();
+    const amrex::DistributionMapping& dm = m_mesh.detJ.DistributionMap();
     m_ml->setAreas(0, {&m_ax, &m_ay, &m_az});   // premultiplied a beta
 
     amrex::MLMG mlmg(*m_ml);
@@ -735,7 +809,7 @@ PoissonResult PoissonSolver::solve_mlmg (amrex::MultiFab& rhs, amrex::MultiFab& 
 void face_divergence (const Mesh& mesh, const amrex::Geometry& geom,
                       const amrex::Array<const amrex::MultiFab*, AMREX_SPACEDIM>& F, amrex::MultiFab& div)
 {
-    const amrex::MultiFab* a[3] = {&mesh.ax, &mesh.ay, &mesh.az};
+    const amrex::MultiFab* a[3] = {&mesh.flux_area(0), &mesh.flux_area(1), &mesh.flux_area(2)};
     for (int d = 0; d < 3; ++d) {
         if (F[d]->boxArray() != a[d]->boxArray() || F[d]->DistributionMap() != a[d]->DistributionMap()) {
             amrex::Abort("gust: face_divergence: F must be face MultiFabs on the mesh's box array");
@@ -749,9 +823,9 @@ void face_divergence (const Mesh& mesh, const amrex::Geometry& geom,
         const amrex::Box bx = mfi.tilebox();
         const auto d = div.array(mfi);
         const auto J = mesh.detJ.const_array(mfi);
-        const auto ax = mesh.ax.const_array(mfi);
-        const auto ay = mesh.ay.const_array(mfi);
-        const auto az = mesh.az.const_array(mfi);
+        const auto ax = a[0]->const_array(mfi);
+        const auto ay = a[1]->const_array(mfi);
+        const auto az = a[2]->const_array(mfi);
         const auto fx = F[0]->const_array(mfi);
         const auto fy = F[1]->const_array(mfi);
         const auto fz = F[2]->const_array(mfi);

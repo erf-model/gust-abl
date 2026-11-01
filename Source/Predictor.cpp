@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "BoundaryConditions.H"
+#include "BuildingForcing.H"
 #include "CVFluxes.H"
 #include "ImplicitOperator.H"
 #include "LineSolve_K.H"
@@ -184,6 +185,10 @@ MomentumPredictorResult momentum_predictor (State& q, const ResidualFields& R,
         // fraction).
         amrex::MultiFab mask;
         if (in.bc != nullptr) { in.bc->dirichlet_rows(eqs[c], loc, mesh, mask); }
+        if (in.buildings != nullptr) {
+            if (mask.empty()) { amrex::Abort("gust: momentum_predictor: buildings need the boundary conditions (in.bc)"); }
+            in.buildings->add_fixed_rows(c, mask);
+        }
         const bool has_mask = !mask.empty();
         for (amrex::MFIter mfi(*aps[c], amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
             const auto p = aps[c]->array(mfi);
@@ -246,7 +251,10 @@ MomentumPredictorResult momentum_predictor (State& q, const ResidualFields& R,
                 amrex::ParallelFor(mfi.tilebox(), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
                 {
                     const amrex::Real keep = has_mask ? amrex::Real(1) - m(i, j, k) : amrex::Real(1);
-                    const amrex::Real cap = keep * inv_cap * (a(i, j, k, coef_ZM) + a(i, j, k, coef_ZP));
+                    // Same operation order as the slope-aware kernel, so the two agree bit for
+                    // bit on flat ground where the compiler fuses multiply-add.
+                    const amrex::Real term = inv_cap * (a(i, j, k, coef_ZM) + a(i, j, k, coef_ZP));
+                    const amrex::Real cap = keep * term;
                     p(i, j, k) += cap;
                     dd(i, j, k) += cap;
                 });

@@ -854,9 +854,18 @@ Current tests
    * - ``buildings_clean``, ``buildings_run``, ``buildings_column_volume``, ``buildings_check_detects_change``,
        ``buildings_restart``, ``buildings_restart_matches``, ``abort_buildings_restart_changed``,
        ``abort_buildings_restart_none``, ``abort_buildings_inputs``, ``abort_buildings_type``,
-       ``abort_buildings_with_stage``
+       ``abort_buildings_wall_inputs``, ``abort_buildings_z0_with_drag``
      - The building geometry (:doc:`buildings`): each column's volume against the height map, the wall mask, a restart on
        another layout, and the refusals.
+   * - ``building_hill_clean``, ``building_hill_run``, ``building_hill_flow``
+     - One block on a ridge's windward flank (``Tests/Canonical_RANS/Building_Hill``): the run reaches the driver's stop,
+       which needs the ground's ``w`` rows left to the boundary conditions; horizontal speeds in solid cells are 0, the
+       volume flux varies by less than 5 %, the air reverses behind the block, and the roof's wall cell keeps its value.
+   * - ``building_cube_clean``, ``building_cube_run``, ``building_cube_flow``, ``abort_buildings_newton``,
+       ``abort_buildings_lusgs``, ``abort_buildings_levels``, ``abort_buildings_mlmg``
+     - One block in a log-law wind (``Tests/Canonical_RANS/Building_Cube``): the run converges, speeds in solid cells
+       are 0, the volume flux is constant along x, the air reverses behind and speeds up above, and the roof's wall cell
+       keeps its value. The stages and back ends that have no buildings yet are refused.
    * - ``abort_canopy_restart_changed``, ``abort_canopy_restart_none``, ``abort_canopy_inputs``
      - A restart with one patch's LAI changed, and one without a canopy, stop naming ``io.restart``; a deck of canopy
        mistakes stops, naming each input.

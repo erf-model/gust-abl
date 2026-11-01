@@ -402,9 +402,9 @@
 # buildings
 # ==================================================================================================================
 # See docs/buildings.rst. The geometry is built in a run without steady.stage and written to the plotfile as
-# building_beta and building_wall. It does not act on the flow yet, so a run with a stage refuses buildings.type =
-# immersed_forcing. A key that has no effect with buildings.type = none is refused. A restart refuses buildings
-# other than those of the run it continues.
+# building_beta and building_wall. With a stage it acts on momentum: SIMPLEC, z-line sweeps, one level, and
+# solver.poisson_backend other than mlmg; others are refused. A key that has no effect with buildings.type = none is
+# refused. A restart refuses buildings other than those of the run it continues.
 #
 # buildings.type = none
 #     none or immersed_forcing.
@@ -420,6 +420,12 @@
 #
 # buildings.small_volfrac = 0.005
 #     In [0, 0.5). Below it a fraction is 0, within it of 1 the fraction is 1. At 0, round-off alone is clipped.
+#
+# buildings.z0 = 0.1
+#     Finite and > 0 (m). Refused with buildings.wall_form = drag.
+#
+# buildings.wall_form = fraction_stress
+#     fraction_stress: the form 7 wall law on roofs and undersides, with the fixed rows. drag: the fixed rows alone.
 
 # ==================================================================================================================
 # abl
