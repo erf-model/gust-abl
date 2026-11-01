@@ -315,9 +315,11 @@ add_test(NAME building_hill_clean
 set_tests_properties(building_hill_clean PROPERTIES LABELS "regression;smoke" FIXTURES_SETUP building_hill_clean)
 gust_add_test(NAME building_hill_run NP 2 LABELS "regression;smoke" RUN_DIR ${BUILDING_HILL_DIR}
               FIXTURES_REQUIRED building_hill_clean FIXTURES_SETUP building_hill
-              PREFIX ${EXPECT_ABORT} --success "gust: steady after" --
+              PREFIX ${EXPECT_ABORT} --success --timeout 3600 "gust: steady after" --
               COMMAND $<TARGET_FILE:gust> ${BUILDING_HILL_CASE}/inputs_block_hill buildings.file=${BUILDING_HILL_CASE}/block.txt
                       ${GUST_TEST_AMREX_FLAGS})
+# About 30 s in Release; the gcc Debug job needs several minutes more than the default 300 s.
+set_tests_properties(building_hill_run PROPERTIES TIMEOUT 3600)
 gust_add_test(NAME building_hill_flow NP 1 LABELS "regression;smoke" RUN_DIR ${BUILDING_HILL_DIR}
               FIXTURES_REQUIRED building_hill
               COMMAND ${Python3_EXECUTABLE} ${BUILDING_HILL_CASE}/check_block_hill.py block_hill_plt)
