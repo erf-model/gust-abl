@@ -251,7 +251,10 @@ MomentumPredictorResult momentum_predictor (State& q, const ResidualFields& R,
                 amrex::ParallelFor(mfi.tilebox(), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
                 {
                     const amrex::Real keep = has_mask ? amrex::Real(1) - m(i, j, k) : amrex::Real(1);
-                    const amrex::Real cap = keep * inv_cap * (a(i, j, k, coef_ZM) + a(i, j, k, coef_ZP));
+                    // Same operation order as the slope-aware kernel, so the two agree bit for
+                    // bit on flat ground where the compiler fuses multiply-add.
+                    const amrex::Real term = inv_cap * (a(i, j, k, coef_ZM) + a(i, j, k, coef_ZP));
+                    const amrex::Real cap = keep * term;
                     p(i, j, k) += cap;
                     dd(i, j, k) += cap;
                 });
