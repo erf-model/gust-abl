@@ -28,7 +28,7 @@ void BuildingForcing::build (const Buildings& b, const BuildingsOptions& opt, co
     m_detJ = &detJ;
     m_z0 = static_cast<amrex::Real>(opt.z0);
     m_wall_form = opt.wall_form;
-    m_rate.define(b.beta().boxArray(), b.beta().DistributionMap(), 3, 1);
+    m_rate.define(b.beta().boxArray(), b.beta().DistributionMap(), 4, 1);
     m_rate.setVal(0.0);
     // A side's wall cell has its centroid dx / 2 or dy / 2 from the side; below 10 z0 the law
     // reads the speed at 10 z0, so the stress no longer follows the cell size.
@@ -68,17 +68,22 @@ void BuildingForcing::update (const amrex::MultiFab& u, const amrex::MultiFab& v
             const amrex::Real own = speed(k);
             const amrex::Real inv = amrex::Real(1) / (amrex::max(own, umin) * J(i, j, k) * dzeta);
             const amrex::Real d1 = wl(i, j, k, kWallD1z), d2 = wl(i, j, k, kWallD2z);
-            amrex::Real rate = 0;
+            amrex::Real rate = 0, top = 0;
             if ((mask & kWallRoof) != 0) {
                 const amrex::Real ref = k < khi ? speed(k + 1) : amrex::Real(0);
-                rate += fz(i, j, k) * form7_ustar2(own, ref, beta(i, j, k), d1, d2, z0, kappa) * inv;
+                const amrex::Real us2 = form7_ustar2(own, ref, beta(i, j, k), d1, d2, z0, kappa);
+                rate += fz(i, j, k) * us2 * inv;
+                top = amrex::max(top, us2);
             }
             if ((mask & kWallUnder) != 0) {
                 const amrex::Real ref = k > klo ? speed(k - 1) : amrex::Real(0);
-                rate += fz(i, j, k + 1) * form7_ustar2(own, ref, beta(i, j, k), d1, d2, z0, kappa) * inv;
+                const amrex::Real us2 = form7_ustar2(own, ref, beta(i, j, k), d1, d2, z0, kappa);
+                rate += fz(i, j, k + 1) * us2 * inv;
+                top = amrex::max(top, us2);
             }
             r(i, j, k, 0) = rate;
             r(i, j, k, 1) = rate;
+            r(i, j, k, kBuildingUstar2) = top;
         });
     }
     if (side_law()) {
@@ -105,15 +110,20 @@ void BuildingForcing::update (const amrex::MultiFab& u, const amrex::MultiFab& v
                 const amrex::Real own = speed(i);
                 const amrex::Real inv = amrex::Real(1) / (amrex::max(own, umin) * dx);
                 const amrex::Real d1 = wl(i, j, k, kWallD1x), d2 = wl(i, j, k, kWallD2x);
-                amrex::Real rate = 0;
+                amrex::Real rate = 0, top = r(i, j, k, kBuildingUstar2);
                 if ((mask & kWallXlo) != 0) {
-                    rate += fx(i, j, k) * form7_ustar2(own, speed(i + 1), beta(i, j, k), d1, d2, z0, kappa) * inv;
+                    const amrex::Real us2 = form7_ustar2(own, speed(i + 1), beta(i, j, k), d1, d2, z0, kappa);
+                    rate += fx(i, j, k) * us2 * inv;
+                    top = amrex::max(top, us2);
                 }
                 if ((mask & kWallXhi) != 0) {
-                    rate += fx(i + 1, j, k) * form7_ustar2(own, speed(i - 1), beta(i, j, k), d1, d2, z0, kappa) * inv;
+                    const amrex::Real us2 = form7_ustar2(own, speed(i - 1), beta(i, j, k), d1, d2, z0, kappa);
+                    rate += fx(i + 1, j, k) * us2 * inv;
+                    top = amrex::max(top, us2);
                 }
                 r(i, j, k, 1) += rate;
                 r(i, j, k, 2) += rate;
+                r(i, j, k, kBuildingUstar2) = top;
             });
         }
         // Sides normal to y: on u and w.
@@ -136,15 +146,20 @@ void BuildingForcing::update (const amrex::MultiFab& u, const amrex::MultiFab& v
                 const amrex::Real own = speed(j);
                 const amrex::Real inv = amrex::Real(1) / (amrex::max(own, umin) * dy);
                 const amrex::Real d1 = wl(i, j, k, kWallD1y), d2 = wl(i, j, k, kWallD2y);
-                amrex::Real rate = 0;
+                amrex::Real rate = 0, top = r(i, j, k, kBuildingUstar2);
                 if ((mask & kWallYlo) != 0) {
-                    rate += fy(i, j, k) * form7_ustar2(own, speed(j + 1), beta(i, j, k), d1, d2, z0, kappa) * inv;
+                    const amrex::Real us2 = form7_ustar2(own, speed(j + 1), beta(i, j, k), d1, d2, z0, kappa);
+                    rate += fy(i, j, k) * us2 * inv;
+                    top = amrex::max(top, us2);
                 }
                 if ((mask & kWallYhi) != 0) {
-                    rate += fy(i, j + 1, k) * form7_ustar2(own, speed(j - 1), beta(i, j, k), d1, d2, z0, kappa) * inv;
+                    const amrex::Real us2 = form7_ustar2(own, speed(j - 1), beta(i, j, k), d1, d2, z0, kappa);
+                    rate += fy(i, j + 1, k) * us2 * inv;
+                    top = amrex::max(top, us2);
                 }
                 r(i, j, k, 0) += rate;
                 r(i, j, k, 2) += rate;
+                r(i, j, k, kBuildingUstar2) = top;
             });
         }
     }

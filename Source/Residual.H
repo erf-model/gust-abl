@@ -57,6 +57,7 @@
 namespace gust {
 
 class BuildingForcing;
+class BuildingTke;
 class CanopyFaceDrag;
 class CanopyHeat;
 struct CanopyRows;
@@ -107,6 +108,10 @@ struct ResidualInputs
     //! The wall distance the closure reads (cell-centred, one ghost cell):
     //! height_above_ground() or the Tucker distance.
     const amrex::MultiFab* wall_distance{nullptr};
+    //! The distance to the ground alone, where wall_distance also holds the distance to
+    //! buildings (BuildingTke.H); null: wall_distance. The hybrid convection blend reads it
+    //! (HybridConvection.H: its height is one above the ground).
+    const amrex::MultiFab* ground_distance{nullptr};
     ReferenceProfile theta_ref;                   //!< hydrostatic reference theta_ref(z), a 1-D profile
     ConvectionOptions momentum;                   //!< momentum convection (k is always bounded upwind)
     ConvectionOptions theta;                      //!< theta convection
@@ -148,6 +153,10 @@ struct ResidualInputs
     //! The buildings' momentum terms (BuildingForcing.H); null: none. The residual updates
     //! their rates at q, so implicit_rows then has them at the linearisation state.
     BuildingForcing* buildings{nullptr};
+    //! The buildings' terms of the closure (BuildingTke.H); null: none. Needs buildings, whose
+    //! rates give the wall value of k. The wall distance given to the closure is already
+    //! limited by it (BuildingTke::limit_wall_distance).
+    const BuildingTke* building_tke{nullptr};
 };
 
 //! Scratch fields of residual() and jvp, kept between calls so that a

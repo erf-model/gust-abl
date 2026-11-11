@@ -6,7 +6,8 @@ immersed forcing with the form 7 wall law of ERF (``erf.if_wall_form = fraction_
 (``wall_form 7``). The ground keeps its body-fitted wall law on the terrain-following mesh and is not blanked.
 
 **Status.** The geometry acts on momentum with SIMPLEC and z-line sweeps on one level (`Momentum`_). Roofs,
-undersides and sides have the wall law. :math:`k` and :math:`\theta` have no building terms yet, so answers near
+undersides and sides have the wall law, and the closure sees the buildings (`Turbulence`_): :math:`k` has its wall
+value beside them and the length scale their distance. :math:`\theta` has no building terms yet, and answers near
 buildings are not validated. The run refuses
 ``steady.stage = simplec_newton``, ``steady.sweep = lusgs``, ``mesh.hierarchy_levels`` above 1 and
 ``solver.poisson_backend = mlmg``, and fluid sealed off by buildings.
@@ -178,14 +179,77 @@ restarts with ``roof_stress`` and is refused with today's ``fraction_stress``, w
 .. figure:: figures/buildings/block_flow.png
    :width: 100%
 
-   One block in a log-law wind (``Tests/Canonical_RANS/Building_Cube``), with the fixed rows and the wall law on the roof
-   and the sides. :math:`k` has no building terms yet, so this shows the method working, not a validated flow.
+   One block in a log-law wind (``Tests/Canonical_RANS/Building_Cube``), with the fixed rows, the wall law on the roof
+   and the sides, and the closure's building terms. This shows the method working, not a validated flow.
 
 .. figure:: figures/buildings/block_on_hill.png
    :width: 100%
 
    The same block on a ridge's windward flank (``Tests/Canonical_RANS/Building_Hill``), with its floor and roof following
    the ground. The same limits apply.
+
+Turbulence
+----------
+
+With ``buildings.wall_tke = on``, the default with ``buildings.wall_form = fraction_stress``, the :math:`k`–:math:`L`
+closure (:doc:`turbulence_model`) sees the buildings in four ways.
+
+**Solid cells** hold :math:`k` at the closure's floor (``turb.tke_floor``): their row is :math:`R_k = k - k_\mathrm{floor}`.
+
+**Wall cells** relax :math:`k` to the wall value of the law's friction velocity, as the ground's first cell does:
+
+.. math::
+
+   W = a\,(k - k_w), \qquad k_w = \max\!\left(\frac{u_*^2}{C_{\mu 0}^2},\, k_\mathrm{floor}\right), \qquad
+   a = \frac{\max(u_*, 0.01\ \mathrm{m/s})}{d_w},
+
+with :math:`u_*^2` the largest of the cell's walls, :math:`C_{\mu 0}` = ``turb.Cmu0`` and :math:`d_w` the wall cell's
+:math:`d_b` below. :math:`k_w` is the value at which the closure's production equals its dissipation in a log layer
+with that :math:`u_*`, the one the ground uses. How :math:`W` enters follows the ground's choice ``bc.surface_wall_k``,
+with :math:`f` the largest blocked part of the faces the cell's walls lie on:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - ``bc.surface_wall_k``
+     - Wall cell's row
+   * - ``dirichlet`` (default)
+     - :math:`R_k \leftarrow (1 - f) R_k + f W`: a fully blocked face replaces the cell's :math:`k` equation, and a
+       slightly blocked one leaves it nearly as it was. In the ground's first cell, which has the ground's own
+       relaxation row, :math:`f W` is added to that row, so :math:`k` settles between the two wall values.
+   * - ``source``
+     - :math:`R_k \leftarrow R_k + f W` in every wall cell, as the ground adds its own.
+   * - no surface layer
+     - As ``dirichlet``, without the ground's row.
+
+**Fluxes.** The diffusive flux of :math:`k` through the blocked part of a face is closed, in the residual and in the
+implicit rows: :math:`k` does not diffuse into a building.
+
+**Length scale.** The closure's wall distance becomes :math:`\min(d_\mathrm{ground}, d_b)`, so its geometric length
+:math:`l_g = \kappa (d + z_0)` shortens near a building. :math:`z_0` there is the ground's (``bc.surface_z0`` or its map),
+as before, and ``turb.max_geom_lscale`` still caps the length. The turbulence plotfile's ``walldist`` shows this
+distance. The hybrid convection blend (``convection.hybrid_height``) keeps the ground's distance. :math:`d_b` is
+
+- in a wall cell, the distance of its fluid centroid from its nearest wall, :math:`\tfrac{1}{2}(1 - \beta)\Delta_n`,
+  not below ``buildings.z0``;
+- elsewhere, the distance from the cell centre to the nearest wall of a building. Each wall is a rectangle on its
+  plane: a roof :math:`\beta \Delta_z` above its cell's floor, a side :math:`\beta \Delta_x` in from its face, over the
+  blocked part of the face's height.
+
+The distance is found once, at start-up, by passing each cell's nearest wall to its 26 neighbours until no distance
+falls (a vector distance transform). The log gives the number of passes and of cells whose distance the buildings set.
+For one block it equals the distance to the block's box to round-off, and so it does for an L with a step, the
+tests' second shape, against the smallest distance over its boxes.
+
+``buildings.wall_tke = off`` leaves the closure as it was before these terms: :math:`k` is solved in every cell with
+the ground's distance alone. A checkpoint written before them restarts with ``off`` and is refused with ``on``. ``on``
+needs the wall law on every wall, so it is refused with ``roof_stress`` and ``drag``.
+
+On the block of the first figure, :math:`k` in the roof's wall cell is 0.41 m²/s² with these terms and 8.6 m²/s²
+without, against 0.35 m²/s² upstream at that height, and without them :math:`k` in the solid cells was 3 m²/s². On the
+ridge of the second figure the air now reverses in a thin layer on the roof (u in the roof's wall cell -0.15 m/s; it was
+3.90 m/s), as the eddy viscosity there is lower.
 
 Limits
 ------
@@ -211,9 +275,31 @@ Limits
 - The own distance is floored at :math:`10 z_0`. A wall cell less than :math:`20 z_0` across (2 m with the default
   ``buildings.z0``) is below it: the stress is then :math:`(\kappa / \ln 10)^2 U^2` whatever the cell size, lower than the
   log law at the true distance (about half for a 1 m cell with :math:`z_0` = 0.1 m). The log notes it for the sides.
-- :math:`k` and the turbulent length scale do not see the buildings yet, so the eddy viscosity beside a wall is that of
-  the open boundary layer. The fluxes that stay open at the ends of a wall use it, so speeds beside buildings are
-  provisional until the building terms of :math:`k` are in.
+- The distance to buildings takes one pass over the whole mesh per cell of distance it reaches. A wall as far as the
+  mesh's tallest column is not looked for, since the ground is nearer, so the passes are at most that height in
+  cells of the smallest size (23 on the block's mesh, 31 on the ridge's). It is done once per run, restarts included.
+- The distance treats a roof as covering its cell's whole footprint and a side its face's whole width, so where a
+  wall ends partway through a cell it can be short by up to half a cell. The transform passes nearest walls between
+  neighbours and is not exact for every shape.
+- Outside a non-periodic domain face the closure's ghost cells take the nearest domain column's distance.
+- The wall value of :math:`k` is neutral and reads the speed parallel to the wall. On a wall that faces the flow that
+  speed is small, so :math:`k` and the eddy viscosity in its wall cells are small too (0.008 m²/s² on the block's
+  windward face, against 0.76 m²/s² one cell upstream). The ground's row does the same where the flow reattaches.
+- The shear production in the second cell from a wall still reads the wall cell's velocity, and :math:`\theta` has no
+  building terms yet.
+- The length near a building is :math:`\kappa (d_b + z_0)` with the ground's :math:`z_0`, not ``buildings.z0``. The two
+  differ where the ground's roughness is much larger than the walls'.
+- A side's rectangle in a cell that is partly solid lies :math:`\beta \Delta_x` in from its face even where the cell's
+  :math:`\beta` comes from a roof, so beside a step between two roofs the distance can be off by up to the layer's
+  height.
+- The thin reversed layer on the roof of the block on the ridge is one cell deep and lies in partly solid cells; the
+  block on flat ground, whose roof cells are fluid, has none. Its presence follows the mesh as well as the flow.
+- The residual norm of :math:`k` includes the solid cells' rows, :math:`k - k_\mathrm{floor}`, and the wall rows. From a
+  first guess with :math:`k` well above the floor in the solid cells they set the first iterations' norm (4.0 against
+  0.2 on the block); they fall within a few iterations.
+- ERF and Kynema-SGF keep the :math:`k` equation in their wall cells and dissipate there with the flat first-cell
+  length (``flat_wall_dissipation``). Here the wall cell's row is the relaxation, where the dissipation does not enter,
+  so that length is not used.
 - A partial cell's volume is not reduced: the sink and the fluxes are per full cell, which leaves the steady balance as it is.
 - On strongly compressed terrain layers a face's fraction can differ a little from its cells', which can add a side bit
   at a roof.

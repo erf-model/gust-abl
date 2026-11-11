@@ -58,7 +58,8 @@ std::string write_text (const std::string& name, const std::function<void(std::o
     const fs::path dir = fs::temp_directory_path() / ("gust_building_forcing_" + std::to_string(id));
     if (amrex::ParallelDescriptor::IOProcessor()) {
         fs::create_directories(dir);
-        std::ofstream os(dir / name);
+        // Binary: the same bytes, and so the same hash of the file, on every platform.
+        std::ofstream os(dir / name, std::ios::binary);
         os.precision(17);
         fill(os);
     }

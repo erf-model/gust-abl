@@ -280,6 +280,9 @@ Quick reference
    * - ``buildings.wall_form``
      - ``fraction_stress``
      - ``fraction_stress`` (form 7 wall law on every wall), ``roof_stress`` (on roofs and undersides alone) or ``drag`` (fixed rows alone)
+   * - ``buildings.wall_tke``
+     - ``on`` with ``fraction_stress``, else ``off``
+     - The closure sees the buildings: wall value of k, solid cells at the floor, distance to buildings in the length scale
    * - **Named set-ups** (`abl`_)
      -
      -
@@ -949,7 +952,7 @@ inputs then change the answer, not only the path; a checkpoint of fully frozen c
 
 See :doc:`buildings`. The geometry is built in a run without ``steady.stage`` and written to the plotfile as
 ``building_beta`` and ``building_wall``. With a stage it acts on momentum: SIMPLEC, z-line sweeps, one level, and
-``solver.poisson_backend`` other than ``mlmg``; others are refused. A key that has no effect with ``buildings.type = none`` is refused. A restart
+``solver.poisson_backend`` other than ``mlmg``; others are refused. It acts on the closure too (``buildings.wall_tke``). A key that has no effect with ``buildings.type = none`` is refused. A restart
 refuses buildings other than those of the run it continues.
 
 .. list-table::
@@ -977,6 +980,9 @@ refuses buildings other than those of the run it continues.
    * - ``buildings.wall_form``
      - ``fraction_stress``
      - ``fraction_stress``: the form 7 wall law on roofs, undersides and sides, with the fixed rows. ``roof_stress``: the law on roofs and undersides alone, the sides with their fixed rows. ``drag``: the fixed rows alone.
+   * - ``buildings.wall_tke``
+     - ``on`` with ``buildings.wall_form = fraction_stress``, else ``off``
+     - ``on`` or ``off``. ``on``: solid cells hold k at ``turb.tke_floor``, wall cells relax k to ``u*^2 / Cmu0^2`` of the wall law, k does not diffuse through blocked faces, and the closure's wall distance is the smaller of the ground's and the nearest building wall's. ``off``: the closure does not see the buildings. ``on`` is refused unless ``buildings.wall_form = fraction_stress``.
 
 ``abl``
 -------

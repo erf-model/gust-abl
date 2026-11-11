@@ -26,6 +26,7 @@ set(GUST_SOURCES
     SurfaceLayer.cpp
     SurfaceRoughness.cpp
     BuildingForcing.cpp
+    BuildingTke.cpp
     Buildings.cpp
     Canopy.cpp
     CanopyDrag.cpp

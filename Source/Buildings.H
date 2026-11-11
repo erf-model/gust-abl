@@ -84,6 +84,10 @@ struct BuildingsOptions
     double z0{0.1};                  //!< buildings.z0 (m), > 0: the roughness of the wall law
     std::string wall_form_name{"fraction_stress"};   //!< buildings.wall_form as given
     BuildingWallForm wall_form{BuildingWallForm::fraction_stress};
+    //! buildings.wall_tke as given (empty: not given) and its value: on by default with
+    //! fraction_stress, off with the other forms (BuildingTke.H).
+    std::string wall_tke_name;
+    bool wall_tke{true};
     std::vector<std::string> given;  //!< buildings.* keys in the inputs
     std::vector<std::string> parse_errors;   //!< value counts and repeats
     [[nodiscard]] bool active () const { return type != BuildingsType::none; }

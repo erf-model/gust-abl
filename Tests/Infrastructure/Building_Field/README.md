@@ -33,4 +33,4 @@ difference. The `abort_*` tests each match the refusal's message.
 ## CTest
 `buildings_clean`, `buildings_run`, `buildings_column_volume`, `buildings_check_detects_change` (fails on purpose), `buildings_restart`,
 `buildings_restart_matches`, `abort_buildings_restart_changed`, `abort_buildings_restart_none`, `abort_buildings_inputs`,
-`abort_buildings_type`, `abort_buildings_wall_inputs`, `abort_buildings_z0_with_drag`.
+`abort_buildings_type`, `abort_buildings_wall_inputs`, `abort_buildings_wall_tke_form`, `abort_buildings_z0_with_drag`.

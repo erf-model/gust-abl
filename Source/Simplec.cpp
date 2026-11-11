@@ -496,7 +496,8 @@ void SimplecStage::iterate (State& q, const amrex::MultiFab& dtau)
             amrex::Print() << "gust: convection.hybrid_sigma frozen (relative residual " << double(m_r)
                            << " < convection.hybrid_freeze " << double(m_in.hybrid.freeze) << ")\n";
         } else {
-            update_hybrid_sigma(m_in.hybrid, m_cf.cap_ratio, *m_in.wall_distance, m_geom, m_sigma);
+            update_hybrid_sigma(m_in.hybrid, m_cf.cap_ratio, m_in.ground_distance != nullptr ? *m_in.ground_distance : *m_in.wall_distance,
+                                m_geom, m_sigma);
             ++m_sigma_updates;
         }
     }

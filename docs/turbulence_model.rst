@@ -86,7 +86,8 @@ at every height, with :math:`u_*` the friction velocity.
 Wall distance
 -------------
 
-``turb.wall_distance`` selects the wall distance :math:`d`:
+``turb.wall_distance`` selects the wall distance :math:`d` to the ground. With buildings and ``buildings.wall_tke = on``
+the closure takes the smaller of it and the distance to the nearest building wall (:doc:`buildings`).
 
 - ``terrain_height`` (default): the height of the cell centre above the ground of its column.
 - ``tucker``: the differential wall distance of Tucker (2003),

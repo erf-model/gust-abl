@@ -7,8 +7,12 @@
 Cell values, 5 m cells: the velocity is 0 in every solid cell; the sum of u over each x-plane is the
 first plane's within --flux-tol (cell means, so not exact where a plane cuts the block's faces); the
 air reverses behind the block and speeds up over its roof; u in a wall cell of the roof and of a side
-is pinned to this deck's (--roof, --side: the defaults are those of buildings.wall_form =
-fraction_stress; roof_stress has 3.888 and 1.505). The exit code is the verdict.
+and k in the roof's wall cell are pinned to this deck's (--roof, --side, --k-roof: the defaults are those
+of the deck as it is; buildings.wall_tke = off has 3.833, 2.387 and 8.618, buildings.wall_form =
+roof_stress 3.888, 1.505 and 8.589, bc.surface_wall_k = source 2.843, 1.599 and 0.911). k in a side's wall cell of
+the ground's first layer is pinned too (--k-ground: 0.0151; 0.0099, 0.0089 and 0.3124 for those three). With buildings.wall_tke = on k in the solid cells is the closure's floor
+(--k-solid, the largest allowed; the two other forms solve k there and pass a large value). The exit code
+is the verdict.
 """
 import argparse
 import glob
@@ -25,11 +29,14 @@ def main():
     ap.add_argument("plotfile")
     ap.add_argument("--latest", action="store_true", help="plotfile is a prefix: the last plotfile written with it")
     ap.add_argument("--flux-tol", type=float, default=0.02)
-    ap.add_argument("--roof", type=float, default=3.833, help="u in the roof's wall cell (m/s)")
-    ap.add_argument("--side", type=float, default=2.387, help="u in a side's wall cell (m/s)")
+    ap.add_argument("--roof", type=float, default=2.801, help="u in the roof's wall cell (m/s)")
+    ap.add_argument("--side", type=float, default=1.491, help="u in a side's wall cell (m/s)")
+    ap.add_argument("--k-roof", type=float, default=0.411, help="k in the roof's wall cell (m2/s2), within 2 %%")
+    ap.add_argument("--k-ground", type=float, default=0.0151, help="k in a side's wall cell of the first layer (m2/s2), within 2 %%")
+    ap.add_argument("--k-solid", type=float, default=1.001e-6, help="largest k allowed in a solid cell (m2/s2); the deck's turb.tke_floor is 1e-6")
     a = ap.parse_args()
     name = sorted(glob.glob(a.plotfile + "[0-9]*"))[-1] if a.latest else a.plotfile
-    hdr, d = erf_plotfile.read_fields(name, ["u", "v", "w", "building_beta"])
+    hdr, d = erf_plotfile.read_fields(name, ["u", "v", "w", "tke", "building_beta"])
     u, v, w, beta = d["u"], d["v"], d["w"], d["building_beta"]
     nx, ny, nz = [hdr["hi"][n] - hdr["lo"][n] + 1 for n in range(3)]
     cells = [(i, j, k) for i in range(nx) for j in range(ny) for k in range(nz)]
@@ -57,6 +64,20 @@ def main():
     print(f"u in a side's wall cell {side:.3f} m/s (pinned at {a.side})")
     if abs(side - a.side) > 0.02:
         bad.append("the side's wall cell moved")
+    # k in the roof's wall cell: its wall value with buildings.wall_tke = on, the k equation's without.
+    k_roof = d["tke"][14][jc][4]
+    print(f"k in the roof's wall cell {k_roof:.3f} m2/s2 (pinned at {a.k_roof}); largest k {max(d['tke'][i][j][k] for i, j, k in cells):.2f}")
+    if abs(k_roof - a.k_roof) > 0.02 * a.k_roof:
+        bad.append("k in the roof's wall cell moved")
+    # k in a side's wall cell of the ground's first layer: the ground's wall value and the side's together.
+    k_ground = d["tke"][14][8][0]
+    print(f"k in a side's wall cell on the ground {k_ground:.4f} m2/s2 (pinned at {a.k_ground})")
+    if abs(k_ground - a.k_ground) > 0.02 * a.k_ground:
+        bad.append("k in the side's wall cell on the ground moved")
+    k_solid = max(d["tke"][i][j][k] for i, j, k in cells if beta[i][j][k] >= 1)
+    print(f"largest k in a solid cell {k_solid:.3e} m2/s2 (at most {a.k_solid:.3e})")
+    if k_solid > a.k_solid:
+        bad.append("k in the solid cells is above its floor")
     if behind >= 0:
         bad.append("no reversal behind the cube")
     if over <= far:

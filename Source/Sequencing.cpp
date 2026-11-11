@@ -229,7 +229,7 @@ LooseStop loose_stop (const SteadyHistory& h, const SteadyParams& p, const std::
 LevelSolver::LevelSolver (const RunSetup& s, const Mesh& mesh, const amrex::Geometry& geom, const amrex::MultiFab& z_nd,
                           const amrex::BoxArray& ba, const amrex::DistributionMapping& dm, const std::string& label,
                           bool newton, const amrex::MultiFab* z0_fine, const Canopy* canopy_in,
-                          const amrex::MultiFab* canopy_fine_detJ, BuildingForcing* buildings)
+                          const amrex::MultiFab* canopy_fine_detJ, BuildingForcing* buildings, const BuildingTke* building_tke)
     : bc(s.bin, geom, mesh, s.fopt.coriolis), closure(s.copt), surf(s.surf)
 {
     bc.set_theta_ground_extension(s.simplec.theta_frozen);
@@ -261,8 +261,19 @@ LevelSolver::LevelSolver (const RunSetup& s, const Mesh& mesh, const amrex::Geom
     } else {
         height_above_ground(z_nd, dist);
     }
+    if (building_tke != nullptr) {
+        // The closure's length sees the buildings (BuildingTke.H). The hybrid convection blend
+        // keeps the ground's distance.
+        dist_ground.define(ba, dm, 1, 1);
+        amrex::MultiFab::Copy(dist_ground, dist, 0, 0, 1, 1);
+        const amrex::Long n = building_tke->limit_wall_distance(dist);
+        amrex::Print() << "gust: " << label << "buildings: the distance to the nearest building wall settled in "
+                       << building_tke->distance_passes() << " passes; it is the wall distance of " << n << " cells\n";
+    }
     res_in = residual_inputs(s, closure, dist, bc, surf);
     res_in.buildings = buildings;
+    res_in.building_tke = building_tke;
+    if (building_tke != nullptr) { res_in.ground_distance = &dist_ground; }
     if (canopy != nullptr) {
         canopy_faces.build(*canopy, geom);
         res_in.canopy = &canopy_faces;

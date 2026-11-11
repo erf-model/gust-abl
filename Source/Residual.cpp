@@ -1,6 +1,7 @@
 #include "Residual.H"
 
 #include "BuildingForcing.H"
+#include "BuildingTke.H"
 #include "CanopyDrag.H"
 #include "CanopyHeat.H"
 
@@ -188,6 +189,14 @@ void scaled_sums (const amrex::MultiFab& q, const amrex::MultiFab& v, const amre
     }
 }
 
+//! How the buildings' wall-k rows meet the cells' own (BuildingTke.H), from the ground's choice
+//! bc.surface_wall_k (SurfaceLayer.H: apply_wall_k).
+BuildingKRow building_k_row (const ResidualInputs& in)
+{
+    if (in.surface == nullptr) { return BuildingKRow::replace; }
+    return in.surface->wall_k == SurfaceLayerOptions::WallK::dirichlet ? BuildingKRow::ground_row : BuildingKRow::source;
+}
+
 amrex::Vector<const amrex::MultiFab*> solution_fields (const State& q)
 {
     return {&q.u, &q.v, &q.w, &q.p, &q.theta, &q.tke};
@@ -267,6 +276,10 @@ void residual (const State& q, const ResidualInputs& in, const Mesh& mesh, const
     if (in.buildings != nullptr) {
         in.buildings->close_viscous_fluxes({&mesh.open_fraction(0), &mesh.open_fraction(1), &mesh.open_fraction(2)}, Gm);
     }
+    if (in.building_tke != nullptr) {
+        if (in.buildings == nullptr) { amrex::Abort("gust: residual: the buildings' k terms (building_tke) need their wall law (buildings)"); }
+        in.building_tke->close_fluxes({&mesh.open_fraction(0), &mesh.open_fraction(1), &mesh.open_fraction(2)}, Gk);
+    }
     for (int c = 0; c < 3; ++c) {
         flux_divergence(velocity_loc(c), Gm[c], mesh, geom, tmp[c]);
         amrex::MultiFab::Subtract(*Rm[c], tmp[c], 0, 0, 1, 0);
@@ -330,6 +343,7 @@ void residual (const State& q, const ResidualInputs& in, const Mesh& mesh, const
         in.bc->apply_rows(q, R);
     }
     if (in.buildings != nullptr) { in.buildings->apply_rows(q.u, q.v, q.w, R.u, R.v, R.w); }
+    if (in.building_tke != nullptr) { in.building_tke->apply_rows(q.tke, R.tke, building_k_row(in)); }
 
     // A face shared by two boxes (or a periodic image) gets one value: the two
     // copies can differ in the last bits where a compiler contracts
@@ -413,6 +427,10 @@ void implicit_rows (const amrex::Array<const amrex::MultiFab*, AMREX_SPACEDIM>& 
     if (in.buildings != nullptr && momentum) {
         in.buildings->add_to_implicit((eq == Equation::u) ? 0 : (eq == Equation::v) ? 1 : 2,
                                       {&mesh.open_fraction(0), &mesh.open_fraction(1), &mesh.open_fraction(2)}, A);
+    }
+    if (in.building_tke != nullptr && eq == Equation::tke) {
+        in.building_tke->add_to_implicit({&mesh.open_fraction(0), &mesh.open_fraction(1), &mesh.open_fraction(2)}, A,
+                                         building_k_row(in));
     }
 }
 
