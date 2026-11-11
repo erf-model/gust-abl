@@ -281,7 +281,7 @@ gust_add_test(NAME abort_buildings_type NP 1 LABELS "regression;smoke"
 gust_add_test(NAME abort_buildings_wall_inputs NP 1 LABELS "regression;smoke"
               PREFIX ${EXPECT_ABORT}
                      "buildings\\.z0 must be finite and > 0"
-                     "buildings\\.wall_form must be fraction_stress or drag \\(got foo\\)" --
+                     "buildings\\.wall_form must be fraction_stress, roof_stress or drag \\(got foo\\)" --
               COMMAND $<TARGET_FILE:gust> ${BUILDINGS_CASE}/inputs_buildings buildings.file=${BUILDINGS_CASE}/building_map.txt
                       buildings.z0=0 buildings.wall_form=foo ${GUST_TEST_AMREX_FLAGS})
 gust_add_test(NAME abort_buildings_z0_with_drag NP 1 LABELS "regression;smoke"
@@ -305,6 +305,22 @@ gust_add_test(NAME building_cube_run NP 2 LABELS "regression;smoke" RUN_DIR ${BU
 gust_add_test(NAME building_cube_flow NP 1 LABELS "regression;smoke" RUN_DIR ${BUILDING_CUBE_DIR}
               FIXTURES_REQUIRED building_cube
               COMMAND ${Python3_EXECUTABLE} ${BUILDING_CUBE_CASE}/check_cube.py --latest cube_plt)
+# The form before the sides had the wall law (buildings.wall_form = roof_stress): its pinned values.
+set(BUILDING_CUBE_ROOF_DIR ${CMAKE_CURRENT_BINARY_DIR}/run/building_cube_roof_stress)
+add_test(NAME building_cube_roof_stress_clean
+         COMMAND ${Python3_EXECUTABLE} -c
+                 "import shutil, os, sys; shutil.rmtree(sys.argv[1], ignore_errors=True); os.makedirs(sys.argv[1])"
+                 ${BUILDING_CUBE_ROOF_DIR})
+set_tests_properties(building_cube_roof_stress_clean PROPERTIES LABELS "regression;smoke"
+                     FIXTURES_SETUP building_cube_roof_stress_clean)
+gust_add_test(NAME building_cube_roof_stress_run NP 2 LABELS "regression;smoke" RUN_DIR ${BUILDING_CUBE_ROOF_DIR}
+              FIXTURES_REQUIRED building_cube_roof_stress_clean FIXTURES_SETUP building_cube_roof_stress
+              PREFIX ${EXPECT_ABORT} --success "gust: steady after" --
+              COMMAND $<TARGET_FILE:gust> ${BUILDING_CUBE_CASE}/inputs_cube buildings.file=${BUILDING_CUBE_CASE}/cube.txt
+                      buildings.wall_form=roof_stress ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME building_cube_roof_stress_flow NP 1 LABELS "regression;smoke" RUN_DIR ${BUILDING_CUBE_ROOF_DIR}
+              FIXTURES_REQUIRED building_cube_roof_stress
+              COMMAND ${Python3_EXECUTABLE} ${BUILDING_CUBE_CASE}/check_cube.py --latest cube_plt --roof 3.888 --side 1.505)
 # --- The same block on a ridge: heights from the local ground ------------------
 set(BUILDING_HILL_CASE ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Building_Hill)
 set(BUILDING_HILL_DIR ${CMAKE_CURRENT_BINARY_DIR}/run/building_hill)

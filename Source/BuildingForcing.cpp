@@ -28,17 +28,25 @@ void BuildingForcing::build (const Buildings& b, const BuildingsOptions& opt, co
     m_detJ = &detJ;
     m_z0 = static_cast<amrex::Real>(opt.z0);
     m_wall_form = opt.wall_form;
-    m_rate.define(b.beta().boxArray(), b.beta().DistributionMap(), 1, 1);
+    m_rate.define(b.beta().boxArray(), b.beta().DistributionMap(), 3, 1);
     m_rate.setVal(0.0);
+    // A side's wall cell has its centroid dx / 2 or dy / 2 from the side; below 10 z0 the law
+    // reads the speed at 10 z0, so the stress no longer follows the cell size.
+    if (side_law() && amrex::min(geom.CellSize(0), geom.CellSize(1)) < 20 * m_z0) {
+        amrex::Print() << "gust: note: buildings.z0 = " << opt.z0 << " m: the sides' wall cells are within 10 z0 of their sides ("
+                       << "cells of " << geom.CellSize(0) << " by " << geom.CellSize(1) << " m), where the wall law takes the "
+                       << "speed as at 10 z0\n";
+    }
 }
 
-void BuildingForcing::update (const amrex::MultiFab& u, const amrex::MultiFab& v)
+void BuildingForcing::update (const amrex::MultiFab& u, const amrex::MultiFab& v, const amrex::MultiFab& w)
 {
     if (!wall_law()) { return; }
     const amrex::Real z0 = m_z0, kappa = amrex::Real(0.41), umin = kBuildingMinSpeed;
     const amrex::Real dzeta = m_geom.CellSize(2);
     const amrex::MultiFab& bz = m_b->beta_face(2);
     m_rate.setVal(0.0);
+    // Roofs and undersides: on u and v.
     for (amrex::MFIter mfi(m_rate, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
         const auto r = m_rate.array(mfi);
         const auto uu = u.const_array(mfi);
@@ -69,54 +77,122 @@ void BuildingForcing::update (const amrex::MultiFab& u, const amrex::MultiFab& v
                 const amrex::Real ref = k > klo ? speed(k - 1) : amrex::Real(0);
                 rate += fz(i, j, k + 1) * form7_ustar2(own, ref, beta(i, j, k), d1, d2, z0, kappa) * inv;
             }
-            r(i, j, k) = rate;
+            r(i, j, k, 0) = rate;
+            r(i, j, k, 1) = rate;
         });
+    }
+    if (side_law()) {
+        // Sides normal to x: on v and w. The reference cell is the next one out along x. Only a
+        // partial cell weighs it (beta > 0), and such a cell has one wall along x, facing away
+        // from a cell that is not solid (Buildings_K.H: wall_on_low_side).
+        const amrex::Real dx = m_geom.CellSize(0), dy = m_geom.CellSize(1);
+        for (amrex::MFIter mfi(m_rate, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
+            const auto r = m_rate.array(mfi);
+            const auto vv = v.const_array(mfi);
+            const auto ww = w.const_array(mfi);
+            const auto beta = m_b->beta().const_array(mfi);
+            const auto wl = m_b->wall().const_array(mfi);
+            const auto fx = m_b->beta_face(0).const_array(mfi);
+            amrex::ParallelFor(mfi.tilebox(), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+            {
+                const int mask = static_cast<int>(wl(i, j, k, kWallMask));
+                if (beta(i, j, k) >= amrex::Real(1) || (mask & (kWallXlo | kWallXhi)) == 0) { return; }
+                auto speed = [&] (int ii) {
+                    const amrex::Real vc = amrex::Real(0.5) * (vv(ii, j, k) + vv(ii, j + 1, k));
+                    const amrex::Real wc = amrex::Real(0.5) * (ww(ii, j, k) + ww(ii, j, k + 1));
+                    return std::sqrt(vc * vc + wc * wc);
+                };
+                const amrex::Real own = speed(i);
+                const amrex::Real inv = amrex::Real(1) / (amrex::max(own, umin) * dx);
+                const amrex::Real d1 = wl(i, j, k, kWallD1x), d2 = wl(i, j, k, kWallD2x);
+                amrex::Real rate = 0;
+                if ((mask & kWallXlo) != 0) {
+                    rate += fx(i, j, k) * form7_ustar2(own, speed(i + 1), beta(i, j, k), d1, d2, z0, kappa) * inv;
+                }
+                if ((mask & kWallXhi) != 0) {
+                    rate += fx(i + 1, j, k) * form7_ustar2(own, speed(i - 1), beta(i, j, k), d1, d2, z0, kappa) * inv;
+                }
+                r(i, j, k, 1) += rate;
+                r(i, j, k, 2) += rate;
+            });
+        }
+        // Sides normal to y: on u and w.
+        for (amrex::MFIter mfi(m_rate, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
+            const auto r = m_rate.array(mfi);
+            const auto uu = u.const_array(mfi);
+            const auto ww = w.const_array(mfi);
+            const auto beta = m_b->beta().const_array(mfi);
+            const auto wl = m_b->wall().const_array(mfi);
+            const auto fy = m_b->beta_face(1).const_array(mfi);
+            amrex::ParallelFor(mfi.tilebox(), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+            {
+                const int mask = static_cast<int>(wl(i, j, k, kWallMask));
+                if (beta(i, j, k) >= amrex::Real(1) || (mask & (kWallYlo | kWallYhi)) == 0) { return; }
+                auto speed = [&] (int jj) {
+                    const amrex::Real uc = amrex::Real(0.5) * (uu(i, jj, k) + uu(i + 1, jj, k));
+                    const amrex::Real wc = amrex::Real(0.5) * (ww(i, jj, k) + ww(i, jj, k + 1));
+                    return std::sqrt(uc * uc + wc * wc);
+                };
+                const amrex::Real own = speed(j);
+                const amrex::Real inv = amrex::Real(1) / (amrex::max(own, umin) * dy);
+                const amrex::Real d1 = wl(i, j, k, kWallD1y), d2 = wl(i, j, k, kWallD2y);
+                amrex::Real rate = 0;
+                if ((mask & kWallYlo) != 0) {
+                    rate += fy(i, j, k) * form7_ustar2(own, speed(j + 1), beta(i, j, k), d1, d2, z0, kappa) * inv;
+                }
+                if ((mask & kWallYhi) != 0) {
+                    rate += fy(i, j + 1, k) * form7_ustar2(own, speed(j - 1), beta(i, j, k), d1, d2, z0, kappa) * inv;
+                }
+                r(i, j, k, 0) += rate;
+                r(i, j, k, 2) += rate;
+            });
+        }
     }
     m_rate.FillBoundary(m_geom.periodicity());
 }
 
-void BuildingForcing::add_sink (const amrex::MultiFab& u, const amrex::MultiFab& v, amrex::MultiFab& Ru, amrex::MultiFab& Rv) const
+void BuildingForcing::add_sink (const amrex::MultiFab& u, const amrex::MultiFab& v, const amrex::MultiFab& w, amrex::MultiFab& Ru,
+                                amrex::MultiFab& Rv, amrex::MultiFab& Rw) const
 {
     if (!wall_law()) { return; }
-    for (amrex::MFIter mfi(Ru, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
-        const auto r = m_rate.const_array(mfi);
-        const auto q = u.const_array(mfi);
-        const auto a = Ru.array(mfi);
-        amrex::ParallelFor(mfi.tilebox(), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
-        {
-            a(i, j, k) += amrex::Real(0.5) * (r(i - 1, j, k) + r(i, j, k)) * q(i, j, k);
-        });
-    }
-    for (amrex::MFIter mfi(Rv, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
-        const auto r = m_rate.const_array(mfi);
-        const auto q = v.const_array(mfi);
-        const auto a = Rv.array(mfi);
-        amrex::ParallelFor(mfi.tilebox(), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
-        {
-            a(i, j, k) += amrex::Real(0.5) * (r(i, j - 1, k) + r(i, j, k)) * q(i, j, k);
-        });
+    const amrex::MultiFab* q[3] = {&u, &v, &w};
+    amrex::MultiFab* R[3] = {&Ru, &Rv, &Rw};
+    // w has no wall parallel to it without the sides' law.
+    const int nc = side_law() ? 3 : 2;
+    for (int c = 0; c < nc; ++c) {
+        const int di = (c == 0) ? 1 : 0, dj = (c == 1) ? 1 : 0, dk = (c == 2) ? 1 : 0;
+        for (amrex::MFIter mfi(*R[c], amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
+            const auto r = m_rate.const_array(mfi, c);
+            const auto x = q[c]->const_array(mfi);
+            const auto a = R[c]->array(mfi);
+            amrex::ParallelFor(mfi.tilebox(), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+            {
+                a(i, j, k) += amrex::Real(0.5) * (r(i - di, j - dj, k - dk) + r(i, j, k)) * x(i, j, k);
+            });
+        }
     }
 }
 
-void BuildingForcing::close_viscous_fluxes (const amrex::MultiFab& open_z, amrex::MultiFab& Gu, amrex::MultiFab& Gv) const
+void BuildingForcing::close_viscous_fluxes (const amrex::Array<const amrex::MultiFab*, AMREX_SPACEDIM>& open,
+                                            amrex::Array<amrex::Array<amrex::MultiFab, AMREX_SPACEDIM>, AMREX_SPACEDIM>& G) const
 {
     if (!wall_law()) { return; }
-    const amrex::MultiFab& oz = open_z;
-    for (amrex::MFIter mfi(Gu, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
-        const auto g = Gu.array(mfi);
-        const auto o = oz.const_array(mfi);
-        amrex::ParallelFor(mfi.tilebox(), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
-        {
-            g(i, j, k) *= amrex::Real(0.5) * (o(i - 1, j, k) + o(i, j, k));
-        });
-    }
-    for (amrex::MFIter mfi(Gv, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
-        const auto g = Gv.array(mfi);
-        const auto o = oz.const_array(mfi);
-        amrex::ParallelFor(mfi.tilebox(), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
-        {
-            g(i, j, k) *= amrex::Real(0.5) * (o(i, j - 1, k) + o(i, j, k));
-        });
+    // Walls normal to d: z alone without the sides' law.
+    for (int d = side_law() ? 0 : 2; d < 3; ++d) {
+        for (int c = 0; c < 3; ++c) {
+            if (c == d) { continue; }
+            // The flux's point lies between the d-faces of the two cells of c's row.
+            const int di = (c == 0) ? 1 : 0, dj = (c == 1) ? 1 : 0, dk = (c == 2) ? 1 : 0;
+            amrex::MultiFab& Gcd = G[static_cast<std::size_t>(c)][static_cast<std::size_t>(d)];
+            for (amrex::MFIter mfi(Gcd, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
+                const auto g = Gcd.array(mfi);
+                const auto o = open[static_cast<std::size_t>(d)]->const_array(mfi);
+                amrex::ParallelFor(mfi.tilebox(), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+                {
+                    g(i, j, k) *= amrex::Real(0.5) * (o(i - di, j - dj, k - dk) + o(i, j, k));
+                });
+            }
+        }
     }
 }
 
@@ -139,20 +215,37 @@ void BuildingForcing::apply_rows (const amrex::MultiFab& u, const amrex::MultiFa
     }
 }
 
-void BuildingForcing::add_to_implicit (int c, const amrex::MultiFab& open_z, amrex::MultiFab& A) const
+void BuildingForcing::add_to_implicit (int c, const amrex::Array<const amrex::MultiFab*, AMREX_SPACEDIM>& open, amrex::MultiFab& A) const
 {
-    if (wall_law() && c < 2) {
-        const int di = (c == 0) ? 1 : 0, dj = 1 - di;
+    const int di = (c == 0) ? 1 : 0, dj = (c == 1) ? 1 : 0, dk = (c == 2) ? 1 : 0;
+    if (wall_law() && (c < 2 || side_law())) {
         for (amrex::MFIter mfi(A, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
             const auto a = A.array(mfi);
-            const auto r = m_rate.const_array(mfi);
-            const auto o = open_z.const_array(mfi);
+            const auto r = m_rate.const_array(mfi, c);
+            // Not on the ground's w: that row is the boundary conditions' identity.
+            const int kg = ground_row(c, m_geom);
             amrex::ParallelFor(mfi.tilebox(), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
             {
-                a(i, j, k, coef_P) += amrex::Real(0.5) * (r(i - di, j - dj, k) + r(i, j, k));
-                a(i, j, k, coef_ZM) *= amrex::Real(0.5) * (o(i - di, j - dj, k) + o(i, j, k));
-                a(i, j, k, coef_ZP) *= amrex::Real(0.5) * (o(i - di, j - dj, k + 1) + o(i, j, k + 1));
+                if (k != kg) { a(i, j, k, coef_P) += amrex::Real(0.5) * (r(i - di, j - dj, k - dk) + r(i, j, k)); }
             });
+        }
+        // The couplings through the wall faces normal to d, as close_viscous_fluxes. The whole
+        // coupling is scaled, its upwind weight too (the open mass flux has already reduced that
+        // one): this changes the rate of convergence, not the fixed point. a_P keeps the closed
+        // part, so the row stays diagonally dominant.
+        for (int d = side_law() ? 0 : 2; d < 3; ++d) {
+            if (d == c) { continue; }
+            const int ei = (d == 0) ? 1 : 0, ej = (d == 1) ? 1 : 0, ek = (d == 2) ? 1 : 0;
+            const int lo = coef_XM + 2 * d, hi = lo + 1;
+            for (amrex::MFIter mfi(A, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
+                const auto a = A.array(mfi);
+                const auto o = open[static_cast<std::size_t>(d)]->const_array(mfi);
+                amrex::ParallelFor(mfi.tilebox(), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+                {
+                    a(i, j, k, lo) *= amrex::Real(0.5) * (o(i - di, j - dj, k - dk) + o(i, j, k));
+                    a(i, j, k, hi) *= amrex::Real(0.5) * (o(i - di + ei, j - dj + ej, k - dk + ek) + o(i + ei, j + ej, k + ek));
+                });
+            }
         }
     }
     for (amrex::MFIter mfi(A, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
