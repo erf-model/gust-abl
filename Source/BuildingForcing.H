@@ -14,10 +14,16 @@
 //   with the own distance floored at 10 z0 (Kynema-SGF 996cdc9e) and u*^2 = u*_own^2 where
 //   there is no reference cell (d2 = 0). U is the speed
 //   parallel to the wall, at the cell centre: (u, v) at a roof or underside, (v, w) at a
-//   side normal to x, (u, w) at one normal to y. A wall is a sink on the two velocity
+//   side normal to x, (u, w) at one normal to y. Each component is the mean of the cell's
+//   two faces that are not fixed rows (buildings.wall_speed = open_faces, the default with
+//   this form), in the cell and in its reference cell: in an edge or corner cell one face
+//   can lie on the other wall, and the mean with its zero would halve the speed. all_faces
+//   takes both faces, as before. A wall is a sink on the two velocity
 //   components parallel to it,
 //     S = -r u_t,  r = f u*^2 / (Delta_n |U_own|),
-//   f the blocked part of the wall's face, Delta_n the cell's size along the normal
+//   f the wall's part of its face's area (wall_area_fraction: the blocked part of the face in
+//   a fluid cell, the difference of the two opposite faces' in a partly solid one), Delta_n
+//   the cell's size along the normal
 //   (the layer's height, dx or dy). A cell with several walls (an edge: roof and side;
 //   a corner: two sides) takes the sum of its walls' rates on each component, so the
 //   component along an edge feels both walls. The viscous flux of a parallel component
@@ -38,6 +44,7 @@
 #include <AMReX_Geometry.H>
 #include <AMReX_MultiFab.H>
 
+#include <array>
 #include <cmath>
 
 namespace gust {
@@ -58,6 +65,27 @@ amrex::Real form7_ustar2 (amrex::Real u_own, amrex::Real u_ref, amrex::Real beta
 //! cell's walls (m^2/s^2), which the closure's wall value of k reads (BuildingTke.H).
 inline constexpr int kBuildingUstar2 = 3;
 
+//! The mean of a velocity component over a cell's two faces, with the faces' weights (1, or 0 on
+//! a fixed row with buildings.wall_speed = open_faces): an edge or corner cell then takes the open
+//! face's value, not half of it. Both weights 1 give (a + b) / 2; both 0 give 0.
+AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
+amrex::Real open_face_mean (amrex::Real a, amrex::Real b, amrex::Real wa, amrex::Real wb) noexcept
+{
+    return (wa * a + wb * b) / amrex::max(wa + wb, amrex::Real(1));
+}
+
+//! The part of a cell's face area that a wall takes: in a fluid cell (beta = 0) the blocked part
+//! f_wall of the face the wall lies on; in a partly solid cell the difference from the opposite
+//! face's blocked part, which is the area facing that way (Buildings_K.H: wall_on_low_side). On
+//! a slope the solid fraction of a roof's cells changes a little from column to column, so they
+//! carry a side bit with a small such area; the whole face's fraction would count the building's
+//! own cross-section as a wall.
+AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
+amrex::Real wall_area_fraction (amrex::Real f_wall, amrex::Real f_opposite, amrex::Real beta) noexcept
+{
+    return beta > amrex::Real(0) ? amrex::max(f_wall - f_opposite, amrex::Real(0)) : f_wall;
+}
+
 //! Speeds below this do not divide the rate (m/s): u*^2 / U stays finite at rest.
 inline constexpr amrex::Real kBuildingMinSpeed = amrex::Real(1.0e-3);
 
@@ -74,6 +102,11 @@ public:
     //! rate on velocity component c, the sum over the cell's walls parallel to it; component
     //! kBuildingUstar2 is the largest u*^2 of the cell's walls.
     [[nodiscard]] const amrex::MultiFab& rate () const { return m_rate; }
+
+    //! The wall cells with a wall under the law, and those among them whose fluid centroid is
+    //! within 10 z0 of such a wall, where the law reads the speed as at 10 z0 (all ranks).
+    [[nodiscard]] amrex::Long wall_cells () const { return m_wall_cells; }
+    [[nodiscard]] amrex::Long cells_below_floor () const { return m_below_floor; }
 
     //! The rates at the state (u, v, w on their faces). Roofs and undersides read valid
     //! points; the sides read one ghost cell of each component, at their reference cells.
@@ -100,6 +133,8 @@ private:
     amrex::Geometry m_geom;
     const amrex::MultiFab* m_detJ{nullptr};
     amrex::MultiFab m_rate;
+    std::array<amrex::MultiFab, 3> m_weight;   //!< the faces' weights in a cell's speed (one ghost layer)
+    amrex::Long m_wall_cells{0}, m_below_floor{0};
     amrex::Real m_z0{0.1};
     BuildingWallForm m_wall_form{BuildingWallForm::fraction_stress};
 };

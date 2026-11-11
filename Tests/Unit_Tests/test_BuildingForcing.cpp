@@ -14,6 +14,9 @@
 //   the implicit couplings through a side are closed, and roof_stress leaves the sides as they
 //   were (UT-5.3.3); the same values on every box layout, with a side on a box edge and a
 //   building across a periodic seam (UT-5.3.4).
+// After #87: the speed of a cell with two walls from its faces that are not fixed rows
+// (buildings.wall_speed), in the cell and in its reference cell, with the ground's w and partly blocked
+// faces counted; the count of wall cells below the law's 10 z0 floor.
 #include "BuildingForcing.H"
 #include "ImplicitOperator.H"
 #include "MassFlux.H"
@@ -89,6 +92,8 @@ gust::BuildingsOptions roof_options (const std::string& form = "fraction_stress"
     o.wall_form_name = form;
     o.wall_form = form == "drag" ? gust::BuildingWallForm::drag
                 : form == "roof_stress" ? gust::BuildingWallForm::roof_stress : gust::BuildingWallForm::fraction_stress;
+    // As the reader's defaults: every face in the speed with the forms from before the open faces' mean.
+    o.wall_speed = gust::default_wall_speed(o.wall_form);
     o.file = write_text("roof.txt", [] (std::ostream& os) {
         os << "5\n5\n";
         for (int r = 0; r < 2; ++r) { for (int t = 0; t < 5; ++t) { os << 20 * t << "\n"; } }
@@ -587,7 +592,8 @@ TEST (BuildingSides, EdgeAndCornerCellsSumTheirWalls)
         PCase c = roof_case(mgs);
         const gust::BuildingsOptions o = tile_options("ell.txt", [] (int i, int j) {
             if ((i == 2 && j == 2) || (i == 1 && j == 2) || (i == 2 && j == 1)) { return 45; }
-            return (i == 3 && j == 2) ? 20 : 0;
+            // Two 20 m steps: beside the side at x = 50 m, and beside the one at y = 50 m.
+            return ((i == 3 && j == 2) || (i == 2 && j == 3)) ? 20 : 0;
         });
         gust::Buildings b;
         b.build(o, c.geom, c.z, c.ba, c.dm);
@@ -614,8 +620,9 @@ TEST (BuildingSides, EdgeAndCornerCellsSumTheirWalls)
         f.add_sink(q.u, q.v, q.w, q.Ru, q.Rv, q.Rw);
         EXPECT_NEAR(value_at(q.Rw, 2, 2, 2), (rx + ry) * cc, 100 * rtol * (rx + ry) * cc) << "w's row between two corner cells";
         EXPECT_NEAR(value_at(q.Rv, 5, 4, 2), (rz + rx) * bb, 100 * rtol * (rz + rx) * bb) << "v's row between two edge cells";
-        // With the blocked faces at rest, as in a run: the corner cell's u and v are the means of an
-        // open face and a fixed one, half the open value.
+        // With the blocked faces at rest, as in a run. The corner cell's u and v each have one face on the
+        // other side, a fixed row: the speed takes the open face's value (buildings.wall_speed = open_faces),
+        // so the rates are those of the uniform field above. all_faces takes the mean with the zero, half.
         const amrex::MultiFab* qs[3] = {&q.u, &q.v, &q.w};
         for (int n = 0; n < 3; ++n) {
             amrex::MultiFab mask(b.beta_face(n).boxArray(), c.dm, 1, 1);
@@ -630,10 +637,43 @@ TEST (BuildingSides, EdgeAndCornerCellsSumTheirWalls)
             }
         }
         f.update(q.u, q.v, q.w);
+        EXPECT_NEAR(value_at(f.rate(), 2, 2, 1, 1), rx, 100 * rtol * rx) << "the corner's v is the open face's";
+        EXPECT_NEAR(value_at(f.rate(), 2, 2, 1, 0), ry, 100 * rtol * ry) << "the corner's u is the open face's";
+        EXPECT_NEAR(value_at(f.rate(), 2, 2, 1, 2), rx + ry, 100 * rtol * (rx + ry));
+        // The edge cell: its low x face is on the side, so the roof's speed takes u from the high face alone;
+        // its low z face is on the roof, so the side's speed takes w from the high face alone.
+        const double rzo = rate_of(std::hypot(a, bb)), rxe = rate_of(std::hypot(bb, 0.0 + cc));
+        EXPECT_NEAR(value_at(f.rate(), 5, 3, 2, 0), rzo, 100 * rtol * rzo) << "the edge's u is the open face's";
+        EXPECT_NEAR(value_at(f.rate(), 5, 3, 2, 2), rxe, 100 * rtol * rxe) << "the edge's w is the open face's";
+        gust::BuildingsOptions all = o;
+        all.wall_speed = gust::BuildingWallSpeed::all_faces;
+        gust::BuildingForcing g;
+        g.build(b, all, c.geom, c.mesh.detJ);
+        g.update(q.u, q.v, q.w);
         const double rxh = rate_of(std::hypot(0.5 * bb, cc)), ryh = rate_of(std::hypot(0.5 * a, cc));
-        EXPECT_NEAR(value_at(f.rate(), 2, 2, 1, 1), rxh, 100 * rtol * rxh) << "the corner's v is half the open face's";
-        EXPECT_NEAR(value_at(f.rate(), 2, 2, 1, 0), ryh, 100 * rtol * ryh) << "the corner's u is half the open face's";
-        EXPECT_NEAR(value_at(f.rate(), 2, 2, 1, 2), rxh + ryh, 100 * rtol * (rxh + ryh));
+        EXPECT_NEAR(value_at(g.rate(), 2, 2, 1, 1), rxh, 100 * rtol * rxh) << "all_faces: the corner's v is half the open face's";
+        EXPECT_NEAR(value_at(g.rate(), 2, 2, 1, 0), ryh, 100 * rtol * ryh) << "all_faces: the corner's u is half the open face's";
+        EXPECT_NEAR(value_at(g.rate(), 2, 2, 1, 2), rxh + ryh, 100 * rtol * (rxh + ryh));
+        const double rzh = rate_of(std::hypot(0.5 * a, bb)), rxeh = rate_of(std::hypot(bb, 0.5 * cc));
+        EXPECT_NEAR(value_at(g.rate(), 5, 3, 2, 0), rzh, 100 * rtol * rzh) << "all_faces: the edge's u is half";
+        EXPECT_NEAR(value_at(g.rate(), 5, 3, 2, 2), rxeh, 100 * rtol * rxeh) << "all_faces: the edge's w is half";
+        // The other step's edge cell: a roof below and a side at its low y. The roof's v and the side's w each
+        // have one fixed face; u has none. v feels the roof alone, w the side alone, u both.
+        ASSERT_EQ(static_cast<int>(value_at(b.wall(), 3, 5, 2, gust::kWallMask)), gust::kWallRoof | gust::kWallYlo);
+        const double ryo = rate_of(std::hypot(a, cc));
+        EXPECT_NEAR(value_at(f.rate(), 3, 5, 2, 1), rzo, 100 * rtol * rzo) << "the roof's v is the open face's";
+        EXPECT_NEAR(value_at(f.rate(), 3, 5, 2, 2), ryo, 100 * rtol * ryo) << "the y side's w is the open face's";
+        EXPECT_NEAR(value_at(f.rate(), 3, 5, 2, 0), rzo + ryo, 100 * rtol * (rzo + ryo));
+        const double rzv = rate_of(std::hypot(a, 0.5 * bb)), ryh2 = rate_of(std::hypot(a, 0.5 * cc));
+        EXPECT_NEAR(value_at(g.rate(), 3, 5, 2, 1), rzv, 100 * rtol * rzv) << "all_faces: the roof's v is half";
+        EXPECT_NEAR(value_at(g.rate(), 3, 5, 2, 2), ryh2, 100 * rtol * ryh2) << "all_faces: the y side's w is half";
+        // A plain side cell and a plain roof cell have no fixed face among theirs: the same in both forms.
+        ASSERT_EQ(static_cast<int>(value_at(b.wall(), 3, 0, 1, gust::kWallMask)), gust::kWallYhi);
+        EXPECT_EQ(value_at(g.rate(), 3, 0, 1, 0), value_at(f.rate(), 3, 0, 1, 0));
+        EXPECT_GT(value_at(f.rate(), 3, 0, 1, 0), 0.0);
+        // The first edge cell's v, which runs along the edge: the roof's rate and the side's.
+        EXPECT_NEAR(value_at(f.rate(), 5, 3, 2, 1), rzo + rxe, 100 * rtol * (rzo + rxe));
+        EXPECT_NEAR(value_at(g.rate(), 5, 3, 2, 1), rzh + rxeh, 100 * rtol * (rzh + rxeh));
     }
 }
 
@@ -667,6 +707,184 @@ TEST (BuildingSides, RatesUseTheCellSizeAlongEachNormal)
     EXPECT_NEAR(value_at(f.rate(), 5, 7, 1, 1), rx, 100 * rtol * rx);
     EXPECT_NEAR(value_at(f.rate(), 3, 10, 1, 0), ry, 100 * rtol * ry);
     EXPECT_NEAR(value_at(f.rate(), 3, 5, 1, 2), ry, 100 * rtol * ry);
+}
+
+// Fixed faces beyond the cell's own: in its reference cell, on the ground, and partly blocked ones.
+TEST (BuildingSides, OpenFacesInTheReferenceCellOnTheGroundAndPartlyBlocked)
+{
+    const auto zero_fixed = [] (const PCase& c, const gust::Buildings& b, Fields& q) {
+        amrex::MultiFab* qs[3] = {&q.u, &q.v, &q.w};
+        for (int n = 0; n < 3; ++n) {
+            amrex::MultiFab mask(b.beta_face(n).boxArray(), c.dm, 1, 1);
+            mask.setVal(0);
+            amrex::MultiFab::Copy(mask, b.beta_face(n), 0, 0, 1, 0);
+            mask.FillBoundary(c.geom.periodicity());
+            for (amrex::MFIter mfi(*qs[n], false); mfi.isValid(); ++mfi) {
+                const auto a4 = qs[n]->array(mfi);
+                const auto m4 = mask.const_array(mfi);
+                amrex::LoopOnCpu(mfi.fabbox(), [&] (int i, int j, int k) { if (m4(i, j, k) == amrex::Real(1)) { a4(i, j, k) = 0; } });
+            }
+        }
+    };
+    const auto build_two = [] (const PCase& c, const gust::BuildingsOptions& o, const gust::Buildings& b, gust::BuildingForcing& open,
+                               gust::BuildingForcing& every) {
+        open.build(b, o, c.geom, c.mesh.detJ);
+        gust::BuildingsOptions all = o;
+        all.wall_speed = gust::BuildingWallSpeed::all_faces;
+        every.build(b, all, c.geom, c.mesh.detJ);
+    };
+    for (const int mgs : {4, 3}) {   // 3: a box edge between the wall cell and its reference cell
+        // The reference cell: a wall 35..45 m along x leaves the cell 3 half solid (side at its high x, reference
+        // the cell 2); a second building fills the cell 2 for y 10..30 m, so the reference cell (2, 3) has its low
+        // y face on that building, a fixed row, and the wall cell (3, 3) has none.
+        PCase c = roof_case(mgs);
+        gust::BuildingsOptions o = roof_options();
+        o.format = "xyz";
+        o.file = write_text("reference_face.txt", [] (std::ostream& os) {
+            for (const double x : {12.0, 28.0, 32.0, 38.0, 52.0, 80.0}) {   // tiles 20..30, 30..35, 35..45 m
+                for (const double y : {0.0, 20.0, 40.0, 60.0, 80.0}) {      // tiles 10..30, 30..50 m
+                    const bool wall = x == 38.0 && y == 40.0, second = x == 28.0 && y == 20.0;
+                    os << x << " " << y << " " << ((wall || second) ? 45.0 : 0.0) << "\n";
+                }
+            }
+        });
+        gust::Buildings b;
+        b.build(o, c.geom, c.z, c.ba, c.dm);
+        ASSERT_EQ(static_cast<int>(value_at(b.wall(), 3, 3, 1, gust::kWallMask)), gust::kWallXhi);
+        ASSERT_EQ(value_at(b.beta(), 3, 3, 1), 0.5);
+        ASSERT_EQ(value_at(b.beta_face(1), 2, 3, 1), 1.0) << "the reference cell's low y face is on the second building";
+        ASSERT_EQ(value_at(b.beta_face(1), 3, 3, 1), 0.5) << "the wall cell's own low y face is half blocked: no fixed row";
+        gust::BuildingForcing f, g;
+        build_two(c, o, b, f, g);
+        Fields q(c);
+        const double own = 3, ref = 5;
+        fill_by_index(q.v, [&] (int i, int, int) { return i == 3 ? own : i == 2 ? ref : 7.0; });
+        zero_fixed(c, b, q);
+        f.update(q.u, q.v, q.w);
+        g.update(q.u, q.v, q.w);
+        const auto rate_of = [&] (double r) {
+            const double so = kKappa * own / std::log(25.0), sr = kKappa * r / std::log(100.0);
+            return (0.5 * so * so + 0.5 * sr * sr) / (10 * own);
+        };
+        EXPECT_NEAR(value_at(f.rate(), 3, 3, 1, 1), rate_of(ref), 100 * rtol * rate_of(ref)) << "the reference speed is its open face's, boxes " << mgs;
+        EXPECT_NEAR(value_at(g.rate(), 3, 3, 1, 1), rate_of(0.5 * ref), 100 * rtol * rate_of(ref)) << "all_faces: half of it";
+    }
+    {
+        // The ground: a 5 m annex (half the first layer) against a 45 m wall at x = 50 m. Its roof cell (5, 3, 0)
+        // has the wall at its low x. The cell's ground face is covered, but w on the ground is the boundary
+        // conditions' row, not a fixed one: it stays in the mean in both forms.
+        PCase c = roof_case(4);
+        const gust::BuildingsOptions o = tile_options("annex5.txt", [] (int i, int j) { return (i == 2 && j == 2) ? 45 : (i == 3 && j == 2) ? 5 : 0; });
+        gust::Buildings b;
+        b.build(o, c.geom, c.z, c.ba, c.dm);
+        ASSERT_EQ(static_cast<int>(value_at(b.wall(), 5, 3, 0, gust::kWallMask)), gust::kWallRoof | gust::kWallXlo);
+        ASSERT_EQ(value_at(b.beta(), 5, 3, 0), 0.5);
+        ASSERT_EQ(value_at(b.beta_face(2), 5, 3, 0), 1.0);
+        gust::BuildingForcing f, g;
+        build_two(c, o, b, f, g);
+        Fields q(c);
+        const double bb = 2, cc = 1;
+        q.v.setVal(amrex::Real(bb));
+        q.w.setVal(amrex::Real(cc));
+        zero_fixed(c, b, q);   // the covered ground face too: w = 0 there, as on flat ground
+        f.update(q.u, q.v, q.w);
+        g.update(q.u, q.v, q.w);
+        // The side at x = 50 m: (v, w) = (2, 1/2) in the cell and in its reference cell (6, 3, 0), both half solid.
+        const double s = std::hypot(bb, 0.5 * cc), so = kKappa * s / std::log(25.0), sr = kKappa * s / std::log(100.0);
+        // The wall faces the cell's upper half alone (the lower half is the annex): its area is the difference of
+        // the blocked parts of the cell's two x faces, 1 - 0.5.
+        ASSERT_EQ(value_at(b.beta_face(0), 5, 3, 0), 1.0);
+        ASSERT_EQ(value_at(b.beta_face(0), 6, 3, 0), 0.5);
+        const double r = 0.5 * (0.5 * so * so + 0.5 * sr * sr) / (10 * s);
+        EXPECT_NEAR(value_at(f.rate(), 5, 3, 0, 2), r, 100 * rtol * r) << "the ground's w is counted";
+        EXPECT_EQ(value_at(g.rate(), 5, 3, 0, 2), value_at(f.rate(), 5, 3, 0, 2)) << "no fixed face among these: the same in both forms";
+    }
+    {
+        // A street one cell wide between two 45 m walls (the cells 2 and 4 along x): a fluid cell with a side on
+        // each x face. Each takes its face's whole blocked part, so the rate is twice one side's.
+        PCase c = roof_case(4);
+        gust::BuildingsOptions o = roof_options();
+        o.format = "xyz";
+        o.file = write_text("street.txt", [] (std::ostream& os) {
+            for (const double x : {5.0, 15.0, 25.0, 35.0, 45.0, 55.0}) {   // tiles of 10 m: the cells 1..4
+                for (const double y : {0.0, 20.0, 40.0, 60.0, 80.0}) {
+                    os << x << " " << y << " " << (((x == 25.0 || x == 45.0) && y == 40.0) ? 45.0 : 0.0) << "\n";
+                }
+            }
+        });
+        gust::Buildings b;
+        b.build(o, c.geom, c.z, c.ba, c.dm);
+        ASSERT_EQ(static_cast<int>(value_at(b.wall(), 3, 3, 1, gust::kWallMask)), gust::kWallXlo | gust::kWallXhi);
+        ASSERT_EQ(value_at(b.beta(), 3, 3, 1), 0.0);
+        gust::BuildingForcing f;
+        f.build(b, o, c.geom, c.mesh.detJ);
+        Fields q(c);
+        q.v.setVal(2);
+        f.update(q.u, q.v, q.w);
+        const double us = kKappa * 2 / std::log(50.0), r = 2 * us * us / (10 * 2.0);
+        EXPECT_NEAR(value_at(f.rate(), 3, 3, 1, 1), r, 100 * rtol * r);
+    }
+    {
+        // Partly blocked faces count as open: the roof cells of a 25 m block have their x and y faces half blocked.
+        PCase c = roof_case(4);
+        const gust::BuildingsOptions o = roof_options();
+        gust::Buildings b;
+        b.build(o, c.geom, c.z, c.ba, c.dm);
+        ASSERT_EQ(value_at(b.beta_face(0), 3, 3, 2), 0.5);
+        ASSERT_EQ(value_at(b.beta_face(0), 4, 3, 2), 0.5);
+        gust::BuildingForcing f, g;
+        build_two(c, o, b, f, g);
+        Fields q(c);
+        q.u.setVal(3);
+        f.update(q.u, q.v, q.w);
+        g.update(q.u, q.v, q.w);
+        EXPECT_GT(value_at(f.rate(), 3, 3, 2, 0), 0.0);
+        EXPECT_EQ(value_at(f.rate(), 3, 3, 2, 0), value_at(g.rate(), 3, 3, 2, 0));
+    }
+}
+
+// On a slope a roof's cells are partly solid by a fraction that changes from column to column, so each has a
+// side bit although the roof is continuous. The side's rate takes the area facing that way, the difference of the
+// two opposite faces' blocked parts, not the whole face's (which is the building's own cross-section).
+TEST (BuildingSides, SlopedRoofsFalseSideTakesItsOwnSmallArea)
+{
+    for (const int mgs : {8, 3}) {
+        PCase c;
+        c.in.mesh.n_cell = amrex::IntVect(8, 8, 24);
+        c.in.mesh.prob_hi = {80, 80, 240};
+        c.in.mesh.is_periodic = {0, 0, 0};
+        c.in.mesh.max_grid_size = {mgs, mgs};
+        c.in.terrain.smoothing = 0;
+        c.make([] (double x, double) { return 0.1 * x; });   // the ground rises 1 m per cell along x
+        const gust::BuildingsOptions o = tile_options("block25.txt", [] (int i, int j) { return (i == 2 && j == 2) ? 25 : 0; });
+        gust::Buildings b;
+        b.build(o, c.geom, c.z, c.ba, c.dm);
+        // The roof's cells, the two columns of the block along x: partly solid, with a side bit.
+        int k_roof = -1;
+        for (int k = 0; k < 6; ++k) { if (value_at(b.beta(), 3, 3, k) > 0 && value_at(b.beta(), 3, 3, k) < 1) { k_roof = k; } }
+        ASSERT_GE(k_roof, 1);
+        const int mask = static_cast<int>(value_at(b.wall(), 3, 3, k_roof, gust::kWallMask));
+        ASSERT_NE(mask & gust::kWallRoof, 0);
+        ASSERT_NE(mask & (gust::kWallXlo | gust::kWallXhi), 0) << "the slope gives the roof cell a side bit";
+        const bool lo = (mask & gust::kWallXlo) != 0;
+        const double f_lo = value_at(b.beta_face(0), 3, 3, k_roof), f_hi = value_at(b.beta_face(0), 4, 3, k_roof);
+        const double area = lo ? f_lo - f_hi : f_hi - f_lo, face = lo ? f_lo : f_hi;
+        ASSERT_GT(area, 0.0);
+        ASSERT_LT(area, 0.5 * face) << "the area facing that way is a small part of the face's blocked part";
+        gust::BuildingForcing f;
+        f.build(b, o, c.geom, c.mesh.detJ);
+        Fields q(c);
+        q.w.setVal(2);   // w alone: parallel to the sides, normal to the roof
+        f.update(q.u, q.v, q.w);
+        // Only the side acts on w. Its speed is 2 m/s in the cell and in its reference cell (no face is zeroed here).
+        const double beta = value_at(b.beta(), 3, 3, k_roof);
+        const double d1 = value_at(b.wall(), 3, 3, k_roof, gust::kWallD1x), d2 = value_at(b.wall(), 3, 3, k_roof, gust::kWallD2x);
+        const double us2 = static_cast<double>(gust::form7_ustar2(amrex::Real(2), amrex::Real(2), amrex::Real(beta), amrex::Real(d1), amrex::Real(d2),
+                                                                  amrex::Real(0.1), amrex::Real(kKappa)));
+        const double want = area * us2 / (10 * 2.0);
+        EXPECT_NEAR(value_at(f.rate(), 3, 3, k_roof, 2), want, 1e3 * rtol * want) << "boxes " << mgs;
+        EXPECT_LT(value_at(f.rate(), 3, 3, k_roof, 2), 0.5 * face * us2 / (10 * 2.0)) << "not the whole face's";
+    }
 }
 
 // A side in the middle of a cell: a tile 10 m wide leaves the cells 3 and 4 half solid along one
@@ -869,6 +1087,60 @@ TEST (BuildingSides, RestartHashFollowsTheLawNotItsName)
     EXPECT_NE(all, roof);
     EXPECT_NE(drag, roof);
     EXPECT_NE(drag, all);
+    // The speed from every face has the hash from before the open faces' mean; the open faces' has another.
+    gust::BuildingsOptions every = tile_options("block45.txt", height, "fraction_stress");
+    every.wall_tke = false;
+    const std::string open = gust::Buildings::hash_inputs(every);
+    every.wall_speed = gust::BuildingWallSpeed::all_faces;
+    EXPECT_NE(gust::Buildings::hash_inputs(every), open);
+    // roof_stress may take the open faces too: then its hash is not the earlier one.
+    gust::BuildingsOptions roofs = tile_options("block45.txt", height, "roof_stress");
+    roofs.wall_speed = gust::BuildingWallSpeed::open_faces;
+    roofs.wall_tke = false;
+    EXPECT_NE(gust::Buildings::hash_inputs(roofs), roof);
+    EXPECT_TRUE(gust::check_buildings_options(roofs).empty());
+    static_assert(gust::default_wall_speed(gust::BuildingWallForm::roof_stress) == gust::BuildingWallSpeed::all_faces);
+    static_assert(gust::default_wall_speed(gust::BuildingWallForm::fraction_stress) == gust::BuildingWallSpeed::open_faces);
+}
+
+// The mean over a cell's two faces with their weights, and the count of wall cells below the 10 z0 floor.
+TEST (BuildingLaw, OpenFaceMeanAndCellsBelowTheFloor)
+{
+    const auto mean = [] (double a, double b, double wa, double wb) {
+        return static_cast<double>(gust::open_face_mean(amrex::Real(a), amrex::Real(b), amrex::Real(wa), amrex::Real(wb)));
+    };
+    EXPECT_EQ(mean(3, 5, 1, 1), 4.0);
+    EXPECT_EQ(mean(3, 5, 1, 0), 3.0);
+    EXPECT_EQ(mean(3, 5, 0, 1), 5.0);
+    EXPECT_EQ(mean(3, 5, 0, 0), 0.0) << "both faces fixed: at rest";
+    // Both weights 1 give the bits of the earlier half sum.
+    const amrex::Real a = amrex::Real(0.1), b = amrex::Real(0.7);
+    EXPECT_EQ(gust::open_face_mean(a, b, 1, 1), amrex::Real(0.5) * (a + b));
+
+    // A block 25 m high on 10 m cells: its four roof cells are half solid, 2.5 m from the roof; the side cells
+    // are 5 m from their sides. With z0 = 0.3 m the floor is 3 m: the roof cells are below it, the sides not.
+    PCase c = roof_case(4);
+    gust::BuildingsOptions o = roof_options();
+    gust::Buildings bd;
+    bd.build(o, c.geom, c.z, c.ba, c.dm);
+    gust::BuildingForcing f;
+    f.build(bd, o, c.geom, c.mesh.detJ);
+    // Wall cells: 4 on the roof; beside each of the 4 sides 2 cells in each of 3 layers.
+    EXPECT_EQ(f.wall_cells(), 4 + 4 * 2 * 3);
+    EXPECT_EQ(f.cells_below_floor(), 0) << "z0 = 0.1 m: the floor is 1 m";
+    o.z0 = 0.3;
+    f.build(bd, o, c.geom, c.mesh.detJ);
+    EXPECT_EQ(f.cells_below_floor(), 4);
+    o.z0 = 0.6;
+    f.build(bd, o, c.geom, c.mesh.detJ);
+    EXPECT_EQ(f.cells_below_floor(), 4 + 4 * 2 * 3) << "z0 = 0.6 m: the floor is 6 m, above the sides' 5 m too";
+    gust::BuildingsOptions roofs = roof_options("roof_stress");
+    roofs.z0 = 0.6;
+    f.build(bd, roofs, c.geom, c.mesh.detJ);
+    EXPECT_EQ(f.wall_cells(), 4) << "roof_stress: the law is on the roof alone";
+    EXPECT_EQ(f.cells_below_floor(), 4);
+    f.build(bd, roof_options("drag"), c.geom, c.mesh.detJ);
+    EXPECT_EQ(f.wall_cells(), 0) << "drag: no wall law";
 }
 
 TEST (BuildingForcing, PocketUnderALiftedBuildingIsSealed)

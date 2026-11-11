@@ -38,7 +38,9 @@ These values are not validated.
 
 The deck was measured on 1, 2 and 4 ranks, `source` on 2 and 4, the two earlier forms on 2. The tests pin the three wall-cell values, the signs
 of the others and, for the deck, k at its floor (1e-6 m²/s²) in the solid cells;
-the iteration counts are not pinned. The `wall_tke = off` plotfile equals the one of `main` before the closure saw the
+the iteration counts are not pinned. The block has no cell with a fixed face among those of a wall's parallel
+components, so `buildings.wall_speed` does not change it: the deck's plotfile equals `main`'s at c57ad06. The
+`wall_tke = off` statement below holds for the same reason. The `wall_tke = off` plotfile equals the one of `main` before the closure saw the
 buildings (8f1b605), and the `roof_stress` one that of `main` before the sides had the law (bba99be), at zero tolerance.
 
 ## CTest

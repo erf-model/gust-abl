@@ -292,18 +292,18 @@ struct RowData
         if (beta(i, j, k) >= amrex::Real(1)) { return 1; }
         return static_cast<int>(wl(i, j, k, kWallMask)) != 0 ? 2 : 0;
     }
-    //! The largest blocked part of the faces the cell's walls lie on.
+    //! The largest part of a face's area that one of the cell's walls takes (wall_area_fraction).
     AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
     amrex::Real blocked (int i, int j, int k) const noexcept
     {
         const int mask = static_cast<int>(wl(i, j, k, kWallMask));
         amrex::Real f = 0;
-        if ((mask & kWallRoof) != 0) { f = amrex::max(f, fz(i, j, k)); }
-        if ((mask & kWallUnder) != 0) { f = amrex::max(f, fz(i, j, k + 1)); }
-        if ((mask & kWallXlo) != 0) { f = amrex::max(f, fx(i, j, k)); }
-        if ((mask & kWallXhi) != 0) { f = amrex::max(f, fx(i + 1, j, k)); }
-        if ((mask & kWallYlo) != 0) { f = amrex::max(f, fy(i, j, k)); }
-        if ((mask & kWallYhi) != 0) { f = amrex::max(f, fy(i, j + 1, k)); }
+        if ((mask & kWallRoof) != 0) { f = amrex::max(f, wall_area_fraction(fz(i, j, k), fz(i, j, k + 1), beta(i, j, k))); }
+        if ((mask & kWallUnder) != 0) { f = amrex::max(f, wall_area_fraction(fz(i, j, k + 1), fz(i, j, k), beta(i, j, k))); }
+        if ((mask & kWallXlo) != 0) { f = amrex::max(f, wall_area_fraction(fx(i, j, k), fx(i + 1, j, k), beta(i, j, k))); }
+        if ((mask & kWallXhi) != 0) { f = amrex::max(f, wall_area_fraction(fx(i + 1, j, k), fx(i, j, k), beta(i, j, k))); }
+        if ((mask & kWallYlo) != 0) { f = amrex::max(f, wall_area_fraction(fy(i, j, k), fy(i, j + 1, k), beta(i, j, k))); }
+        if ((mask & kWallYhi) != 0) { f = amrex::max(f, wall_area_fraction(fy(i, j + 1, k), fy(i, j, k), beta(i, j, k))); }
         return f;
     }
     AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE

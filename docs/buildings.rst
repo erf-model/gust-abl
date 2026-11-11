@@ -131,7 +131,8 @@ linear map. Fluid with no open path to the rest has its own null vector, so the 
 with :math:`\kappa = 0.41`, :math:`z_0` = ``buildings.z0``, :math:`d_x` the distances :math:`d_1` (own) and :math:`d_2`
 (reference) along the wall's normal, :math:`U` the speed parallel to the wall in the cell (own) and in the next one out
 (reference), and :math:`u_*^2 = u_{*,\mathrm{own}}^2` where :math:`d_2 = 0`. The speed is taken at the cell centre from the
-two components parallel to the wall:
+two components parallel to the wall, each the mean of the cell's two faces that are not fixed rows
+(``buildings.wall_speed = open_faces``, below):
 
 .. list-table::
    :header-rows: 1
@@ -160,12 +161,41 @@ The wall is a sink on each parallel component :math:`u_t`,
 
    S = -r u_t, \qquad r = \frac{f\, u_*^2}{\Delta_n \max(|U_\mathrm{own}|, 10^{-3}\ \mathrm{m/s})},
 
-with :math:`f` the blocked part of the wall's face and :math:`\Delta_n` the cell's size along the normal. The force on the
-cell is then the stress :math:`u_*^2` on the wall's area, along the flow parallel to it.
+with :math:`\Delta_n` the cell's size along the normal and :math:`f` the wall's part of its face's area: in a fluid cell
+the blocked part of the face the wall lies on, and in a partly solid cell the difference between the blocked parts of
+that face and of the opposite one, which is the area facing that way. The force on the cell is then the stress
+:math:`u_*^2` on the wall's area, along the flow parallel to it.
+
+On a slope the solid fraction of a roof's cells changes a little from column to column, so each carries a side bit
+(`Wall cells`_) with a small such area, 0.03 of the face on the block of the ridge below. Until this was taken as the
+area, the side's rate used the whole face's blocked part there, about 0.7, which is the building's own cross-section.
 
 **Edges and corners.** A cell with several walls takes the sum of their rates on each component: at an edge between a
 roof and a side normal to x, :math:`u` has the roof's rate, :math:`w` the side's, and :math:`v`, which runs along the edge,
 both. At a corner between two sides :math:`w` has both. Each wall uses its own parallel speed and its own distances.
+
+**Speed in a cell with two walls** (``buildings.wall_speed``). In an edge or corner cell one of the two faces of a
+velocity component can lie on the other wall, where the velocity is fixed at 0. With ``open_faces``, the default with
+``fraction_stress``, a component is the mean of the faces that are not fixed rows, in the cell and in its reference
+cell: the open face's value where the other is fixed, and 0 where both are. A fixed row is a face with blocked
+fraction 1; ``w`` on the ground is not one, as the boundary conditions set it from the slope. The mean with the zero would halve the speed and, with the flow normal to the
+other wall, halve that cell's part of the stress on the open face's row; ERF, which evaluates the law at each velocity
+face from that face's own value, has the full part, and so has ``open_faces``. Neither is exact. If the component
+falls linearly from the open face's value :math:`u_o` to 0 at the other wall, the law's stress averaged over the cell is
+:math:`\tfrac{1}{3} C u_o^2` (:math:`C = \kappa^2 / \ln^2`): the mean with the zero gives :math:`\tfrac{1}{4}` on the open
+face's row (25 % low), and ``open_faces`` and ERF give :math:`\tfrac{1}{2}` (50 % high). The wall value of :math:`k`
+(`Turbulence`_) reads the cell's :math:`u_*^2` with no row average, so there ``open_faces`` gives 3 times that mean
+and the mean with the zero 0.75 times. On the other parallel component's row ERF takes a four-point mean that
+includes the fixed faces, so ``open_faces`` is above it there. A cell with no fixed face among those of
+its parallel components (a plain roof or side cell) is not affected. ``all_faces`` takes the mean of both faces, as
+before; it is the default with ``roof_stress``, which also accepts ``open_faces`` (the roofs' speed then skips the
+sides' fixed faces). A checkpoint written before this choice restarts with ``all_faces`` and is refused with
+``open_faces``, so a ``fraction_stress`` deck that continues such a run has to name ``all_faces``.
+
+On the courtyard of ``Tests/Canonical_RANS/Building_Courtyard``, :math:`k` in an inner corner's wall cell is 0.023 m²/s²
+with ``open_faces`` and 0.008 m²/s² with ``all_faces``, and the velocities differ by about 0.02 m/s at most. One block on
+flat ground has no such cell and keeps its answer to the last bit. On the ridge the two forms agree to 0.0001 m/s; the
+change there, up to 0.006 m/s, comes from the wall's area above.
 
 A velocity row takes the mean :math:`r` of its two cells. The viscous flux of a parallel component through the blocked
 part of a wall's face is closed, in the residual and in the implicit rows, and :math:`r` goes into :math:`a_P`, not into
@@ -243,7 +273,8 @@ For one block it equals the distance to the block's box to round-off, and so it 
 tests' second shape, against the smallest distance over its boxes.
 
 ``buildings.wall_tke = off`` leaves the closure as it was before these terms: :math:`k` is solved in every cell with
-the ground's distance alone. A checkpoint written before them restarts with ``off`` and is refused with ``on``. ``on``
+the ground's distance alone. A checkpoint written before them restarts with ``off``, together with ``buildings.wall_speed = all_faces``
+(`Momentum`_), and is refused with ``on``. ``on``
 needs the wall law on every wall, so it is refused with ``roof_stress`` and ``drag``.
 
 On the block of the first figure, :math:`k` in the roof's wall cell is 0.41 m²/s² with these terms and 8.6 m²/s²
@@ -265,16 +296,21 @@ Limits
   its two components are parallel to it.
 - A side's reference cell is the next one along x or y. Outside a non-periodic domain face it holds the boundary
   conditions' values.
-- A wall's parallel speed is taken at the cell centre, each component the mean of its two faces. In a corner or edge
-  cell one of those faces can lie on the other wall, a fixed row, so that component is half the open face's value. ERF
-  evaluates the law at each velocity face from that face's own value; with the flow normal to the other wall this
-  gives twice the cell's contribution here. The component along an edge and plain side cells are not affected.
+- A wall's parallel speed is taken at the cell centre, not at each velocity face as in ERF. With
+  ``buildings.wall_speed = open_faces`` the two agree in a corner or edge cell with the flow normal to the other wall;
+  they can still differ where the two open faces of a cell hold different values. A partly blocked face (fraction
+  below 1) counts as open, with its full value, so the speed can jump where a face's fraction reaches 1.
+- The ground's ``w`` is not a fixed row, so a side's wall cell in the first layer takes the mean of the ground's value and
+  the face above (half the latter on flat ground), while a side's wall cell standing on a roof takes the upper face's
+  value alone. On a slope the ground's value is that of the flow along it, and the mean is the right one.
 - A velocity row takes the mean of its two cells, so where a wall ends partway along a row's direction the sink and
   the closed flux are spread over the two rows beside the end (three quarters and one quarter where the wall ends
   mid-cell). The total force is kept.
 - The own distance is floored at :math:`10 z_0`. A wall cell less than :math:`20 z_0` across (2 m with the default
   ``buildings.z0``) is below it: the stress is then :math:`(\kappa / \ln 10)^2 U^2` whatever the cell size, lower than the
-  log law at the true distance (about half for a 1 m cell with :math:`z_0` = 0.1 m). The log notes it for the sides.
+  log law at the true distance (about half for a 1 m cell with :math:`z_0` = 0.1 m). A partly solid cell can be below
+  it on any mesh; there the reference cell's term, which is not floored, carries most of :math:`u_*^2` (on the ridge's
+  36 roof cells the floored :math:`u_*^2` is 0.92 to 1.00 of the unfloored, the own term alone 0.42 to 0.83). The log gives the number of wall cells below the floor, for every wall with the law; the run goes on.
 - The distance to buildings takes one pass over the whole mesh per cell of distance it reaches. A wall as far as the
   mesh's tallest column is not looked for, since the ground is nearer, so the passes are at most that height in
   cells of the smallest size (23 on the block's mesh, 31 on the ridge's). It is done once per run, restarts included.

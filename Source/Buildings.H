@@ -72,6 +72,16 @@ enum class BuildingsType { none, immersed_forcing };
 //! buildings.wall_form: the form 7 wall law on every wall, on roofs and undersides alone,
 //! or the fixed rows alone.
 enum class BuildingWallForm { fraction_stress, roof_stress, drag };
+//! buildings.wall_speed: a wall cell's speed from its faces that are not fixed rows, or from
+//! every face (BuildingForcing.H).
+enum class BuildingWallSpeed { open_faces, all_faces };
+
+//! buildings.wall_speed where it is not given: the open faces with the law on every wall, every
+//! face with the forms from before that choice.
+constexpr BuildingWallSpeed default_wall_speed (BuildingWallForm form)
+{
+    return form == BuildingWallForm::fraction_stress ? BuildingWallSpeed::open_faces : BuildingWallSpeed::all_faces;
+}
 
 //! The buildings.* inputs (read_buildings_options).
 struct BuildingsOptions
@@ -84,6 +94,12 @@ struct BuildingsOptions
     double z0{0.1};                  //!< buildings.z0 (m), > 0: the roughness of the wall law
     std::string wall_form_name{"fraction_stress"};   //!< buildings.wall_form as given
     BuildingWallForm wall_form{BuildingWallForm::fraction_stress};
+    //! buildings.wall_speed as given (empty: not given) and its value: open_faces by default with
+    //! fraction_stress, all_faces with roof_stress (the form it had).
+    //! Options built by hand (tests) take default_wall_speed(wall_form) as the reader does: the
+    //! member's own default is the one of fraction_stress.
+    std::string wall_speed_name;
+    BuildingWallSpeed wall_speed{BuildingWallSpeed::open_faces};
     //! buildings.wall_tke as given (empty: not given) and its value: on by default with
     //! fraction_stress, off with the other forms (BuildingTke.H).
     std::string wall_tke_name;

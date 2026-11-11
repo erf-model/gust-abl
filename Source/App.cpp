@@ -274,6 +274,13 @@ void run ()
             buildings.build(buildings_opt, geom, state.z_phys_nd, ba, dm);
             amrex::Print() << "gust: buildings (buildings.type = " << buildings_opt.type_name << "): "
                            << buildings.summary(mesh.detJ, geom) << "\n";
+            // The choices as the run takes them, their defaults included.
+            amrex::Print() << "gust: buildings: with a stage, buildings.wall_form = " << buildings_opt.wall_form_name;
+            if (buildings_opt.wall_form != BuildingWallForm::drag) {
+                amrex::Print() << ", buildings.wall_speed = "
+                               << (buildings_opt.wall_speed == BuildingWallSpeed::open_faces ? "open_faces" : "all_faces");
+            }
+            amrex::Print() << ", buildings.wall_tke = " << (buildings_opt.wall_tke ? "on" : "off") << "\n";
         }
         if (restart) { Canopy::check_restart(in.io.restart, canopy_opt.active() ? Canopy::hash_inputs(canopy_opt) : ""); }
         if (!canopy_opt.active()) { return; }

@@ -26,13 +26,18 @@ ctest --test-dir <build> -R building_hill --output-on-failure
 ## Expected Results
 The run stops at the driver's stopping rule in 152 iterations, on 1, 2 and 4 ranks. Horizontal speed in solid cells is
 0, the plane flux stays within 0.4 % of the first plane's, and the lowest u behind the block is -2.60 m/s. The air
-reverses in a thin layer on the roof, one cell deep: u in the roof's wall cell is -0.15 m/s, the same to four digits on
-1, 2 and 4 ranks. The test pins u two cells above it, 7.42 m/s, and k in the wall cell, 1.01 m²/s², and requires k at
-its floor in the solid cells; the others are measured. These values are not validated.
+reverses in a thin layer on the roof, one cell deep: u in the roof's wall cell is -0.15 m/s (the same to four digits on
+1, 2 and 4 ranks before the open faces' speed; measured on 2 since). The test pins u two cells above it, 7.42 m/s, and k in the wall cell, 1.01 m²/s², and requires k at
+its floor in the solid cells; the others are measured. These values are not validated. The roof's cells are partly solid by a
+fraction that changes along the slope, so each carries a side bit with a small area (0.03 of its face); since the side's
+rate takes that area, not the whole face's blocked part, the answer differs from `main` at c57ad06 by at most 0.006 m/s,
+with either `buildings.wall_speed`. The log notes that 36 of the 156 wall cells, the roof's, are within 10 z0 of their
+wall.
 
-Earlier forms, measured once (no test runs them): with `buildings.wall_tke = off`, 174 iterations, -2.67 m/s behind,
-3.90 m/s in the roof's wall cell, 6.14 m/s two cells above it and k = 13.1 m²/s² in it, the plotfile of `main` at
-8f1b605 at zero tolerance; with `buildings.wall_form = roof_stress`, 212 iterations, -1.91 m/s and 3.99 m/s, the
+Earlier forms, measured once before the side's area was corrected (no test runs them; the values move by up to
+0.006 m/s with it): with `buildings.wall_tke = off`, 174 iterations, -2.67 m/s behind,
+3.90 m/s in the roof's wall cell, 6.14 m/s two cells above it and k = 13.1 m²/s² in it (the plotfile of `main` at
+8f1b605); with `buildings.wall_form = roof_stress`, 212 iterations, -1.91 m/s and 3.99 m/s, the
 plotfile of `main` at bba99be.
 
 ## CTest
