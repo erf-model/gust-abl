@@ -39,6 +39,7 @@ add_executable(unit_tests
     Unit_Tests/test_SurfaceLayer.cpp
     Unit_Tests/test_SurfaceRoughness.cpp
     Unit_Tests/test_BuildingForcing.cpp
+    Unit_Tests/test_BuildingTke.cpp
     Unit_Tests/test_Buildings.cpp
     Unit_Tests/test_Canopy.cpp
     Unit_Tests/test_CanopyDrag.cpp
@@ -281,9 +282,14 @@ gust_add_test(NAME abort_buildings_type NP 1 LABELS "regression;smoke"
 gust_add_test(NAME abort_buildings_wall_inputs NP 1 LABELS "regression;smoke"
               PREFIX ${EXPECT_ABORT}
                      "buildings\\.z0 must be finite and > 0"
-                     "buildings\\.wall_form must be fraction_stress, roof_stress or drag \\(got foo\\)" --
+                     "buildings\\.wall_form must be fraction_stress, roof_stress or drag \\(got foo\\)"
+                     "buildings\\.wall_tke must be on or off \\(got maybe\\)" --
               COMMAND $<TARGET_FILE:gust> ${BUILDINGS_CASE}/inputs_buildings buildings.file=${BUILDINGS_CASE}/building_map.txt
-                      buildings.z0=0 buildings.wall_form=foo ${GUST_TEST_AMREX_FLAGS})
+                      buildings.z0=0 buildings.wall_form=foo buildings.wall_tke=maybe ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_buildings_wall_tke_form NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT} "buildings\\.wall_tke = on needs buildings\\.wall_form = fraction_stress" --
+              COMMAND $<TARGET_FILE:gust> ${BUILDINGS_CASE}/inputs_buildings buildings.file=${BUILDINGS_CASE}/building_map.txt
+                      buildings.wall_form=roof_stress buildings.wall_tke=on ${GUST_TEST_AMREX_FLAGS})
 gust_add_test(NAME abort_buildings_z0_with_drag NP 1 LABELS "regression;smoke"
               PREFIX ${EXPECT_ABORT} "buildings\\.z0 has no effect with buildings\\.wall_form = drag" --
               COMMAND $<TARGET_FILE:gust> ${BUILDINGS_CASE}/inputs_buildings buildings.file=${BUILDINGS_CASE}/building_map.txt
@@ -320,7 +326,42 @@ gust_add_test(NAME building_cube_roof_stress_run NP 2 LABELS "regression;smoke" 
                       buildings.wall_form=roof_stress ${GUST_TEST_AMREX_FLAGS})
 gust_add_test(NAME building_cube_roof_stress_flow NP 1 LABELS "regression;smoke" RUN_DIR ${BUILDING_CUBE_ROOF_DIR}
               FIXTURES_REQUIRED building_cube_roof_stress
-              COMMAND ${Python3_EXECUTABLE} ${BUILDING_CUBE_CASE}/check_cube.py --latest cube_plt --roof 3.888 --side 1.505)
+              COMMAND ${Python3_EXECUTABLE} ${BUILDING_CUBE_CASE}/check_cube.py --latest cube_plt --roof 3.888 --side 1.505
+                      --k-roof 8.589 --k-ground 0.0089 --k-solid 1e9)
+# The form before k and the length scale saw the buildings (buildings.wall_tke = off): its pinned values.
+set(BUILDING_CUBE_NOTKE_DIR ${CMAKE_CURRENT_BINARY_DIR}/run/building_cube_wall_tke_off)
+add_test(NAME building_cube_wall_tke_off_clean
+         COMMAND ${Python3_EXECUTABLE} -c
+                 "import shutil, os, sys; shutil.rmtree(sys.argv[1], ignore_errors=True); os.makedirs(sys.argv[1])"
+                 ${BUILDING_CUBE_NOTKE_DIR})
+set_tests_properties(building_cube_wall_tke_off_clean PROPERTIES LABELS "regression;smoke"
+                     FIXTURES_SETUP building_cube_wall_tke_off_clean)
+gust_add_test(NAME building_cube_wall_tke_off_run NP 2 LABELS "regression;smoke" RUN_DIR ${BUILDING_CUBE_NOTKE_DIR}
+              FIXTURES_REQUIRED building_cube_wall_tke_off_clean FIXTURES_SETUP building_cube_wall_tke_off
+              PREFIX ${EXPECT_ABORT} --success "gust: steady after" --
+              COMMAND $<TARGET_FILE:gust> ${BUILDING_CUBE_CASE}/inputs_cube buildings.file=${BUILDING_CUBE_CASE}/cube.txt
+                      buildings.wall_tke=off ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME building_cube_wall_tke_off_flow NP 1 LABELS "regression;smoke" RUN_DIR ${BUILDING_CUBE_NOTKE_DIR}
+              FIXTURES_REQUIRED building_cube_wall_tke_off
+              COMMAND ${Python3_EXECUTABLE} ${BUILDING_CUBE_CASE}/check_cube.py --latest cube_plt --roof 3.833 --side 2.387
+                      --k-roof 8.618 --k-ground 0.0099 --k-solid 1e9)
+# The ground's wall k as a source (bc.surface_wall_k = source): the buildings' rows are then added to the cells' equations.
+set(BUILDING_CUBE_SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/run/building_cube_wall_k_source)
+add_test(NAME building_cube_wall_k_source_clean
+         COMMAND ${Python3_EXECUTABLE} -c
+                 "import shutil, os, sys; shutil.rmtree(sys.argv[1], ignore_errors=True); os.makedirs(sys.argv[1])"
+                 ${BUILDING_CUBE_SOURCE_DIR})
+set_tests_properties(building_cube_wall_k_source_clean PROPERTIES LABELS "regression;smoke"
+                     FIXTURES_SETUP building_cube_wall_k_source_clean)
+gust_add_test(NAME building_cube_wall_k_source_run NP 2 LABELS "regression;smoke" RUN_DIR ${BUILDING_CUBE_SOURCE_DIR}
+              FIXTURES_REQUIRED building_cube_wall_k_source_clean FIXTURES_SETUP building_cube_wall_k_source
+              PREFIX ${EXPECT_ABORT} --success "gust: steady after" --
+              COMMAND $<TARGET_FILE:gust> ${BUILDING_CUBE_CASE}/inputs_cube buildings.file=${BUILDING_CUBE_CASE}/cube.txt
+                      bc.surface_wall_k=source ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME building_cube_wall_k_source_flow NP 1 LABELS "regression;smoke" RUN_DIR ${BUILDING_CUBE_SOURCE_DIR}
+              FIXTURES_REQUIRED building_cube_wall_k_source
+              COMMAND ${Python3_EXECUTABLE} ${BUILDING_CUBE_CASE}/check_cube.py --latest cube_plt --roof 2.843 --side 1.599
+                      --k-roof 0.911 --k-ground 0.3124)
 # --- The same block on a ridge: heights from the local ground ------------------
 set(BUILDING_HILL_CASE ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Building_Hill)
 set(BUILDING_HILL_DIR ${CMAKE_CURRENT_BINARY_DIR}/run/building_hill)

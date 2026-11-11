@@ -29,7 +29,7 @@
 //   sides had the law).
 // - buildings.wall_form = drag: the fixed rows alone (Kynema-SGF's laminar pathway).
 //
-// k and theta at buildings: PR-41 and PR-42. On a slope a roof's speed is horizontal: its
+// k at buildings: BuildingTke.H. theta: PR-42. On a slope a roof's speed is horizontal: its
 // tilt is not taken out. A side is vertical, so (v, w) and (u, w) are parallel to it.
 
 #include "Buildings.H"
@@ -54,6 +54,10 @@ amrex::Real form7_ustar2 (amrex::Real u_own, amrex::Real u_ref, amrex::Real beta
     return (amrex::Real(1) - beta) * own * own + beta * ref * ref;
 }
 
+//! The component of BuildingForcing::rate() after the three rates: the largest u*^2 of the
+//! cell's walls (m^2/s^2), which the closure's wall value of k reads (BuildingTke.H).
+inline constexpr int kBuildingUstar2 = 3;
+
 //! Speeds below this do not divide the rate (m/s): u*^2 / U stays finite at rest.
 inline constexpr amrex::Real kBuildingMinSpeed = amrex::Real(1.0e-3);
 
@@ -66,8 +70,9 @@ public:
     [[nodiscard]] bool wall_law () const { return m_wall_form != BuildingWallForm::drag; }
     //! The law on the sides as well as on roofs and undersides.
     [[nodiscard]] bool side_law () const { return m_wall_form == BuildingWallForm::fraction_stress; }
-    //! The rates at the cells (one ghost layer) from the last update: component c is the
-    //! rate on velocity component c, the sum over the cell's walls parallel to it.
+    //! The rates at the cells (one ghost layer) from the last update: component c < 3 is the
+    //! rate on velocity component c, the sum over the cell's walls parallel to it; component
+    //! kBuildingUstar2 is the largest u*^2 of the cell's walls.
     [[nodiscard]] const amrex::MultiFab& rate () const { return m_rate; }
 
     //! The rates at the state (u, v, w on their faces). Roofs and undersides read valid

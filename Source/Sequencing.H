@@ -61,6 +61,7 @@
 
 #include "BoundaryConditions.H"
 #include "BuildingForcing.H"
+#include "BuildingTke.H"
 #include "Canopy.H"
 #include "CanopyDrag.H"
 #include "CanopyHeat.H"
@@ -182,7 +183,8 @@ public:
     LevelSolver (const RunSetup& setup, const Mesh& mesh, const amrex::Geometry& geom, const amrex::MultiFab& z_nd,
                  const amrex::BoxArray& ba, const amrex::DistributionMapping& dm, const std::string& label,
                  bool newton = false, const amrex::MultiFab* z0_fine = nullptr, const Canopy* canopy = nullptr,
-                 const amrex::MultiFab* canopy_fine_detJ = nullptr, BuildingForcing* buildings = nullptr);
+                 const amrex::MultiFab* canopy_fine_detJ = nullptr, BuildingForcing* buildings = nullptr,
+                 const BuildingTke* building_tke = nullptr);
     // res_in, the stage's copy of it and the driver's diffusivity point into
     // this object: it can be neither copied nor moved.
     LevelSolver (const LevelSolver&) = delete;
@@ -192,7 +194,8 @@ public:
 
     BoundaryConditions bc;
     Closure closure;
-    amrex::MultiFab dist;          //!< the wall distance (one ghost cell)
+    amrex::MultiFab dist;          //!< the wall distance (one ghost cell); with buildings.wall_tke, limited by the buildings
+    amrex::MultiFab dist_ground;   //!< the ground's distance alone, kept when the buildings limit dist (else empty)
     //! The surface-layer options of this level: the run's, with z0_map set to z0_map_field when there is a map.
     SurfaceLayerOptions surf;
     amrex::MultiFab z0_map_field;  //!< the roughness map (empty without bc.surface_z0_file)

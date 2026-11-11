@@ -4,6 +4,7 @@
 #include "BoundaryConditions.H"
 #include "Buildings.H"
 #include "BuildingForcing.H"
+#include "BuildingTke.H"
 #include "Canopy.H"
 #include "CanopyDrag.H"
 #include "Closure.H"
@@ -494,6 +495,7 @@ void run ()
         setup.newton = newton_opt;
         setup.log = iteration_log(in.io.iteration_log);
         BuildingForcing building_forcing;
+        BuildingTke building_tke;
         if (buildings.active()) {
             const amrex::Long sealed = count_sealed_fluid_cells(buildings, geom);
             if (sealed > 0) {
@@ -502,9 +504,14 @@ void run ()
                                "the pocket, or fill it in the map");
             }
             building_forcing.build(buildings, buildings_opt, geom, mesh.detJ);
+            if (buildings_opt.wall_tke) {
+                building_tke.build(buildings, building_forcing, buildings_opt, geom, state.z_phys_nd, closure_constants(copt).tke_floor,
+                                   copt.Cmu0);
+            }
         }
         LevelSolver level0(setup, mesh, geom, state.z_phys_nd, ba, dm, "", newton, nullptr,
-                           canopy.active() ? &canopy : nullptr, nullptr, buildings.active() ? &building_forcing : nullptr);
+                           canopy.active() ? &canopy : nullptr, nullptr, buildings.active() ? &building_forcing : nullptr,
+                           (buildings.active() && buildings_opt.wall_tke) ? &building_tke : nullptr);
         if (buildings.active()) {
             // After the wall distance above: its Poisson solve does not see the buildings.
             mesh.set_open_faces(buildings.beta_face(0), buildings.beta_face(1), buildings.beta_face(2), buildings.beta(), geom);
