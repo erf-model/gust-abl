@@ -23,7 +23,7 @@ namespace gust {
 
 namespace {
 
-const char* const kBuildingsKeys[] = {"type", "file", "format", "small_volfrac", "z0", "wall_form", "wall_tke"};
+const char* const kBuildingsKeys[] = {"type", "file", "format", "small_volfrac", "z0", "wall_form", "wall_tke", "wall_speed"};
 constexpr const char* kBuildingsMagic = "gust_buildings";
 constexpr int kBuildingsVersion = 1;
 
@@ -236,6 +236,10 @@ BuildingsOptions read_buildings_options ()
     pp.query("wall_form", opt.wall_form_name);
     if (opt.wall_form_name == "drag") { opt.wall_form = BuildingWallForm::drag; }
     if (opt.wall_form_name == "roof_stress") { opt.wall_form = BuildingWallForm::roof_stress; }
+    pp.query("wall_speed", opt.wall_speed_name);
+    opt.wall_speed = opt.wall_speed_name.empty()
+                         ? default_wall_speed(opt.wall_form)
+                         : (opt.wall_speed_name == "all_faces" ? BuildingWallSpeed::all_faces : BuildingWallSpeed::open_faces);
     pp.query("wall_tke", opt.wall_tke_name);
     opt.wall_tke = opt.wall_tke_name.empty() ? opt.wall_form == BuildingWallForm::fraction_stress : opt.wall_tke_name == "on";
     if (opt.type_name == "immersed_forcing") { opt.type = BuildingsType::immersed_forcing; }
@@ -268,6 +272,11 @@ std::vector<std::string> check_buildings_options (const BuildingsOptions& opt)
     } else if (opt.wall_tke && opt.wall_form != BuildingWallForm::fraction_stress) {
         err.emplace_back("buildings.wall_tke = on needs buildings.wall_form = fraction_stress (the wall value of k reads the "
                          "wall law's u* on every wall; got " + opt.wall_form_name + ")");
+    }
+    if (!opt.wall_speed_name.empty() && opt.wall_speed_name != "open_faces" && opt.wall_speed_name != "all_faces") {
+        err.emplace_back("buildings.wall_speed must be open_faces or all_faces (got " + opt.wall_speed_name + ")");
+    } else if (opt.wall_form == BuildingWallForm::drag && has(opt.given, "wall_speed")) {
+        err.emplace_back("buildings.wall_speed has no effect with buildings.wall_form = drag (no wall law)");
     }
     if (opt.wall_form == BuildingWallForm::drag && has(opt.given, "z0")) {
         err.emplace_back("buildings.z0 has no effect with buildings.wall_form = drag (no wall law)");
@@ -328,12 +337,14 @@ std::string Buildings::hash_inputs (const BuildingsOptions& opt)
     // and undersides alone before the sides took it, which is roof_stress now. So a checkpoint
     // of that form continues with roof_stress, and is refused with the sides' law. The
     // closure's building terms add a line only when on, so a checkpoint from before them
-    // continues with buildings.wall_tke = off.
+    // continues with buildings.wall_tke = off. Likewise the open faces' speed: a checkpoint
+    // from before it continues with buildings.wall_speed = all_faces.
     const std::string law = opt.wall_form == BuildingWallForm::roof_stress ? "fraction_stress"
                           : opt.wall_form == BuildingWallForm::fraction_stress ? "fraction_stress_sides" : opt.wall_form_name;
     return sha256_hex(std::string(kBuildingsMagic) + " " + std::to_string(kBuildingsVersion) + "\ntype " + opt.type_name
                       + "\nformat " + opt.format + "\nfile " + h + "\nsmall_volfrac " + hexfloat(opt.small_volfrac) + "\nz0 " + hexfloat(opt.z0)
-                      + "\nwall_form " + law + "\n" + ((opt.wall_tke && opt.wall_form == BuildingWallForm::fraction_stress) ? "wall_tke on\n" : ""));
+                      + "\nwall_form " + law + "\n" + ((opt.wall_tke && opt.wall_form == BuildingWallForm::fraction_stress) ? "wall_tke on\n" : "")
+                      + ((opt.wall_speed == BuildingWallSpeed::open_faces && opt.wall_form != BuildingWallForm::drag) ? "wall_speed open_faces\n" : ""));
 }
 
 void Buildings::build (const BuildingsOptions& opt, const amrex::Geometry& geom, const amrex::MultiFab& z_nd,
@@ -619,9 +630,10 @@ void Buildings::check_restart (const std::string& dir, const std::string& hash)
     }
     if (active && rec != hash) {
         amrex::Abort(where + "the buildings inputs differ from the checkpoint's (buildings.type, buildings.format, buildings.file contents, "
-                             "buildings.small_volfrac, buildings.z0, buildings.wall_form, buildings.wall_tke; a checkpoint written with "
+                             "buildings.small_volfrac, buildings.z0, buildings.wall_form, buildings.wall_tke, buildings.wall_speed; a checkpoint written with "
                              "fraction_stress before the sides had the wall law continues with buildings.wall_form = roof_stress, "
-                             "and one from before k had building terms with buildings.wall_tke = off)");
+                             "one from before k had building terms with buildings.wall_tke = off, and one from before the wall law "
+                             "skipped fixed faces with buildings.wall_speed = all_faces)");
     }
 }
 

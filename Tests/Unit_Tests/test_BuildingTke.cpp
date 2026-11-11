@@ -453,12 +453,20 @@ TEST (BuildingTke, OptionDefaultsAndRefusals)
 {
     gust::BuildingsOptions o = tile_options("block45.txt", [] (int i, int j) { return (i == 2 && j == 2) ? 45 : 0; });
     EXPECT_TRUE(gust::check_buildings_options(o).empty());
+    // The pins are from before the open faces' mean of the wall law's speed: buildings.wall_speed = all_faces.
+    o.wall_speed = gust::BuildingWallSpeed::all_faces;
     const std::string on = gust::Buildings::hash_inputs(o);
     o.wall_tke = false;
     const std::string off = gust::Buildings::hash_inputs(o);
     EXPECT_NE(on, off);
-    // The hash without the closure's terms is the one from before them (pinned from main at 8f1b605 for this file).
+    // The hash without the closure's terms is the one from before them (pinned from main at 8f1b605 for this file),
+    // and the one with them that of main at c57ad06.
     EXPECT_EQ(off, "e9cc23b2f4423a16596f835888fe3b16683c322fda07bbaae2be64ad4ad1f8a7");
+    EXPECT_EQ(on, "a2c54457eb7d18fe03ee0c3ed4aad70a4fbcf06c6c9dcdec9cee245a0feb230a");
+    o.wall_speed = gust::BuildingWallSpeed::open_faces;
+    EXPECT_NE(gust::Buildings::hash_inputs(o), off);
+    o.wall_tke = true;
+    EXPECT_NE(gust::Buildings::hash_inputs(o), on);
     o.wall_tke = true;
     o.wall_form = gust::BuildingWallForm::roof_stress;
     o.wall_form_name = "roof_stress";

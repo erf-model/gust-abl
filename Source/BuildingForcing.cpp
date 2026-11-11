@@ -30,12 +30,58 @@ void BuildingForcing::build (const Buildings& b, const BuildingsOptions& opt, co
     m_wall_form = opt.wall_form;
     m_rate.define(b.beta().boxArray(), b.beta().DistributionMap(), 4, 1);
     m_rate.setVal(0.0);
-    // A side's wall cell has its centroid dx / 2 or dy / 2 from the side; below 10 z0 the law
-    // reads the speed at 10 z0, so the stress no longer follows the cell size.
-    if (side_law() && amrex::min(geom.CellSize(0), geom.CellSize(1)) < 20 * m_z0) {
-        amrex::Print() << "gust: note: buildings.z0 = " << opt.z0 << " m: the sides' wall cells are within 10 z0 of their sides ("
-                       << "cells of " << geom.CellSize(0) << " by " << geom.CellSize(1) << " m), where the wall law takes the "
-                       << "speed as at 10 z0\n";
+    // The weight of each face in a cell's speed: 0 on a fixed row with buildings.wall_speed =
+    // open_faces, else 1. A fixed row is a blocked face (fraction 1), but for w on the ground,
+    // which is the boundary conditions' row (its value follows the slope). One ghost layer:
+    // periodic images, else 1 (outside a non-periodic side the ghosts are no fixed rows).
+    for (int d = 0; d < 3; ++d) {
+        amrex::MultiFab& wt = m_weight[static_cast<std::size_t>(d)];
+        wt.define(b.beta_face(d).boxArray(), b.beta_face(d).DistributionMap(), 1, 1);
+        wt.setVal(1.0);
+        if (opt.wall_speed != BuildingWallSpeed::open_faces) { continue; }
+        for (amrex::MFIter mfi(wt, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
+            const auto a = wt.array(mfi);
+            const auto f = b.beta_face(d).const_array(mfi);
+            const int kg = ground_row(d, geom);
+            amrex::ParallelFor(mfi.tilebox(), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+            {
+                a(i, j, k) = (f(i, j, k) == amrex::Real(1) && k != kg) ? amrex::Real(0) : amrex::Real(1);
+            });
+        }
+        wt.FillBoundary(geom.periodicity());
+    }
+    // The wall cells whose fluid centroid is within 10 z0 of a wall with the law: there the
+    // law reads the speed as at 10 z0, so the stress does not follow the distance.
+    m_wall_cells = 0;
+    m_below_floor = 0;
+    if (wall_law()) {
+        const int bits = side_law() ? (kWallRoof | kWallUnder | kWallXlo | kWallXhi | kWallYlo | kWallYhi) : (kWallRoof | kWallUnder);
+        const int n0 = side_law() ? kWallD1x : kWallD1z;
+        const amrex::Real floor = amrex::Real(10) * m_z0;
+        amrex::ReduceOps<amrex::ReduceOpSum, amrex::ReduceOpSum> op;
+        amrex::ReduceData<amrex::Long, amrex::Long> data(op);
+        for (amrex::MFIter mfi(b.beta(), false); mfi.isValid(); ++mfi) {
+            const auto beta = b.beta().const_array(mfi);
+            const auto wl = b.wall().const_array(mfi);
+            op.eval(mfi.validbox(), data, [=] AMREX_GPU_DEVICE (int i, int j, int k) -> amrex::GpuTuple<amrex::Long, amrex::Long>
+            {
+                if (beta(i, j, k) >= amrex::Real(1) || (static_cast<int>(wl(i, j, k, kWallMask)) & bits) == 0) {
+                    return {amrex::Long(0), amrex::Long(0)};
+                }
+                bool below = false;
+                for (int n = n0; n <= kWallD1z; n += 2) { below = below || (wl(i, j, k, n) > amrex::Real(0) && wl(i, j, k, n) < floor); }
+                return {amrex::Long(1), below ? amrex::Long(1) : amrex::Long(0)};
+            });
+        }
+        m_wall_cells = amrex::get<0>(data.value(op));
+        m_below_floor = amrex::get<1>(data.value(op));
+        amrex::ParallelDescriptor::ReduceLongSum(m_wall_cells);
+        amrex::ParallelDescriptor::ReduceLongSum(m_below_floor);
+        if (m_below_floor > 0) {
+            amrex::Print() << "gust: note: buildings.z0 = " << opt.z0 << " m: " << m_below_floor << " of " << m_wall_cells
+                           << " wall cells have their fluid centroid within 10 z0 of a wall; the wall law reads the speed there "
+                           << "as at 10 z0, so the stress does not follow the distance (docs/buildings.rst, Limits)\n";
+        }
     }
 }
 
@@ -52,6 +98,8 @@ void BuildingForcing::update (const amrex::MultiFab& u, const amrex::MultiFab& v
         const auto uu = u.const_array(mfi);
         const auto vv = v.const_array(mfi);
         const auto beta = m_b->beta().const_array(mfi);
+        const auto wx = m_weight[0].const_array(mfi);
+        const auto wy = m_weight[1].const_array(mfi);
         const auto wl = m_b->wall().const_array(mfi);
         const auto fz = bz.const_array(mfi);
         const auto J = m_detJ->const_array(mfi);
@@ -61,8 +109,8 @@ void BuildingForcing::update (const amrex::MultiFab& u, const amrex::MultiFab& v
             const int mask = static_cast<int>(wl(i, j, k, kWallMask));
             if (beta(i, j, k) >= amrex::Real(1) || (mask & (kWallRoof | kWallUnder)) == 0) { return; }
             auto speed = [&] (int kk) {
-                const amrex::Real uc = amrex::Real(0.5) * (uu(i, j, kk) + uu(i + 1, j, kk));
-                const amrex::Real vc = amrex::Real(0.5) * (vv(i, j, kk) + vv(i, j + 1, kk));
+                const amrex::Real uc = open_face_mean(uu(i, j, kk), uu(i + 1, j, kk), wx(i, j, kk), wx(i + 1, j, kk));
+                const amrex::Real vc = open_face_mean(vv(i, j, kk), vv(i, j + 1, kk), wy(i, j, kk), wy(i, j + 1, kk));
                 return std::sqrt(uc * uc + vc * vc);
             };
             const amrex::Real own = speed(k);
@@ -72,13 +120,13 @@ void BuildingForcing::update (const amrex::MultiFab& u, const amrex::MultiFab& v
             if ((mask & kWallRoof) != 0) {
                 const amrex::Real ref = k < khi ? speed(k + 1) : amrex::Real(0);
                 const amrex::Real us2 = form7_ustar2(own, ref, beta(i, j, k), d1, d2, z0, kappa);
-                rate += fz(i, j, k) * us2 * inv;
+                rate += wall_area_fraction(fz(i, j, k), fz(i, j, k + 1), beta(i, j, k)) * us2 * inv;
                 top = amrex::max(top, us2);
             }
             if ((mask & kWallUnder) != 0) {
                 const amrex::Real ref = k > klo ? speed(k - 1) : amrex::Real(0);
                 const amrex::Real us2 = form7_ustar2(own, ref, beta(i, j, k), d1, d2, z0, kappa);
-                rate += fz(i, j, k + 1) * us2 * inv;
+                rate += wall_area_fraction(fz(i, j, k + 1), fz(i, j, k), beta(i, j, k)) * us2 * inv;
                 top = amrex::max(top, us2);
             }
             r(i, j, k, 0) = rate;
@@ -96,6 +144,8 @@ void BuildingForcing::update (const amrex::MultiFab& u, const amrex::MultiFab& v
             const auto vv = v.const_array(mfi);
             const auto ww = w.const_array(mfi);
             const auto beta = m_b->beta().const_array(mfi);
+            const auto wy = m_weight[1].const_array(mfi);
+            const auto wz = m_weight[2].const_array(mfi);
             const auto wl = m_b->wall().const_array(mfi);
             const auto fx = m_b->beta_face(0).const_array(mfi);
             amrex::ParallelFor(mfi.tilebox(), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
@@ -103,8 +153,8 @@ void BuildingForcing::update (const amrex::MultiFab& u, const amrex::MultiFab& v
                 const int mask = static_cast<int>(wl(i, j, k, kWallMask));
                 if (beta(i, j, k) >= amrex::Real(1) || (mask & (kWallXlo | kWallXhi)) == 0) { return; }
                 auto speed = [&] (int ii) {
-                    const amrex::Real vc = amrex::Real(0.5) * (vv(ii, j, k) + vv(ii, j + 1, k));
-                    const amrex::Real wc = amrex::Real(0.5) * (ww(ii, j, k) + ww(ii, j, k + 1));
+                    const amrex::Real vc = open_face_mean(vv(ii, j, k), vv(ii, j + 1, k), wy(ii, j, k), wy(ii, j + 1, k));
+                    const amrex::Real wc = open_face_mean(ww(ii, j, k), ww(ii, j, k + 1), wz(ii, j, k), wz(ii, j, k + 1));
                     return std::sqrt(vc * vc + wc * wc);
                 };
                 const amrex::Real own = speed(i);
@@ -113,12 +163,12 @@ void BuildingForcing::update (const amrex::MultiFab& u, const amrex::MultiFab& v
                 amrex::Real rate = 0, top = r(i, j, k, kBuildingUstar2);
                 if ((mask & kWallXlo) != 0) {
                     const amrex::Real us2 = form7_ustar2(own, speed(i + 1), beta(i, j, k), d1, d2, z0, kappa);
-                    rate += fx(i, j, k) * us2 * inv;
+                    rate += wall_area_fraction(fx(i, j, k), fx(i + 1, j, k), beta(i, j, k)) * us2 * inv;
                     top = amrex::max(top, us2);
                 }
                 if ((mask & kWallXhi) != 0) {
                     const amrex::Real us2 = form7_ustar2(own, speed(i - 1), beta(i, j, k), d1, d2, z0, kappa);
-                    rate += fx(i + 1, j, k) * us2 * inv;
+                    rate += wall_area_fraction(fx(i + 1, j, k), fx(i, j, k), beta(i, j, k)) * us2 * inv;
                     top = amrex::max(top, us2);
                 }
                 r(i, j, k, 1) += rate;
@@ -132,6 +182,8 @@ void BuildingForcing::update (const amrex::MultiFab& u, const amrex::MultiFab& v
             const auto uu = u.const_array(mfi);
             const auto ww = w.const_array(mfi);
             const auto beta = m_b->beta().const_array(mfi);
+            const auto wx = m_weight[0].const_array(mfi);
+            const auto wz = m_weight[2].const_array(mfi);
             const auto wl = m_b->wall().const_array(mfi);
             const auto fy = m_b->beta_face(1).const_array(mfi);
             amrex::ParallelFor(mfi.tilebox(), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
@@ -139,8 +191,8 @@ void BuildingForcing::update (const amrex::MultiFab& u, const amrex::MultiFab& v
                 const int mask = static_cast<int>(wl(i, j, k, kWallMask));
                 if (beta(i, j, k) >= amrex::Real(1) || (mask & (kWallYlo | kWallYhi)) == 0) { return; }
                 auto speed = [&] (int jj) {
-                    const amrex::Real uc = amrex::Real(0.5) * (uu(i, jj, k) + uu(i + 1, jj, k));
-                    const amrex::Real wc = amrex::Real(0.5) * (ww(i, jj, k) + ww(i, jj, k + 1));
+                    const amrex::Real uc = open_face_mean(uu(i, jj, k), uu(i + 1, jj, k), wx(i, jj, k), wx(i + 1, jj, k));
+                    const amrex::Real wc = open_face_mean(ww(i, jj, k), ww(i, jj, k + 1), wz(i, jj, k), wz(i, jj, k + 1));
                     return std::sqrt(uc * uc + wc * wc);
                 };
                 const amrex::Real own = speed(j);
@@ -149,12 +201,12 @@ void BuildingForcing::update (const amrex::MultiFab& u, const amrex::MultiFab& v
                 amrex::Real rate = 0, top = r(i, j, k, kBuildingUstar2);
                 if ((mask & kWallYlo) != 0) {
                     const amrex::Real us2 = form7_ustar2(own, speed(j + 1), beta(i, j, k), d1, d2, z0, kappa);
-                    rate += fy(i, j, k) * us2 * inv;
+                    rate += wall_area_fraction(fy(i, j, k), fy(i, j + 1, k), beta(i, j, k)) * us2 * inv;
                     top = amrex::max(top, us2);
                 }
                 if ((mask & kWallYhi) != 0) {
                     const amrex::Real us2 = form7_ustar2(own, speed(j - 1), beta(i, j, k), d1, d2, z0, kappa);
-                    rate += fy(i, j + 1, k) * us2 * inv;
+                    rate += wall_area_fraction(fy(i, j + 1, k), fy(i, j, k), beta(i, j, k)) * us2 * inv;
                     top = amrex::max(top, us2);
                 }
                 r(i, j, k, 0) += rate;

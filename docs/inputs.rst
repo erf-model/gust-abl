@@ -280,6 +280,9 @@ Quick reference
    * - ``buildings.wall_form``
      - ``fraction_stress``
      - ``fraction_stress`` (form 7 wall law on every wall), ``roof_stress`` (on roofs and undersides alone) or ``drag`` (fixed rows alone)
+   * - ``buildings.wall_speed``
+     - ``open_faces`` with ``fraction_stress``, ``all_faces`` with ``roof_stress``
+     - The wall law's speed in a cell from its faces that are not fixed rows (``open_faces``) or from every face (``all_faces``)
    * - ``buildings.wall_tke``
      - ``on`` with ``fraction_stress``, else ``off``
      - The closure sees the buildings: wall value of k, solid cells at the floor, distance to buildings in the length scale
@@ -980,6 +983,9 @@ refuses buildings other than those of the run it continues.
    * - ``buildings.wall_form``
      - ``fraction_stress``
      - ``fraction_stress``: the form 7 wall law on roofs, undersides and sides, with the fixed rows. ``roof_stress``: the law on roofs and undersides alone, the sides with their fixed rows. ``drag``: the fixed rows alone.
+   * - ``buildings.wall_speed``
+     - ``open_faces`` with ``buildings.wall_form = fraction_stress``, ``all_faces`` with ``roof_stress``
+     - ``open_faces`` or ``all_faces``. ``open_faces``: each velocity component of a wall cell's speed is the mean of its two faces that are not fixed rows, so an edge or corner cell takes the open face's value. ``all_faces``: the mean of both faces, the form before. Either may be given with ``roof_stress``. Refused with ``buildings.wall_form = drag`` (no wall law). A restart from a checkpoint written before this key needs ``all_faces``.
    * - ``buildings.wall_tke``
      - ``on`` with ``buildings.wall_form = fraction_stress``, else ``off``
      - ``on`` or ``off``. ``on``: solid cells hold k at ``turb.tke_floor``, wall cells relax k to ``u*^2 / Cmu0^2`` of the wall law, k does not diffuse through blocked faces, and the closure's wall distance is the smaller of the ground's and the nearest building wall's. ``off``: the closure does not see the buildings. ``on`` is refused unless ``buildings.wall_form = fraction_stress``.

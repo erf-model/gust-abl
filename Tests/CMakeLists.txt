@@ -283,17 +283,42 @@ gust_add_test(NAME abort_buildings_wall_inputs NP 1 LABELS "regression;smoke"
               PREFIX ${EXPECT_ABORT}
                      "buildings\\.z0 must be finite and > 0"
                      "buildings\\.wall_form must be fraction_stress, roof_stress or drag \\(got foo\\)"
-                     "buildings\\.wall_tke must be on or off \\(got maybe\\)" --
+                     "buildings\\.wall_tke must be on or off \\(got maybe\\)"
+                     "buildings\\.wall_speed must be open_faces or all_faces \\(got some\\)" --
               COMMAND $<TARGET_FILE:gust> ${BUILDINGS_CASE}/inputs_buildings buildings.file=${BUILDINGS_CASE}/building_map.txt
-                      buildings.z0=0 buildings.wall_form=foo buildings.wall_tke=maybe ${GUST_TEST_AMREX_FLAGS})
+                      buildings.z0=0 buildings.wall_form=foo buildings.wall_tke=maybe buildings.wall_speed=some
+                      ${GUST_TEST_AMREX_FLAGS})
+# The defaults that follow buildings.wall_form, as the log gives them.
+foreach(form fraction_stress roof_stress drag)
+    if(form STREQUAL "fraction_stress")
+        set(_want "buildings\\.wall_form = fraction_stress, buildings\\.wall_speed = open_faces, buildings\\.wall_tke = on")
+    elseif(form STREQUAL "roof_stress")
+        set(_want "buildings\\.wall_form = roof_stress, buildings\\.wall_speed = all_faces, buildings\\.wall_tke = off")
+    else()
+        set(_want "buildings\\.wall_form = drag, buildings\\.wall_tke = off")
+    endif()
+    set(_dir ${CMAKE_CURRENT_BINARY_DIR}/run/buildings_defaults_${form})
+    add_test(NAME buildings_defaults_${form}_clean
+             COMMAND ${Python3_EXECUTABLE} -c
+                     "import shutil, os, sys; shutil.rmtree(sys.argv[1], ignore_errors=True); os.makedirs(sys.argv[1])"
+                     ${_dir})
+    set_tests_properties(buildings_defaults_${form}_clean PROPERTIES LABELS "regression;smoke"
+                         FIXTURES_SETUP buildings_defaults_${form}_clean)
+    gust_add_test(NAME buildings_defaults_${form} NP 1 LABELS "regression;smoke" RUN_DIR ${_dir}
+                  FIXTURES_REQUIRED buildings_defaults_${form}_clean
+                  PREFIX ${EXPECT_ABORT} --success "${_want}" --
+                  COMMAND $<TARGET_FILE:gust> ${BUILDINGS_CASE}/inputs_buildings buildings.file=${BUILDINGS_CASE}/building_map.txt
+                          buildings.wall_form=${form} ${GUST_TEST_AMREX_FLAGS})
+endforeach()
 gust_add_test(NAME abort_buildings_wall_tke_form NP 1 LABELS "regression;smoke"
               PREFIX ${EXPECT_ABORT} "buildings\\.wall_tke = on needs buildings\\.wall_form = fraction_stress" --
               COMMAND $<TARGET_FILE:gust> ${BUILDINGS_CASE}/inputs_buildings buildings.file=${BUILDINGS_CASE}/building_map.txt
                       buildings.wall_form=roof_stress buildings.wall_tke=on ${GUST_TEST_AMREX_FLAGS})
 gust_add_test(NAME abort_buildings_z0_with_drag NP 1 LABELS "regression;smoke"
-              PREFIX ${EXPECT_ABORT} "buildings\\.z0 has no effect with buildings\\.wall_form = drag" --
+              PREFIX ${EXPECT_ABORT} "buildings\\.z0 has no effect with buildings\\.wall_form = drag"
+                     "buildings\\.wall_speed has no effect with buildings\\.wall_form = drag" --
               COMMAND $<TARGET_FILE:gust> ${BUILDINGS_CASE}/inputs_buildings buildings.file=${BUILDINGS_CASE}/building_map.txt
-                      buildings.z0=1 buildings.wall_form=drag ${GUST_TEST_AMREX_FLAGS})
+                      buildings.z0=1 buildings.wall_form=drag buildings.wall_speed=all_faces ${GUST_TEST_AMREX_FLAGS})
 
 # --- One block in a log-law wind (BuildingForcing.H) ---------------------------
 set(BUILDING_CUBE_CASE ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Building_Cube)
@@ -362,6 +387,33 @@ gust_add_test(NAME building_cube_wall_k_source_flow NP 1 LABELS "regression;smok
               FIXTURES_REQUIRED building_cube_wall_k_source
               COMMAND ${Python3_EXECUTABLE} ${BUILDING_CUBE_CASE}/check_cube.py --latest cube_plt --roof 2.843 --side 1.599
                       --k-roof 0.911 --k-ground 0.3124)
+# --- A courtyard: corner and edge cells of the wall law (buildings.wall_speed) ---
+set(BUILDING_COURT_CASE ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Building_Courtyard)
+foreach(form open_faces all_faces)
+    if(form STREQUAL "open_faces")
+        set(_name building_courtyard)
+        set(_pins --k-corner 0.0227 --k-top 0.633)
+    else()
+        # The form before the speed skipped fixed faces: its pinned values.
+        set(_name building_courtyard_all_faces)
+        set(_pins --k-corner 0.0081 --k-top 0.432)
+    endif()
+    set(_dir ${CMAKE_CURRENT_BINARY_DIR}/run/${_name})
+    add_test(NAME ${_name}_clean
+             COMMAND ${Python3_EXECUTABLE} -c
+                     "import shutil, os, sys; shutil.rmtree(sys.argv[1], ignore_errors=True); os.makedirs(sys.argv[1])"
+                     ${_dir})
+    set_tests_properties(${_name}_clean PROPERTIES LABELS "regression;smoke" FIXTURES_SETUP ${_name}_clean)
+    gust_add_test(NAME ${_name}_run NP 2 LABELS "regression;smoke" RUN_DIR ${_dir}
+                  FIXTURES_REQUIRED ${_name}_clean FIXTURES_SETUP ${_name}
+                  PREFIX ${EXPECT_ABORT} --success "gust: steady after" --
+                  COMMAND $<TARGET_FILE:gust> ${BUILDING_COURT_CASE}/inputs_courtyard
+                          buildings.file=${BUILDING_COURT_CASE}/courtyard.txt buildings.wall_speed=${form}
+                          ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME ${_name}_flow NP 1 LABELS "regression;smoke" RUN_DIR ${_dir}
+                  FIXTURES_REQUIRED ${_name}
+                  COMMAND ${Python3_EXECUTABLE} ${BUILDING_COURT_CASE}/check_courtyard.py courtyard_plt ${_pins})
+endforeach()
 # --- The same block on a ridge: heights from the local ground ------------------
 set(BUILDING_HILL_CASE ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Building_Hill)
 set(BUILDING_HILL_DIR ${CMAKE_CURRENT_BINARY_DIR}/run/building_hill)

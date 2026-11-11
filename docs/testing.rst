@@ -854,9 +854,18 @@ Current tests
    * - ``buildings_clean``, ``buildings_run``, ``buildings_column_volume``, ``buildings_check_detects_change``,
        ``buildings_restart``, ``buildings_restart_matches``, ``abort_buildings_restart_changed``,
        ``abort_buildings_restart_none``, ``abort_buildings_inputs``, ``abort_buildings_type``,
-       ``abort_buildings_wall_inputs``, ``abort_buildings_wall_tke_form``, ``abort_buildings_z0_with_drag``
+       ``abort_buildings_wall_inputs``, ``abort_buildings_wall_tke_form``, ``abort_buildings_z0_with_drag``,
+       ``buildings_defaults_fraction_stress``, ``buildings_defaults_roof_stress``, ``buildings_defaults_drag`` (each with its ``_clean``)
      - The building geometry (:doc:`buildings`): each column's volume against the height map, the wall mask, a restart on
-       another layout, and the refusals.
+       another layout, the refusals, and the defaults of ``buildings.wall_speed`` and ``buildings.wall_tke`` with each
+       ``buildings.wall_form``, as the log gives them.
+   * - ``building_courtyard_clean``, ``building_courtyard_run``, ``building_courtyard_flow``,
+       ``building_courtyard_all_faces_clean``, ``building_courtyard_all_faces_run``, ``building_courtyard_all_faces_flow``
+     - A courtyard open to the wind (``Tests/Canonical_RANS/Building_Courtyard``), whose inner corners are cells with two
+       walls: the run converges, speeds in solid cells are 0 and k there is at its floor, the volume flux is constant
+       along x, the two inner corners agree, and k in them keeps its value with the wall law's speed from the open faces
+       (``buildings.wall_speed = open_faces``, the default). The same deck with ``all_faces`` keeps the values of the form
+       before.
    * - ``building_hill_clean``, ``building_hill_run``, ``building_hill_flow``
      - One block on a ridge's windward flank (``Tests/Canonical_RANS/Building_Hill``): the run reaches the driver's stop,
        which needs the ground's ``w`` rows left to the boundary conditions; horizontal speeds in solid cells are 0, the
