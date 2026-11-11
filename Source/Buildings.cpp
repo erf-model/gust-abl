@@ -235,6 +235,7 @@ BuildingsOptions read_buildings_options ()
     }
     pp.query("wall_form", opt.wall_form_name);
     if (opt.wall_form_name == "drag") { opt.wall_form = BuildingWallForm::drag; }
+    if (opt.wall_form_name == "roof_stress") { opt.wall_form = BuildingWallForm::roof_stress; }
     if (opt.type_name == "immersed_forcing") { opt.type = BuildingsType::immersed_forcing; }
     return opt;
 }
@@ -257,8 +258,8 @@ std::vector<std::string> check_buildings_options (const BuildingsOptions& opt)
     if (!(opt.z0 > 0) || !std::isfinite(opt.z0)) {
         err.emplace_back("buildings.z0 must be finite and > 0 (got " + std::to_string(opt.z0) + ")");
     }
-    if (opt.wall_form_name != "fraction_stress" && opt.wall_form_name != "drag") {
-        err.emplace_back("buildings.wall_form must be fraction_stress or drag (got " + opt.wall_form_name + ")");
+    if (opt.wall_form_name != "fraction_stress" && opt.wall_form_name != "roof_stress" && opt.wall_form_name != "drag") {
+        err.emplace_back("buildings.wall_form must be fraction_stress, roof_stress or drag (got " + opt.wall_form_name + ")");
     }
     if (opt.wall_form == BuildingWallForm::drag && has(opt.given, "z0")) {
         err.emplace_back("buildings.z0 has no effect with buildings.wall_form = drag (no wall law)");
@@ -315,9 +316,14 @@ std::string Buildings::hash_inputs (const BuildingsOptions& opt)
     if (amrex::ParallelDescriptor::IOProcessor()) { h = sha256_file(opt.file); }
     bcast(h);
     if (h.empty()) { amrex::Abort("gust: buildings.file = " + opt.file + ": cannot be read"); }
+    // The wall law's name as the checkpoints know it: "fraction_stress" was the law on roofs
+    // and undersides alone before the sides took it, which is roof_stress now. So a checkpoint
+    // of that form continues with roof_stress, and is refused with the sides' law.
+    const std::string law = opt.wall_form == BuildingWallForm::roof_stress ? "fraction_stress"
+                          : opt.wall_form == BuildingWallForm::fraction_stress ? "fraction_stress_sides" : opt.wall_form_name;
     return sha256_hex(std::string(kBuildingsMagic) + " " + std::to_string(kBuildingsVersion) + "\ntype " + opt.type_name
                       + "\nformat " + opt.format + "\nfile " + h + "\nsmall_volfrac " + hexfloat(opt.small_volfrac) + "\nz0 " + hexfloat(opt.z0)
-                      + "\nwall_form " + opt.wall_form_name + "\n");
+                      + "\nwall_form " + law + "\n");
 }
 
 void Buildings::build (const BuildingsOptions& opt, const amrex::Geometry& geom, const amrex::MultiFab& z_nd,
@@ -603,7 +609,8 @@ void Buildings::check_restart (const std::string& dir, const std::string& hash)
     }
     if (active && rec != hash) {
         amrex::Abort(where + "the buildings inputs differ from the checkpoint's (buildings.type, buildings.format, buildings.file contents, "
-                             "buildings.small_volfrac)");
+                             "buildings.small_volfrac, buildings.z0, buildings.wall_form; a checkpoint written with fraction_stress "
+                             "before the sides had the wall law continues with buildings.wall_form = roof_stress)");
     }
 }
 

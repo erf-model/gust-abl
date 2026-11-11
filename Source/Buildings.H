@@ -69,8 +69,9 @@ enum BuildingWallComp { kWallMask = 0, kWallD1x, kWallD2x, kWallD1y, kWallD2y, k
 enum BuildingWallBit { kWallRoof = 1, kWallXlo = 2, kWallXhi = 4, kWallYlo = 8, kWallYhi = 16, kWallUnder = 32 };
 
 enum class BuildingsType { none, immersed_forcing };
-//! buildings.wall_form: the form 7 wall law on the fixed rows, or the fixed rows alone.
-enum class BuildingWallForm { fraction_stress, drag };
+//! buildings.wall_form: the form 7 wall law on every wall, on roofs and undersides alone,
+//! or the fixed rows alone.
+enum class BuildingWallForm { fraction_stress, roof_stress, drag };
 
 //! The buildings.* inputs (read_buildings_options).
 struct BuildingsOptions

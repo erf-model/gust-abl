@@ -5,9 +5,9 @@ Buildings on the terrain shape the wind where it enters the wildland–urban int
 immersed forcing with the form 7 wall law of ERF (``erf.if_wall_form = fraction_stress``) and Kynema-SGF
 (``wall_form 7``). The ground keeps its body-fitted wall law on the terrain-following mesh and is not blanked.
 
-**Status.** The geometry acts on momentum with SIMPLEC and z-line sweeps on one level (`Momentum`_). Roofs and
-undersides have the wall law. Sides of buildings have fixed rows and no wall law yet, and :math:`k` and
-:math:`\theta` have no building terms yet, so answers near buildings are not validated. The run refuses
+**Status.** The geometry acts on momentum with SIMPLEC and z-line sweeps on one level (`Momentum`_). Roofs,
+undersides and sides have the wall law. :math:`k` and :math:`\theta` have no building terms yet, so answers near
+buildings are not validated. The run refuses
 ``steady.stage = simplec_newton``, ``steady.sweep = lusgs``, ``mesh.hierarchy_levels`` above 1 and
 ``solver.poisson_backend = mlmg``, and fluid sealed off by buildings.
 
@@ -120,30 +120,66 @@ and does not know the mask, so the number of iterations grows with buildings (8 
 test's mesh with ``gmres_mlmg``). Under multigrid GMRES is flexible, as the cycle's bottom solver is not a fixed
 linear map. Fluid with no open path to the rest has its own null vector, so the run refuses it.
 
-**Wall law** (``buildings.wall_form = fraction_stress``). A roof or underside cell has, neutrally,
+**Wall law** (``buildings.wall_form = fraction_stress``). A wall cell has, neutrally, for each of its walls,
 
 .. math::
 
    u_*^2 = (1 - \beta) u_{*,\mathrm{own}}^2 + \beta u_{*,\mathrm{ref}}^2, \qquad
    u_{*,x} = \frac{\kappa U_x}{\ln(\max(d_x, 10 z_0) / z_0)},
 
-with :math:`\kappa = 0.41`, :math:`z_0` = ``buildings.z0``, :math:`U` the horizontal speed of the cell (own) and of the next
-one out (reference), and :math:`u_*^2 = u_{*,\mathrm{own}}^2` where :math:`d_2 = 0`. It enters as a sink on the horizontal velocity,
+with :math:`\kappa = 0.41`, :math:`z_0` = ``buildings.z0``, :math:`d_x` the distances :math:`d_1` (own) and :math:`d_2`
+(reference) along the wall's normal, :math:`U` the speed parallel to the wall in the cell (own) and in the next one out
+(reference), and :math:`u_*^2 = u_{*,\mathrm{own}}^2` where :math:`d_2 = 0`. The speed is taken at the cell centre from the
+two components parallel to the wall:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 34 22 22 22
+
+   * - Wall
+     - Normal
+     - Parallel components
+     - :math:`\Delta_n`
+   * - Roof, underside
+     - z
+     - :math:`u, v`
+     - the layer's height
+   * - Side at low or high x
+     - x
+     - :math:`v, w`
+     - :math:`\Delta x`
+   * - Side at low or high y
+     - y
+     - :math:`u, w`
+     - :math:`\Delta y`
+
+The wall is a sink on each parallel component :math:`u_t`,
 
 .. math::
 
-   S = -r u, \qquad r = \frac{f\, u_*^2}{\Delta_z \max(|U_\mathrm{own}|, 10^{-3}\ \mathrm{m/s})},
+   S = -r u_t, \qquad r = \frac{f\, u_*^2}{\Delta_n \max(|U_\mathrm{own}|, 10^{-3}\ \mathrm{m/s})},
 
-with :math:`f` the blocked part of the wall's z-face and :math:`\Delta_z` the layer's height. A velocity row takes the mean
-:math:`r` of its two cells. The viscous flux through the blocked part is closed, and :math:`r` goes into
-:math:`a_P`, not into the local pseudo-time step. ``buildings.wall_form = drag`` keeps the fixed rows alone, with
-viscous fluxes to the zero velocity, as Kynema-SGF's laminar pathway.
+with :math:`f` the blocked part of the wall's face and :math:`\Delta_n` the cell's size along the normal. The force on the
+cell is then the stress :math:`u_*^2` on the wall's area, along the flow parallel to it.
+
+**Edges and corners.** A cell with several walls takes the sum of their rates on each component: at an edge between a
+roof and a side normal to x, :math:`u` has the roof's rate, :math:`w` the side's, and :math:`v`, which runs along the edge,
+both. At a corner between two sides :math:`w` has both. Each wall uses its own parallel speed and its own distances.
+
+A velocity row takes the mean :math:`r` of its two cells. The viscous flux of a parallel component through the blocked
+part of a wall's face is closed, in the residual and in the implicit rows, and :math:`r` goes into :math:`a_P`, not into
+the local pseudo-time step.
+
+``buildings.wall_form = roof_stress`` applies the law to roofs and undersides alone: the sides keep their fixed rows,
+with viscous fluxes to the zero velocity. This is what ``fraction_stress`` did before the sides had the law; on the two
+test cases it gives that form's plotfiles bit for bit. A checkpoint written with that earlier ``fraction_stress``
+restarts with ``roof_stress`` and is refused with today's ``fraction_stress``, whose answer differs. ``buildings.wall_form = drag`` keeps the fixed rows alone on every wall, as Kynema-SGF's laminar pathway.
 
 .. figure:: figures/buildings/block_flow.png
    :width: 100%
 
-   One block in a log-law wind (``Tests/Canonical_RANS/Building_Cube``), with the fixed rows and the roof's wall law. The
-   sides have no wall law yet and :math:`k` no building terms, so this shows the method working, not a validated flow.
+   One block in a log-law wind (``Tests/Canonical_RANS/Building_Cube``), with the fixed rows and the wall law on the roof
+   and the sides. :math:`k` has no building terms yet, so this shows the method working, not a validated flow.
 
 .. figure:: figures/buildings/block_on_hill.png
    :width: 100%
@@ -161,7 +197,23 @@ Limits
 - A building thinner than a cell has its opposite sides in one cell, so its faces carry no net wall, and whether it blocks
   a face depends on where it sits against the mesh. The log warns; refine the mesh around it.
 - On a slope the operator's cross terms and the pressure gradient's read the solid cells' :math:`\phi = 0` and pressure, and
-  a roof's speed is horizontal, not along the roof. On flat ground neither arises.
+  a roof's speed is horizontal, not along the roof. On flat ground neither arises. A side is vertical on any ground, so
+  its two components are parallel to it.
+- A side's reference cell is the next one along x or y. Outside a non-periodic domain face it holds the boundary
+  conditions' values.
+- A wall's parallel speed is taken at the cell centre, each component the mean of its two faces. In a corner or edge
+  cell one of those faces can lie on the other wall, a fixed row, so that component is half the open face's value. ERF
+  evaluates the law at each velocity face from that face's own value; with the flow normal to the other wall this
+  gives twice the cell's contribution here. The component along an edge and plain side cells are not affected.
+- A velocity row takes the mean of its two cells, so where a wall ends partway along a row's direction the sink and
+  the closed flux are spread over the two rows beside the end (three quarters and one quarter where the wall ends
+  mid-cell). The total force is kept.
+- The own distance is floored at :math:`10 z_0`. A wall cell less than :math:`20 z_0` across (2 m with the default
+  ``buildings.z0``) is below it: the stress is then :math:`(\kappa / \ln 10)^2 U^2` whatever the cell size, lower than the
+  log law at the true distance (about half for a 1 m cell with :math:`z_0` = 0.1 m). The log notes it for the sides.
+- :math:`k` and the turbulent length scale do not see the buildings yet, so the eddy viscosity beside a wall is that of
+  the open boundary layer. The fluxes that stay open at the ends of a wall use it, so speeds beside buildings are
+  provisional until the building terms of :math:`k` are in.
 - A partial cell's volume is not reduced: the sink and the fluxes are per full cell, which leaves the steady balance as it is.
 - On strongly compressed terrain layers a face's fraction can differ a little from its cells', which can add a side bit
   at a roof.

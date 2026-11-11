@@ -16,7 +16,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "..", "..", "extern_erf"))
 import erf_plotfile  # noqa: E402
 
-ROOF = 3.994
+ROOF = 3.897
 
 
 def main():

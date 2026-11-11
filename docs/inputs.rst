@@ -279,7 +279,7 @@ Quick reference
      - Roughness of the wall law on buildings (m)
    * - ``buildings.wall_form``
      - ``fraction_stress``
-     - ``fraction_stress`` (form 7 wall law) or ``drag`` (fixed rows alone)
+     - ``fraction_stress`` (form 7 wall law on every wall), ``roof_stress`` (on roofs and undersides alone) or ``drag`` (fixed rows alone)
    * - **Named set-ups** (`abl`_)
      -
      -
@@ -973,10 +973,10 @@ refuses buildings other than those of the run it continues.
      - In [0, 0.5). Below it a fraction is 0, within it of 1 the fraction is 1. At 0, round-off alone is clipped.
    * - ``buildings.z0``
      - ``0.1``
-     - Finite and > 0 (m). Refused with ``buildings.wall_form = drag``.
+     - Finite and > 0 (m). Refused with ``buildings.wall_form = drag``. The law reads distances below ``10 z0`` as ``10 z0`` (:doc:`buildings`, Limits).
    * - ``buildings.wall_form``
      - ``fraction_stress``
-     - ``fraction_stress``: the form 7 wall law on roofs and undersides, with the fixed rows. ``drag``: the fixed rows alone.
+     - ``fraction_stress``: the form 7 wall law on roofs, undersides and sides, with the fixed rows. ``roof_stress``: the law on roofs and undersides alone, the sides with their fixed rows. ``drag``: the fixed rows alone.
 
 ``abl``
 -------

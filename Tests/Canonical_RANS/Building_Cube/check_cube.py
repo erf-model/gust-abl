@@ -6,7 +6,9 @@
 
 Cell values, 5 m cells: the velocity is 0 in every solid cell; the sum of u over each x-plane is the
 first plane's within --flux-tol (cell means, so not exact where a plane cuts the block's faces); the
-air reverses behind the block and speeds up over its roof. The exit code is the verdict.
+air reverses behind the block and speeds up over its roof; u in a wall cell of the roof and of a side
+is pinned to this deck's (--roof, --side: the defaults are those of buildings.wall_form =
+fraction_stress; roof_stress has 3.888 and 1.505). The exit code is the verdict.
 """
 import argparse
 import glob
@@ -23,6 +25,8 @@ def main():
     ap.add_argument("plotfile")
     ap.add_argument("--latest", action="store_true", help="plotfile is a prefix: the last plotfile written with it")
     ap.add_argument("--flux-tol", type=float, default=0.02)
+    ap.add_argument("--roof", type=float, default=3.833, help="u in the roof's wall cell (m/s)")
+    ap.add_argument("--side", type=float, default=2.387, help="u in a side's wall cell (m/s)")
     a = ap.parse_args()
     name = sorted(glob.glob(a.plotfile + "[0-9]*"))[-1] if a.latest else a.plotfile
     hdr, d = erf_plotfile.read_fields(name, ["u", "v", "w", "building_beta"])
@@ -45,9 +49,14 @@ def main():
     print(f"u behind the cube {behind:.3f}, 20 m over its roof {over:.3f}, upstream at that height {far:.3f} m/s")
     # The roof's wall cell against this deck's value: moves with the wall law and the closed face.
     wall = u[14][jc][4]
-    print(f"u in the roof's wall cell {wall:.3f} m/s (pinned at 3.888)")
-    if abs(wall - 3.888) > 0.02:
+    print(f"u in the roof's wall cell {wall:.3f} m/s (pinned at {a.roof})")
+    if abs(wall - a.roof) > 0.02:
         bad.append("the roof's wall cell moved")
+    # A wall cell of the side at y = 45 m, second layer: moves with the sides' wall law and their closed faces.
+    side = u[14][8][1]
+    print(f"u in a side's wall cell {side:.3f} m/s (pinned at {a.side})")
+    if abs(side - a.side) > 0.02:
+        bad.append("the side's wall cell moved")
     if behind >= 0:
         bad.append("no reversal behind the cube")
     if over <= far:
