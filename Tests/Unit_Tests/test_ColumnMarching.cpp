@@ -256,7 +256,9 @@ TEST(ColumnMarching, FluxSurfaceMatchesTheClosedForm)
         const double zeta = z1 * il;
         const double pm = static_cast<double>(similarity_funs{}.calc_psi_m(static_cast<amrex::Real>(zeta)));
         const double ph = static_cast<double>(similarity_funs{}.calc_psi_h(static_cast<amrex::Real>(zeta)));
-        if (q < 0) { EXPECT_NEAR(pm, -5 * zeta, 1e-12); }
+        // psi_m is evaluated in amrex::Real: in single precision -5 zeta to a few roundings of zeta
+        const double eps_r = static_cast<double>(std::numeric_limits<amrex::Real>::epsilon());
+        if (q < 0) { EXPECT_NEAR(pm, -5 * zeta, tol(1e-12, 8 * eps_r * std::abs(5 * zeta))); }
         EXPECT_NEAR(us, kappa * U1 / (lz - pm), tol(1e-9, 1e-5) * us) << q;
         EXPECT_NEAR(zeta, -kappa * g * q * z1 / (theta0 * us * us * us), tol(1e-8, 1e-5) * std::abs(zeta)) << q;
         EXPECT_NEAR(ts, -q / us, 1e-15);
@@ -274,6 +276,14 @@ TEST(ColumnMarching, FluxSurfaceMatchesTheClosedForm)
     EXPECT_LT(z1 * il, 1);
     il = 0;
     EXPECT_FALSE(gust::column_surface_most_flux(kappa, z0, z1, 1.0, -0.5, g, theta0, 0, false, {}, us, ts, il));
+    // Businger-Dyer's fold: the largest downward flux with a root, where the two stable roots merge at zeta = ln / 10,
+    // is kappa g |q_c| z1 / theta0 = (kappa U1)^3 / (33.75 ln^2). Just past it there is no root: in single precision
+    // the step stalls there without changing sign (not a float cycle), and the solve must still say so.
+    const double qc = -std::pow(kappa * U1, 3) / (33.75 * lz * lz) * theta0 / (kappa * g * z1);
+    il = 0;
+    EXPECT_FALSE(gust::column_surface_most_flux(kappa, z0, z1, U1, 1.00001 * qc, g, theta0, 0, false, {}, us, ts, il));
+    il = 0;
+    EXPECT_TRUE(gust::column_surface_most_flux(kappa, z0, z1, U1, 0.999 * qc, g, theta0, 0, false, {}, us, ts, il));
     // in the column: the run stops at the step where the first cell's wind has fallen below the flux's root (60 s
     // here, from the log-law start), naming the time and bc.surface_heat_flux
     Column c;

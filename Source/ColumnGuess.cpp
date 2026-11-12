@@ -20,6 +20,42 @@
 
 namespace gust {
 
+namespace {
+// The fixed points' stopping test. psi_m and psi_h are evaluated in amrex::Real, so in single precision the map is
+// constant on each float interval of zeta: the iterate either settles exactly or cycles between two neighbouring
+// intervals, the step changing sign each pass and a few float roundings of zeta in size, above 1e-10; the loop would
+// report no root where there is one. The test: the step |next - zeta| within 1e-10 max(1, |zeta|); or within 64
+// roundings of amrex::Real of |zeta|, with the smallest step not cut by 1 % for 50 passes (a cycle, not a slow
+// approach: the stable side's rate reaches 0.975 at Rb = 0.19) and the step changing sign in at least 25 of them
+// (a cycle, not a stall without a root: just past Businger-Dyer's fold the step stays below 64 eps |zeta| and keeps
+// its sign). In double precision 64 eps |zeta| (1.4e-14 |zeta|) is always below 1e-10 max(1, |zeta|): the test is
+// the 1e-10 one, bit for bit.
+struct ZetaStop
+{
+    double best = std::numeric_limits<double>::infinity();
+    double last = 0;
+    int since = 0;
+    int flips = 0;
+    bool operator() (double next, double zeta)
+    {
+        constexpr double eps64 = 64 * static_cast<double>(std::numeric_limits<amrex::Real>::epsilon());
+        const double a = std::abs(next), d = next - zeta, r = std::abs(d);
+        if (r <= 1.0e-10 * std::max(1.0, a)) { return true; }
+        const bool flip = d * last < 0;
+        last = d;
+        if (r < 0.99 * best) {
+            best = r;
+            since = 0;
+            flips = 0;
+        } else {
+            ++since;
+            if (flip) { ++flips; }
+        }
+        return r <= eps64 * a && since >= 50 && flips >= 25;
+    }
+};
+} // namespace
+
 void column_wall_gradients (double ustar, double thstar, double invL, double d, double z0, double kappa, double& dUdz,
                             double& dthdz, const StableCoefficients& sc)
 {
@@ -49,13 +85,14 @@ bool column_surface_most (double kappa, double z0, double z1, double U1, double 
     const double rb_hi = qnse ? rib_max : std::min(rib_max, kRibMaxBusingerDyer);
     const double rib = std::max(std::min(z1 * grav * (th1 - theta_s) / (U1 * U1 * theta0), rb_hi), rib_min);
     // zeta = Rib (ln - psi_m)^2 / (ln - psi_h), ERF's fixed point under-relaxed by a half, from the previous zeta
-    // (invL on entry: the column's last step), to 1e-10 in zeta.
+    // (invL on entry: the column's last step), to 1e-10 in zeta (ZetaStop).
     double zeta = clamp_zeta(z1 * invL);
     bool converged = false;
+    ZetaStop stop;
     for (int it = 0; it < 20000 && !converged; ++it) {
         const double cm = std::max(lz - psim(zeta), m), chh = std::max(lz - psih(zeta), m);
         const double next = clamp_zeta(0.5 * zeta + 0.5 * rib * cm * cm / chh);
-        converged = std::abs(next - zeta) <= 1.0e-10 * std::max(1.0, std::abs(next));
+        converged = stop(next, zeta);
         zeta = next;
     }
     const double cm = std::max(lz - psim(zeta), m), chh = std::max(lz - psih(zeta), m);
@@ -80,17 +117,18 @@ bool column_surface_most_flux (double kappa, double z0, double z1, double U1, do
         return static_cast<double>(qnse ? most_psi_m<true>(zr, sc) : most_psi_m<false>(zr, sc));
     };
     // zeta = -kappa g q z1 / (theta0 u*^3) with u* = kappa U1 / (ln - psi_m(zeta)), the fixed point under-relaxed by a
-    // half from the zeta of invL on entry (the previous step's), to 1e-10 in zeta.
+    // half from the zeta of invL on entry (the previous step's), to 1e-10 in zeta (ZetaStop).
     // A seed above the upper (repelling) stable root runs to the clamp: then once more from zeta = 0.
     double zeta = 0;
     bool converged = false;
     for (const double seed : {clamp_zeta(z1 * invL), 0.0}) {
         zeta = seed;
         converged = false;
+        ZetaStop stop;
         for (int it = 0; it < 20000 && !converged; ++it) {
             const double us = std::max(kappa * U1 / std::max(lz - psim(zeta), m), 1.0e-3);
             const double next = clamp_zeta(0.5 * zeta - 0.5 * kappa * grav * qs * z1 / (theta0 * us * us * us));
-            converged = std::abs(next - zeta) <= 1.0e-10 * std::max(1.0, std::abs(next));
+            converged = stop(next, zeta);
             zeta = next;
         }
         if (converged && std::abs(zeta) < 100.0) { break; }

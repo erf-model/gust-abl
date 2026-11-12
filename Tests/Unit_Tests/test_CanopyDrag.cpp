@@ -25,6 +25,7 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
@@ -36,6 +37,15 @@ namespace {
 using gust::ptest::PCase;
 
 constexpr double rtol = std::is_same_v<amrex::Real, double> ? 1e-13 : 1e-5;
+// Sums that differ only in rounding (a row with and without the drag, less the drag): 1e-12 of the
+// scale in double, 64 roundings of amrex::Real in single precision.
+constexpr double kTight =
+    std::is_same_v<amrex::Real, double> ? 1e-12 : 64 * static_cast<double>(std::numeric_limits<amrex::Real>::epsilon());
+// The central-difference step on the velocity (m/s) and the bound on its error relative to the largest
+// diagonal: 1e-6 and 1e-8 in double; in single precision a step of 1e-6 is a few roundings of a velocity
+// of order 1, so the step is 2^-8 (truncation and rounding both near 1e-5).
+constexpr double kFdStep = std::is_same_v<amrex::Real, double> ? 1e-6 : 1.0 / 256;
+constexpr double kFdTol = std::is_same_v<amrex::Real, double> ? 1e-8 : 1e-3;
 
 // The patch: centre (200, 200), diameter 300, height 17.3 m, Cd 0.25, LAI 4,
 // uniform profile: f = Cd LAI / h in the cells wholly below the top.
@@ -254,7 +264,7 @@ TEST(CanopyDrag, DiagonalIsTheDerivativeOfTheSink)
             amrex::MultiFab::Copy(diff, A, gust::coef_P, 0, 1, 0);
             amrex::MultiFab::Subtract(diff, rows.ap[static_cast<std::size_t>(cc)], 0, 0, 1, 0);
             EXPECT_EQ(static_cast<double>(diff.norm0()), 0.0) << "canopy_rows, component " << cc;
-            const double h = 1e-6;
+            const double h = kFdStep;
             auto sink = [&] (double shift, amrex::MultiFab& S) {
                 comps[cc]->plus(static_cast<amrex::Real>(shift), 0, 1, comps[cc]->nGrow());
                 S.setVal(0.0);
@@ -296,7 +306,7 @@ TEST(CanopyDrag, DiagonalIsTheDerivativeOfTheSink)
                 EXPECT_EQ(err, 0.0) << what;
             } else {
                 EXPECT_GT(big, 0.05) << what;
-                EXPECT_LE(err, (d == gust::CanopyDiagonal::derivative ? 1e-8 : rtol) * big) << what;
+                EXPECT_LE(err, (d == gust::CanopyDiagonal::derivative ? kFdTol : rtol) * big) << what;
             }
             EXPECT_GE(neg, 0.0) << what;
         }
@@ -348,7 +358,7 @@ TEST(CanopyDrag, ResidualAndImplicitRowsCarryTheDrag)
         gust::add_canopy_drag(fd, q.u, q.v, q.w, *R[0], *R[1], *R[2]);
         amrex::MultiFab::Subtract(*r1[d], *r0[d], 0, 0, 1, 0);
         amrex::MultiFab::Subtract(*r1[d], S, 0, 0, 1, 0);
-        EXPECT_LE(static_cast<double>(r1[d]->norm0()), 1e-12 * static_cast<double>(S.norm0())) << "component " << d;
+        EXPECT_LE(static_cast<double>(r1[d]->norm0()), kTight * static_cast<double>(S.norm0())) << "component " << d;
         EXPECT_GT(static_cast<double>(S.norm0()), 1e-3);
 
         amrex::MultiFab A0, A1, Dg(fd.f(d).boxArray(), c.dm, gust::n_implicit_coefs, 0);
@@ -358,7 +368,7 @@ TEST(CanopyDrag, ResidualAndImplicitRowsCarryTheDrag)
         gust::add_canopy_drag_to_implicit(fd, d, q.u, q.v, q.w, Dg);
         amrex::MultiFab::Subtract(A1, A0, 0, 0, gust::n_implicit_coefs, 0);
         amrex::MultiFab::Subtract(A1, Dg, 0, 0, gust::n_implicit_coefs, 0);
-        EXPECT_LE(static_cast<double>(A1.norm0(gust::coef_P)), 1e-12 * static_cast<double>(Dg.norm0(gust::coef_P)));
+        EXPECT_LE(static_cast<double>(A1.norm0(gust::coef_P)), kTight * static_cast<double>(Dg.norm0(gust::coef_P)));
         for (int n = 1; n < gust::n_implicit_coefs; ++n) { EXPECT_EQ(static_cast<double>(A1.norm0(n)), 0.0); }
         EXPECT_NE(abort_message([&] { gust::implicit_rows(Fp, q.z_phys_nd, inc, eqs[d], c.mesh, c.geom, A1); })
                       .find("with a canopy the momentum rows need the drag's diagonal"),
@@ -435,7 +445,7 @@ TEST(CanopyDrag, PredictorTakesTheRowsOfTheLinearisationState)
         amrex::MultiFab::Subtract(e, rows.ap[static_cast<std::size_t>(d)], 0, 0, 1, 0);
         const double big = static_cast<double>(rows.ap[static_cast<std::size_t>(d)].norm0());
         EXPECT_GT(big, 0.0) << "component " << d;
-        EXPECT_LE(static_cast<double>(e.norm0()), 1e-12 * static_cast<double>(a1[d]->norm0())) << "component " << d;
+        EXPECT_LE(static_cast<double>(e.norm0()), kTight * static_cast<double>(a1[d]->norm0())) << "component " << d;
         amrex::MultiFab::Copy(e, *a2[d], 0, 0, 1, 0);
         amrex::MultiFab::Subtract(e, *a1[d], 0, 0, 1, 0);
         EXPECT_EQ(static_cast<double>(e.norm0()), 0.0) << "component " << d << " (increment)";
