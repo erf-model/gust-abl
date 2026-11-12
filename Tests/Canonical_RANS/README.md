@@ -15,6 +15,8 @@ turbulence plotfile where ERF has one.
 | `Truly_Neutral_Hill_3D` | `rt_steady_hill3d_neutral_zjacobi`, `rt_steady_hill3d_neutral_lusgs` | A truly neutral Hill_3D to round-off with z-line Jacobi and box-local line LU-SGS sweeps; the two states agree to 1e-8. Label `nightly`. |
 | `Thin_Cell_Flat` | `rt_thin_cell_w_vnn_cap` | A flat inflow/outflow strip with a 0.7 m first cell, with and without `simplec.w_vnn_cap`: fewer iterations, the same steady state, a restart bit for bit. |
 | `Steep_Ridge_Thin_Cell` | `rt_steep_ridge_w_vnn_cap`, `rt_steep_ridge_w_vnn_cap_margin_off` | A steep 2-D ridge (32.5°) with a 0.4 m first cell: `simplec.w_vnn_cap = 16` with the default slope margin is steady within 3500 iterations, without the margin it is not. |
+| `Snyder_Lawson_Cube` | `snyder_cube_plain_*`, `snyder_cube_lee_*`, `snyder_cube_lee_nozone_*` | A cube in a wind-tunnel boundary layer against the measurements of Snyder and Lawson (1994); the closure's lee options with and without `buildings.limiter_zone`. |
+| `Castro_Cube_Array` | `castro_cube_array_*` | A staggered cube array (one periodic tile) against the measurements of Castro et al. (2006), as Muñoz-Esparza et al. (2020) set it up. |
 | `Smooth_Plateau_2D` | (comparison case) | A 2-D plateau run in both codes; not a CTest. |
 
 The hill cases use `Supporting_Files/check_steady_hill.py` (shared by the 2-D and 3-D folders).
