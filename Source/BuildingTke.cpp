@@ -11,9 +11,9 @@ namespace gust {
 
 namespace {
 
-// The components of the working field of the distance: the distance and the nearest
-// wall's rectangle (centre and half sizes).
-enum { kD = 0, kCx, kCy, kCz, kHx, kHy, kHz, kNumWork };
+// The components of the working field of the distance: the distance, the nearest wall's rectangle
+// (centre and half sizes) and the height of that wall's building.
+enum { kD = 0, kCx, kCy, kCz, kHx, kHy, kHz, kHb, kNumWork };
 
 //! A cell's geometry from the node heights: centre and the mean heights of its floor and top.
 struct CellGeom
@@ -240,6 +240,28 @@ void BuildingTke::build (const Buildings& b, const BuildingForcing& law, const B
     amrex::MultiFab::Copy(cells, b.beta(), 0, 0, 1, 0);
     amrex::MultiFab::Copy(cells, b.wall(), kWallMask, 1, 1, 0);
     cells.FillBoundary(geom.periodicity());
+    // Each column's solid height, sum of beta times the layer's height: a building's height above its
+    // ground (its solid thickness for a lifted one). Two ghost layers, periodic images; outside a
+    // non-periodic side the reads below stay in the domain.
+    amrex::MultiFab hcol(ba, dm, 1, 2);
+    hcol.setVal(0);
+    for (amrex::MFIter mfi(hcol, false); mfi.isValid(); ++mfi) {
+        const auto h = hcol.array(mfi);
+        const auto beta = b.beta().const_array(mfi);
+        const CellGeom g{z_nd.const_array(mfi), plo[0], plo[1], cs[0], cs[1]};
+        amrex::Box col = mfi.validbox();
+        col.setBig(2, col.smallEnd(2));
+        const int k0 = mfi.validbox().smallEnd(2), k1 = mfi.validbox().bigEnd(2);
+        amrex::ParallelFor(col, [=] AMREX_GPU_DEVICE (int i, int j, int) noexcept
+        {
+            amrex::Real sum = 0;
+            for (int k = k0; k <= k1; ++k) { sum += beta(i, j, k) * (g.zlo(i, j, k + 1) - g.zlo(i, j, k)); }
+            for (int k = k0; k <= k1; ++k) { h(i, j, k) = sum; }
+        });
+    }
+    hcol.FillBoundary(geom.periodicity());
+    const int idom0 = dom.smallEnd(0), idom1 = dom.bigEnd(0), jdom0 = dom.smallEnd(1), jdom1 = dom.bigEnd(1);
+    const bool perx = geom.isPeriodic(0), pery = geom.isPeriodic(1);
     // The cells with a partly solid neighbour to look at: two image layers in a periodic direction.
     const int ilo2 = geom.isPeriodic(0) ? ilo - 1 : ilo, ihi2 = geom.isPeriodic(0) ? ihi + 1 : ihi;
     const int jlo2 = geom.isPeriodic(1) ? jlo - 1 : jlo, jhi2 = geom.isPeriodic(1) ? jhi + 1 : jhi;
@@ -251,6 +273,7 @@ void BuildingTke::build (const Buildings& b, const BuildingForcing& law, const B
         const auto beta = b.beta().const_array(mfi);
         const auto wl = b.wall().const_array(mfi);
         const auto cl = cells.const_array(mfi);
+        const auto hc = hcol.const_array(mfi);
         const auto fx = fside[0].const_array(mfi);
         const auto fy = fside[1].const_array(mfi);
         const auto fz = fside[2].const_array(mfi);
@@ -259,7 +282,7 @@ void BuildingTke::build (const Buildings& b, const BuildingForcing& law, const B
         {
             if (beta(i, j, k) >= amrex::Real(1)) { return; }
             const amrex::Real px = g.xc(i), py = g.yc(j), pz = g.zc(i, j, k);
-            amrex::Real best = far, bc[3] = {0, 0, 0}, bh[3] = {0, 0, 0};
+            amrex::Real best = far, bc[3] = {0, 0, 0}, bh[3] = {0, 0, 0}, bhb = 0;
             for (int kk = amrex::max(k - 1, klo); kk <= amrex::min(k + 1, khi); ++kk) {
                 for (int jj = amrex::max(j - 1, jlo); jj <= amrex::min(j + 1, jhi); ++jj) {
                     for (int ii = amrex::max(i - 1, ilo); ii <= amrex::min(i + 1, ihi); ++ii) {
@@ -314,6 +337,15 @@ void BuildingTke::build (const Buildings& b, const BuildingForcing& law, const B
                             if (d < best && d < cutoff) {
                                 best = d;
                                 for (int n = 0; n < 3; ++n) { bc[n] = c[n]; bh[n] = h[n]; }
+                                // The wall's building: the tallest solid column next to the wall's cell.
+                                bhb = 0;
+                                for (int jb = jj - 1; jb <= jj + 1; ++jb) {
+                                    for (int ib = ii - 1; ib <= ii + 1; ++ib) {
+                                        const int ic = perx ? ib : amrex::min(amrex::max(ib, idom0), idom1);
+                                        const int jc = pery ? jb : amrex::min(amrex::max(jb, jdom0), jdom1);
+                                        bhb = amrex::max(bhb, hc(ic, jc, kk));
+                                    }
+                                }
                             }
                         }
                     }
@@ -328,6 +360,7 @@ void BuildingTke::build (const Buildings& b, const BuildingForcing& law, const B
             }
             w(i, j, k, kD) = best;
             for (int n = 0; n < 3; ++n) { w(i, j, k, kCx + n) = bc[n]; w(i, j, k, kHx + n) = bh[n]; }
+            w(i, j, k, kHb) = bhb;
         });
     }
     // Pass each cell's nearest wall to its neighbours until no distance falls.
@@ -380,9 +413,14 @@ void BuildingTke::build (const Buildings& b, const BuildingForcing& law, const B
     m_dist.setVal(far);
     amrex::MultiFab::Copy(m_dist, work[cur], kD, 0, 1, 0);
     m_dist.FillBoundary(geom.periodicity());
+    m_hb.define(ba, dm, 1, 1);
+    m_hb.setVal(0);
+    amrex::MultiFab::Copy(m_hb, work[cur], kHb, 0, 1, 0);
+    m_hb.FillBoundary(geom.periodicity());
     // Outside a non-periodic side: the nearest domain column's, as the ground's distance there.
     for (amrex::MFIter mfi(m_dist, false); mfi.isValid(); ++mfi) {
         const auto d = m_dist.array(mfi);
+        const auto hb = m_hb.array(mfi);
         const amrex::Box vb = mfi.validbox();
         amrex::Box gb = amrex::grow(vb, 0, 1);
         gb.grow(1, 1);
@@ -391,9 +429,47 @@ void BuildingTke::build (const Buildings& b, const BuildingForcing& law, const B
         amrex::ParallelFor(gb, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
         {
             const int ic = px ? i : amrex::min(amrex::max(i, i0), i1), jc = py ? j : amrex::min(amrex::max(j, j0), j1);
-            if (ic != i || jc != j) { d(i, j, k) = d(ic, jc, k); }
+            if (ic != i || jc != j) { d(i, j, k) = d(ic, jc, k); hb(i, j, k) = hb(ic, jc, k); }
         });
     }
+    // The zone only where it acts (with turb.realizability: BuildingsOptions::limiter_zone_acts).
+    m_zone_c = opt.limiter_zone_acts ? static_cast<amrex::Real>(opt.limiter_zone) : amrex::Real(0);
+    if (m_zone_c > 0) { make_limiter_zone(); }
+}
+
+void BuildingTke::make_limiter_zone ()
+{
+    // w = 0 within half the zone, 1 beyond it and where no wall was found, the smooth step
+    // t^2 (3 - 2 t) between: s = d_b / (c H_b), t = (s - 1/2) / (1/2). On the cells and their lateral
+    // ghost ring (the closure's cells), from d_b's and H_b's ghost cells.
+    m_zone.define(m_dist.boxArray(), m_dist.DistributionMap(), 1, 1);
+    m_zone.setVal(1);
+    const amrex::Real c = m_zone_c, far = kBuildingFar;
+    amrex::ReduceOps<amrex::ReduceOpSum, amrex::ReduceOpSum> op;
+    amrex::ReduceData<amrex::Long, amrex::Long> data(op);
+    for (amrex::MFIter mfi(m_zone, false); mfi.isValid(); ++mfi) {
+        const auto w = m_zone.array(mfi);
+        const auto d = m_dist.const_array(mfi);
+        const auto hb = m_hb.const_array(mfi);
+        const amrex::Box vb = mfi.validbox();
+        const amrex::Box gb = amrex::grow(vb, amrex::IntVect(1, 1, 0));
+        op.eval(gb, data, [=] AMREX_GPU_DEVICE (int i, int j, int k) -> amrex::GpuTuple<amrex::Long, amrex::Long>
+        {
+            amrex::Real v = 1;
+            if (d(i, j, k) < far && hb(i, j, k) > amrex::Real(0)) {
+                const amrex::Real t = d(i, j, k) / (c * hb(i, j, k)) * 2 - 1;   // s = 1/2 at t = 0, s = 1 at t = 1
+                v = t <= 0 ? amrex::Real(0) : t >= 1 ? amrex::Real(1) : t * t * (3 - 2 * t);
+            }
+            w(i, j, k) = v;
+            const bool own = vb.contains(i, j, k);
+            return {own && v < 1 ? amrex::Long(1) : amrex::Long(0), own && v == 0 ? amrex::Long(1) : amrex::Long(0)};
+        });
+    }
+    auto r = data.value(op);
+    m_zone_cells = amrex::get<0>(r);
+    m_zone_off = amrex::get<1>(r);
+    amrex::ParallelDescriptor::ReduceLongSum(m_zone_cells);
+    amrex::ParallelDescriptor::ReduceLongSum(m_zone_off);
 }
 
 namespace {

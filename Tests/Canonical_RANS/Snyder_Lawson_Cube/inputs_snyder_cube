@@ -1,0 +1,46 @@
+# The cube of Snyder and Lawson (1994) in the EPA wind tunnel (H = 0.2 m), as Wise et al. (2026, Appendix A) set it
+# up in ERF: a 3.2 m x 1.2 m x 1.2 m domain (16 H x 6 H x 6 H), the cube's upwind face 1.0 m from the inlet and the
+# cube centred across it, inflow and outflow along x, slip walls on the sides and the top, and the log law with
+# z0 = 1 mm on the floor. The approach flow is the tunnel's log law, z0 = 1 mm and 4 m/s at z = 1 m (u* = 0.2374
+# m/s). 20 mm cells across (10 across the cube), 5 mm layers to 0.3 m and layers growing by 1.1 above. On the
+# command line: buildings.file=cube_snyder.txt mesh.zlevels_file=zlevels_5mm.txt. The plain closure; compare_snyder.py
+# compares the run with the measurements (README.md).
+mesh.n_cell        = 160 60 90
+mesh.prob_lo       = 0. 0. 0.
+mesh.prob_hi       = 3.2 1.2 1.2
+mesh.is_periodic   = 0 0 0
+mesh.max_grid_size = 40 30
+
+terrain.type = flat
+
+bc.xlo = inflow
+bc.xhi = outflow
+bc.ylo = slip_wall
+bc.yhi = slip_wall
+bc.zlo = surface_layer
+bc.zhi = slip_wall
+bc.surface_z0       = 0.001
+bc.inflow_profile   = log_law
+bc.inflow_ustar     = 0.2374
+bc.inflow_z0        = 0.001
+bc.inflow_direction = 0.
+bc.theta_profile_z  = 0.
+bc.theta_profile    = 300.
+
+forcing.gravity = 0.
+turb.tke_floor  = 1.e-8
+
+# A smooth cube: the wall law with the roughness Wise et al. found best at 5 mm cells.
+buildings.type = immersed_forcing
+buildings.z0   = 0.0001
+
+init.first_guess = profile
+
+steady.stage          = simplec
+steady.sweep          = zjacobi
+steady.zline_sweeps   = 3
+steady.cfl_max        = 8
+steady.max_iterations = 3000
+
+io.plot_file = snyder_plt
+io.write_checkpoint = 0

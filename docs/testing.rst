@@ -862,6 +862,18 @@ Current tests
        another layout, the refusals (those of ``buildings.theta_mode`` and ``buildings.theta_surface`` among them, and a
        restart without theta's terms of a checkpoint written with them), and the defaults of ``buildings.wall_speed``, ``buildings.wall_tke`` and ``buildings.theta_mode`` with each
        ``buildings.wall_form``, as the log gives them.
+   * - ``snyder_cube_plain_clean``, ``snyder_cube_plain_run``, ``snyder_cube_plain_compare``,
+       ``snyder_cube_lee_clean``, ``snyder_cube_lee_run``, ``snyder_cube_lee_compare``,
+       ``snyder_cube_lee_nozone_clean``, ``snyder_cube_lee_nozone_run``, ``snyder_cube_lee_nozone_compare``
+     - The cube of Snyder and Lawson (1994) in a wind-tunnel boundary layer (``Tests/Canonical_RANS/Snyder_Lawson_Cube``),
+       20 mm cells and 5 mm layers to 0.3 m, against the 296 measured values of u digitized from Wise et al. (2026):
+       the rms difference, the hit rate and the reattachment length behind the cube are pinned within 2 % for the
+       plain closure (0.244 m/s, 0.882, 1.34 H; measured 1.36 H), for the lee options of the terrain decks with their
+       zone around the cube (``buildings.limiter_zone``, default 3: the plain closure's answer) and for the same
+       options without the zone (0.317 m/s, 0.713, 1.89 H). Minutes each on 4 ranks; not in ``-L smoke``.
+   * - ``abort_buildings_limiter_zone``, ``abort_buildings_limiter_zone_wall_tke``, ``abort_buildings_limiter_zone_no_cap``
+     - ``buildings.limiter_zone`` out of its range, without ``buildings.wall_tke = on``, and given without
+       ``turb.realizability`` > 0: each refusal's message.
    * - ``building_courtyard_clean``, ``building_courtyard_run``, ``building_courtyard_flow``,
        ``building_courtyard_all_faces_clean``, ``building_courtyard_all_faces_run``, ``building_courtyard_all_faces_flow``
      - A courtyard open to the wind (``Tests/Canonical_RANS/Building_Courtyard``), whose inner corners are cells with two

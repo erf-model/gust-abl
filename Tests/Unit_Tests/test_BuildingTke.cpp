@@ -14,6 +14,8 @@
 //   residual() without a surface layer.
 #include "BuildingTke.H"
 #include "Closure.H"
+#include "ClosureWake.H"
+#include "Reductions.H"
 #include "BoundaryConditions.H"
 #include "PoissonTestHelpers.H"
 #include "PseudoTime.H"
@@ -589,6 +591,160 @@ TEST (BuildingTke, ResidualWithoutASurfaceLayerPutsTheWallsRowInPlace)
     EXPECT_NEAR(value_at(R.tke, 3, 5, 1), as * (kval(3, 5, 1) - ks), 1e3 * rtol * as);
     EXPECT_NEAR(value_at(R.tke, 3, 3, 0), kval(3, 3, 0) - kFloor, 100 * rtol) << "a solid cell: k - floor";
     EXPECT_NEAR(value_at(R.tke, 3, 3, 1), kval(3, 3, 1) - kFloor, 100 * rtol);
+}
+
+// The zone of the lee options (buildings.limiter_zone = c): the weight is 0 within c H_b / 2 of a building, 1 beyond
+// c H_b, the smooth step t^2 (3 - 2 t) between, t = 2 d_b / (c H_b) - 1, with H_b the height of the building whose
+// wall is the nearest. Two blocks, 45 m and 25 m high, 20 m apart (tiles 1 and 3: cells 1-2 and 5-6 along x).
+TEST (BuildingTke, LimiterZoneFollowsTheDistanceAndTheBuildingsHeight)
+{
+    for (const int mgs : {8, 3}) {
+        gust::BuildingsOptions o = tile_options("two_blocks.txt", [] (int i, int j) {
+            if (j != 2) { return 0; }
+            return i == 1 ? 45 : i == 3 ? 25 : 0;
+        });
+        o.limiter_zone = 2;
+        o.limiter_zone_acts = true;   // as the application sets it with turb.realizability > 0
+        Set s(mgs, o);
+        ASSERT_TRUE(s.tke.zone_active());
+        // H_b: beside the tall block 45 m, beside the short one 25 m, above both the tall one's.
+        EXPECT_NEAR(value_at(s.tke.building_height(), 1, 1, 1), 45.0, 100 * rtol * 45) << "boxes " << mgs;
+        EXPECT_NEAR(value_at(s.tke.building_height(), 6, 1, 1), 25.0, 100 * rtol * 25);
+        EXPECT_NEAR(value_at(s.tke.building_height(), 7, 3, 1), 25.0, 100 * rtol * 25);
+        EXPECT_NEAR(value_at(s.tke.building_height(), 1, 3, 10), 45.0, 100 * rtol * 45) << "above the tall roof";
+        // The weight against the closed form at every fluid cell with a wall found.
+        double err = 0;
+        amrex::Long zero = 0, part = 0, one = 0;
+        for (amrex::MFIter mfi(s.tke.limiter_zone(), false); mfi.isValid(); ++mfi) {
+            const auto w = s.tke.limiter_zone().const_array(mfi);
+            const auto d = s.tke.distance().const_array(mfi);
+            const auto h = s.tke.building_height().const_array(mfi);
+            const auto beta = s.b.beta().const_array(mfi);
+            amrex::LoopOnCpu(mfi.validbox(), [&] (int i, int j, int k) {
+                if (beta(i, j, k) >= 1) { return; }
+                double want = 1;
+                if (d(i, j, k) < gust::kBuildingFar) {
+                    const double t = 2 * static_cast<double>(d(i, j, k)) / (2 * static_cast<double>(h(i, j, k))) - 1;
+                    want = t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t);
+                }
+                err = std::max(err, std::abs(static_cast<double>(w(i, j, k)) - want));
+                // The classes from the field itself (the closed form is checked through err).
+                const double got = static_cast<double>(w(i, j, k));
+                if (got == 0) { ++zero; } else if (got < 1) { ++part; } else { ++one; }
+            });
+        }
+        amrex::ParallelDescriptor::ReduceRealMax(err);
+        amrex::ParallelDescriptor::ReduceLongSum(zero);
+        amrex::ParallelDescriptor::ReduceLongSum(part);
+        amrex::ParallelDescriptor::ReduceLongSum(one);
+        EXPECT_LT(err, 100 * rtol);
+        EXPECT_GT(zero, 100);
+        EXPECT_GT(part, 100);
+        EXPECT_GT(one, 100);
+        EXPECT_EQ(s.tke.zone_off_cells(), zero);
+        EXPECT_EQ(s.tke.zone_cells(), zero + part);
+        // By hand: 5 m from the tall block's side (cell 0, beside x = 10 m) and 5 m from the short one's (cell 7,
+        // beside x = 70 m): inside both zones.
+        EXPECT_EQ(value_at(s.tke.limiter_zone(), 0, 3, 1), 0.0);
+        EXPECT_EQ(value_at(s.tke.limiter_zone(), 7, 3, 1), 0.0) << "5 m from the short block: within 25 m";
+        // 30 m above the short roof at x = 65 m (cell 6, layer 5): the tall block's top edge is 36 m away, so the
+        // short roof is the nearest wall, H_b = 25 m, t = 2 * 30 / 50 - 1. At x = 55 m the tall block's edge, 27 m
+        // away, is the nearer, with H_b = 45 m: inside.
+        const double t = 2 * 30.0 / 50 - 1;
+        EXPECT_NEAR(value_at(s.tke.limiter_zone(), 6, 3, 5), t * t * (3 - 2 * t), 100 * rtol);
+        EXPECT_NEAR(value_at(s.tke.building_height(), 5, 3, 5), 45.0, 100 * rtol * 45);
+        EXPECT_EQ(value_at(s.tke.limiter_zone(), 5, 3, 5), 0.0);
+        // Far above both: 1.
+        EXPECT_EQ(value_at(s.tke.limiter_zone(), 6, 3, 20), 1.0);
+    }
+    // c = 0, or a zone that does not act (no turb.realizability): none.
+    gust::BuildingsOptions off = tile_options("block45.txt", [] (int i, int j) { return (i == 2 && j == 2) ? 45 : 0; });
+    off.limiter_zone = 0;
+    off.limiter_zone_acts = true;
+    Set s0(4, off);
+    EXPECT_FALSE(s0.tke.zone_active());
+    off.limiter_zone = 2;
+    off.limiter_zone_acts = false;
+    Set s1(4, off);
+    EXPECT_FALSE(s1.tke.zone_active());
+}
+
+// The restart hash gains a line for the zone only where it acts: without it the hash is the one from before the zone,
+// whatever buildings.limiter_zone holds (OptionDefaultsAndRefusals pins those hashes for this file), and with it two
+// sizes give two hashes.
+TEST (BuildingTke, LimiterZoneEntersTheRestartHashWhereItActs)
+{
+    gust::BuildingsOptions o = tile_options("block45.txt", [] (int i, int j) { return (i == 2 && j == 2) ? 45 : 0; });
+    o.limiter_zone_acts = false;
+    const std::string before = gust::Buildings::hash_inputs(o);
+    o.limiter_zone = 7;
+    EXPECT_EQ(gust::Buildings::hash_inputs(o), before) << "a zone that does not act is not in the hash";
+    o.limiter_zone_acts = true;
+    const std::string seven = gust::Buildings::hash_inputs(o);
+    EXPECT_NE(seven, before);
+    o.limiter_zone = 3;
+    EXPECT_NE(gust::Buildings::hash_inputs(o), seven);
+    EXPECT_NE(gust::Buildings::hash_inputs(o), before);
+}
+
+// The zone's lateral ghost ring, which the cap reads, equals its neighbours' valid cells: across a periodic seam (the
+// block straddles it) and between boxes; outside a non-periodic face the ring keeps the nearest column's value, so
+// the comparison after a periodic fill is exact there too.
+TEST (BuildingTke, LimiterZoneGhostRingMatchesTheNeighbours)
+{
+    for (const bool periodic : {true, false}) {
+        gust::BuildingsOptions o = tile_options(periodic ? "seam_zone.txt" : "edge_zone.txt",
+                                                [] (int i, int j) { return (i == 0 && j == 2) ? 45 : 0; }, periodic ? 4 : 5);
+        o.limiter_zone = 2;
+        o.limiter_zone_acts = true;
+        Set s(3, o, periodic);
+        const amrex::MultiFab& z = s.tke.limiter_zone();
+        amrex::MultiFab tmp(z.boxArray(), z.DistributionMap(), 1, 1);
+        amrex::MultiFab::Copy(tmp, z, 0, 0, 1, 1);
+        tmp.FillBoundary(s.c.geom.periodicity());
+        EXPECT_EQ(gust::count_bit_differences(tmp, z, amrex::IntVect(1, 1, 0)), 0) << (periodic ? "periodic" : "not periodic");
+        EXPECT_GT(s.tke.zone_off_cells(), 0);
+        if (periodic) {
+            // The block (tile -10 .. 10 m) fills the cells 7 and 0 across the seam: the cells beside it on either side, and
+            // two cells out, hold the same weight.
+            for (const int k : {1, 4, 6}) {
+                EXPECT_EQ(value_at(z, 6, 3, k), value_at(z, 1, 3, k)) << "beside the block, layer " << k;
+                EXPECT_EQ(value_at(z, 5, 3, k), value_at(z, 2, 3, k)) << "two cells out, layer " << k;
+            }
+        }
+    }
+}
+
+// The cap's weight (Closure::set_cap_weight): the cap divided by w, the largest Real at w = 0, bit for bit the same
+// at w = 1 and without a weight.
+TEST (BuildingTke, CapWeightLiftsTheCap)
+{
+    Set s(3, tile_options("block45.txt", [] (int i, int j) { return (i == 2 && j == 2) ? 45 : 0; }));
+    gust::State q;
+    q.define(s.c.ba, s.c.dm);
+    for (amrex::MFIter mfi(q.tke, false); mfi.isValid(); ++mfi) {
+        const auto a4 = q.tke.array(mfi);
+        amrex::LoopOnCpu(mfi.fabbox(), [&] (int i, int j, int kk) { a4(i, j, kk) = static_cast<amrex::Real>(0.5 + 0.01 * (i + j + kk)); });
+    }
+    amrex::MultiFab S2(s.c.ba, s.c.dm, 1, 1);
+    S2.setVal(amrex::Real(0.04));
+    gust::ClosureOptions copt;
+    copt.realizability = amrex::Real(0.309);
+    const gust::ClosureConstants cc = gust::closure_constants(copt);
+    amrex::MultiFab plain, ones, weighted, w(s.c.ba, s.c.dm, 1, 1);
+    gust::nut_cap_field(q, S2, copt, cc, plain);
+    w.setVal(1);
+    gust::nut_cap_field(q, S2, copt, cc, ones, &w);
+    EXPECT_EQ(gust::count_bit_differences(plain, ones, amrex::IntVect(1, 1, 0)), 0) << "w = 1 is the cap bit for bit";
+    for (amrex::MFIter mfi(w, false); mfi.isValid(); ++mfi) {
+        const auto a4 = w.array(mfi);
+        amrex::LoopOnCpu(mfi.fabbox(), [&] (int i, int j, int kk) { a4(i, j, kk) = (i < 2) ? amrex::Real(0) : (i < 4 ? amrex::Real(0.25) : amrex::Real(1)); });
+    }
+    gust::nut_cap_field(q, S2, copt, cc, weighted, &w);
+    const double big = static_cast<double>(std::numeric_limits<amrex::Real>::max());
+    EXPECT_EQ(value_at(weighted, 1, 3, 2), big) << "w = 0: no cap";
+    EXPECT_NEAR(value_at(weighted, 3, 3, 2), 4 * value_at(plain, 3, 3, 2), 100 * rtol * value_at(plain, 3, 3, 2)) << "w = 1/4";
+    EXPECT_EQ(value_at(weighted, 5, 3, 2), value_at(plain, 5, 3, 2)) << "w = 1";
 }
 
 // UT-5.4.1, UT-5.4.3: the rows.

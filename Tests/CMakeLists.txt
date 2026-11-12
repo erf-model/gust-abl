@@ -519,6 +519,59 @@ gust_add_test(NAME building_cube_smooth_walls_flow NP 1 LABELS "regression;smoke
               FIXTURES_REQUIRED building_cube_smooth_walls
               COMMAND ${Python3_EXECUTABLE} ${BUILDING_CUBE_CASE}/check_cube.py --latest cube_plt --roof 2.855 --side 1.452
                       --k-roof 0.145 --k-ground 0.0152)
+# --- The cube of Snyder and Lawson (1994) against the measurements (tracker PR-44) ---
+# 20 mm cells, 5 mm layers to 0.3 m: the plain closure; the lee options of the terrain decks with their zone around
+# the cube (buildings.limiter_zone, default 3), which gives the plain closure's answer; and the same without the
+# zone (0, the form before it), whose cap lengthens the bubble. compare_snyder.py pins the rms difference, the hit
+# rate and the reattachment length of each (2 %), and u 1.5 m behind the cube at z = 0.2 m (0.01 m/s): beyond the
+# zone, where the cap acts again, so a zone that covered everything would fail. Minutes each on 4 ranks: not smoke
+# tests.
+set(SNYDER_CASE ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Snyder_Lawson_Cube)
+foreach(variant plain lee lee_nozone)
+    set(_dir ${CMAKE_CURRENT_BINARY_DIR}/run/snyder_cube_${variant})
+    if(variant STREQUAL "plain")
+        set(_deck inputs_snyder_cube)
+        set(_extra "")
+        set(_log "!fade out near buildings")
+        set(_pins --pin rms_all=0.244 --pin q_all=0.882 --pin reattach=0.268 --probe 1.5,0,0.2=2.838)
+    elseif(variant STREQUAL "lee")
+        set(_deck inputs_snyder_cube_lee)
+        set(_extra "")
+        set(_log "turb\\.realizability and the upwind blend fade out near buildings")
+        set(_pins --pin rms_all=0.244 --pin q_all=0.882 --pin reattach=0.269 --probe 1.5,0,0.2=2.802)
+    else()
+        set(_deck inputs_snyder_cube_lee)
+        set(_extra buildings.limiter_zone=0)
+        set(_log "!fade out near buildings")
+        set(_pins --pin rms_all=0.317 --pin q_all=0.713 --pin reattach=0.378 --probe 1.5,0,0.2=2.728)
+    endif()
+    add_test(NAME snyder_cube_${variant}_clean
+             COMMAND ${Python3_EXECUTABLE} -c
+                     "import shutil, os, sys; shutil.rmtree(sys.argv[1], ignore_errors=True); os.makedirs(sys.argv[1])"
+                     ${_dir})
+    set_tests_properties(snyder_cube_${variant}_clean PROPERTIES LABELS "regression" FIXTURES_SETUP snyder_cube_${variant}_clean)
+    gust_add_test(NAME snyder_cube_${variant}_run NP 4 LABELS "regression" RUN_DIR ${_dir}
+                  FIXTURES_REQUIRED snyder_cube_${variant}_clean FIXTURES_SETUP snyder_cube_${variant}
+                  PREFIX ${EXPECT_ABORT} --success --timeout 1800 "gust: steady after" "${_log}" --
+                  COMMAND $<TARGET_FILE:gust> ${SNYDER_CASE}/${_deck} buildings.file=${SNYDER_CASE}/cube_snyder.txt
+                          mesh.zlevels_file=${SNYDER_CASE}/zlevels_5mm.txt ${_extra} ${GUST_TEST_AMREX_FLAGS})
+    set_tests_properties(snyder_cube_${variant}_run PROPERTIES TIMEOUT 1800)
+    gust_add_test(NAME snyder_cube_${variant}_compare NP 1 LABELS "regression" RUN_DIR ${_dir}
+                  FIXTURES_REQUIRED snyder_cube_${variant}
+                  COMMAND ${Python3_EXECUTABLE} ${SNYDER_CASE}/compare_snyder.py --latest snyder_plt ${_pins})
+endforeach()
+gust_add_test(NAME abort_buildings_limiter_zone NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT} "buildings\\.limiter_zone must be 0 \\(off\\) or in \\[0\\.5, 20\\] building heights" --
+              COMMAND $<TARGET_FILE:gust> ${BUILDINGS_CASE}/inputs_buildings buildings.file=${BUILDINGS_CASE}/building_map.txt
+                      buildings.limiter_zone=0.2 ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_buildings_limiter_zone_wall_tke NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT} "buildings\\.limiter_zone needs buildings\\.wall_tke = on" --
+              COMMAND $<TARGET_FILE:gust> ${BUILDINGS_CASE}/inputs_buildings buildings.file=${BUILDINGS_CASE}/building_map.txt
+                      buildings.wall_tke=off buildings.limiter_zone=3 ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_buildings_limiter_zone_no_cap NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT} "buildings\\.limiter_zone has no effect without turb\\.realizability > 0" --
+              COMMAND $<TARGET_FILE:gust> ${BUILDING_CUBE_CASE}/inputs_cube buildings.file=${BUILDING_CUBE_CASE}/cube.txt
+                      buildings.limiter_zone=2 ${GUST_TEST_AMREX_FLAGS})
 # --- A courtyard: corner and edge cells of the wall law (buildings.wall_speed) ---
 set(BUILDING_COURT_CASE ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Building_Courtyard)
 foreach(form open_faces all_faces)

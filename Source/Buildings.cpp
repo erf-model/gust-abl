@@ -23,7 +23,8 @@ namespace gust {
 
 namespace {
 
-const char* const kBuildingsKeys[] = {"type", "file", "format", "small_volfrac", "z0", "wall_form", "wall_tke", "wall_speed", "theta_mode", "theta_surface"};
+const char* const kBuildingsKeys[] = {"type", "file", "format", "small_volfrac", "z0", "wall_form", "wall_tke", "wall_speed", "theta_mode", "theta_surface",
+                                     "limiter_zone"};
 constexpr const char* kBuildingsMagic = "gust_buildings";
 constexpr int kBuildingsVersion = 1;
 
@@ -252,6 +253,9 @@ BuildingsOptions read_buildings_options ()
     if (pp.query("theta_surface", s) && !parse_number(s, opt.theta_surface)) {
         opt.parse_errors.emplace_back("buildings.theta_surface = " + s + " is not a number");
     }
+    if (pp.query("limiter_zone", s) && !parse_number(s, opt.limiter_zone)) {
+        opt.parse_errors.emplace_back("buildings.limiter_zone = " + s + " is not a number");
+    }
     if (opt.type_name == "immersed_forcing") { opt.type = BuildingsType::immersed_forcing; }
     return opt;
 }
@@ -317,6 +321,14 @@ std::vector<std::string> check_buildings_options (const BuildingsOptions& opt)
             err.emplace_back("buildings.theta_surface has no effect without buildings.theta_mode = fixed");
         }
     }
+    if (!parse_error_of(opt, "limiter_zone")
+        && !(opt.limiter_zone == 0 || (opt.limiter_zone >= 0.5 && opt.limiter_zone <= 20))) {
+        err.emplace_back("buildings.limiter_zone must be 0 (off) or in [0.5, 20] building heights (got "
+                         + std::to_string(opt.limiter_zone) + ")");
+    } else if (has(opt.given, "limiter_zone") && !opt.wall_tke) {
+        err.emplace_back("buildings.limiter_zone needs buildings.wall_tke = on (the zone is measured by the distance to the "
+                         "buildings, which their closure terms compute)");
+    }
     if (opt.wall_form == BuildingWallForm::drag && has(opt.given, "z0")) {
         err.emplace_back("buildings.z0 has no effect with buildings.wall_form = drag (no wall law)");
     }
@@ -379,7 +391,8 @@ std::string Buildings::hash_inputs (const BuildingsOptions& opt)
     // continues with buildings.wall_tke = off. Likewise the open faces' speed: a checkpoint
     // from before it continues with buildings.wall_speed = all_faces. And theta's building
     // terms: a line only when they act, so a checkpoint from before them continues with
-    // buildings.theta_mode = none.
+    // buildings.theta_mode = none. The lee options' zone adds a line only where it acts (with
+    // turb.realizability), so a checkpoint from before it continues with buildings.limiter_zone = 0.
     const std::string law = opt.wall_form == BuildingWallForm::roof_stress ? "fraction_stress"
                           : opt.wall_form == BuildingWallForm::fraction_stress ? "fraction_stress_sides" : opt.wall_form_name;
     return sha256_hex(std::string(kBuildingsMagic) + " " + std::to_string(kBuildingsVersion) + "\ntype " + opt.type_name
@@ -388,7 +401,8 @@ std::string Buildings::hash_inputs (const BuildingsOptions& opt)
                       + ((opt.wall_speed == BuildingWallSpeed::open_faces && opt.wall_form != BuildingWallForm::drag) ? "wall_speed open_faces\n" : "")
                       + (opt.wall_form != BuildingWallForm::fraction_stress || opt.theta_mode == BuildingThetaMode::none ? std::string()
                          : opt.theta_mode == BuildingThetaMode::fixed ? "theta_mode fixed " + hexfloat(opt.theta_surface) + "\n"
-                                                                      : std::string("theta_mode ambient\n")));
+                                                                      : std::string("theta_mode ambient\n"))
+                      + (opt.limiter_zone_acts ? "limiter_zone " + hexfloat(opt.limiter_zone) + "\n" : std::string()));
 }
 
 void Buildings::build (const BuildingsOptions& opt, const amrex::Geometry& geom, const amrex::MultiFab& z_nd,
@@ -675,11 +689,12 @@ void Buildings::check_restart (const std::string& dir, const std::string& hash)
     if (active && rec != hash) {
         amrex::Abort(where + "the buildings inputs differ from the checkpoint's (buildings.type, buildings.format, buildings.file contents, "
                              "buildings.small_volfrac, buildings.z0, buildings.wall_form, buildings.wall_tke, buildings.wall_speed, buildings.theta_mode, "
-                             "buildings.theta_surface; a checkpoint written with "
+                             "buildings.theta_surface, buildings.limiter_zone (with turb.realizability); a checkpoint written with "
                              "fraction_stress before the sides had the wall law continues with buildings.wall_form = roof_stress, "
                              "one from before k had building terms with buildings.wall_tke = off, one from before the wall law "
                              "skipped fixed faces with buildings.wall_speed = all_faces, and one from before theta had building terms with "
-                             "buildings.theta_mode = none)");
+                             "buildings.theta_mode = none, and one from before the lee options' zone around buildings with "
+                             "buildings.limiter_zone = 0)");
     }
 }
 

@@ -227,6 +227,13 @@ public:
     //! decisions needs the same alpha (Smoothness.cpp).
     [[nodiscard]] amrex::Real canopy_alpha () const { return (m_canopy_f != nullptr) ? m_alpha : amrex::Real(0); }
 
+    //! A weight w in [0, 1] of the realizability cap (ClosureWake.H), on the level's cells with one
+    //! lateral ghost ring (null: none, the cap as it is): the cap becomes C_r k / (S w), so w = 1 keeps
+    //! it bit for bit and w = 0 lifts it. The buildings' zone (BuildingTke::limiter_zone) is one. The
+    //! field must outlive the closure's use of it.
+    void set_cap_weight (const amrex::MultiFab* w) { m_cap_weight = w; }
+    [[nodiscard]] const amrex::MultiFab* cap_weight () const { return m_cap_weight; }
+
     [[nodiscard]] const ClosureOptions& options () const { return m_opt; }
     [[nodiscard]] const ClosureConstants& constants () const { return m_c; }
 
@@ -242,6 +249,7 @@ private:
     mutable std::pair<const amrex::MultiFab*, const amrex::MultiFab*> m_dz_of{nullptr, nullptr};
     FreezeScope m_scope{FreezeScope::all};
     const amrex::MultiFab* m_canopy_f{nullptr};
+    const amrex::MultiFab* m_cap_weight{nullptr};
     //! Abort unless the drag field (when set) is on q's cells.
     void check_canopy_layout (const char* op, const State& q) const;
     amrex::Real m_beta_p{1}, m_beta_d{4}, m_alpha{0};

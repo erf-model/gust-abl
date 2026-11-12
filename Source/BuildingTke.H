@@ -96,6 +96,19 @@ public:
     //! d_b at the cells (one ghost layer); kBuildingFar in solid cells and where the nearest wall
     //! is as far as the tallest column or farther (cutoff()), where the ground is nearer anyway.
     [[nodiscard]] const amrex::MultiFab& distance () const { return m_dist; }
+    //! H_b at the cells (one ghost layer, as distance()): the height of the building whose wall is the
+    //! nearest, the tallest solid column next to that wall's cell (m); 0 where no wall was found.
+    [[nodiscard]] const amrex::MultiFab& building_height () const { return m_hb; }
+    //! buildings.limiter_zone > 0 where it acts (BuildingsOptions::limiter_zone_acts): the weight of the closure's lee options (Closure::set_cap_weight),
+    //! on the cells and their lateral ghost ring: 0 within half the zone of a building, 1 beyond it,
+    //! smooth between (make_limiter_zone).
+    [[nodiscard]] bool zone_active () const { return m_zone_c > 0; }
+    [[nodiscard]] const amrex::MultiFab& limiter_zone () const { return m_zone; }
+    //! The valid cells with a weight below 1 and at 0 (all ranks).
+    [[nodiscard]] amrex::Long zone_cells () const { return m_zone_cells; }
+    [[nodiscard]] amrex::Long zone_off_cells () const { return m_zone_off; }
+    //! Public because it launches device kernels (CUDA does not allow them in private members).
+    void make_limiter_zone ();
     //! The passes the distance took, the last one, which changed nothing, included.
     [[nodiscard]] int distance_passes () const { return m_passes; }
     //! The tallest column of the mesh (m): walls at this distance or more are not looked for.
@@ -126,7 +139,9 @@ private:
     const Buildings* m_b{nullptr};
     const BuildingForcing* m_law{nullptr};
     amrex::Geometry m_geom;
-    amrex::MultiFab m_dist;
+    amrex::MultiFab m_dist, m_hb, m_zone;
+    amrex::Real m_zone_c{0};
+    amrex::Long m_zone_cells{0}, m_zone_off{0};
     amrex::Real m_floor{0}, m_cmu0{amrex::Real(0.5562)}, m_cutoff{0}, m_z0b{0};
     int m_passes{0};
 };

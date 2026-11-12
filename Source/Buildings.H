@@ -116,6 +116,13 @@ struct BuildingsOptions
     //! buildings.theta_surface (K): the walls' temperature with buildings.theta_mode = fixed,
     //! finite and > 0; required with fixed and refused without.
     double theta_surface{0};
+    //! buildings.limiter_zone: the size, in building heights, of the zone around each building where
+    //! the closure's lee options (turb.realizability and the upwind blend convection.hybrid_*) fade out:
+    //! a building's edges fix its separation (BuildingTke.H). 0: off; else finite, >= 0.5 and <= 20.
+    double limiter_zone{3};
+    //! Set by the application from the closure's options, not read: the zone acts (buildings.wall_tke,
+    //! turb.realizability > 0 and limiter_zone > 0). It is part of the restart hash.
+    bool limiter_zone_acts{false};
     std::vector<std::string> given;  //!< buildings.* keys in the inputs
     std::vector<std::string> parse_errors;   //!< value counts and repeats
     [[nodiscard]] bool active () const { return type != BuildingsType::none; }
