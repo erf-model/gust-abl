@@ -23,27 +23,35 @@ namespace gust {
 namespace {
 // The fixed points' stopping test. psi_m and psi_h are evaluated in amrex::Real, so in single precision the map is
 // constant on each float interval of zeta: the iterate either settles exactly or cycles between two neighbouring
-// intervals with a step of a few float roundings of zeta, above 1e-10, and the loop would report no root where there
-// is one. The test: the step |next - zeta| within 1e-10 max(1, |zeta|); or within 64 roundings of amrex::Real of
-// |zeta| with the smallest step not cut by 1 % for 50 passes (a cycle, not a slow approach: the stable side's
-// rate reaches 0.975 at Rb = 0.19). In double precision 64 eps |zeta| (1.4e-14 |zeta|) is always below
-// 1e-10 max(1, |zeta|): the test is the 1e-10 one, bit for bit.
+// intervals, the step changing sign each pass and a few float roundings of zeta in size, above 1e-10; the loop would
+// report no root where there is one. The test: the step |next - zeta| within 1e-10 max(1, |zeta|); or within 64
+// roundings of amrex::Real of |zeta|, with the smallest step not cut by 1 % for 50 passes (a cycle, not a slow
+// approach: the stable side's rate reaches 0.975 at Rb = 0.19) and the step changing sign in at least 25 of them
+// (a cycle, not a stall without a root: just past Businger-Dyer's fold the step stays below 64 eps |zeta| and keeps
+// its sign). In double precision 64 eps |zeta| (1.4e-14 |zeta|) is always below 1e-10 max(1, |zeta|): the test is
+// the 1e-10 one, bit for bit.
 struct ZetaStop
 {
     double best = std::numeric_limits<double>::infinity();
+    double last = 0;
     int since = 0;
+    int flips = 0;
     bool operator() (double next, double zeta)
     {
         constexpr double eps64 = 64 * static_cast<double>(std::numeric_limits<amrex::Real>::epsilon());
-        const double a = std::abs(next), r = std::abs(next - zeta);
+        const double a = std::abs(next), d = next - zeta, r = std::abs(d);
         if (r <= 1.0e-10 * std::max(1.0, a)) { return true; }
+        const bool flip = d * last < 0;
+        last = d;
         if (r < 0.99 * best) {
             best = r;
             since = 0;
+            flips = 0;
         } else {
             ++since;
+            if (flip) { ++flips; }
         }
-        return r <= eps64 * a && since >= 50;
+        return r <= eps64 * a && since >= 50 && flips >= 25;
     }
 };
 } // namespace

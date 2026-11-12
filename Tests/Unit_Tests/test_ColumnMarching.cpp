@@ -276,6 +276,14 @@ TEST(ColumnMarching, FluxSurfaceMatchesTheClosedForm)
     EXPECT_LT(z1 * il, 1);
     il = 0;
     EXPECT_FALSE(gust::column_surface_most_flux(kappa, z0, z1, 1.0, -0.5, g, theta0, 0, false, {}, us, ts, il));
+    // Businger-Dyer's fold: the largest downward flux with a root, where the two stable roots merge at zeta = ln / 10,
+    // is kappa g |q_c| z1 / theta0 = (kappa U1)^3 / (33.75 ln^2). Just past it there is no root: in single precision
+    // the step stalls there without changing sign (not a float cycle), and the solve must still say so.
+    const double qc = -std::pow(kappa * U1, 3) / (33.75 * lz * lz) * theta0 / (kappa * g * z1);
+    il = 0;
+    EXPECT_FALSE(gust::column_surface_most_flux(kappa, z0, z1, U1, 1.00001 * qc, g, theta0, 0, false, {}, us, ts, il));
+    il = 0;
+    EXPECT_TRUE(gust::column_surface_most_flux(kappa, z0, z1, U1, 0.999 * qc, g, theta0, 0, false, {}, us, ts, il));
     // in the column: the run stops at the step where the first cell's wind has fallen below the flux's root (60 s
     // here, from the log-law start), naming the time and bc.surface_heat_flux
     Column c;
