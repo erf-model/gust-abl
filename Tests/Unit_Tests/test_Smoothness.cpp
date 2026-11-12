@@ -29,6 +29,7 @@
 #include <iomanip>
 #include <limits>
 #include <memory>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
@@ -658,7 +659,15 @@ TEST(NewtonSmoothness, FrozenCanopyCapNeedsTheSameAlpha)
     other.set_canopy(&f, 1, 4, amrex::Real(0.05));
     EXPECT_EQ(message(same), "");
     EXPECT_TRUE(same.frozen());
-    EXPECT_NE(message(other).find("canopy length cap alpha = 0.04"), std::string::npos);
+    // the message prints the checkpoint's alpha to 17 digits: in single precision that of the float nearest 0.04
+    std::ostringstream alpha_text;
+    alpha_text << std::setprecision(17) << "canopy length cap alpha = ";
+    if (kDouble) {
+        alpha_text << "0.04";
+    } else {
+        alpha_text << static_cast<double>(amrex::Real(0.04));
+    }
+    EXPECT_NE(message(other).find(alpha_text.str()), std::string::npos) << message(other);
     EXPECT_NE(message(none).find("restart with the checkpoint's canopy.tke and canopy.length_alpha"), std::string::npos);
     // Floor scope: the cap is decided from the state, so any alpha restores.
     ca.thaw();

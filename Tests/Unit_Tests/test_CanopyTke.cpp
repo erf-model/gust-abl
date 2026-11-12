@@ -295,6 +295,8 @@ TEST(CanopyTke, ExactDerivativeMatchesDifferences)
     cl.evaluate(s.q, s.dist, kZ0, gust::BuoyancyOptions{}, s.c.mesh, s.c.geom, f);
     cl.freeze_switches(s.q, s.dist, kZ0, gust::BuoyancyOptions{}, s.c.mesh, s.c.geom);
     const double h = 1e-6;
+    const double alpha_r = static_cast<double>(amrex::Real(0.04));
+    const double cap_tol = kDouble ? 1e-12 : 4 * static_cast<double>(std::numeric_limits<amrex::Real>::epsilon());
     auto source_at = [&] (double rel, amrex::MultiFab& S) {
         gust::State qp;
         qp.define(s.c.ba, s.c.dm);
@@ -326,7 +328,8 @@ TEST(CanopyTke, ExactDerivativeMatchesDifferences)
             const double dk = 2 * h * kk(iv);
             const double fdiff = (sp(iv) - sm(iv)) / dk;
             worst = std::max(worst, std::abs(fdiff - de(iv)) / (std::abs(de(iv)) + 1e-3));
-            if (fd(iv) > 0 && std::abs(L(iv) - 0.04 / fd(iv)) < 1e-12 * L(iv)) { ++n_capped_cells; }
+            // capped: L is the cap amrex::Real(alpha) / f, to its last rounding (1e-12 in double)
+            if (fd(iv) > 0 && std::abs(L(iv) - alpha_r / fd(iv)) < cap_tol * L(iv)) { ++n_capped_cells; }
         });
     }
     amrex::ParallelDescriptor::ReduceRealMax(worst);

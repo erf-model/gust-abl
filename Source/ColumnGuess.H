@@ -130,7 +130,8 @@ constexpr double kRibMaxBusingerDyer = 0.19;
 //! Rib = z1 g (theta_1 - theta_s) / (U1^2 theta0), held in [rib_min, rib_max] (init.column_rib_min, _max; and at
 //! most kRibMaxBusingerDyer with Businger-Dyer), gives zeta = z1/L from zeta = Rib (ln - psi_m)^2 / (ln - psi_h)
 //! (ln = ln((z1 + z0)/z0), zeta as the 3-D wall model's d/L, clamped to [-100, 100]), solved by ERF's fixed point
-//! under-relaxed by a half from the zeta of invL on entry (the previous step's) to 1e-10. Then u* = kappa U1 /
+//! under-relaxed by a half from the zeta of invL on entry (the previous step's) to 1e-10 in zeta (or, in single
+//! precision, where the step cycles within 64 float roundings of |zeta|: psi carries float rounding). Then u* = kappa U1 /
 //! (ln - psi_m) (above 1e-3 m/s), theta* = kappa (theta_1 - theta_s) / (ln - psi_h), q = -u* theta*, 1/L = zeta/z1,
 //! and the transfer coefficient ch = kappa u* / (ln - psi_h) (q = -ch (theta_1 - theta_s)). The psi functions are
 //! ERF's Businger-Dyer forms, or QNSE's on the stable side (qnse, StabilityFunctions.H); the denominators are kept
@@ -143,9 +144,10 @@ bool column_surface_most (double kappa, double z0, double z1, double U1, double 
 //! MOST at the column's surface for a given kinematic heat flux qs (K m/s, upward > 0), the time-marching column's
 //! heat_flux surface (ERF's surface_flux, ERF_MOSTStress.H): zeta = z1/L = -kappa g qs z1 / (theta0 u*^3) with
 //! u* = kappa U1 / (ln - psi_m(zeta)) (above 1e-3 m/s; the denominator above the wall law's floor, as
-//! column_surface_most), solved by the fixed point under-relaxed by a half from the zeta of invL on entry to 1e-10
-//! (zeta clamped to [-100, 100]), and once more from zeta = 0 when that fails (a seed above the upper stable root). Then theta* = -qs/u* and 1/L = zeta/z1. False when the fixed point does not
-//! converge in 20000 passes or zeta reaches the clamp (a downward flux too large for the wind has no root).
+//! column_surface_most), solved by the fixed point under-relaxed by a half from the zeta of invL on entry to 1e-10 (or where
+//! the step cycles within 64 amrex::Real roundings of |zeta|; zeta clamped to [-100, 100]), and once more from zeta = 0 when that
+//! fails (a seed above the upper stable root). Then theta* = -qs/u* and 1/L = zeta/z1. False when the fixed point
+//! does not converge in 20000 passes or zeta reaches the clamp (a downward flux too large for the wind has no root).
 bool column_surface_most_flux (double kappa, double z0, double z1, double U1, double qs, double grav, double theta0,
                                double den_floor, bool qnse, const StableCoefficients& sc, double& ustar, double& thstar,
                                double& invL);

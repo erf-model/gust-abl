@@ -256,7 +256,9 @@ TEST(ColumnMarching, FluxSurfaceMatchesTheClosedForm)
         const double zeta = z1 * il;
         const double pm = static_cast<double>(similarity_funs{}.calc_psi_m(static_cast<amrex::Real>(zeta)));
         const double ph = static_cast<double>(similarity_funs{}.calc_psi_h(static_cast<amrex::Real>(zeta)));
-        if (q < 0) { EXPECT_NEAR(pm, -5 * zeta, 1e-12); }
+        // psi_m is evaluated in amrex::Real: in single precision -5 zeta to a few roundings of zeta
+        const double eps_r = static_cast<double>(std::numeric_limits<amrex::Real>::epsilon());
+        if (q < 0) { EXPECT_NEAR(pm, -5 * zeta, tol(1e-12, 8 * eps_r * std::abs(5 * zeta))); }
         EXPECT_NEAR(us, kappa * U1 / (lz - pm), tol(1e-9, 1e-5) * us) << q;
         EXPECT_NEAR(zeta, -kappa * g * q * z1 / (theta0 * us * us * us), tol(1e-8, 1e-5) * std::abs(zeta)) << q;
         EXPECT_NEAR(ts, -q / us, 1e-15);
