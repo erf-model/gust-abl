@@ -76,6 +76,10 @@ enum class BuildingWallForm { fraction_stress, roof_stress, drag };
 //! every face (BuildingForcing.H).
 enum class BuildingWallSpeed { open_faces, all_faces };
 
+//! buildings.theta_mode: theta does not see the buildings, or their walls hold the reference
+//! profile's temperature or buildings.theta_surface (BuildingTheta.H).
+enum class BuildingThetaMode { none, ambient, fixed };
+
 //! buildings.wall_speed where it is not given: the open faces with the law on every wall, every
 //! face with the forms from before that choice.
 constexpr BuildingWallSpeed default_wall_speed (BuildingWallForm form)
@@ -104,6 +108,14 @@ struct BuildingsOptions
     //! fraction_stress, off with the other forms (BuildingTke.H).
     std::string wall_tke_name;
     bool wall_tke{true};
+    //! buildings.theta_mode as given (empty: not given) and its value: ambient by default with
+    //! fraction_stress, none with the other forms (BuildingTheta.H). Options built by hand
+    //! (tests) start from none: the reader sets the default.
+    std::string theta_mode_name;
+    BuildingThetaMode theta_mode{BuildingThetaMode::none};
+    //! buildings.theta_surface (K): the walls' temperature with buildings.theta_mode = fixed,
+    //! finite and > 0; required with fixed and refused without.
+    double theta_surface{0};
     std::vector<std::string> given;  //!< buildings.* keys in the inputs
     std::vector<std::string> parse_errors;   //!< value counts and repeats
     [[nodiscard]] bool active () const { return type != BuildingsType::none; }

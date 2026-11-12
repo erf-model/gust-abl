@@ -155,6 +155,7 @@ private:
     amrex::iMultiFab m_saved;    //!< the frozen decisions, for the live evaluation of run_norms
     ResidualFields m_R;
     amrex::MultiFab m_Rk_fluid;   //!< R_k with zeros in solid building cells (stage_norms); empty without them
+    amrex::MultiFab m_Rt_fluid;   //!< the same for R_theta
     SurfaceState m_ss;
     ResidualWorkspace m_rws;     //!< run_norms' residual scratch
     std::vector<std::string> m_names;

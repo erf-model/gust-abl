@@ -1,6 +1,7 @@
 #include "Residual.H"
 
 #include "BuildingForcing.H"
+#include "BuildingTheta.H"
 #include "BuildingTke.H"
 #include "CanopyDrag.H"
 #include "CanopyHeat.H"
@@ -280,6 +281,10 @@ void residual (const State& q, const ResidualInputs& in, const Mesh& mesh, const
         if (in.buildings == nullptr) { amrex::Abort("gust: residual: the buildings' k terms (building_tke) need their wall law (buildings)"); }
         in.building_tke->close_fluxes({&mesh.open_fraction(0), &mesh.open_fraction(1), &mesh.open_fraction(2)}, Gk);
     }
+    if (in.building_theta != nullptr) {
+        if (in.buildings == nullptr) { amrex::Abort("gust: residual: the buildings' theta terms (building_theta) need their wall law (buildings)"); }
+        in.building_theta->close_fluxes({&mesh.open_fraction(0), &mesh.open_fraction(1), &mesh.open_fraction(2)}, Gt);
+    }
     for (int c = 0; c < 3; ++c) {
         flux_divergence(velocity_loc(c), Gm[c], mesh, geom, tmp[c]);
         amrex::MultiFab::Subtract(*Rm[c], tmp[c], 0, 0, 1, 0);
@@ -344,6 +349,7 @@ void residual (const State& q, const ResidualInputs& in, const Mesh& mesh, const
     }
     if (in.buildings != nullptr) { in.buildings->apply_rows(q.u, q.v, q.w, R.u, R.v, R.w); }
     if (in.building_tke != nullptr) { in.building_tke->apply_rows(q.tke, R.tke, building_k_row(in)); }
+    if (in.building_theta != nullptr) { in.building_theta->apply_rows(q.theta, R.theta); }
 
     // A face shared by two boxes (or a periodic image) gets one value: the two
     // copies can differ in the last bits where a compiler contracts
@@ -427,6 +433,9 @@ void implicit_rows (const amrex::Array<const amrex::MultiFab*, AMREX_SPACEDIM>& 
     if (in.buildings != nullptr && momentum) {
         in.buildings->add_to_implicit((eq == Equation::u) ? 0 : (eq == Equation::v) ? 1 : 2,
                                       {&mesh.open_fraction(0), &mesh.open_fraction(1), &mesh.open_fraction(2)}, A);
+    }
+    if (in.building_theta != nullptr && eq == Equation::theta) {
+        in.building_theta->add_to_implicit({&mesh.open_fraction(0), &mesh.open_fraction(1), &mesh.open_fraction(2)}, A);
     }
     if (in.building_tke != nullptr && eq == Equation::tke) {
         in.building_tke->add_to_implicit({&mesh.open_fraction(0), &mesh.open_fraction(1), &mesh.open_fraction(2)}, A,

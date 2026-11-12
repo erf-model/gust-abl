@@ -40,7 +40,7 @@
 //
 // Not here: the flat-wall dissipation length of ERF and Kynema-SGF (their wall cells keep
 // the k equation, GUST's have the relaxation row, where the dissipation does not enter);
-// stability functions on building walls (neutral: k_w has no buoyancy term); theta (PR-42).
+// stability functions on building walls (neutral: k_w has no buoyancy term); theta (BuildingTheta.H).
 //
 // Ghost cells: d_b has one layer, periodic images, else the nearest domain column's along x
 // and y (as the ground's distance) and a large value below and above the domain. The rows

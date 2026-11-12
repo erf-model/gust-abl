@@ -39,6 +39,7 @@ add_executable(unit_tests
     Unit_Tests/test_SurfaceLayer.cpp
     Unit_Tests/test_SurfaceRoughness.cpp
     Unit_Tests/test_BuildingForcing.cpp
+    Unit_Tests/test_BuildingTheta.cpp
     Unit_Tests/test_BuildingTke.cpp
     Unit_Tests/test_Buildings.cpp
     Unit_Tests/test_Canopy.cpp
@@ -260,6 +261,13 @@ gust_add_test(NAME abort_buildings_restart_changed NP 1 LABELS "regression;smoke
               PREFIX ${EXPECT_ABORT} "io\\.restart = buildings_chk00000: the buildings inputs differ from the checkpoint's" --
               COMMAND $<TARGET_FILE:gust> ${BUILDINGS_CASE}/inputs_restart buildings.file=${BUILDINGS_CASE}/building_map_changed.txt
                       io.write_plotfile=0 ${GUST_TEST_AMREX_FLAGS})
+# A checkpoint written with theta's building terms (the default) does not continue without them.
+gust_add_test(NAME abort_buildings_restart_theta NP 1 LABELS "regression;smoke" RUN_DIR ${BUILDINGS_DIR}
+              FIXTURES_REQUIRED buildings
+              PREFIX ${EXPECT_ABORT} "io\\.restart = buildings_chk00000: the buildings inputs differ from the checkpoint's"
+                     "one from before theta had building terms with buildings\\.theta_mode = none" --
+              COMMAND $<TARGET_FILE:gust> ${BUILDINGS_CASE}/inputs_restart buildings.file=${BUILDINGS_CASE}/building_map.txt
+                      buildings.theta_mode=none ${GUST_TEST_AMREX_FLAGS})
 gust_add_test(NAME abort_buildings_restart_none NP 1 LABELS "regression;smoke" RUN_DIR ${BUILDINGS_DIR}
               FIXTURES_REQUIRED buildings
               PREFIX ${EXPECT_ABORT} "the checkpoint was written with buildings; give the run's buildings\\.\\* inputs" --
@@ -288,14 +296,35 @@ gust_add_test(NAME abort_buildings_wall_inputs NP 1 LABELS "regression;smoke"
               COMMAND $<TARGET_FILE:gust> ${BUILDINGS_CASE}/inputs_buildings buildings.file=${BUILDINGS_CASE}/building_map.txt
                       buildings.z0=0 buildings.wall_form=foo buildings.wall_tke=maybe buildings.wall_speed=some
                       ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_buildings_theta_inputs NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT} "buildings\\.theta_mode must be none, ambient or fixed \\(got warm\\)"
+                     "buildings\\.theta_surface = hot is not a number" --
+              COMMAND $<TARGET_FILE:gust> ${BUILDINGS_CASE}/inputs_buildings buildings.file=${BUILDINGS_CASE}/building_map.txt
+                      buildings.theta_mode=warm buildings.theta_surface=hot ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_buildings_theta_surface NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT} "buildings\\.theta_surface must be finite and > 0" --
+              COMMAND $<TARGET_FILE:gust> ${BUILDINGS_CASE}/inputs_buildings buildings.file=${BUILDINGS_CASE}/building_map.txt
+                      buildings.theta_mode=fixed buildings.theta_surface=-3 ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_buildings_theta_surface_missing NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT} "buildings\\.theta_surface is required with buildings\\.theta_mode = fixed" --
+              COMMAND $<TARGET_FILE:gust> ${BUILDINGS_CASE}/inputs_buildings buildings.file=${BUILDINGS_CASE}/building_map.txt
+                      buildings.theta_mode=fixed ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_buildings_theta_surface_unused NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT} "buildings\\.theta_surface has no effect without buildings\\.theta_mode = fixed" --
+              COMMAND $<TARGET_FILE:gust> ${BUILDINGS_CASE}/inputs_buildings buildings.file=${BUILDINGS_CASE}/building_map.txt
+                      buildings.theta_surface=305 ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_buildings_theta_form NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT} "buildings\\.theta_mode = ambient needs buildings\\.wall_form = fraction_stress" --
+              COMMAND $<TARGET_FILE:gust> ${BUILDINGS_CASE}/inputs_buildings buildings.file=${BUILDINGS_CASE}/building_map.txt
+                      buildings.wall_form=roof_stress buildings.theta_mode=ambient ${GUST_TEST_AMREX_FLAGS})
 # The defaults that follow buildings.wall_form, as the log gives them.
 foreach(form fraction_stress roof_stress drag)
     if(form STREQUAL "fraction_stress")
-        set(_want "buildings\\.wall_form = fraction_stress, buildings\\.wall_speed = open_faces, buildings\\.wall_tke = on")
+        set(_want "buildings\\.wall_form = fraction_stress, buildings\\.wall_speed = open_faces, buildings\\.wall_tke = on, buildings\\.theta_mode = ambient")
     elseif(form STREQUAL "roof_stress")
-        set(_want "buildings\\.wall_form = roof_stress, buildings\\.wall_speed = all_faces, buildings\\.wall_tke = off")
+        set(_want "buildings\\.wall_form = roof_stress, buildings\\.wall_speed = all_faces, buildings\\.wall_tke = off, buildings\\.theta_mode = none")
     else()
-        set(_want "buildings\\.wall_form = drag, buildings\\.wall_tke = off")
+        set(_want "buildings\\.wall_form = drag, buildings\\.wall_tke = off, buildings\\.theta_mode = none")
     endif()
     set(_dir ${CMAKE_CURRENT_BINARY_DIR}/run/buildings_defaults_${form})
     add_test(NAME buildings_defaults_${form}_clean
@@ -335,7 +364,7 @@ gust_add_test(NAME building_cube_run NP 2 LABELS "regression;smoke" RUN_DIR ${BU
                       ${GUST_TEST_AMREX_FLAGS})
 gust_add_test(NAME building_cube_flow NP 1 LABELS "regression;smoke" RUN_DIR ${BUILDING_CUBE_DIR}
               FIXTURES_REQUIRED building_cube
-              COMMAND ${Python3_EXECUTABLE} ${BUILDING_CUBE_CASE}/check_cube.py --latest cube_plt)
+              COMMAND ${Python3_EXECUTABLE} ${BUILDING_CUBE_CASE}/check_cube.py --latest cube_plt --theta-solid 300)
 # The form before the sides had the wall law (buildings.wall_form = roof_stress): its pinned values.
 set(BUILDING_CUBE_ROOF_DIR ${CMAKE_CURRENT_BINARY_DIR}/run/building_cube_roof_stress)
 add_test(NAME building_cube_roof_stress_clean
@@ -404,6 +433,70 @@ gust_add_test(NAME building_cube_drag_flow NP 1 LABELS "regression;smoke" RUN_DI
               FIXTURES_REQUIRED building_cube_drag
               COMMAND ${Python3_EXECUTABLE} ${BUILDING_CUBE_CASE}/check_cube.py --latest cube_plt --roof 2.136 --side 1.524
                       --k-roof 7.283 --k-ground 0.0086 --k-solid 1e9)
+# Walls 5 K warmer than the air, with gravity (buildings.theta_mode = fixed): the solid cells at 305 K, the heat
+# the walls give equal to the heat carried downstream, and the deck's values.
+set(BUILDING_CUBE_HEATED_DIR ${CMAKE_CURRENT_BINARY_DIR}/run/building_cube_heated)
+add_test(NAME building_cube_heated_clean
+         COMMAND ${Python3_EXECUTABLE} -c
+                 "import shutil, os, sys; shutil.rmtree(sys.argv[1], ignore_errors=True); os.makedirs(sys.argv[1])"
+                 ${BUILDING_CUBE_HEATED_DIR})
+set_tests_properties(building_cube_heated_clean PROPERTIES LABELS "regression;smoke" FIXTURES_SETUP building_cube_heated_clean)
+gust_add_test(NAME building_cube_heated_run NP 2 LABELS "regression;smoke" RUN_DIR ${BUILDING_CUBE_HEATED_DIR}
+              FIXTURES_REQUIRED building_cube_heated_clean FIXTURES_SETUP building_cube_heated
+              PREFIX ${EXPECT_ABORT} --success --log heated.log
+                     "buildings\\.theta_mode = fixed \\(buildings\\.theta_surface 305 K\\)" "gust: steady after" --
+              COMMAND $<TARGET_FILE:gust> ${BUILDING_CUBE_CASE}/inputs_cube_heated buildings.file=${BUILDING_CUBE_CASE}/cube.txt
+                      ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME building_cube_heated_heat NP 1 LABELS "regression;smoke" RUN_DIR ${BUILDING_CUBE_HEATED_DIR}
+              FIXTURES_REQUIRED building_cube_heated
+              COMMAND ${Python3_EXECUTABLE} ${BUILDING_CUBE_CASE}/check_cube_heat.py --latest cube_plt --log heated.log
+                      --theta-wall 305 --heat 585.5)
+gust_add_test(NAME building_cube_heated_flow NP 1 LABELS "regression;smoke" RUN_DIR ${BUILDING_CUBE_HEATED_DIR}
+              FIXTURES_REQUIRED building_cube_heated
+              COMMAND ${Python3_EXECUTABLE} ${BUILDING_CUBE_CASE}/check_cube.py --latest cube_plt --roof 2.870 --side 1.556
+                      --k-roof 0.432 --k-ground 0.0089 --theta-solid 305)
+# The heated block with its roof inside a layer (24.6 m: the roof's cells are 0.92 solid), so the wall cells'
+# reference-cell term carries most of their exchange: converges, the air stays between the inflow's and the walls'
+# temperature, and the heat balance closes.
+set(BUILDING_CUBE_HEATED_ROOF_DIR ${CMAKE_CURRENT_BINARY_DIR}/run/building_cube_heated_roof)
+add_test(NAME building_cube_heated_roof_clean
+         COMMAND ${Python3_EXECUTABLE} -c
+                 "import shutil, os, sys; shutil.rmtree(sys.argv[1], ignore_errors=True); os.makedirs(sys.argv[1])"
+                 ${BUILDING_CUBE_HEATED_ROOF_DIR})
+set_tests_properties(building_cube_heated_roof_clean PROPERTIES LABELS "regression;smoke"
+                     FIXTURES_SETUP building_cube_heated_roof_clean)
+gust_add_test(NAME building_cube_heated_roof_run NP 2 LABELS "regression;smoke" RUN_DIR ${BUILDING_CUBE_HEATED_ROOF_DIR}
+              FIXTURES_REQUIRED building_cube_heated_roof_clean FIXTURES_SETUP building_cube_heated_roof
+              PREFIX ${EXPECT_ABORT} --success --log heated.log "144 solid and 36 partial cells" "gust: steady after" --
+              COMMAND $<TARGET_FILE:gust> ${BUILDING_CUBE_CASE}/inputs_cube_heated
+                      buildings.file=${BUILDING_CUBE_CASE}/cube_24p6.txt ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME building_cube_heated_roof_heat NP 1 LABELS "regression;smoke" RUN_DIR ${BUILDING_CUBE_HEATED_ROOF_DIR}
+              FIXTURES_REQUIRED building_cube_heated_roof
+              COMMAND ${Python3_EXECUTABLE} ${BUILDING_CUBE_CASE}/check_cube_heat.py --latest cube_plt --log heated.log
+                      --theta-wall 305 --heat 842.7)
+# theta's terms do not act where theta is data: the key, when given, is refused. (Frozen theta needs
+# mesh.hierarchy_levels > 1 and buildings need 1, so the run stops on both; this pins the message.)
+gust_add_test(NAME abort_buildings_theta_frozen NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT} "buildings\\.theta_mode = ambient has no effect with simplec\\.theta = frozen" --
+              COMMAND $<TARGET_FILE:gust> ${BUILDING_CUBE_CASE}/inputs_cube buildings.file=${BUILDING_CUBE_CASE}/cube.txt
+                      simplec.theta=frozen buildings.theta_mode=ambient ${GUST_TEST_AMREX_FLAGS})
+# theta as before its building terms (buildings.theta_mode = none): the deck's values, theta solved inside the block
+# (not held at 300 K, as the deck's default holds it: building_cube_flow), and no line with the walls' heat.
+set(BUILDING_CUBE_NOTHETA_DIR ${CMAKE_CURRENT_BINARY_DIR}/run/building_cube_theta_none)
+add_test(NAME building_cube_theta_none_clean
+         COMMAND ${Python3_EXECUTABLE} -c
+                 "import shutil, os, sys; shutil.rmtree(sys.argv[1], ignore_errors=True); os.makedirs(sys.argv[1])"
+                 ${BUILDING_CUBE_NOTHETA_DIR})
+set_tests_properties(building_cube_theta_none_clean PROPERTIES LABELS "regression;smoke"
+                     FIXTURES_SETUP building_cube_theta_none_clean)
+gust_add_test(NAME building_cube_theta_none_run NP 2 LABELS "regression;smoke" RUN_DIR ${BUILDING_CUBE_NOTHETA_DIR}
+              FIXTURES_REQUIRED building_cube_theta_none_clean FIXTURES_SETUP building_cube_theta_none
+              PREFIX ${EXPECT_ABORT} --success "buildings\\.theta_mode = none" "gust: steady after" "!the walls take" --
+              COMMAND $<TARGET_FILE:gust> ${BUILDING_CUBE_CASE}/inputs_cube buildings.file=${BUILDING_CUBE_CASE}/cube.txt
+                      buildings.theta_mode=none ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME building_cube_theta_none_flow NP 1 LABELS "regression;smoke" RUN_DIR ${BUILDING_CUBE_NOTHETA_DIR}
+              FIXTURES_REQUIRED building_cube_theta_none
+              COMMAND ${Python3_EXECUTABLE} ${BUILDING_CUBE_CASE}/check_cube.py --latest cube_plt --theta-solid-free 300)
 # Walls smoother than the ground (buildings.z0 = 0.01 m, bc.surface_z0 = 0.1 m): the closure's length beside a wall
 # takes the wall's roughness, through the level's set-up (the turbulence plotfile's walldist).
 set(BUILDING_CUBE_SMOOTH_DIR ${CMAKE_CURRENT_BINARY_DIR}/run/building_cube_smooth_walls)

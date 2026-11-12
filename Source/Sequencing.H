@@ -61,6 +61,7 @@
 
 #include "BoundaryConditions.H"
 #include "BuildingForcing.H"
+#include "BuildingTheta.H"
 #include "BuildingTke.H"
 #include "Canopy.H"
 #include "CanopyDrag.H"
@@ -184,7 +185,7 @@ public:
                  const amrex::BoxArray& ba, const amrex::DistributionMapping& dm, const std::string& label,
                  bool newton = false, const amrex::MultiFab* z0_fine = nullptr, const Canopy* canopy = nullptr,
                  const amrex::MultiFab* canopy_fine_detJ = nullptr, BuildingForcing* buildings = nullptr,
-                 const BuildingTke* building_tke = nullptr);
+                 const BuildingTke* building_tke = nullptr, const BuildingTheta* building_theta = nullptr);
     // res_in, the stage's copy of it and the driver's diffusivity point into
     // this object: it can be neither copied nor moved.
     LevelSolver (const LevelSolver&) = delete;

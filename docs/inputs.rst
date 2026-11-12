@@ -286,6 +286,12 @@ Quick reference
    * - ``buildings.wall_tke``
      - ``on`` with ``fraction_stress``, else ``off``
      - The closure sees the buildings: wall value of k, solid cells at the floor, distance to buildings in the length scale
+   * - ``buildings.theta_mode``
+     - ``ambient`` with ``fraction_stress``, else ``none``
+     - How theta meets a building: no terms, or walls at the reference profile's or a given temperature
+   * - ``buildings.theta_surface``
+     - none
+     - The walls' temperature with ``buildings.theta_mode = fixed`` (K)
    * - **Named set-ups** (`abl`_)
      -
      -
@@ -955,7 +961,7 @@ inputs then change the answer, not only the path; a checkpoint of fully frozen c
 
 See :doc:`buildings`. The geometry is built in a run without ``steady.stage`` and written to the plotfile as
 ``building_beta`` and ``building_wall``. With a stage it acts on momentum: SIMPLEC, z-line sweeps, one level, and
-``solver.poisson_backend`` other than ``mlmg``; others are refused. It acts on the closure too (``buildings.wall_tke``). A key that has no effect with ``buildings.type = none`` is refused. A restart
+``solver.poisson_backend`` other than ``mlmg``; others are refused. It acts on the closure too (``buildings.wall_tke``) and on theta (``buildings.theta_mode``). A key that has no effect with ``buildings.type = none`` is refused. A restart
 refuses buildings other than those of the run it continues.
 
 .. list-table::
@@ -989,6 +995,12 @@ refuses buildings other than those of the run it continues.
    * - ``buildings.wall_tke``
      - ``on`` with ``buildings.wall_form = fraction_stress``, else ``off``
      - ``on`` or ``off``. ``on``: solid cells hold k at ``turb.tke_floor``, wall cells relax k to ``u*^2 / Cmu0^2`` of the wall law, k does not diffuse through blocked faces, and the closure's length takes the nearer of the ground and the nearest building wall, each with its own roughness. ``off``: the closure does not see the buildings. ``on`` is refused unless ``buildings.wall_form = fraction_stress``.
+   * - ``buildings.theta_mode``
+     - ``ambient`` with ``buildings.wall_form = fraction_stress``, else ``none``
+     - ``none``, ``ambient`` or ``fixed``. ``ambient`` and ``fixed``: solid cells hold theta at the walls' temperature, each wall exchanges heat with its cell by the form 7 law for a given surface temperature (neutral, with the wall law's u*), and theta does not diffuse through blocked faces. ``ambient``: the walls are at the reference profile (``bc.theta_profile``) at their height. ``fixed``: at ``buildings.theta_surface``. ``none``: theta does not see the buildings. ``ambient`` and ``fixed`` are refused unless ``buildings.wall_form = fraction_stress``, and with ``simplec.theta = frozen`` when given.
+   * - ``buildings.theta_surface``
+     - none
+     - Finite and > 0 (K). Required with ``buildings.theta_mode = fixed``; refused otherwise.
 
 ``abl``
 -------

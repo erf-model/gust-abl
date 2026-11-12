@@ -1,5 +1,6 @@
 #include "Simplec.H"
 
+#include "BuildingTheta.H"
 #include "BuildingTke.H"
 #include "CVFluxes.H"
 #include "CanopyHeat.H"
@@ -411,7 +412,8 @@ void residual_scales (const JvpScales& s, amrex::Real H, amrex::Real scale[6])
 
 void stage_norms (const ResidualFields& Rf, const State& q, const SurfaceState* ss, const JvpScales& s, amrex::Real height,
                   const amrex::Geometry& geom, std::vector<amrex::Real>& res, std::vector<amrex::Real>& mon,
-                  const BuildingTke* building_tke, amrex::MultiFab* fluid_tke)
+                  const BuildingTke* building_tke, amrex::MultiFab* fluid_tke, const BuildingTheta* building_theta,
+                  amrex::MultiFab* fluid_theta)
 {
     res.assign(6, 0);
     mon.assign(ss != nullptr ? 3 : 2, 0);
@@ -422,6 +424,13 @@ void stage_norms (const ResidualFields& Rf, const State& q, const SurfaceState* 
         amrex::MultiFab::Copy(*fluid_tke, Rf.tke, 0, 0, 1, 0);
         building_tke->zero_solid_cells(*fluid_tke);
         R[5] = fluid_tke;
+    }
+    if (building_theta != nullptr) {
+        if (fluid_theta == nullptr) { amrex::Abort("gust: stage_norms: the buildings' theta terms need the field fluid_theta"); }
+        if (fluid_theta->empty()) { fluid_theta->define(Rf.theta.boxArray(), Rf.theta.DistributionMap(), 1, 0); }
+        amrex::MultiFab::Copy(*fluid_theta, Rf.theta, 0, 0, 1, 0);
+        building_theta->zero_solid_cells(*fluid_theta);
+        R[4] = fluid_theta;
     }
     amrex::Real scale[6];
     residual_scales(s, height, scale);
@@ -458,7 +467,8 @@ bool SimplecStage::confidence (const std::vector<amrex::Real>& threshold, amrex:
         const amrex::Box bx = mfi.validbox();
         const auto ru = m_R.u.const_array(mfi), rv = m_R.v.const_array(mfi), rw = m_R.w.const_array(mfi);
         // The solid building cells' rows of k are left out, as in the norm (compute_norms filled m_Rk_fluid).
-        const auto rp = m_R.p.const_array(mfi), rt = m_R.theta.const_array(mfi);
+        const auto rp = m_R.p.const_array(mfi);
+        const auto rt = (m_Rt_fluid.empty() ? m_R.theta : m_Rt_fluid).const_array(mfi);
         const auto rk = (m_Rk_fluid.empty() ? m_R.tke : m_Rk_fluid).const_array(mfi);
         const auto d = dist.const_array(mfi);
         ops.eval(bx, data, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept -> amrex::GpuTuple<amrex::Long, amrex::Real>
@@ -484,7 +494,7 @@ bool SimplecStage::confidence (const std::vector<amrex::Real>& threshold, amrex:
 void SimplecStage::compute_norms (const State& q)
 {
     stage_norms(m_R, q, m_in.surface != nullptr ? &m_ss : nullptr, m_in.jvp_scales, m_height, m_geom, m_res, m_mon,
-                m_in.building_tke, &m_Rk_fluid);
+                m_in.building_tke, &m_Rk_fluid, m_opt.theta_frozen ? nullptr : m_in.building_theta, &m_Rt_fluid);
 }
 
 void SimplecStage::iterate (State& q, const amrex::MultiFab& dtau)

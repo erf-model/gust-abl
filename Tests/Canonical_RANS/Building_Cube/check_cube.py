@@ -34,9 +34,14 @@ def main():
     ap.add_argument("--k-roof", type=float, default=0.411, help="k in the roof's wall cell (m2/s2), within 2 %%")
     ap.add_argument("--k-ground", type=float, default=0.0151, help="k in a side's wall cell of the first layer (m2/s2), within 2 %%")
     ap.add_argument("--k-solid", type=float, default=1.001e-6, help="largest k allowed in a solid cell (m2/s2); the deck's turb.tke_floor is 1e-6")
+    ap.add_argument("--theta-solid", type=float, default=None,
+                    help="theta every solid cell must hold (K, within 1e-9): the walls' temperature with buildings.theta_mode = ambient or fixed")
+    ap.add_argument("--theta-solid-free", type=float, default=None,
+                    help="theta the solid cells must NOT all hold (K; some cell off by more than 1e-6): with "
+                         "buildings.theta_mode = none theta is solved inside the block, as before its building terms")
     a = ap.parse_args()
     name = sorted(glob.glob(a.plotfile + "[0-9]*"))[-1] if a.latest else a.plotfile
-    hdr, d = erf_plotfile.read_fields(name, ["u", "v", "w", "tke", "building_beta"])
+    hdr, d = erf_plotfile.read_fields(name, ["u", "v", "w", "tke", "theta", "building_beta"])
     u, v, w, beta = d["u"], d["v"], d["w"], d["building_beta"]
     nx, ny, nz = [hdr["hi"][n] - hdr["lo"][n] + 1 for n in range(3)]
     cells = [(i, j, k) for i in range(nx) for j in range(ny) for k in range(nz)]
@@ -78,6 +83,17 @@ def main():
     print(f"largest k in a solid cell {k_solid:.3e} m2/s2 (at most {a.k_solid:.3e})")
     if k_solid > a.k_solid:
         bad.append("k in the solid cells is above its floor")
+    # theta in the solid cells: held at the walls' temperature, or solved as before theta's building terms.
+    off = max(abs(d["theta"][i][j][k] - (a.theta_solid if a.theta_solid is not None else (a.theta_solid_free or 0.0)))
+              for i, j, k in cells if beta[i][j][k] >= 1)
+    if a.theta_solid is not None:
+        print(f"largest |theta - {a.theta_solid}| in a solid cell {off:.3e} K (held: at most 1e-9)")
+        if off > 1e-9:
+            bad.append("theta in the solid cells is not the walls' temperature")
+    if a.theta_solid_free is not None:
+        print(f"largest |theta - {a.theta_solid_free}| in a solid cell {off:.3e} K (solved: more than 1e-6)")
+        if off <= 1e-6:
+            bad.append("theta in the solid cells is held, not solved")
     if behind >= 0:
         bad.append("no reversal behind the cube")
     if over <= far:

@@ -58,6 +58,7 @@ namespace gust {
 
 class BuildingForcing;
 class BuildingTke;
+class BuildingTheta;
 class CanopyFaceDrag;
 class CanopyHeat;
 struct CanopyRows;
@@ -157,6 +158,9 @@ struct ResidualInputs
     //! rates give the wall value of k. The wall distance given to the closure is already
     //! limited by it (BuildingTke::limit_wall_distance).
     const BuildingTke* building_tke{nullptr};
+    //! The buildings' terms of theta (BuildingTheta.H); null: none. Needs buildings, whose
+    //! rates give the walls' heat exchange.
+    const BuildingTheta* building_theta{nullptr};
 };
 
 //! Scratch fields of residual() and jvp, kept between calls so that a

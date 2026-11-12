@@ -4,6 +4,7 @@
 #include "BoundaryConditions.H"
 #include "Buildings.H"
 #include "BuildingForcing.H"
+#include "BuildingTheta.H"
 #include "BuildingTke.H"
 #include "Canopy.H"
 #include "CanopyDrag.H"
@@ -177,6 +178,11 @@ void run ()
             err.emplace_back("solver.poisson_backend = mlmg cannot solve with buildings (no solid cells in its operator); use gmres_mlmg or gmres_fft");
         }
     }
+    if (solve && buildings_opt.active() && simplec.theta_frozen && !buildings_opt.theta_mode_name.empty()
+        && buildings_opt.theta_mode != BuildingThetaMode::none) {
+        err.emplace_back("buildings.theta_mode = " + buildings_opt.theta_mode_name + " has no effect with simplec.theta = frozen "
+                         "(theta is data, not solved; leave the key out or give none)");
+    }
     if (solve && canopy_opt.active() && canopy_opt.heat.on() && !simplec.theta_frozen
         && std::find(canopy_opt.given.begin(), canopy_opt.given.end(), "heat_frozen") != canopy_opt.given.end()) {
         err.emplace_back("canopy.heat_frozen has no effect without simplec.theta = frozen (theta is solved, and the leaf "
@@ -280,7 +286,18 @@ void run ()
                 amrex::Print() << ", buildings.wall_speed = "
                                << (buildings_opt.wall_speed == BuildingWallSpeed::open_faces ? "open_faces" : "all_faces");
             }
-            amrex::Print() << ", buildings.wall_tke = " << (buildings_opt.wall_tke ? "on" : "off") << "\n";
+            amrex::Print() << ", buildings.wall_tke = " << (buildings_opt.wall_tke ? "on" : "off");
+            // theta's terms act where theta is solved: with simplec.theta = frozen it is data. (Not reached
+            // today: frozen theta needs mesh.hierarchy_levels > 1 and buildings need 1. The guards here, in
+            // building_heat below and in SimplecStage::compute_norms are for when buildings run on levels.)
+            const bool heat = buildings_opt.theta_mode != BuildingThetaMode::none && !simplec.theta_frozen;
+            amrex::Print() << ", buildings.theta_mode = "
+                           << (!heat ? "none" : buildings_opt.theta_mode == BuildingThetaMode::fixed ? "fixed" : "ambient");
+            if (heat && buildings_opt.theta_mode == BuildingThetaMode::fixed) {
+                amrex::Print() << " (buildings.theta_surface " << buildings_opt.theta_surface << " K)";
+            }
+            if (!heat && buildings_opt.theta_mode != BuildingThetaMode::none) { amrex::Print() << " (simplec.theta = frozen)"; }
+            amrex::Print() << "\n";
         }
         if (restart) { Canopy::check_restart(in.io.restart, canopy_opt.active() ? Canopy::hash_inputs(canopy_opt) : ""); }
         if (!canopy_opt.active()) { return; }
@@ -503,6 +520,8 @@ void run ()
         setup.log = iteration_log(in.io.iteration_log);
         BuildingForcing building_forcing;
         BuildingTke building_tke;
+        BuildingTheta building_theta;
+        const bool building_heat = buildings.active() && buildings_opt.theta_mode != BuildingThetaMode::none && !simplec.theta_frozen;
         if (buildings.active()) {
             const amrex::Long sealed = count_sealed_fluid_cells(buildings, geom);
             if (sealed > 0) {
@@ -515,10 +534,14 @@ void run ()
                 building_tke.build(buildings, building_forcing, buildings_opt, geom, state.z_phys_nd, closure_constants(copt).tke_floor,
                                    copt.Cmu0);
             }
+            if (building_heat) {
+                building_theta.build(buildings, building_forcing, buildings_opt, geom, state.z_phys_nd, mesh.detJ, bin.theta_ref);
+            }
         }
         LevelSolver level0(setup, mesh, geom, state.z_phys_nd, ba, dm, "", newton, nullptr,
                            canopy.active() ? &canopy : nullptr, nullptr, buildings.active() ? &building_forcing : nullptr,
-                           (buildings.active() && buildings_opt.wall_tke) ? &building_tke : nullptr);
+                           (buildings.active() && buildings_opt.wall_tke) ? &building_tke : nullptr,
+                           building_heat ? &building_theta : nullptr);
         if (buildings.active()) {
             // After the wall distance above: its Poisson solve does not see the buildings.
             mesh.set_open_faces(buildings.beta_face(0), buildings.beta_face(1), buildings.beta_face(2), buildings.beta(), geom);
@@ -607,6 +630,13 @@ void run ()
                            << " s, " << acc.au << " AU\n";
         }
         if (!levels.empty()) { amrex::Print() << sequencing_report(levels, driver.history(), status, sopt.criterion.residual_ref_iterations); }
+        if (building_heat && v.status != SteadyStatus::Diverged) {
+            // The walls' heat exchange at the final state (its ghost cells and the law's rates at it).
+            bc.fill_ghosts(state, res_in.surface, fopt.buoyancy, false, nullptr);
+            building_forcing.update(state.u, state.v, state.w);
+            amrex::Print() << "gust: buildings: the walls take " << double(building_theta.wall_heat(state.theta))
+                           << " K m^3/s of heat from the air (negative: they heat it)\n";
+        }
         check_overwrite();   // the step is final here, before any output
         if (in.io.write_plotfile == 1) {
             const auto name = write_plotfile(in.io.plot_file, state, geom, &mesh.detJ, canopy_plot, lad_plot, beta_plot, wall_plot);

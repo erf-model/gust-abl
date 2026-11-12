@@ -403,9 +403,9 @@
 # ==================================================================================================================
 # See docs/buildings.rst. The geometry is built in a run without steady.stage and written to the plotfile as
 # building_beta and building_wall. With a stage it acts on momentum: SIMPLEC, z-line sweeps, one level, and
-# solver.poisson_backend other than mlmg; others are refused. It acts on the closure too (buildings.wall_tke). A key
-# that has no effect with buildings.type = none is refused. A restart refuses buildings other than those of the run
-# it continues.
+# solver.poisson_backend other than mlmg; others are refused. It acts on the closure too (buildings.wall_tke) and on
+# theta (buildings.theta_mode). A key that has no effect with buildings.type = none is refused. A restart refuses
+# buildings other than those of the run it continues.
 #
 # buildings.type = none
 #     none or immersed_forcing.
@@ -442,6 +442,17 @@
 #     does not diffuse through blocked faces, and the closure's length takes the nearer of the ground and the
 #     nearest building wall, each with its own roughness. off: the closure does not see the buildings. on is refused
 #     unless buildings.wall_form = fraction_stress.
+#
+# buildings.theta_mode =    # ambient with buildings.wall_form = fraction_stress, else none
+#     none, ambient or fixed. ambient and fixed: solid cells hold theta at the walls' temperature, each wall
+#     exchanges heat with its cell by the form 7 law for a given surface temperature (neutral, with the wall law's
+#     u*), and theta does not diffuse through blocked faces. ambient: the walls are at the reference profile
+#     (bc.theta_profile) at their height. fixed: at buildings.theta_surface. none: theta does not see the buildings.
+#     ambient and fixed are refused unless buildings.wall_form = fraction_stress, and with simplec.theta = frozen
+#     when given.
+#
+# buildings.theta_surface =    # none
+#     Finite and > 0 (K). Required with buildings.theta_mode = fixed; refused otherwise.
 
 # ==================================================================================================================
 # abl

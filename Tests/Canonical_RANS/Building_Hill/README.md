@@ -36,7 +36,9 @@ with either `buildings.wall_speed`. The distance to the building changed after t
 three cells up), as each roof cell's small side was drawn half a cell in from its face up to the neighbour's roof; it
 is now within 0.07 m (12.37 m), the difference of two columns' roofs. 1430 cells' distances moved, by -0.07 to
 +0.63 m, and the answer differs from `main` at 8448d15 by at most 0.03 m/s in u and 0.044 m²/s² in k, in the same
-152 iterations. The log notes that 36 of the 156 wall cells, the roof's, are within 10 z0 of their
+152 iterations. Theta's building terms (`buildings.theta_mode`, `ambient` by default) leave the velocities and k of
+this deck bit for bit, in the same 152 iterations (measured against `buildings.theta_mode = none`); theta differs by
+up to 0.006 K. The log notes that 36 of the 156 wall cells, the roof's, are within 10 z0 of their
 wall.
 
 Earlier forms, measured once before the side's area was corrected (no test runs them; the values move by up to
