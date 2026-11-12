@@ -424,7 +424,8 @@
 #
 # buildings.z0 = 0.1
 #     Finite and > 0 (m). Refused with buildings.wall_form = drag. The law reads distances below 10 z0 as 10 z0
-#     (docs/buildings.rst, Limits).
+#     (docs/buildings.rst, Limits). With buildings.wall_tke = on it is also the roughness in the closure's length
+#     beside a wall (docs/buildings.rst, Length scale).
 #
 # buildings.wall_form = fraction_stress
 #     fraction_stress: the form 7 wall law on roofs, undersides and sides, with the fixed rows. roof_stress: the law
@@ -438,9 +439,9 @@
 #
 # buildings.wall_tke =    # on with buildings.wall_form = fraction_stress, else off
 #     on or off. on: solid cells hold k at turb.tke_floor, wall cells relax k to u*^2 / Cmu0^2 of the wall law, k
-#     does not diffuse through blocked faces, and the closure's wall distance is the smaller of the ground's and the
-#     nearest building wall's. off: the closure does not see the buildings. on is refused unless buildings.wall_form
-#     = fraction_stress.
+#     does not diffuse through blocked faces, and the closure's length takes the nearer of the ground and the
+#     nearest building wall, each with its own roughness. off: the closure does not see the buildings. on is refused
+#     unless buildings.wall_form = fraction_stress.
 
 # ==================================================================================================================
 # abl

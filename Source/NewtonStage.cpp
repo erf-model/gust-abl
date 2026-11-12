@@ -217,7 +217,8 @@ void NewtonStage::run_norms (State& q)
         const FreezeScope scope = m_closure->freeze_scope();
         m_closure->restore_switches(m_saved, scope, q.p.boxArray(), q.p.DistributionMap(), m_geom);
     }
-    stage_norms(m_R, q, m_in.surface != nullptr ? &m_ss : nullptr, m_in.jvp_scales, m_height, m_geom, m_res, m_mon);
+    stage_norms(m_R, q, m_in.surface != nullptr ? &m_ss : nullptr, m_in.jvp_scales, m_height, m_geom, m_res, m_mon,
+                m_in.building_tke, &m_Rk_fluid);
 }
 
 void NewtonStage::write_checkpoint (const std::string& dir) const

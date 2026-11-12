@@ -29,13 +29,15 @@ constant to within 2 %. These values are not validated.
 
 | `buildings.wall_speed` | Iterations | k in an inner corner, second layer | k in an inner corner, fourth layer |
 |---|---|---|---|
-| `open_faces` (default) | 138 | 0.0227 m²/s² | 0.633 m²/s² |
-| `all_faces` | 139 | 0.0081 m²/s² | 0.432 m²/s² |
+| `open_faces` (default) | 135 | 0.0227 m²/s² | 0.633 m²/s² |
+| `all_faces` | 141 | 0.0081 m²/s² | 0.432 m²/s² |
 
 Measured on 2 and 4 ranks; the tests run on 2 and pin the k values within 5 %. The iteration counts are not pinned. The
 velocities of the two forms differ by about 0.02 m/s at most (w by 0.0204 m/s in the inner corner), and k by up to
-0.20 m²/s². The `all_faces` plotfile equals the one of `main` before the
-open faces' mean (c57ad06) at zero tolerance.
+0.20 m²/s². The `all_faces` plotfile equalled the one of `main` before the
+open faces' mean (c57ad06) at zero tolerance. Since the solid cells' rows left the residual norm of k the runs stop at
+other iterations than `main` at 8448d15 (138 and 139); the default's velocities differ from that plotfile by at most
+1.4e-4 m/s, and its building distances not at all.
 
 ## CTest
 `building_courtyard_clean`, `building_courtyard_run`, `building_courtyard_flow`, `building_courtyard_all_faces_clean`,

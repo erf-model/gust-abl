@@ -276,7 +276,7 @@ Quick reference
      - Solid fractions within this of 0 or 1 become 0 or 1
    * - ``buildings.z0``
      - ``0.1``
-     - Roughness of the wall law on buildings (m)
+     - Roughness of the wall law on buildings and, with ``buildings.wall_tke = on``, of the closure's length beside their walls (m)
    * - ``buildings.wall_form``
      - ``fraction_stress``
      - ``fraction_stress`` (form 7 wall law on every wall), ``roof_stress`` (on roofs and undersides alone) or ``drag`` (fixed rows alone)
@@ -979,7 +979,7 @@ refuses buildings other than those of the run it continues.
      - In [0, 0.5). Below it a fraction is 0, within it of 1 the fraction is 1. At 0, round-off alone is clipped.
    * - ``buildings.z0``
      - ``0.1``
-     - Finite and > 0 (m). Refused with ``buildings.wall_form = drag``. The law reads distances below ``10 z0`` as ``10 z0`` (:doc:`buildings`, Limits).
+     - Finite and > 0 (m). Refused with ``buildings.wall_form = drag``. The law reads distances below ``10 z0`` as ``10 z0`` (:doc:`buildings`, Limits). With ``buildings.wall_tke = on`` it is also the roughness in the closure's length beside a wall (:doc:`buildings`, Length scale).
    * - ``buildings.wall_form``
      - ``fraction_stress``
      - ``fraction_stress``: the form 7 wall law on roofs, undersides and sides, with the fixed rows. ``roof_stress``: the law on roofs and undersides alone, the sides with their fixed rows. ``drag``: the fixed rows alone.
@@ -988,7 +988,7 @@ refuses buildings other than those of the run it continues.
      - ``open_faces`` or ``all_faces``. ``open_faces``: each velocity component of a wall cell's speed is the mean of its two faces that are not fixed rows, so an edge or corner cell takes the open face's value. ``all_faces``: the mean of both faces, the form before. Either may be given with ``roof_stress``. Refused with ``buildings.wall_form = drag`` (no wall law). A restart from a checkpoint written before this key needs ``all_faces``.
    * - ``buildings.wall_tke``
      - ``on`` with ``buildings.wall_form = fraction_stress``, else ``off``
-     - ``on`` or ``off``. ``on``: solid cells hold k at ``turb.tke_floor``, wall cells relax k to ``u*^2 / Cmu0^2`` of the wall law, k does not diffuse through blocked faces, and the closure's wall distance is the smaller of the ground's and the nearest building wall's. ``off``: the closure does not see the buildings. ``on`` is refused unless ``buildings.wall_form = fraction_stress``.
+     - ``on`` or ``off``. ``on``: solid cells hold k at ``turb.tke_floor``, wall cells relax k to ``u*^2 / Cmu0^2`` of the wall law, k does not diffuse through blocked faces, and the closure's length takes the nearer of the ground and the nearest building wall, each with its own roughness. ``off``: the closure does not see the buildings. ``on`` is refused unless ``buildings.wall_form = fraction_stress``.
 
 ``abl``
 -------

@@ -7,9 +7,19 @@
 //   (UT-5.4.4); the distance to a block equals the closed form of a box, on every box layout and
 //   across a periodic seam, and that to an L with a step the smallest over its boxes; the diffusive
 //   flux of k and its couplings are closed on blocked faces.
+// After 5.4 (tracker row N-88): the closure's d + z0 is the smaller of the ground's and the nearest
+//   wall's, each with its own roughness, with a uniform ground z0 and with a map; the distance beside a
+//   step between two roofs whose lower one ends inside a layer, and to a block whose sides and top lie
+//   inside cells, are the boxes'; the norm of R_k leaves the solid cells out; the rows through
+//   residual() without a surface layer.
 #include "BuildingTke.H"
 #include "Closure.H"
+#include "BoundaryConditions.H"
 #include "PoissonTestHelpers.H"
+#include "PseudoTime.H"
+#include "Residual.H"
+#include "Simplec.H"
+#include "SurfaceRoughness.H"
 
 #include <AMReX_ParallelDescriptor.H>
 
@@ -61,12 +71,12 @@ std::string write_text (const std::string& name, const std::function<void(std::o
     return (dir / name).string();
 }
 
-// 8 x 8 x 24 cells of 10 m.
-PCase mesh_case (int mgs, bool periodic = false)
+// 8 x 8 x 24 cells of 10 m (dz: the layers' height in place of 10 m).
+PCase mesh_case (int mgs, bool periodic = false, double dz = 10)
 {
     PCase c;
     c.in.mesh.n_cell = amrex::IntVect(8, 8, 24);
-    c.in.mesh.prob_hi = {80, 80, 240};
+    c.in.mesh.prob_hi = {80, 80, static_cast<amrex::Real>(24 * dz)};
     c.in.mesh.is_periodic = {periodic ? 1 : 0, periodic ? 1 : 0, 0};
     c.in.mesh.max_grid_size = {mgs, mgs};
     c.in.terrain.smoothing = 0;
@@ -76,7 +86,10 @@ PCase mesh_case (int mgs, bool periodic = false)
 
 // A map in ERF's format on n x n points 20 m apart from 0: tile (ix, iy) covers 20 ix - 10 .. 20 ix + 10
 // along x, so tile 2 is the cells 3 and 4. height(ix, iy) in m.
-gust::BuildingsOptions tile_options (const std::string& name, const std::function<double(int, int)>& height, int n = 5, double z0 = 0.1)
+// spacing: the points' distance in place of 20 m (15 m: tile 2 covers 22.5 .. 37.5 m, three quarters of the
+// cells 2 and 3).
+gust::BuildingsOptions tile_options (const std::string& name, const std::function<double(int, int)>& height, int n = 5, double z0 = 0.1,
+                                     double spacing = 20)
 {
     gust::BuildingsOptions o;
     o.type = gust::BuildingsType::immersed_forcing;
@@ -85,7 +98,7 @@ gust::BuildingsOptions tile_options (const std::string& name, const std::functio
     o.z0 = z0;
     o.file = write_text(name, [&] (std::ostream& os) {
         os << n << "\n" << n << "\n";
-        for (int r = 0; r < 2; ++r) { for (int p = 0; p < n; ++p) { os << 20 * p << "\n"; } }
+        for (int r = 0; r < 2; ++r) { for (int p = 0; p < n; ++p) { os << spacing * p << "\n"; } }
         for (int i = 0; i < n; ++i) { for (int j = 0; j < n; ++j) { os << height(i, j) << "\n"; } }
     });
     return o;
@@ -111,7 +124,9 @@ struct Set
     gust::BuildingForcing law;
     gust::BuildingTke tke;
     amrex::MultiFab ox, oy, oz;
-    Set (int mgs, const gust::BuildingsOptions& opt, bool periodic = false) : c(mesh_case(mgs, periodic)), o(opt)
+    double dz;
+    Set (int mgs, const gust::BuildingsOptions& opt, bool periodic = false, double layer = 10)
+        : c(mesh_case(mgs, periodic, layer)), o(opt), dz(layer)
     {
         b.build(o, c.geom, c.z, c.ba, c.dm);
         law.build(b, o, c.geom, c.mesh.detJ);
@@ -156,7 +171,7 @@ std::pair<double, amrex::Long> distance_error (const Set& s, const std::vector<s
         const auto wl = s.b.wall().const_array(mfi);
         amrex::LoopOnCpu(mfi.validbox(), [&] (int i, int j, int k) {
             if (beta(i, j, k) > 0 || wl(i, j, k, gust::kWallMask) != 0) { return; }
-            const double want = box_distance(boxes, 10 * i + 5, 10 * j + 5, 10 * k + 5, periodic);
+            const double want = box_distance(boxes, 10 * i + 5, 10 * j + 5, s.dz * (k + 0.5), periodic);
             err = std::max(err, std::abs(static_cast<double>(d(i, j, k)) - want) / want);
             ++n;
         });
@@ -258,7 +273,7 @@ TEST (BuildingTke, LimitKeepsTheGroundsDistanceWhereItIsNearer)
         gust::height_above_ground(s.c.z, dist);
         before.define(dist.boxArray(), dist.DistributionMap(), 1, 1);
         amrex::MultiFab::Copy(before, dist, 0, 0, 1, 1);
-        const amrex::Long n = s.tke.limit_wall_distance(dist);
+        const amrex::Long n = s.tke.limit_wall_distance(dist, gust::Roughness(amrex::Real(0.1)));   // buildings.z0, so no shift
         amrex::Long want = 0, wrong = 0;
         for (amrex::MFIter mfi(dist, false); mfi.isValid(); ++mfi) {
             const auto a = dist.const_array(mfi);
@@ -283,6 +298,297 @@ TEST (BuildingTke, LimitKeepsTheGroundsDistanceWhereItIsNearer)
         EXPECT_NEAR(value_at(dist, 5, 3, 3), 5.0, 100 * rtol) << "a side's wall cell at 35 m: 5 m from the side";
         EXPECT_NEAR(value_at(dist, 3, 3, 7), 30.0, 100 * rtol * 30) << "above the roof: 30 m, not 75 m";
     }
+}
+
+// The closure adds the ground's z0 to the distance it is given. Where a building's wall is nearer by d + z0, with
+// its own z0, the sum is the wall's: 5.01 m in a side's wall cell with buildings.z0 = 0.01 m on ground of z0 = 1 m,
+// not 6 m. Elsewhere the ground's distance keeps its bits. With a uniform z0 and with a map (1 m for x < 40 m,
+// 0.05 m beyond).
+TEST (BuildingTke, LengthTakesTheNearerWallsOwnRoughness)
+{
+    const double z0b = 0.01;
+    for (const int mgs : {8, 3}) {
+        for (const bool mapped : {false, true}) {
+            Set s(mgs, tile_options("block45r.txt", [] (int i, int j) { return (i == 2 && j == 2) ? 45 : 0; }, 5, z0b));
+            const auto z0g = [mapped] (int i) { return (mapped && i >= 4) ? 0.05 : 1.0; };
+            amrex::MultiFab map;
+            if (mapped) {
+                const std::string file = write_text("z0map.xyz", [&] (std::ostream& os) {
+                    for (int j = 0; j < 8; ++j) { for (int i = 0; i < 8; ++i) { os << 10 * i + 5 << " " << 10 * j + 5 << " " << z0g(i) << "\n"; } }
+                });
+                gust::read_roughness_map(file, "bc.surface_z0_file", 1, 2.0, s.c.geom, s.c.ba, s.c.dm, map);
+            }
+            const gust::Roughness rough = mapped ? gust::Roughness(amrex::Real(0), &map) : gust::Roughness(amrex::Real(1));
+            amrex::MultiFab dist, before;
+            gust::height_above_ground(s.c.z, dist);
+            before.define(dist.boxArray(), dist.DistributionMap(), 1, 1);
+            amrex::MultiFab::Copy(before, dist, 0, 0, 1, 1);
+            const amrex::Long n = s.tke.limit_wall_distance(dist, rough);
+            amrex::Long want = 0, kept_wrong = 0;
+            double err = 0;
+            for (amrex::MFIter mfi(dist, false); mfi.isValid(); ++mfi) {
+                const auto a = dist.const_array(mfi);
+                const auto o = before.const_array(mfi);
+                const auto db = s.tke.distance().const_array(mfi);
+                amrex::LoopOnCpu(mfi.validbox(), [&] (int i, int j, int k) {
+                    const double ground = static_cast<double>(o(i, j, k)) + z0g(i), wall = static_cast<double>(db(i, j, k)) + z0b;
+                    if (wall < ground) {
+                        ++want;
+                        err = std::max(err, std::abs(static_cast<double>(a(i, j, k)) + z0g(i) - wall) / wall);
+                    } else if (a(i, j, k) != o(i, j, k)) {
+                        ++kept_wrong;
+                    }
+                });
+            }
+            amrex::ParallelDescriptor::ReduceLongSum(want);
+            amrex::ParallelDescriptor::ReduceLongSum(kept_wrong);
+            amrex::ParallelDescriptor::ReduceRealMax(err);
+            EXPECT_EQ(kept_wrong, 0) << "cells nearer to the ground whose distance changed; boxes " << mgs << " map " << mapped;
+            EXPECT_LT(err, 100 * rtol) << "d + z0 against the wall's d_b + z0_b";
+            EXPECT_EQ(n, want);
+            EXPECT_GT(n, 100);
+            // A side's wall cell at x = 55 m, 35 m up, 5 m from the side: 5.01 m, the log law's kappa u* (d + z0_b).
+            EXPECT_NEAR(value_at(dist, 5, 3, 3) + z0g(5), 5.01, 100 * rtol * 5);
+            // The same on the low side, on the 1 m ground in both cases.
+            EXPECT_NEAR(value_at(dist, 2, 3, 3) + 1.0, 5.01, 100 * rtol * 5);
+            // The first cell beside the side at x = 25 m: the ground is 5 m below and the wall 5 m away, the wall
+            // smoother, so the wall's 5.01 m, not the ground's 6 m. The stored distance is 4.01 m.
+            EXPECT_NEAR(value_at(dist, 2, 3, 0), 4.01, 100 * rtol * 5);
+            EXPECT_EQ(value_at(dist, 0, 0, 0), 5.0) << "far from the block: the ground's";
+        }
+    }
+    // A ground rougher than the wall's distance and roughness together: the stored distance is below zero and the
+    // sum the closure forms is still the wall's.
+    Set s(4, tile_options("block45r.txt", [] (int i, int j) { return (i == 2 && j == 2) ? 45 : 0; }, 5, z0b));
+    amrex::MultiFab dist;
+    gust::height_above_ground(s.c.z, dist);
+    s.tke.limit_wall_distance(dist, gust::Roughness(amrex::Real(8)));
+    EXPECT_NEAR(value_at(dist, 5, 3, 3), 5.01 - 8, 100 * rtol * 8);
+}
+
+// A tower (90 m) on a podium (35 m, ending inside the second of the 20 m layers). The podium's cells beside the
+// tower are three quarters solid and carry the tower's side above their roof: the side lies on their face. Drawn at
+// the cell's solid fraction from that face, as before, it stood 7.5 m out over the podium up to 40 m, and the cell
+// two columns from the tower in the layer above (50 m up, 15 m above the roof) was 12.5 m from it.
+TEST (BuildingTke, DistanceBesideAStepBetweenTwoRoofsIsTheBoxes)
+{
+    const std::vector<std::array<double, 5>> boxes = {{30, 50, 30, 50, 90}, {50, 70, 30, 50, 35}, {30, 50, 10, 30, 35}};
+    for (const int mgs : {8, 3}) {
+        Set s(mgs, tile_options("podium.txt", [] (int i, int j) {
+            if (i == 2 && j == 2) { return 90; }
+            return ((i == 3 && j == 2) || (i == 2 && j == 1)) ? 35 : 0;
+        }), false, 20);
+        ASSERT_EQ(static_cast<int>(value_at(s.b.wall(), 5, 3, 1, gust::kWallMask)), gust::kWallRoof | gust::kWallXlo);
+        ASSERT_EQ(value_at(s.b.beta(), 5, 3, 1), 0.75);
+        const auto [err, n] = distance_error(s, boxes);
+        EXPECT_GT(n, 1000);
+        EXPECT_LT(err, 100 * rtol) << "largest relative difference from the boxes' distance; boxes " << mgs;
+        // Above the podium: one column from the tower 5 m to its side, two columns out 15 m to it and to the roof.
+        EXPECT_NEAR(value_at(s.tke.distance(), 5, 3, 2), 5.0, 100 * rtol * 5);
+        EXPECT_NEAR(value_at(s.tke.distance(), 6, 3, 2), 15.0, 100 * rtol * 15);
+        // Beside the podium's side at y = 50 m, 5 m below its roof, in the column next to the tower: 15 m to that
+        // side. The cell across the face holds the podium and the tower's side, not one block, so the wall keeps
+        // the face's blocked heights over the whole width; cut to that cell's walls' depths it would be a line at
+        // the tower, 15.8 m away, as the roof's edge is.
+        EXPECT_NEAR(value_at(s.tke.distance(), 5, 6, 1), 15.0, 100 * rtol * 15);
+    }
+}
+
+// A block whose sides and top lie inside cells: 15 m square (22.5 .. 37.5 m, three quarters of the cells 2 and 3
+// each way) and 45 m high. Its corner cells hold a quarter column, with walls along both horizontal directions,
+// and in the top layer along all three. Each wall is drawn over the block's own face.
+TEST (BuildingTke, DistanceToABlockWithEdgesInsideCellsIsTheBoxs)
+{
+    const std::vector<std::array<double, 5>> box = {{22.5, 37.5, 22.5, 37.5, 45}};
+    for (const int mgs : {8, 3}) {
+        Set s(mgs, tile_options("inside.txt", [] (int i, int j) { return (i == 2 && j == 2) ? 45 : 0; }, 6, 0.1, 15));
+        ASSERT_EQ(value_at(s.b.beta(), 2, 2, 1), 0.5625) << "a corner cell: three quarters each way";
+        ASSERT_EQ(value_at(s.b.beta(), 2, 2, 4), 0.28125) << "and half of that in the top layer";
+        ASSERT_EQ(static_cast<int>(value_at(s.b.wall(), 2, 2, 4, gust::kWallMask)), gust::kWallRoof | gust::kWallXhi | gust::kWallYhi);
+        const auto [err, n] = distance_error(s, box);
+        EXPECT_GT(n, 1000);
+        EXPECT_LT(err, 100 * rtol) << "largest relative difference from the box's distance; boxes " << mgs;
+        // Off the corner in the first layers, and above the roof's corner.
+        EXPECT_NEAR(value_at(s.tke.distance(), 1, 1, 1), std::hypot(7.5, 7.5), 100 * rtol * 11);
+        EXPECT_NEAR(value_at(s.tke.distance(), 1, 1, 5), std::sqrt(2 * 7.5 * 7.5 + 100), 100 * rtol * 15);
+        EXPECT_NEAR(value_at(s.tke.distance(), 4, 3, 5), std::hypot(7.5, 10.0), 100 * rtol * 13);
+        // Two tiles along x (22.5 .. 52.5 m): the cells 3 and 4 are no corners. They hold a slice of the block along y,
+        // with one side wall, and their roof covers the slice, not the cell: above and beside it, at (35, 15, 55) m,
+        // the roof's edge is 7.5 m off in y and 10 m below.
+        Set wide(mgs, tile_options("inside_wide.txt", [] (int i, int j) { return ((i == 2 || i == 3) && j == 2) ? 45 : 0; }, 6, 0.1, 15));
+        ASSERT_EQ(static_cast<int>(value_at(wide.b.wall(), 3, 2, 4, gust::kWallMask)), gust::kWallRoof | gust::kWallYhi);
+        const auto [werr, wn] = distance_error(wide, {{22.5, 52.5, 22.5, 37.5, 45}});
+        EXPECT_GT(wn, 1000);
+        EXPECT_LT(werr, 100 * rtol) << "the wide block; boxes " << mgs;
+        EXPECT_NEAR(value_at(wide.tke.distance(), 3, 1, 5), std::hypot(7.5, 10.0), 100 * rtol * 13);
+    }
+}
+
+// A block with two faces on cell faces (x = 30 and 50 m) and two inside cells (y = 22.5 and 37.5 m). The fluid
+// cells beside the aligned faces see three quarters of their face blocked, along y, and those above the roof three
+// quarters of their floor: each wall is the block's cross-section, read from the partly solid cell across the face.
+// Drawn over the height's three quarters and the whole width, or over the whole floor, they stood 2.5 m out past
+// the block's edges. With the top on a layer's face (40 m) and inside a layer (45 m).
+TEST (BuildingTke, DistanceToABlockWithTwoFacesInsideCellsIsTheBoxs)
+{
+    for (const double top : {40.0, 45.0}) {
+        const std::vector<std::array<double, 5>> box = {{30, 50, 22.5, 37.5, top}};
+        gust::BuildingsOptions o;
+        o.type = gust::BuildingsType::immersed_forcing;
+        o.type_name = "immersed_forcing";
+        o.small_volfrac = 0;
+        o.z0 = 0.1;
+        o.file = write_text(top > 40 ? "two_inside45.txt" : "two_inside40.txt", [&] (std::ostream& os) {
+            os << 5 << "\n" << 6 << "\n";
+            for (int p = 0; p < 5; ++p) { os << 20 * p << "\n"; }
+            for (int p = 0; p < 6; ++p) { os << 15 * p << "\n"; }
+            for (int i = 0; i < 5; ++i) { for (int j = 0; j < 6; ++j) { os << ((i == 2 && j == 2) ? top : 0.0) << "\n"; } }
+        });
+        for (const int mgs : {8, 3}) {
+            Set s(mgs, o);
+            ASSERT_EQ(value_at(s.b.beta(), 3, 2, 1), 0.75);
+            ASSERT_EQ(value_at(s.b.beta_face(0), 5, 2, 1), 0.75) << "the face at x = 50 m, blocked along y";
+            ASSERT_EQ(static_cast<int>(value_at(s.b.wall(), 5, 2, 1, gust::kWallMask)), gust::kWallXlo);
+            const auto [err, n] = distance_error(s, box);
+            EXPECT_GT(n, 1000);
+            EXPECT_LT(err, 100 * rtol) << "largest relative difference from the box's distance; top " << top << " boxes " << mgs;
+            // Beside the corner at (50, 22.5) m: 5 m out in x and 7.5 m in y. And above it.
+            EXPECT_NEAR(value_at(s.tke.distance(), 5, 1, 1), std::hypot(5.0, 7.5), 100 * rtol * 9);
+            EXPECT_NEAR(value_at(s.tke.distance(), 5, 1, 6), std::sqrt(25 + 7.5 * 7.5 + (65 - top) * (65 - top)), 100 * rtol * 30);
+            EXPECT_NEAR(value_at(s.tke.distance(), 3, 1, 6), std::hypot(7.5, 65 - top), 100 * rtol * 30);
+        }
+    }
+}
+
+// The scaled norm of R_k counts the solid cells as zeros: their rows k - k_floor are no part of the flow. With
+// R_k = 3 everywhere the norm is 3 sqrt(1 - share of solid cells) over the scale, not 3; the other norms and the
+// fields of R are as they were.
+TEST (BuildingTke, NormOfKLeavesTheSolidCellsOut)
+{
+    for (const int mgs : {8, 3}) {
+        Set s(mgs, tile_options("block45.txt", [] (int i, int j) { return (i == 2 && j == 2) ? 45 : 0; }));
+        gust::ResidualFields R;
+        R.define(s.c.ba, s.c.dm);
+        for (amrex::MultiFab* f : {&R.u, &R.v, &R.w, &R.p, &R.theta}) { f->setVal(2); }
+        R.tke.setVal(3);
+        gust::State q;
+        q.define(s.c.ba, s.c.dm);
+        for (amrex::MultiFab* f : {&q.u, &q.v, &q.w, &q.p, &q.theta, &q.tke}) { f->setVal(1.0); }
+        const gust::JvpScales sc;
+        const double sk = static_cast<double>(sc.velocity * sc.tke);   // U k_s / H with H = 1
+        std::vector<amrex::Real> all, fluid, mon;
+        amrex::MultiFab work;
+        gust::stage_norms(R, q, nullptr, sc, 1, s.c.geom, all, mon);
+        gust::stage_norms(R, q, nullptr, sc, 1, s.c.geom, fluid, mon, &s.tke, &work);
+        // The block: 2 x 2 columns, 4 solid layers (the fifth is half solid).
+        const double solid = 16.0 / (8 * 8 * 24);
+        EXPECT_NEAR(static_cast<double>(all[5]), 3 / sk, 100 * rtol * 3 / sk);
+        EXPECT_NEAR(static_cast<double>(fluid[5]), 3 * std::sqrt(1 - solid) / sk, 100 * rtol * 3 / sk) << "boxes " << mgs;
+        for (int n = 0; n < 5; ++n) { EXPECT_EQ(fluid[static_cast<std::size_t>(n)], all[static_cast<std::size_t>(n)]) << n; }
+        EXPECT_EQ(value_at(work, 3, 3, 1), 0.0) << "a solid cell";
+        EXPECT_EQ(value_at(work, 3, 3, 4), 3.0) << "the half solid cell under the roof stays";
+        EXPECT_EQ(value_at(R.tke, 3, 3, 1), 3.0) << "R_k itself is not changed: the sweep reads it";
+    }
+}
+
+// The same in the count of steady.confidence (SimplecStage::confidence): after one iteration from k = 1 m2/s2 in
+// every cell, the residual the stage holds has k - k_floor, about 1, in the solid cells and at most the wall
+// cells' relaxation elsewhere. With a threshold between the two every cell meets the criterion.
+TEST (BuildingTke, ConfidenceLeavesTheSolidCellsOut)
+{
+    Set s(4, tile_options("block45p.txt", [] (int i, int j) { return (i == 2 && j == 2) ? 45 : 0; }, 4), true);
+    s.c.mesh.set_open_faces(s.b.beta_face(0), s.b.beta_face(1), s.b.beta_face(2), s.b.beta(), s.c.geom);
+    gust::State q;
+    q.define(s.c.ba, s.c.dm);
+    amrex::MultiFab::Copy(q.z_phys_nd, s.c.z, 0, 0, 1, s.c.z.nGrow());
+    q.u.setVal(3);
+    q.v.setVal(0);
+    q.w.setVal(0);
+    q.p.setVal(0);
+    q.theta.setVal(300);
+    q.tke.setVal(1);
+    amrex::MultiFab nu(s.c.ba, s.c.dm, 1, 1);
+    nu.setVal(0.5);
+    using gust::FaceType;
+    gust::BoundaryInputs bin;
+    bin.face = {FaceType::periodic, FaceType::periodic, FaceType::slip_wall, FaceType::periodic, FaceType::periodic, FaceType::slip_wall};
+    gust::ResidualInputs in;
+    in.nu = &nu;
+    in.gamma_theta = &nu;
+    in.gamma_tke = &nu;
+    in.theta_ref.z = {-1000, 5000};
+    in.theta_ref.theta = {300, 300};
+    in.buoyancy.gravity = 0;
+    in.buildings = &s.law;
+    in.building_tke = &s.tke;
+    const gust::BoundaryConditions bc(bin, s.c.geom, s.c.mesh, in.coriolis);
+    in.bc = &bc;
+    gust::PoissonOptions popt;
+    popt.reltol = amrex::Real(0.1);
+    gust::SimplecOptions opt;
+    gust::SimplecStage stage(opt, 2, in, nullptr, popt, s.c.mesh, s.c.geom, s.c.z, amrex::Real(kFloor), s.c.ba, s.c.dm);
+    stage.init(q);
+    bc.fill_ghosts(q, nullptr, in.buoyancy);
+    amrex::MultiFab dtau;
+    gust::local_dtau(q, &stage.nu(), s.c.mesh, s.c.geom, amrex::Real(1), dtau);
+    stage.iterate(q, dtau);
+    // The residual of the first state: the solid cell's row, and the largest of the others.
+    const amrex::MultiFab& Rk = stage.residual_fields().tke;
+    EXPECT_NEAR(value_at(Rk, 3, 3, 1), 1.0 - kFloor, 100 * rtol);
+    amrex::MultiFab fluid(s.c.ba, s.c.dm, 1, 0);
+    amrex::MultiFab::Copy(fluid, Rk, 0, 0, 1, 0);
+    s.tke.zero_solid_cells(fluid);
+    const double largest = static_cast<double>(fluid.norm0());
+    ASSERT_LT(largest, 0.4) << "the wall cells' rows are well below the solid cells'";
+    // |R_k| <= 0.5 m2/s3 as a scaled threshold; the other fields always pass.
+    const gust::JvpScales sc;
+    const double sk = static_cast<double>(sc.velocity * sc.tke) / static_cast<double>(stage.norm_height());
+    const std::vector<amrex::Real> threshold = {amrex::Real(1e20), amrex::Real(1e20), amrex::Real(1e20), amrex::Real(1e20), amrex::Real(1e20),
+                                                static_cast<amrex::Real>(0.5 / sk)};
+    amrex::Real share = 0, height = -1;
+    ASSERT_TRUE(stage.confidence(threshold, share, height));
+    EXPECT_EQ(share, amrex::Real(1)) << "the 16 solid cells, with |R_k| near 1, do not count against the criterion";
+    EXPECT_EQ(height, amrex::Real(0));
+}
+
+// The rows through residual() without a surface layer: the wall's row takes the place of the cell's equation in
+// the first layer too (with a surface layer it is added to the ground's row there, or to the equation).
+TEST (BuildingTke, ResidualWithoutASurfaceLayerPutsTheWallsRowInPlace)
+{
+    Set s(3, tile_options("block25.txt", [] (int i, int j) { return (i == 2 && j == 2) ? 25 : 0; }));
+    s.c.mesh.set_open_faces(s.b.beta_face(0), s.b.beta_face(1), s.b.beta_face(2), s.b.beta(), s.c.geom);
+    gust::State q;
+    q.define(s.c.ba, s.c.dm);
+    amrex::MultiFab::Copy(q.z_phys_nd, s.c.z, 0, 0, 1, s.c.z.nGrow());
+    const double U = 3;
+    q.u.setVal(amrex::Real(U));
+    q.v.setVal(0);
+    q.w.setVal(0);
+    q.p.setVal(0);
+    q.theta.setVal(300);
+    const auto kval = [] (int i, int j, int kk) { return 0.7 + 0.01 * i + 0.02 * j + 0.03 * kk; };
+    for (amrex::MFIter mfi(q.tke, false); mfi.isValid(); ++mfi) {
+        const auto a4 = q.tke.array(mfi);
+        amrex::LoopOnCpu(mfi.fabbox(), [&] (int i, int j, int kk) { a4(i, j, kk) = static_cast<amrex::Real>(kval(i, j, kk)); });
+    }
+    amrex::MultiFab nu(s.c.ba, s.c.dm, 1, 1);
+    nu.setVal(0.5);
+    gust::ResidualInputs in;
+    in.nu = &nu;
+    in.gamma_theta = &nu;
+    in.gamma_tke = &nu;
+    in.theta_ref.z = {0};
+    in.theta_ref.theta = {300};
+    in.buildings = &s.law;
+    in.building_tke = &s.tke;
+    gust::ResidualFields R;
+    gust::residual(q, in, s.c.mesh, s.c.geom, R);
+    // The side at y = 50 m with u along it: its own u*, 5 m away; the face is wholly blocked in the first two layers.
+    const double ss = kKappa * U / std::log(50.0), ks = ss * ss / (kCmu0 * kCmu0), as = ss / 5.0;
+    EXPECT_NEAR(value_at(R.tke, 3, 5, 0), as * (kval(3, 5, 0) - ks), 1e3 * rtol * as) << "first layer: in the equation's place";
+    EXPECT_NEAR(value_at(R.tke, 3, 5, 1), as * (kval(3, 5, 1) - ks), 1e3 * rtol * as);
+    EXPECT_NEAR(value_at(R.tke, 3, 3, 0), kval(3, 3, 0) - kFloor, 100 * rtol) << "a solid cell: k - floor";
+    EXPECT_NEAR(value_at(R.tke, 3, 3, 1), kval(3, 3, 1) - kFloor, 100 * rtol);
 }
 
 // UT-5.4.1, UT-5.4.3: the rows.

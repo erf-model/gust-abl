@@ -20,18 +20,23 @@
 //   f W is added to the cell's equation everywhere, as the ground's is;
 // - the diffusive flux of k through the blocked part of a face is closed, in the residual
 //   and in the implicit rows (k does not diffuse into a building);
-// - the closure's wall distance becomes min(d_ground, d_b), d_b the distance to the nearest
-//   wall of a building, so the geometric length l_g = kappa (d + z0) sees the buildings:
+// - the closure's geometric length l_g = kappa (d + z0) takes the nearer of the ground and
+//   the nearest wall of a building, each with its own roughness:
+//     d + z0 = min(d_ground + z0_ground, d_b + z0_b),  z0_b = buildings.z0
+//   (limit_wall_distance), d_b the distance to the nearest wall of a building:
 //     wall cell   d_b = max(min over its walls of d1, z0_b), d1 = (1 - beta) Delta_n / 2
-//                 the distance of its fluid centroid (form 7), z0_b = buildings.z0;
+//                 the distance of its fluid centroid (form 7);
 //     elsewhere   the distance from the cell centre to the nearest wall, each wall a
-//                 rectangle on its plane (a roof beta Delta_z above the cell's floor, a side
-//                 beta Delta_x from its face, over the blocked part of its face's height). It
-//                 is found by passing each cell's nearest
+//                 rectangle on its plane, placed from the cell's solid fraction and its
+//                 faces' blocked fractions (BuildingTke.cpp: wall_depth, wall_rectangle; a
+//                 roof over a slab beta Delta_z above the cell's floor, the side of a solid
+//                 neighbour on the face, a building's edge inside the cell where it lies).
+//                 It is found by passing each cell's nearest
 //                 wall to its 26 neighbours until none changes (a vector distance
 //                 transform): exact for a convex block, and close to it otherwise. A wall
 //                 as far as the tallest column is not passed on: the ground is nearer.
 //   Solid cells keep the ground's distance (the closure is not used there).
+// - the solid cells' rows count as zeros in the residual norm of k (zero_solid_cells).
 //
 // Not here: the flat-wall dissipation length of ERF and Kynema-SGF (their wall cells keep
 // the k equation, GUST's have the relaxation row, where the dissipation does not enter);
@@ -43,6 +48,7 @@
 
 #include "BuildingForcing.H"
 #include "ImplicitOperator.H"
+#include "SurfaceRoughness.H"
 
 #include <AMReX_Geometry.H>
 #include <AMReX_MultiFab.H>
@@ -94,9 +100,17 @@ public:
     [[nodiscard]] int distance_passes () const { return m_passes; }
     //! The tallest column of the mesh (m): walls at this distance or more are not looked for.
     [[nodiscard]] amrex::Real cutoff () const { return m_cutoff; }
-    //! dist = min(dist, d_b) on the cells and their ghost layer. Returns the number of valid
+    //! The closure's length reads d + z0 with the ground's z0 (Closure.H). Where a building's
+    //! wall is the nearer one by that measure the sum must be d_b + z0_b, so
+    //!   dist = min(dist, d_b + z0_b - z0)
+    //! on the cells and their ghost layer, z0 the ground's (ground; its map needs a lateral ghost
+    //! column). The value is the closure's alone: it is below zero where the ground's z0 exceeds
+    //! d_b + z0_b. With z0_b = z0 it is min(dist, d_b), bit for bit. Returns the number of valid
     //! cells whose distance fell (all ranks).
-    amrex::Long limit_wall_distance (amrex::MultiFab& dist) const;
+    amrex::Long limit_wall_distance (amrex::MultiFab& dist, const Roughness& ground) const;
+    //! 0 in the solid cells of a field on the cells: their rows of R_k hold k at its floor and
+    //! are left out of the residual norm (Simplec.H: stage_norms).
+    void zero_solid_cells (amrex::MultiFab& field) const;
 
     //! Gk[d], the diffusive flux of k through the d-faces: times the open part of each face.
     void close_fluxes (const amrex::Array<const amrex::MultiFab*, AMREX_SPACEDIM>& open,
@@ -113,7 +127,7 @@ private:
     const BuildingForcing* m_law{nullptr};
     amrex::Geometry m_geom;
     amrex::MultiFab m_dist;
-    amrex::Real m_floor{0}, m_cmu0{amrex::Real(0.5562)}, m_cutoff{0};
+    amrex::Real m_floor{0}, m_cmu0{amrex::Real(0.5562)}, m_cutoff{0}, m_z0b{0};
     int m_passes{0};
 };
 

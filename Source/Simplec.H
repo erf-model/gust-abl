@@ -179,8 +179,13 @@ std::vector<MonitorSpec> stage_monitor_specs (const ResidualInputs& in);
 //! theta_s/H, U k_s/H with the jvp scales s and the domain height) and the
 //! monitors of R at q; ss: the wall state at q (null without a wall model).
 //! Collective.
+//! building_tke (the buildings' closure terms, BuildingTke.H; null: none): the solid cells' rows
+//! of R_k, k - k_floor, are no part of the flow and count as zeros in the norm of k; the number
+//! of points stays the field's. fluid_tke then holds R_k with those zeros (defined here on first
+//! use; required with building_tke).
 void stage_norms (const ResidualFields& R, const State& q, const SurfaceState* ss, const JvpScales& s, amrex::Real height,
-                  const amrex::Geometry& geom, std::vector<amrex::Real>& res, std::vector<amrex::Real>& mon);
+                  const amrex::Geometry& geom, std::vector<amrex::Real>& res, std::vector<amrex::Real>& mon,
+                  const BuildingTke* building_tke = nullptr, amrex::MultiFab* fluid_tke = nullptr);
 
 //! What one iteration did (the application's log line).
 struct SimplecIterationInfo
@@ -256,6 +261,9 @@ private:
     PoissonBC m_pbc;
     PoissonSolver m_solver;
     ResidualFields m_R;
+    //! R_k with zeros in solid building cells; empty without them. compute_norms fills it from m_R, which
+    //! only iterate() writes, straight before: the two are always of one state.
+    amrex::MultiFab m_Rk_fluid;
     ClosureFields m_cf;
     SurfaceState m_ss;
     CanopyRows m_canopy_rows;   //!< the canopy drag's diagonal at q (CanopyDrag.H), each predictor step
