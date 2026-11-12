@@ -582,6 +582,63 @@ TEST (Simplec, KStaysAboveTheFloor)
 }
 
 // ---------------------------------------------------------------------------
+// The upwind blend of the convection reads the height above the ground. With buildings the closure's wall
+// distance also holds the distance to their walls (ResidualInputs::ground_distance is then the ground's), and
+// the blend must keep the ground's: beside a tower above 1.5 convection.hybrid_height the wall distance is
+// small, and the blend would switch on there. Here the two fields are told apart by their values: a wall
+// distance below the height everywhere, where the cap on nu_t raises sigma, and a ground distance far above
+// 1.5 of it everywhere, where sigma stays 0 exactly.
+TEST (Simplec, HybridBlendReadsTheGroundDistance)
+{
+    PCase c = flat_case(8, 4, 8, 1000, 800, 400, true, true);
+    gust::ClosureOptions copt;
+    copt.realizability = amrex::Real(0.3);
+    gust::Closure closure(copt);
+    amrex::MultiFab dist, far;
+    gust::height_above_ground(c.z, dist);
+    far.define(dist.boxArray(), dist.DistributionMap(), 1, 1);
+    far.setVal(amrex::Real(1.0e6));
+    gust::BoundaryInputs bin;
+    bin.face = {FaceType::periodic, FaceType::periodic, FaceType::slip_wall, FaceType::periodic, FaceType::periodic, FaceType::slip_wall};
+    gust::ResidualInputs in;
+    in.closure = &closure;
+    in.wall_distance = &dist;
+    in.theta_ref.z = {-1000, 5000};
+    in.theta_ref.theta = {300, 300};
+    in.hybrid.sigma_max = amrex::Real(0.1);
+    in.hybrid.height = 1000;   // above the domain's 400 m: h = 1 at every height above the ground
+    in.hybrid.relax = amrex::Real(0.5);
+    in.hybrid.freeze = 0;
+    const gust::BoundaryConditions bc(bin, c.geom, c.mesh, in.coriolis);
+    in.bc = &bc;
+    gust::PoissonOptions popt;
+    for (const bool with_ground : {false, true}) {
+        gust::ResidualInputs run = in;
+        if (with_ground) { run.ground_distance = &far; }
+        gust::State q;
+        define_state(q, c);
+        fill_random(q.u, 10, 20, 31, c);
+        fill_random(q.v, -5, 5, 32, c);
+        fill_random(q.w, -1, 1, 33, c);
+        q.p.setVal(0.0);
+        q.theta.setVal(300.0);
+        fill_random(q.tke, 0.5, 2.0, 34, c);
+        gust::SimplecOptions opt;
+        gust::SimplecStage stage(opt, 2, run, &closure, popt, c.mesh, c.geom, c.z, amrex::Real(1e-6), c.ba, c.dm);
+        stage.init(q);
+        amrex::MultiFab dtau;
+        for (int it = 0; it < 2; ++it) {
+            bc.fill_ghosts(q, nullptr, run.buoyancy);
+            gust::local_dtau(q, &stage.nu(), c.mesh, c.geom, amrex::Real(1), dtau);
+            stage.iterate(q, dtau);
+        }
+        ASSERT_FALSE(stage.hybrid_sigma().empty());
+        if (with_ground) { EXPECT_EQ(stage.hybrid_sigma().max(0), amrex::Real(0)) << "the ground is far below: no blend"; }
+        else { EXPECT_GT(stage.hybrid_sigma().max(0), amrex::Real(0.01)) << "the cap holds nu_t somewhere below the height"; }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // The lid-driven cavity at Re = 100 (Ghia, Ghia and Shin 1982,
 // Tables I and II): a unit square in x-z (64 x 64 cells, two periodic cells
 // in y), no-slip walls, the top moving at U = 1, nu = 0.01, run to steady by

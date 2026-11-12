@@ -874,14 +874,21 @@ Current tests
    * - ``building_cube_clean``, ``building_cube_run``, ``building_cube_flow``, ``building_cube_roof_stress_clean``,
        ``building_cube_roof_stress_run``, ``building_cube_roof_stress_flow``, ``building_cube_wall_tke_off_clean``,
        ``building_cube_wall_tke_off_run``, ``building_cube_wall_tke_off_flow``, ``building_cube_wall_k_source_clean``,
-       ``building_cube_wall_k_source_run``, ``building_cube_wall_k_source_flow``, ``abort_buildings_newton``,
+       ``building_cube_wall_k_source_run``, ``building_cube_wall_k_source_flow``, ``building_cube_drag_clean``,
+       ``building_cube_drag_run``, ``building_cube_drag_flow``, ``building_cube_smooth_walls_clean``,
+       ``building_cube_smooth_walls_run``, ``building_cube_smooth_walls_length``, ``building_cube_smooth_walls_flow``,
+       ``abort_buildings_newton``,
        ``abort_buildings_lusgs``, ``abort_buildings_levels``, ``abort_buildings_mlmg``
      - One block in a log-law wind (``Tests/Canonical_RANS/Building_Cube``): the run converges, speeds in solid cells
        are 0, the volume flux is constant along x, the air reverses behind and speeds up above, and a wall cell of the
        roof and one of a side keep their values, as does k in the roof's wall cell, and k in the solid cells is at its floor. The same deck with
        ``buildings.wall_form = roof_stress`` keeps the values it had before the sides took the wall law, and with
        ``buildings.wall_tke = off`` those from before the closure saw the buildings. With ``bc.surface_wall_k = source``
-       the buildings' rows are added to the cells' equations, with their own pinned values. The stages and back ends that have no buildings yet are
+       the buildings' rows are added to the cells' equations, with their own pinned values. With
+       ``buildings.wall_form = drag`` and no ``buildings.wall_tke`` the fixed rows act alone and the closure does not see
+       the block. With walls smoother than the ground (``buildings.z0`` 0.01 m on ``bc.surface_z0`` 0.1 m) the
+       turbulence plotfile's ``walldist`` in the wall cells is the wall's distance plus its own roughness less the
+       ground's, 2.41 m. The stages and back ends that have no buildings yet are
        refused.
    * - ``abort_canopy_restart_changed``, ``abort_canopy_restart_none``, ``abort_canopy_inputs``
      - A restart with one patch's LAI changed, and one without a canopy, stop naming ``io.restart``; a deck of canopy

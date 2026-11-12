@@ -1,5 +1,6 @@
 #include "Simplec.H"
 
+#include "BuildingTke.H"
 #include "CVFluxes.H"
 #include "CanopyHeat.H"
 #include "Convection.H"
@@ -409,11 +410,19 @@ void residual_scales (const JvpScales& s, amrex::Real H, amrex::Real scale[6])
 } // namespace
 
 void stage_norms (const ResidualFields& Rf, const State& q, const SurfaceState* ss, const JvpScales& s, amrex::Real height,
-                  const amrex::Geometry& geom, std::vector<amrex::Real>& res, std::vector<amrex::Real>& mon)
+                  const amrex::Geometry& geom, std::vector<amrex::Real>& res, std::vector<amrex::Real>& mon,
+                  const BuildingTke* building_tke, amrex::MultiFab* fluid_tke)
 {
     res.assign(6, 0);
     mon.assign(ss != nullptr ? 3 : 2, 0);
     const amrex::MultiFab* R[6] = {&Rf.u, &Rf.v, &Rf.w, &Rf.p, &Rf.theta, &Rf.tke};
+    if (building_tke != nullptr) {
+        if (fluid_tke == nullptr) { amrex::Abort("gust: stage_norms: the buildings' closure terms need the field fluid_tke"); }
+        if (fluid_tke->empty()) { fluid_tke->define(Rf.tke.boxArray(), Rf.tke.DistributionMap(), 1, 0); }
+        amrex::MultiFab::Copy(*fluid_tke, Rf.tke, 0, 0, 1, 0);
+        building_tke->zero_solid_cells(*fluid_tke);
+        R[5] = fluid_tke;
+    }
     amrex::Real scale[6];
     residual_scales(s, height, scale);
     for (int n = 0; n < 6; ++n) {
@@ -448,7 +457,9 @@ bool SimplecStage::confidence (const std::vector<amrex::Real>& threshold, amrex:
     for (amrex::MFIter mfi(m_R.p, false); mfi.isValid(); ++mfi) {
         const amrex::Box bx = mfi.validbox();
         const auto ru = m_R.u.const_array(mfi), rv = m_R.v.const_array(mfi), rw = m_R.w.const_array(mfi);
-        const auto rp = m_R.p.const_array(mfi), rt = m_R.theta.const_array(mfi), rk = m_R.tke.const_array(mfi);
+        // The solid building cells' rows of k are left out, as in the norm (compute_norms filled m_Rk_fluid).
+        const auto rp = m_R.p.const_array(mfi), rt = m_R.theta.const_array(mfi);
+        const auto rk = (m_Rk_fluid.empty() ? m_R.tke : m_Rk_fluid).const_array(mfi);
         const auto d = dist.const_array(mfi);
         ops.eval(bx, data, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept -> amrex::GpuTuple<amrex::Long, amrex::Real>
         {
@@ -472,7 +483,8 @@ bool SimplecStage::confidence (const std::vector<amrex::Real>& threshold, amrex:
 
 void SimplecStage::compute_norms (const State& q)
 {
-    stage_norms(m_R, q, m_in.surface != nullptr ? &m_ss : nullptr, m_in.jvp_scales, m_height, m_geom, m_res, m_mon);
+    stage_norms(m_R, q, m_in.surface != nullptr ? &m_ss : nullptr, m_in.jvp_scales, m_height, m_geom, m_res, m_mon,
+                m_in.building_tke, &m_Rk_fluid);
 }
 
 void SimplecStage::iterate (State& q, const amrex::MultiFab& dtau)

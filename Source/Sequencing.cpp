@@ -266,9 +266,11 @@ LevelSolver::LevelSolver (const RunSetup& s, const Mesh& mesh, const amrex::Geom
         // keeps the ground's distance.
         dist_ground.define(ba, dm, 1, 1);
         amrex::MultiFab::Copy(dist_ground, dist, 0, 0, 1, 1);
-        const amrex::Long n = building_tke->limit_wall_distance(dist);
+        // The surface layer's z0, as the closure takes it (residual_inputs: s.surface_layer).
+        const amrex::Long n = building_tke->limit_wall_distance(dist, ground_roughness(s.surface_layer ? &surf : nullptr));
         amrex::Print() << "gust: " << label << "buildings: the distance to the nearest building wall settled in "
-                       << building_tke->distance_passes() << " passes; it is the wall distance of " << n << " cells\n";
+                       << building_tke->distance_passes() << " passes; a building's wall sets the closure's length in "
+                       << n << " cells\n";
     }
     res_in = residual_inputs(s, closure, dist, bc, surf);
     res_in.buildings = buildings;

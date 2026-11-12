@@ -256,21 +256,60 @@ with :math:`f` the largest blocked part of the faces the cell's walls lie on:
 **Fluxes.** The diffusive flux of :math:`k` through the blocked part of a face is closed, in the residual and in the
 implicit rows: :math:`k` does not diffuse into a building.
 
-**Length scale.** The closure's wall distance becomes :math:`\min(d_\mathrm{ground}, d_b)`, so its geometric length
-:math:`l_g = \kappa (d + z_0)` shortens near a building. :math:`z_0` there is the ground's (``bc.surface_z0`` or its map),
-as before, and ``turb.max_geom_lscale`` still caps the length. The turbulence plotfile's ``walldist`` shows this
-distance. The hybrid convection blend (``convection.hybrid_height``) keeps the ground's distance. :math:`d_b` is
+**Length scale.** The closure's geometric length :math:`l_g = \kappa (d + z_0)` takes the nearer of the ground and the
+nearest wall of a building, each with its own roughness:
+
+.. math::
+
+   d + z_0 = \min(d_\mathrm{ground} + z_{0,g},\; d_b + z_{0,b}),
+
+with :math:`z_{0,g}` the ground's roughness of the column (``bc.surface_z0`` or its map; 0 without a surface layer) and
+:math:`z_{0,b}` = ``buildings.z0``. In a wall cell far above the ground this is the log law's
+:math:`\kappa (d_b + z_{0,b})`, whatever the ground's roughness. ``turb.max_geom_lscale`` still caps the length. The
+closure adds :math:`z_{0,g}` to the distance it is given, so the stored distance is
+:math:`\min(d_\mathrm{ground}, d_b + z_{0,b} - z_{0,g})`: the turbulence plotfile's ``walldist`` shows this value, which is
+:math:`\min(d_\mathrm{ground}, d_b)` where the two roughnesses are equal and can be below zero beside a wall on ground
+much rougher than the wall. The hybrid convection blend (``convection.hybrid_height``) keeps the ground's distance.
+:math:`d_b` is
 
 - in a wall cell, the distance of its fluid centroid from its nearest wall, :math:`\tfrac{1}{2}(1 - \beta)\Delta_n`,
   not below ``buildings.z0``;
 - elsewhere, the distance from the cell centre to the nearest wall of a building. Each wall is a rectangle on its
-  plane: a roof :math:`\beta \Delta_z` above its cell's floor, a side :math:`\beta \Delta_x` in from its face, over the
-  blocked part of the face's height.
+  plane, placed from the cell's solid fraction and the blocked parts :math:`f_\mathrm{wall}` and
+  :math:`f_\mathrm{opp}` of the face the wall is on and of the opposite one. The solid of the cell is the part that
+  runs through to the opposite face and the wall's own part, which reaches a depth :math:`\delta` of the cell's size
+  in from the wall's face:
+
+  .. math::
+
+     \beta = f_\mathrm{opp} + (f_\mathrm{wall} - f_\mathrm{opp})\,\delta, \qquad
+     \delta = \frac{\beta - f_\mathrm{opp}}{f_\mathrm{wall} - f_\mathrm{opp}} \in [0, 1],
+
+  and 0 in a fluid cell. A roof over a slab is :math:`\beta \Delta_z` above the cell's floor. The side of a
+  neighbouring solid cell lies on the face (:math:`\delta = 0`), also where a roof fills part of the same cell: the
+  tower's side above a podium. A building's edge inside a cell is :math:`\delta \Delta_x` in. The relation is exact
+  where the wall's own part has one depth in the cell, which a building made of tiles has except where two edges
+  along the same direction cross one cell. Over its plane a side
+  covers the blocked part of its face's height; a roof covers its cell's footprint, or the blocked part of it from
+  the cell's side wall where the building's edge lies inside the cell. In the corner of a block inside a cell, each
+  wall covers the block's face. A wall on the face of a fluid cell is the outer face of the solid in the cell across
+  it: where that cell is partly solid and holds one block (the product of its walls' depths along the face equals the
+  face's blocked part), the rectangle is the block's cross-section, so a roof ends at the building's edge and a side
+  at its corner.
 
 The distance is found once, at start-up, by passing each cell's nearest wall to its 26 neighbours until no distance
-falls (a vector distance transform). The log gives the number of passes and of cells whose distance the buildings set.
-For one block it equals the distance to the block's box to round-off, and so it does for an L with a step, the
-tests' second shape, against the smallest distance over its boxes.
+falls (a vector distance transform). The log gives the number of passes and of cells whose length a building's wall
+sets. For one block it equals the distance to the block's box to round-off, and so it does, against the smallest
+distance over the boxes, for an L with a step, for a tower on a podium that ends inside a layer, and for a block
+whose sides and top lie inside cells (the unit tests' shapes).
+
+**Residual norm.** The solid cells' rows, :math:`k - k_\mathrm{floor}`, are no part of the flow. They count as zeros
+in the scaled norm of :math:`k` and in the count of ``steady.confidence``; the number of points of the norm stays the
+mesh's. The wall cells' rows stay in the norm, as the ground's first cells do. From a first guess with :math:`k` well
+above the floor inside a building the norm's reference, its largest value over the first iterations, is then that of
+the flow (0.2 on the block, against 4.0 with the solid rows), so the relative residual of :math:`k` is larger and the
+stop on it stricter than with those rows. A checkpoint written with them keeps its reference: a restart from it
+stops on :math:`k` as that run would have, and reads the lengths and distances of this page.
 
 ``buildings.wall_tke = off`` leaves the closure as it was before these terms: :math:`k` is solved in every cell with
 the ground's distance alone. A checkpoint written before them restarts with ``off``, together with ``buildings.wall_speed = all_faces``
@@ -279,7 +318,7 @@ needs the wall law on every wall, so it is refused with ``roof_stress`` and ``dr
 
 On the block of the first figure, :math:`k` in the roof's wall cell is 0.41 m²/s² with these terms and 8.6 m²/s²
 without, against 0.35 m²/s² upstream at that height, and without them :math:`k` in the solid cells was 3 m²/s². On the
-ridge of the second figure the air now reverses in a thin layer on the roof (u in the roof's wall cell -0.15 m/s; it was
+ridge of the second figure the air now reverses in a thin layer on the roof (u in the roof's wall cell -0.17 m/s; it was
 3.90 m/s), as the eddy viscosity there is lower.
 
 Limits
@@ -312,27 +351,36 @@ Limits
   it on any mesh; there the reference cell's term, which is not floored, carries most of :math:`u_*^2` (on the ridge's
   36 roof cells the floored :math:`u_*^2` is 0.92 to 1.00 of the unfloored, the own term alone 0.42 to 0.83). The log gives the number of wall cells below the floor, for every wall with the law; the run goes on.
 - The distance to buildings takes one pass over the whole mesh per cell of distance it reaches. A wall as far as the
-  mesh's tallest column is not looked for, since the ground is nearer, so the passes are at most that height in
+  mesh's tallest column is not looked for, since the ground is nearer (on ground rougher than the walls such a wall
+  could still be the nearer by :math:`d + z_0`, by less than the roughnesses' difference), so the passes are at most that height in
   cells of the smallest size (23 on the block's mesh, 31 on the ridge's). It is done once per run, restarts included.
-- The distance treats a roof as covering its cell's whole footprint and a side its face's whole width, so where a
-  wall ends partway through a cell it can be short by up to half a cell. The transform passes nearest walls between
-  neighbours and is not exact for every shape.
+- The rectangles come from the fractions of one cell, or of the cell across the wall's face. Where the solid in a
+  cell is not one block, a wall keeps its face's whole width or footprint: a tower's corner over a podium, a
+  re-entrant corner of an L inside a cell, the fluid cells above and beside those. The rectangle then reaches past
+  the building by the uncovered part of the cell, and a distance can be short by up to that: one cell for a side,
+  the cell's diagonal for a roof. Buildings whose walls lie on cell faces have none of these. The transform passes
+  nearest walls between neighbours and is not exact for every shape.
+- A slab or wall thinner than a cell that lies inside one has no net wall there (`Wall cells`_), so no rectangle: the
+  distance beside it is that to the next wall found, too long by up to the cell's size and more.
+- On sloping ground a roof's cells carry side bits with a small area (the solid fraction changes from column to
+  column). In a roof cell that holds no side of the building their rectangles lie under the roof, within the
+  difference of the two columns' roofs, and move no distance by more than that. In a roof cell that also holds the
+  building's edge, such a bit along the edge is drawn across the cell's width and can stand beside the side wall, by
+  up to the part of the cell the building leaves free. A wall cell's own distance is still the smallest :math:`d_1`
+  over its bits, the small ones included, so where the layers are taller than the cells are wide such a cell takes
+  :math:`\tfrac{1}{2}(1 - \beta)\Delta_x` in place of :math:`\tfrac{1}{2}(1 - \beta)\Delta_z`.
+- The solid cells' :math:`k` reaches its floor by its own row, :math:`(1/\Delta\tau + 1)\,\delta k = -(k - k_\mathrm{floor})`:
+  a factor :math:`1/(1 + \Delta\tau)` per iteration, which is slow where the local step is far below 1 s. Those rows
+  are not in the norm, and the eddy viscosity at a building's edges and the diffusivity of :math:`\theta` at blocked
+  faces still read the solid cells' :math:`k`; the mean-:math:`k` monitor counts them.
 - Outside a non-periodic domain face the closure's ghost cells take the nearest domain column's distance.
 - The wall value of :math:`k` is neutral and reads the speed parallel to the wall. On a wall that faces the flow that
   speed is small, so :math:`k` and the eddy viscosity in its wall cells are small too (0.008 m²/s² on the block's
   windward face, against 0.76 m²/s² one cell upstream). The ground's row does the same where the flow reattaches.
 - The shear production in the second cell from a wall still reads the wall cell's velocity, and :math:`\theta` has no
   building terms yet.
-- The length near a building is :math:`\kappa (d_b + z_0)` with the ground's :math:`z_0`, not ``buildings.z0``. The two
-  differ where the ground's roughness is much larger than the walls'.
-- A side's rectangle in a cell that is partly solid lies :math:`\beta \Delta_x` in from its face even where the cell's
-  :math:`\beta` comes from a roof, so beside a step between two roofs the distance can be off by up to the layer's
-  height.
 - The thin reversed layer on the roof of the block on the ridge is one cell deep and lies in partly solid cells; the
   block on flat ground, whose roof cells are fluid, has none. Its presence follows the mesh as well as the flow.
-- The residual norm of :math:`k` includes the solid cells' rows, :math:`k - k_\mathrm{floor}`, and the wall rows. From a
-  first guess with :math:`k` well above the floor in the solid cells they set the first iterations' norm (4.0 against
-  0.2 on the block); they fall within a few iterations.
 - ERF and Kynema-SGF keep the :math:`k` equation in their wall cells and dissipate there with the flat first-cell
   length (``flat_wall_dissipation``). Here the wall cell's row is the relaxation, where the dissipation does not enter,
   so that length is not used.

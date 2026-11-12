@@ -387,6 +387,45 @@ gust_add_test(NAME building_cube_wall_k_source_flow NP 1 LABELS "regression;smok
               FIXTURES_REQUIRED building_cube_wall_k_source
               COMMAND ${Python3_EXECUTABLE} ${BUILDING_CUBE_CASE}/check_cube.py --latest cube_plt --roof 2.843 --side 1.599
                       --k-roof 0.911 --k-ground 0.3124)
+# The fixed rows alone (buildings.wall_form = drag) with buildings.wall_tke not given: off, so the closure does not
+# see the block.
+set(BUILDING_CUBE_DRAG_DIR ${CMAKE_CURRENT_BINARY_DIR}/run/building_cube_drag)
+add_test(NAME building_cube_drag_clean
+         COMMAND ${Python3_EXECUTABLE} -c
+                 "import shutil, os, sys; shutil.rmtree(sys.argv[1], ignore_errors=True); os.makedirs(sys.argv[1])"
+                 ${BUILDING_CUBE_DRAG_DIR})
+set_tests_properties(building_cube_drag_clean PROPERTIES LABELS "regression;smoke" FIXTURES_SETUP building_cube_drag_clean)
+gust_add_test(NAME building_cube_drag_run NP 2 LABELS "regression;smoke" RUN_DIR ${BUILDING_CUBE_DRAG_DIR}
+              FIXTURES_REQUIRED building_cube_drag_clean FIXTURES_SETUP building_cube_drag
+              PREFIX ${EXPECT_ABORT} --success "buildings\\.wall_form = drag, buildings\\.wall_tke = off" "gust: steady after" --
+              COMMAND $<TARGET_FILE:gust> ${BUILDING_CUBE_CASE}/inputs_cube_drag buildings.file=${BUILDING_CUBE_CASE}/cube.txt
+                      ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME building_cube_drag_flow NP 1 LABELS "regression;smoke" RUN_DIR ${BUILDING_CUBE_DRAG_DIR}
+              FIXTURES_REQUIRED building_cube_drag
+              COMMAND ${Python3_EXECUTABLE} ${BUILDING_CUBE_CASE}/check_cube.py --latest cube_plt --roof 2.136 --side 1.524
+                      --k-roof 7.283 --k-ground 0.0086 --k-solid 1e9)
+# Walls smoother than the ground (buildings.z0 = 0.01 m, bc.surface_z0 = 0.1 m): the closure's length beside a wall
+# takes the wall's roughness, through the level's set-up (the turbulence plotfile's walldist).
+set(BUILDING_CUBE_SMOOTH_DIR ${CMAKE_CURRENT_BINARY_DIR}/run/building_cube_smooth_walls)
+add_test(NAME building_cube_smooth_walls_clean
+         COMMAND ${Python3_EXECUTABLE} -c
+                 "import shutil, os, sys; shutil.rmtree(sys.argv[1], ignore_errors=True); os.makedirs(sys.argv[1])"
+                 ${BUILDING_CUBE_SMOOTH_DIR})
+set_tests_properties(building_cube_smooth_walls_clean PROPERTIES LABELS "regression;smoke"
+                     FIXTURES_SETUP building_cube_smooth_walls_clean)
+gust_add_test(NAME building_cube_smooth_walls_run NP 2 LABELS "regression;smoke" RUN_DIR ${BUILDING_CUBE_SMOOTH_DIR}
+              FIXTURES_REQUIRED building_cube_smooth_walls_clean FIXTURES_SETUP building_cube_smooth_walls
+              PREFIX ${EXPECT_ABORT} --success "gust: steady after" "gust: wrote cube_turb" --
+              COMMAND $<TARGET_FILE:gust> ${BUILDING_CUBE_CASE}/inputs_cube_smooth_walls
+                      buildings.file=${BUILDING_CUBE_CASE}/cube.txt ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME building_cube_smooth_walls_length NP 1 LABELS "regression;smoke" RUN_DIR ${BUILDING_CUBE_SMOOTH_DIR}
+              FIXTURES_REQUIRED building_cube_smooth_walls
+              COMMAND ${Python3_EXECUTABLE} ${BUILDING_CUBE_CASE}/check_cube_length.py --latest cube_turb --z0-ground 0.1
+                      --z0-wall 0.01)
+gust_add_test(NAME building_cube_smooth_walls_flow NP 1 LABELS "regression;smoke" RUN_DIR ${BUILDING_CUBE_SMOOTH_DIR}
+              FIXTURES_REQUIRED building_cube_smooth_walls
+              COMMAND ${Python3_EXECUTABLE} ${BUILDING_CUBE_CASE}/check_cube.py --latest cube_plt --roof 2.855 --side 1.452
+                      --k-roof 0.145 --k-ground 0.0152)
 # --- A courtyard: corner and edge cells of the wall law (buildings.wall_speed) ---
 set(BUILDING_COURT_CASE ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Building_Courtyard)
 foreach(form open_faces all_faces)

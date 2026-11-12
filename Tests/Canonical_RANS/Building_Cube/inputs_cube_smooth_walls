@@ -1,0 +1,42 @@
+# The block of inputs_cube with walls smoother than the ground: buildings.z0 = 0.01 m on bc.surface_z0 = 0.1 m.
+# The closure's length beside a wall is then kappa (d_b + 0.01 m), not kappa (d_b + 0.1 m), and the turbulence
+# plotfile's walldist holds d_b + 0.01 - 0.1 m there (check_cube_length.py). buildings.file on the command line:
+# cube.txt.
+mesh.n_cell        = 48 24 24
+mesh.prob_lo       = 0. 0. 0.
+mesh.prob_hi       = 240. 120. 120.
+mesh.is_periodic   = 0 1 0
+mesh.max_grid_size = 16 12
+
+terrain.type = flat
+
+bc.xlo = inflow
+bc.xhi = outflow
+bc.zlo = surface_layer
+bc.zhi = slip_wall
+bc.surface_z0       = 0.1
+bc.inflow_profile   = log_law
+bc.inflow_ustar     = 0.4
+bc.inflow_z0        = 0.1
+bc.inflow_direction = 0.
+bc.theta_profile_z  = 0.
+bc.theta_profile    = 300.
+
+forcing.gravity = 0.
+turb.tke_floor  = 1.e-6
+turb.max_geom_lscale = 40.
+
+buildings.type = immersed_forcing
+buildings.z0   = 0.01
+
+init.first_guess = profile
+
+steady.stage          = simplec
+steady.sweep          = zjacobi
+steady.zline_sweeps   = 3
+steady.cfl_max        = 8
+steady.max_iterations = 300
+
+io.plot_file = cube_plt
+io.turb_plot_file = cube_turb
+io.write_checkpoint = 0

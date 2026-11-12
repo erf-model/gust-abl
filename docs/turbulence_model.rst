@@ -87,7 +87,8 @@ Wall distance
 -------------
 
 ``turb.wall_distance`` selects the wall distance :math:`d` to the ground. With buildings and ``buildings.wall_tke = on``
-the closure takes the smaller of it and the distance to the nearest building wall (:doc:`buildings`).
+the closure takes the nearer of the ground and the nearest building wall, each with its own roughness
+(:doc:`buildings`).
 
 - ``terrain_height`` (default): the height of the cell centre above the ground of its column.
 - ``tucker``: the differential wall distance of Tucker (2003),
@@ -205,7 +206,8 @@ unconverged state (the rough Ishihara–Zhou ridge stalls at a relative residual
   (the scheme of the implicit side);
 - :math:`s(t) = t^2(3 - 2t)` on :math:`[0, 1]` (0 below, 1 above): a smooth step;
 - :math:`a`: the ratio of the closure's eddy viscosity to the cap (:math:`a \ge 1` where the cap acts);
-- :math:`d`: the closure's wall distance; :math:`H_h` = ``convection.hybrid_height``.
+- :math:`d`: the height above the ground (the closure's wall distance without buildings; with them the ground's
+  distance alone, :doc:`buildings`); :math:`H_h` = ``convection.hybrid_height``.
 
 :math:`\sigma` is a cell field, interpolated to the faces of :math:`u, v, w`, updated once per iteration as
 :math:`\sigma \leftarrow \sigma + \lambda(\sigma_t - \sigma)` with :math:`\lambda` = ``convection.hybrid_relax``, and

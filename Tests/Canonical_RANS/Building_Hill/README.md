@@ -26,12 +26,17 @@ ctest --test-dir <build> -R building_hill --output-on-failure
 ## Expected Results
 The run stops at the driver's stopping rule in 152 iterations, on 1, 2 and 4 ranks. Horizontal speed in solid cells is
 0, the plane flux stays within 0.4 % of the first plane's, and the lowest u behind the block is -2.60 m/s. The air
-reverses in a thin layer on the roof, one cell deep: u in the roof's wall cell is -0.15 m/s (the same to four digits on
-1, 2 and 4 ranks before the open faces' speed; measured on 2 since). The test pins u two cells above it, 7.42 m/s, and k in the wall cell, 1.01 m²/s², and requires k at
+reverses in a thin layer on the roof, one cell deep: u in the roof's wall cell is -0.17 m/s (the same to three digits on
+1, 2 and 4 ranks). The test pins u two cells above it, 7.42 m/s, and k in the wall cell, 1.02 m²/s², and requires k at
 its floor in the solid cells; the others are measured. These values are not validated. The roof's cells are partly solid by a
 fraction that changes along the slope, so each carries a side bit with a small area (0.03 of its face); since the side's
 rate takes that area, not the whole face's blocked part, the answer differs from `main` at c57ad06 by at most 0.006 m/s,
-with either `buildings.wall_speed`. The log notes that 36 of the 156 wall cells, the roof's, are within 10 z0 of their
+with either `buildings.wall_speed`. The distance to the building changed after that (the walls' rectangles,
+`docs/buildings.rst`): above the roof it was up to 0.7 m short of the height above the roof (11.74 m against 12.44 m
+three cells up), as each roof cell's small side was drawn half a cell in from its face up to the neighbour's roof; it
+is now within 0.07 m (12.37 m), the difference of two columns' roofs. 1430 cells' distances moved, by -0.07 to
++0.63 m, and the answer differs from `main` at 8448d15 by at most 0.03 m/s in u and 0.044 m²/s² in k, in the same
+152 iterations. The log notes that 36 of the 156 wall cells, the roof's, are within 10 z0 of their
 wall.
 
 Earlier forms, measured once before the side's area was corrected (no test runs them; the values move by up to
