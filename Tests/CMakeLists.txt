@@ -560,6 +560,31 @@ foreach(variant plain lee lee_nozone)
                   FIXTURES_REQUIRED snyder_cube_${variant}
                   COMMAND ${Python3_EXECUTABLE} ${SNYDER_CASE}/compare_snyder.py --latest snyder_plt ${_pins})
 endforeach()
+# --- The staggered cube array of Castro et al. (2006) against its measurements (tracker PR-44) ---
+# The 25 % array as Munoz-Esparza et al. (2020) set it up for FastEddy: one periodic tile, pressure driven, 2 mm
+# cells. The run does not meet the steady criteria in 3000 iterations (the k residual falls slowly), but its
+# answer moves by less than 0.001 u_r between 3000 and 8000 iterations, so the run stops at 3000 and the test
+# expects that message. compare_array.py pins the rms difference and hit rate of u, the rms difference of
+# -<u'w'> and its peaks near the roof at P1 and P3 (2 %). About 12 minutes on 4 ranks: not a smoke test.
+set(CASTRO_CASE ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Castro_Cube_Array)
+set(_dir ${CMAKE_CURRENT_BINARY_DIR}/run/castro_cube_array)
+add_test(NAME castro_cube_array_clean
+         COMMAND ${Python3_EXECUTABLE} -c
+                 "import shutil, os, sys; shutil.rmtree(sys.argv[1], ignore_errors=True); os.makedirs(sys.argv[1])"
+                 ${_dir})
+set_tests_properties(castro_cube_array_clean PROPERTIES LABELS "regression" FIXTURES_SETUP castro_cube_array_clean)
+gust_add_test(NAME castro_cube_array_run NP 4 LABELS "regression" RUN_DIR ${_dir}
+              FIXTURES_REQUIRED castro_cube_array_clean FIXTURES_SETUP castro_cube_array
+              PREFIX ${EXPECT_ABORT} --success --timeout 2400 "gust: not steady after 3000 iterations"
+                     "gust: wrote turb03000" --
+              COMMAND $<TARGET_FILE:gust> ${CASTRO_CASE}/inputs_cube_array buildings.file=${CASTRO_CASE}/array_tile.xyz
+                      mesh.zlevels_file=${CASTRO_CASE}/zlevels_1mm.txt io.turb_plot_file=turb ${GUST_TEST_AMREX_FLAGS})
+set_tests_properties(castro_cube_array_run PROPERTIES TIMEOUT 2400)
+gust_add_test(NAME castro_cube_array_compare NP 1 LABELS "regression" RUN_DIR ${_dir}
+              FIXTURES_REQUIRED castro_cube_array
+              COMMAND ${Python3_EXECUTABLE} ${CASTRO_CASE}/compare_array.py --latest array_plt turb
+                      ${CASTRO_CASE}/castro2006_fig3.csv --pin rms_u=0.042 --pin q_u=0.724 --pin rms_uw=1.707
+                      --pin peak_uw_P1=10.45 --pin peak_uw_P3=5.97)
 gust_add_test(NAME abort_buildings_limiter_zone NP 1 LABELS "regression;smoke"
               PREFIX ${EXPECT_ABORT} "buildings\\.limiter_zone must be 0 \\(off\\) or in \\[0\\.5, 20\\] building heights" --
               COMMAND $<TARGET_FILE:gust> ${BUILDINGS_CASE}/inputs_buildings buildings.file=${BUILDINGS_CASE}/building_map.txt

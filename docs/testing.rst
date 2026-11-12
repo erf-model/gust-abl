@@ -871,6 +871,13 @@ Current tests
        plain closure (0.244 m/s, 0.882, 1.34 H; measured 1.36 H), for the lee options of the terrain decks with their
        zone around the cube (``buildings.limiter_zone``, default 3: the plain closure's answer) and for the same
        options without the zone (0.317 m/s, 0.713, 1.89 H). Minutes each on 4 ranks; not in ``-L smoke``.
+   * - ``castro_cube_array_clean``, ``castro_cube_array_run``, ``castro_cube_array_compare``
+     - The staggered cube array of Castro et al. (2006) (``Tests/Canonical_RANS/Castro_Cube_Array``), one periodic
+       tile, 2 mm cells, against 185 values of u and -<u'w'> digitized from Muñoz-Esparza et al. (2020): the run stops
+       at 3000 iterations without the steady verdict (below the highest measured point its answer has settled) and the test expects that message; the
+       rms difference of u (0.042 u_r) and its hit rate (0.724), the rms of -<u'w'> (1.707e-3 u_r²) and its peaks near
+       the roof at P1 (10.45e-3) and P3 (5.97e-3) are pinned within 2 %. About 12 minutes on 4 ranks; not in
+       ``-L smoke``.
    * - ``abort_buildings_limiter_zone``, ``abort_buildings_limiter_zone_wall_tke``, ``abort_buildings_limiter_zone_no_cap``
      - ``buildings.limiter_zone`` out of its range, without ``buildings.wall_tke = on``, and given without
        ``turb.realizability`` > 0: each refusal's message.

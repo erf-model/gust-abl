@@ -1,0 +1,56 @@
+# The staggered cube array of Castro et al. (2006) in the EnFlo tunnel (h = 20 mm, 25 % plan area), as
+# Munoz-Esparza et al. (2020, section 3) set it up for FastEddy: one 4h x 4h tile, periodic in x and y, 10h deep,
+# driven by a constant pressure gradient. GUST's pressure-driven set-up needs a slip lid, so the force is
+# F = u_tau^2 / L_z with the tunnel's u_tau = 0.7 m/s and L_z = 0.2 m (no tuning). 2 mm cells across (10 across a
+# cube), 1 mm layers to 1.5h and layers growing by 1.1 above. On the command line:
+# buildings.file=array_tile.xyz mesh.zlevels_file=zlevels_1mm.txt. compare_array.py compares the run with the
+# measurements (README.md).
+mesh.n_cell        = 40 40 59
+mesh.prob_lo       = 0. 0. 0.
+mesh.prob_hi       = 0.08 0.08 0.2
+mesh.is_periodic   = 1 1 0
+mesh.max_grid_size = 20 20
+
+terrain.type = flat
+
+abl.drive = pressure_driven
+abl.theta = neutral
+
+bc.zlo = surface_layer
+bc.zhi = slip_wall
+bc.surface_z0       = 0.0001
+bc.inflow_profile   = log_law
+bc.inflow_ustar     = 0.7
+# The first guess's log law (init.first_guess = profile) with an array-like roughness, z0 = 0.1 h: starting from
+# the smooth floor's z0 the flow starts far too fast and slows down over thousands of iterations (after 6000 the
+# plane-mean u at z = 1.3 h is still 50 % above this start's); from z0 = 0.1 h it settles near the measurements.
+bc.inflow_z0        = 0.002
+bc.inflow_direction = 0.
+bc.theta_profile_z  = 0.
+bc.theta_profile    = 300.
+
+forcing.gravity           = 0.
+forcing.pressure_gradient = 2.45 0. 0.
+
+turb.tke_floor = 1.e-8
+
+# Smooth cubes: the wall law with the roughness used for the Snyder and Lawson cube.
+buildings.type   = immersed_forcing
+buildings.format = xyz
+buildings.z0     = 0.0001
+
+init.first_guess = profile
+
+steady.stage          = simplec
+steady.sweep          = zjacobi
+steady.zline_sweeps   = 3
+steady.cfl_max        = 8
+steady.max_iterations = 3000
+
+# Periodic in x and y with buildings, the pressure correction is singular and the unmasked multigrid
+# preconditioner of gmres_mlmg needs about 300 GMRES iterations per solve; the FFT preconditioner gives the
+# same answer about 7 times faster (20 iterations: 15 s against 105 s on 4 ranks).
+solver.poisson_backend = gmres_fft
+
+io.plot_file = array_plt
+io.write_checkpoint = 0

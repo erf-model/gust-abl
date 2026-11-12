@@ -442,6 +442,40 @@ The measurements are those of W. H. Snyder and R. E. Lawson (1994); the values a
 Wise et al. (2026, https://doi.org/10.5194/egusphere-2026-4030, CC BY 4.0). We thank them, and the EPA Fluid Modeling
 Facility.
 
+The flow over a staggered array of cubes (h = 20 mm, 25 % plan area), against the measurements of Castro et al.
+(2006) in the EnFlo tunnel, as Muñoz-Esparza et al. (2020, section 3) set it up to validate FastEddy's immersed body
+force (``Tests/Canonical_RANS/Castro_Cube_Array``): one 4h x 4h tile, periodic in x and y, 10h deep, driven by a
+constant pressure gradient F = u_τ²/L_z from the tunnel's u_τ = 0.7 m/s, with 2 mm cells across (10 across a cube).
+Profiles of u above a cube (P0), one h behind it (P1), beside it (P2) and behind and beside it (P3), and of -<u'w'>
+at P1 and P3: 185 values digitized from the paper's Fig. 3.
+
+.. figure:: figures/buildings/castro_array_profiles.png
+   :width: 100%
+
+   (a, b) u/u_r and (c) -<u'w'>/u_r² at the four stations, u_r = 10 m/s: the measurements (symbols) and GUST (lines),
+   2 mm cells, after 3000 iterations. GUST's -<u'w'> is the closure's, ν_t (∂u/∂z + ∂w/∂x).
+
+The rms difference of u is 0.042 u_r, with a bias of -0.032 u_r, and 72 % of the values are within 25 % or 0.01 u_r.
+u at P0's top point (2.2 h) comes out 5 % slow: Muñoz-Esparza et al. adjusted their pressure gradient to match
+that point, and scaled that way GUST's rms is 0.033 u_r. The momentum flux has the measured shape; its peak just above the
+roof is 23 % high behind the cube (P1) and 3 % high at P3. The run does not meet the steady criteria (its u residual
+stays near 3e-4), but below 2.2 h, the highest measured point, its answer moves by at most 0.001 u_r between 3000
+and 8000 iterations; the outer layer above is still evolving. With 1 mm cells (20 across a cube) the u rms is
+0.045 u_r and the stress peaks 10.30 and 5.73: the 2 mm answer holds at the measured points. Two set-up points
+matter:
+
+- The first guess. From the floor's own log law (z0 = 0.1 mm) the flow starts too fast over the array and is still
+  slowing after 6000 iterations; the deck starts from a log law with z0 = 0.1 h.
+- The pressure solver. Periodic in x and y with buildings, the pressure correction is singular and ``gmres_mlmg``'s
+  unmasked multigrid preconditioner needs about 300 GMRES iterations per solve; ``solver.poisson_backend = gmres_fft``
+  gives the same answer about 7 times faster.
+
+The measurements are those of I. P. Castro, H. Cheng and R. Reynolds (2006,
+https://doi.org/10.1007/s10546-005-5747-7); the values are digitized from Fig. 3 of Muñoz-Esparza et al. (2020,
+https://doi.org/10.1029/2020MS002141, CC BY-NC-ND 4.0). We thank them.
+
+A building on a hill has no tunnel measurements that we know of, so no such case is compared here.
+
 Limits
 ------
 
