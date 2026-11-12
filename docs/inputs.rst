@@ -292,6 +292,9 @@ Quick reference
    * - ``buildings.theta_surface``
      - none
      - The walls' temperature with ``buildings.theta_mode = fixed`` (K)
+   * - ``buildings.limiter_zone``
+     - ``3``
+     - Zone around each building where ``turb.realizability`` and the upwind blend fade out (building heights)
    * - **Named set-ups** (`abl`_)
      -
      -
@@ -1001,6 +1004,9 @@ refuses buildings other than those of the run it continues.
    * - ``buildings.theta_surface``
      - none
      - Finite and > 0 (K). Required with ``buildings.theta_mode = fixed``; refused otherwise.
+   * - ``buildings.limiter_zone``
+     - ``3``
+     - 0 (off) or finite, ≥ 0.5 and ≤ 20 (building heights). With ``turb.realizability`` > 0, the eddy-viscosity cap is lifted within half the zone of a building and fades back in to its edge, measured by the distance to the nearest building wall in heights of that wall's building; the upwind blend, which follows the cap, fades with it. When given, refused without ``buildings.wall_tke = on`` or without ``turb.realizability`` > 0; the default acts only with both.
 
 ``abl``
 -------

@@ -168,7 +168,15 @@ void run ()
     const CanopyOptions canopy_opt = read_canopy_options(in.terrain.idw_neighbors, static_cast<double>(in.terrain.idw_power));
     for (auto& e : check_canopy_options(canopy_opt)) { err.push_back(std::move(e)); }
     // The buildings (Buildings.H, BuildingForcing.H). PR-39: one level and SIMPLEC with z-line sweeps (PR-43 the rest).
-    const BuildingsOptions buildings_opt = read_buildings_options();
+    BuildingsOptions buildings_opt = read_buildings_options();
+    // The lee options' zone acts with the closure's cap (and the upwind blend, which needs the cap).
+    buildings_opt.limiter_zone_acts = buildings_opt.active() && buildings_opt.wall_tke && buildings_opt.limiter_zone > 0
+                                      && copt.realizability > 0;
+    if (solve && buildings_opt.active() && buildings_opt.limiter_zone > 0 && !(copt.realizability > 0)
+        && std::find(buildings_opt.given.begin(), buildings_opt.given.end(), "limiter_zone") != buildings_opt.given.end()) {
+        err.emplace_back("buildings.limiter_zone has no effect without turb.realizability > 0 (the zone fades out the "
+                         "eddy-viscosity cap and the upwind blend that needs it)");
+    }
     for (auto& e : check_buildings_options(buildings_opt)) { err.push_back(std::move(e)); }
     if (solve && buildings_opt.active()) {
         if (newton) { err.emplace_back("buildings.type = immersed_forcing is not supported with steady.stage = simplec_newton yet"); }

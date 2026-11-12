@@ -438,7 +438,7 @@ void Closure::evaluate (const State& q, const amrex::MultiFab& dist_in, const Ro
     const amrex::MultiFab& N2c = (m_opt.ri_gate > 0) ? N2g : N2;
     // The nu_t cap (ClosureWake.H): the largest Real without turb.realizability, so min(nu_t, cap) = nu_t.
     amrex::MultiFab& cap = sc.cap;
-    nut_cap_field(q, S2, m_opt, m_c, cap);
+    nut_cap_field(q, S2, m_opt, m_c, cap, m_cap_weight);
     amrex::iMultiFab& dec = sc.dec;
     decide(q, N2c, dist, z0, dec);
     const ClosureConstants c = m_c;

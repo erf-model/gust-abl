@@ -184,7 +184,8 @@ cap before the relaxation lets :math:`w < 1` damp the cap's changes between iter
 oscillation of the cap passes with the factor :math:`w/(2 - w)` (1/3 at :math:`w = 0.5`) instead of 1. Without the
 option the cap is the largest real number and the closure is unchanged bit for bit. The derivative the Newton stage
 reads follows the cap (:math:`\mathrm{d}\,\mathrm{cap}/\mathrm{d}k = \mathrm{cap}/k`); the column first guess
-(``init.first_guess = column``) does not apply it.
+(``init.first_guess = column``) does not apply it. Around buildings, whose edges fix their separation, the cap fades
+out within ``buildings.limiter_zone`` building heights (:doc:`buildings`).
 
 .. _hybrid-convection:
 
@@ -268,7 +269,7 @@ with 68 m first cells and smoothed terrain).
 
 ``Tests/Paper/JWEIA2026`` runs all the variants of the paper on this setting (without and with the sensor, the
 limit without the blending, first-order upwinding, the sensitivity to :math:`C_r`, :math:`\sigma_\mathrm{max}`
-and :math:`H_b`, and the grids) and draws its figures.
+and :math:`H_h`, and the grids) and draws its figures.
 
 The comparison uses data made openly available by N. Wagenbrenner (windninja-tools, the Big Southern Butte
 database and Wagenbrenner et al. 2019), T. Ishihara and T. Zhou (the ridge wind-tunnel data) and ERCOFTAC (the

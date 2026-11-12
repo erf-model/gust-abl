@@ -272,6 +272,13 @@ LevelSolver::LevelSolver (const RunSetup& s, const Mesh& mesh, const amrex::Geom
         amrex::Print() << "gust: " << label << "buildings: the distance to the nearest building wall settled in "
                        << building_tke->distance_passes() << " passes; a building's wall sets the closure's length in "
                        << n << " cells\n";
+        // The lee options fade out around buildings, whose edges fix their separation (BuildingTke.H).
+        if (building_tke->zone_active() && s.copt.realizability > 0) {
+            closure.set_cap_weight(&building_tke->limiter_zone());
+            amrex::Print() << "gust: " << label << "buildings: turb.realizability" << (s.cin.hybrid.active() ? " and the upwind blend" : "")
+                           << " fade out near buildings (buildings.limiter_zone): off in " << building_tke->zone_off_cells()
+                           << " cells, partly in " << building_tke->zone_cells() - building_tke->zone_off_cells() << "\n";
+        }
     }
     res_in = residual_inputs(s, closure, dist, bc, surf);
     res_in.buildings = buildings;

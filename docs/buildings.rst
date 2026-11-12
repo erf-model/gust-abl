@@ -312,6 +312,37 @@ the flow (0.2 on the block, against 4.0 with the solid rows), so the relative re
 stop on it stricter than with those rows. A checkpoint written with them keeps its reference: a restart from it
 stops on :math:`k` as that run would have, and reads the lengths and distances of this page.
 
+**Lee options near buildings.** The eddy-viscosity cap (``turb.realizability``, :ref:`nut-cap`) and the upwind
+blend that follows it (:ref:`hybrid-convection`) let a smooth hill's lee separate: the default closure keeps the
+shear layer leaving a crest too mixed, and the flow stays attached. A building's sharp edges fix where its flow
+separates, so the cap's case does not carry over: there it changes how the separated layers mix, for better in
+some places and for worse in others. On the cube of `Validation`_ (20 mm cells), without the zone below
+(``buildings.limiter_zone = 0``), the cap gives the roof the bubble the measurements show, but the bubble on the
+floor behind reaches 1.88 H (1.34 H plain, 1.36 H measured), the near wake's shear layer and the far wake are too
+slow, and the horseshoe vortex ahead of the cube grows; the rms difference from the measurements goes from 0.244 to
+0.319 m/s. ``buildings.limiter_zone`` :math:`= c` (default 3) fades the cap out around each building with a
+weight :math:`w` that divides it, :math:`\nu_t \le C_r k / (S\,w)`:
+
+.. math::
+
+   w = \begin{cases} 0, & s \le \tfrac{1}{2} \\ t^2 (3 - 2t), \; t = 2s - 1, & \tfrac{1}{2} < s < 1 \\ 1, & s \ge 1 \end{cases}
+   \qquad s = \frac{d_b}{c\,H_b},
+
+with :math:`d_b` the distance to the nearest building wall (above) and :math:`H_b` the height of that wall's
+building, the tallest solid column next to the wall's cell (the solid thickness of a lifted building). The cap is
+lifted within :math:`c H_b / 2` of a building and back in full beyond :math:`c H_b`. The blend grows only where the
+cap holds :math:`\nu_t`: it is off where the cap is lifted and reduced in the band where :math:`w` rises. Away from buildings the options act as before, so on a site with
+buildings on terrain a hill's lee keeps them. The zone needs ``buildings.wall_tke = on`` (it reads :math:`d_b`) and acts
+only with ``turb.realizability`` > 0; the log gives the cells where it lifts the cap and where it fades. With it the
+cube's answer is the plain closure's within 0.001 m/s and 0.001 m (reattachment 1.35 H, rms 0.244 m/s). ``0`` keeps the cap
+everywhere, as before. The default rests on the cube's overall agreement; 3 is about the smallest size that keeps
+the cap off over its measured bubble. The weight is a geometric switch, not a detector of separation: a building in a
+hill's lee, or a building's wake longer than :math:`c H_b` (a wake grows with the building's width more than its
+height), gets the plain closure or the cap by its distance alone. A checkpoint
+written with the cap and without the zone restarts with ``buildings.limiter_zone = 0``; one written with the zone
+restarts only with the same ``buildings.limiter_zone`` and ``turb.realizability`` > 0. The default changes the answer of
+a run with buildings and ``turb.realizability`` > 0 written before it; no deck of the tests has that pair.
+
 ``buildings.wall_tke = off`` leaves the closure as it was before these terms: :math:`k` is solved in every cell with
 the ground's distance alone. A checkpoint written before them restarts with ``off``, together with ``buildings.wall_speed = all_faces``
 (`Momentum`_) and ``buildings.theta_mode = none`` (`Temperature`_), and is refused with ``on``. ``on``
@@ -382,6 +413,35 @@ number of iterations; :math:`\theta` differs by up to 0.007 K, its drift from 30
 restarts with ``buildings.theta_mode = none`` and is refused with the others; ``buildings.theta_surface`` is part of
 what a restart must keep.
 
+
+Validation
+----------
+
+The flow around a cube (H = 0.2 m) in a wind-tunnel boundary layer, against the measurements of Snyder and Lawson
+(1994) in the U.S. EPA Fluid Modeling Facility, as Wise et al. (2026, Appendix A) set it up to validate ERF's immersed
+forcing (``Tests/Canonical_RANS/Snyder_Lawson_Cube``): the mean streamwise velocity on the plane z = 0.1 H and on
+the centre plane, upwind of, over, beside and behind the cube, 296 values digitized from the preprint's figures.
+GUST solves the steady RANS equations, the paper time-averages LES.
+
+.. figure:: figures/buildings/snyder_lawson_profiles.png
+   :width: 100%
+
+   Mean u around the cube, (a) at z = 0.02 m and (b) on the centre plane, drawn from each station's grey line as
+   x + 0.025 u: the measurements (dots) and GUST's plain closure with 20 mm and 10 mm cells across (10 and 20 across
+   the cube) and 5 mm layers to 0.3 m.
+
+With 20 mm cells the rms difference from the measurements is 0.244 m/s and 88 % of the values are within 25 % or
+0.1 m/s; the reattachment behind the cube is 1.34 H, against 1.33 to 1.36 H measured. With 10 mm cells (20 across) the rms difference is 0.216 m/s, the hit rate 0.905 and
+the reattachment 1.29 H: the error over and beside the cube falls, and the reattachment is not grid-converged. The largest
+differences are beside the cube, where the measured flow speeds up past the side edges, over the roof, where the
+plain closure has no bubble 0.1 H above it, and in the strength of the reversed flow near the floor behind the cube
+(-1.15 m/s against -0.80 m/s at x = 1.5 H). The
+case README has the set-up, the regions and the closure options compared.
+
+The measurements are those of W. H. Snyder and R. E. Lawson (1994); the values are digitized from Figs. A3 and A4 of
+Wise et al. (2026, https://doi.org/10.5194/egusphere-2026-4030, CC BY 4.0). We thank them, and the EPA Fluid Modeling
+Facility.
+
 Limits
 ------
 
@@ -439,6 +499,9 @@ Limits
   speed is small, so :math:`k` and the eddy viscosity in its wall cells are small too (0.008 m²/s² on the block's
   windward face, against 0.76 m²/s² one cell upstream). The ground's row does the same where the flow reattaches.
 - The shear production in the second cell from a wall still reads the wall cell's velocity.
+- The zone of the lee options ends where the distance search stops, at the mesh's tallest column: a zone wider than
+  that is cut there, its weight jumping to 1. :math:`H_b` is the tallest solid column next to the wall's cell, so a
+  low podium beside a tower takes the tower's zone.
 - The walls' heat exchange is neutral and reads the wall law's :math:`u_*`, from the speed parallel to the wall. A
   wall that faces the flow, or one in still air, exchanges little or nothing: there is no free-convection limit.
   The own distance has the law's floor of :math:`10 z_0`. The walls have one temperature, or the reference
