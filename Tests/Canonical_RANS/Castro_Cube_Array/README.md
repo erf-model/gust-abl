@@ -81,6 +81,20 @@ and P3. These are a validation against measurements, not pinned to a target beyo
 
 u in u_r, -<u'w'> in 1e-3 u_r².
 
+The grid, rough first guess, 4 ranks (4000 iterations at 1 mm, 80 x 80 x 59 cells, 20 across a cube; the same
+layers):
+
+| Cells across | Iterations | r at the end | u rms | u bias | q | Scale to P0 top | -<u'w'> rms | Peak P1 | Peak P3 |
+|---|---|---|---|---|---|---|---|---|---|
+| **2 mm** | **3000** | 5.7e-3 | **0.042** | -0.032 | **0.724** | 1.054 | 1.71 | 10.45 | 5.97 |
+| 1 mm | 4000 | 9.1e-3 | 0.045 | -0.036 | 0.732 | 1.072 | 1.68 | 10.30 | 5.73 |
+| measured | | | | | | | | 8.49 | 5.80 |
+
+- Halving the cells changes u at the measured points by 0.003 u_r rms and the stress peaks by 1 to 4 %: at these
+  points the 2 mm answer is grid-independent within the scatter of the comparison. The 1 mm run is less converged
+  (its u residual is 1.6e-3 and still falling, against 3.2e-4 at 2 mm), and its free stream is 2 % slower.
+- 2 ranks give the 4-rank pins to the digits printed.
+
 - The first guess matters. From the smooth floor's log law the flow starts too fast over the array and slows
   over thousands of iterations: after 6000 the plane-mean u at z = 1.3 h is still 50 % above that of the rough
   start, and the stresses are more than twice the measured ones. From z0 = 0.1 h (an array-like roughness) it settles
@@ -95,7 +109,9 @@ u in u_r, -<u'w'> in 1e-3 u_r².
   law at 10 m/s near the lid takes 0.18 to 0.19 m²/s², which leaves 0.47 to 0.49 m²/s² on the floor and the array,
   u_τ 0.69 to 0.70 m/s, as in GUST (0.49 m²/s²). The two floor stresses agree, so the 5 % comes from GUST, not
   from the forcing. With the slip lid the total stress at the roof level is F (L_z - h), u_* = 0.664 m/s there; if
-  the tunnel's 0.7 m/s is a roof-level value, F = 0.49 / (L_z - h) = 2.72 m/s² would match it.
+  the tunnel's 0.7 m/s is a roof-level value, F = 0.49 / (L_z - h) = 2.72 m/s² would match it. With F = 2.72
+  (3000 iterations) the u rms is 0.039, q 0.732, the scale 1.042 and the stress peaks 10.70 and 6.10: the
+  free-stream deficit shrinks from 5 % to 4 % and the peaks rise. The deck keeps FastEddy's F = u_τ²/L_z.
 - FastEddy's set-up has no-slip walls at the floor and the top, a 1 mm grid and the viscous terms. GUST's
   pressure-driven set-up needs a slip lid; the force F = u_τ²/L_z is that of a half channel of depth L_z.
 - With buildings in a doubly periodic domain the pressure correction is singular and the unmasked multigrid
