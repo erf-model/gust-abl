@@ -23,7 +23,7 @@ namespace gust {
 
 namespace {
 
-const char* const kBuildingsKeys[] = {"type", "file", "format", "small_volfrac", "z0", "wall_form", "wall_tke", "wall_speed"};
+const char* const kBuildingsKeys[] = {"type", "file", "format", "small_volfrac", "z0", "wall_form", "wall_tke", "wall_speed", "theta_mode", "theta_surface"};
 constexpr const char* kBuildingsMagic = "gust_buildings";
 constexpr int kBuildingsVersion = 1;
 
@@ -242,9 +242,28 @@ BuildingsOptions read_buildings_options ()
                          : (opt.wall_speed_name == "all_faces" ? BuildingWallSpeed::all_faces : BuildingWallSpeed::open_faces);
     pp.query("wall_tke", opt.wall_tke_name);
     opt.wall_tke = opt.wall_tke_name.empty() ? opt.wall_form == BuildingWallForm::fraction_stress : opt.wall_tke_name == "on";
+    pp.query("theta_mode", opt.theta_mode_name);
+    if (opt.theta_mode_name.empty()) {
+        opt.theta_mode = opt.wall_form == BuildingWallForm::fraction_stress ? BuildingThetaMode::ambient : BuildingThetaMode::none;
+    } else {
+        opt.theta_mode = opt.theta_mode_name == "fixed" ? BuildingThetaMode::fixed
+                         : opt.theta_mode_name == "none" ? BuildingThetaMode::none : BuildingThetaMode::ambient;
+    }
+    if (pp.query("theta_surface", s) && !parse_number(s, opt.theta_surface)) {
+        opt.parse_errors.emplace_back("buildings.theta_surface = " + s + " is not a number");
+    }
     if (opt.type_name == "immersed_forcing") { opt.type = BuildingsType::immersed_forcing; }
     return opt;
 }
+
+namespace {
+//! Whether reading buildings.<key> left a parse error (its value is then not checked again).
+bool parse_error_of (const BuildingsOptions& opt, const std::string& key)
+{
+    return std::any_of(opt.parse_errors.begin(), opt.parse_errors.end(),
+                       [&] (const std::string& e) { return e.rfind("buildings." + key + " ", 0) == 0; });
+}
+} // namespace
 
 std::vector<std::string> check_buildings_options (const BuildingsOptions& opt)
 {
@@ -277,6 +296,26 @@ std::vector<std::string> check_buildings_options (const BuildingsOptions& opt)
         err.emplace_back("buildings.wall_speed must be open_faces or all_faces (got " + opt.wall_speed_name + ")");
     } else if (opt.wall_form == BuildingWallForm::drag && has(opt.given, "wall_speed")) {
         err.emplace_back("buildings.wall_speed has no effect with buildings.wall_form = drag (no wall law)");
+    }
+    if (!opt.theta_mode_name.empty() && opt.theta_mode_name != "none" && opt.theta_mode_name != "ambient" && opt.theta_mode_name != "fixed") {
+        err.emplace_back("buildings.theta_mode must be none, ambient or fixed (got " + opt.theta_mode_name + ")");
+    } else {
+        if (opt.theta_mode != BuildingThetaMode::none && opt.wall_form != BuildingWallForm::fraction_stress) {
+            err.emplace_back(std::string("buildings.theta_mode = ") + (opt.theta_mode == BuildingThetaMode::fixed ? "fixed" : "ambient")
+                             + " needs buildings.wall_form = fraction_stress (the walls' "
+                             "heat exchange reads the wall law's u* on every wall; got " + opt.wall_form_name + ")");
+        }
+        if (opt.theta_mode == BuildingThetaMode::fixed) {
+            if (!has(opt.given, "theta_surface")) {
+                err.emplace_back("buildings.theta_surface is required with buildings.theta_mode = fixed");
+            } else if (parse_error_of(opt, "theta_surface")) {
+                // "is not a number" says it already.
+            } else if (!(opt.theta_surface > 0) || !std::isfinite(opt.theta_surface)) {
+                err.emplace_back("buildings.theta_surface must be finite and > 0 (K; got " + std::to_string(opt.theta_surface) + ")");
+            }
+        } else if (has(opt.given, "theta_surface")) {
+            err.emplace_back("buildings.theta_surface has no effect without buildings.theta_mode = fixed");
+        }
     }
     if (opt.wall_form == BuildingWallForm::drag && has(opt.given, "z0")) {
         err.emplace_back("buildings.z0 has no effect with buildings.wall_form = drag (no wall law)");
@@ -338,13 +377,18 @@ std::string Buildings::hash_inputs (const BuildingsOptions& opt)
     // of that form continues with roof_stress, and is refused with the sides' law. The
     // closure's building terms add a line only when on, so a checkpoint from before them
     // continues with buildings.wall_tke = off. Likewise the open faces' speed: a checkpoint
-    // from before it continues with buildings.wall_speed = all_faces.
+    // from before it continues with buildings.wall_speed = all_faces. And theta's building
+    // terms: a line only when they act, so a checkpoint from before them continues with
+    // buildings.theta_mode = none.
     const std::string law = opt.wall_form == BuildingWallForm::roof_stress ? "fraction_stress"
                           : opt.wall_form == BuildingWallForm::fraction_stress ? "fraction_stress_sides" : opt.wall_form_name;
     return sha256_hex(std::string(kBuildingsMagic) + " " + std::to_string(kBuildingsVersion) + "\ntype " + opt.type_name
                       + "\nformat " + opt.format + "\nfile " + h + "\nsmall_volfrac " + hexfloat(opt.small_volfrac) + "\nz0 " + hexfloat(opt.z0)
                       + "\nwall_form " + law + "\n" + ((opt.wall_tke && opt.wall_form == BuildingWallForm::fraction_stress) ? "wall_tke on\n" : "")
-                      + ((opt.wall_speed == BuildingWallSpeed::open_faces && opt.wall_form != BuildingWallForm::drag) ? "wall_speed open_faces\n" : ""));
+                      + ((opt.wall_speed == BuildingWallSpeed::open_faces && opt.wall_form != BuildingWallForm::drag) ? "wall_speed open_faces\n" : "")
+                      + (opt.wall_form != BuildingWallForm::fraction_stress || opt.theta_mode == BuildingThetaMode::none ? std::string()
+                         : opt.theta_mode == BuildingThetaMode::fixed ? "theta_mode fixed " + hexfloat(opt.theta_surface) + "\n"
+                                                                      : std::string("theta_mode ambient\n")));
 }
 
 void Buildings::build (const BuildingsOptions& opt, const amrex::Geometry& geom, const amrex::MultiFab& z_nd,
@@ -630,10 +674,12 @@ void Buildings::check_restart (const std::string& dir, const std::string& hash)
     }
     if (active && rec != hash) {
         amrex::Abort(where + "the buildings inputs differ from the checkpoint's (buildings.type, buildings.format, buildings.file contents, "
-                             "buildings.small_volfrac, buildings.z0, buildings.wall_form, buildings.wall_tke, buildings.wall_speed; a checkpoint written with "
+                             "buildings.small_volfrac, buildings.z0, buildings.wall_form, buildings.wall_tke, buildings.wall_speed, buildings.theta_mode, "
+                             "buildings.theta_surface; a checkpoint written with "
                              "fraction_stress before the sides had the wall law continues with buildings.wall_form = roof_stress, "
-                             "one from before k had building terms with buildings.wall_tke = off, and one from before the wall law "
-                             "skipped fixed faces with buildings.wall_speed = all_faces)");
+                             "one from before k had building terms with buildings.wall_tke = off, one from before the wall law "
+                             "skipped fixed faces with buildings.wall_speed = all_faces, and one from before theta had building terms with "
+                             "buildings.theta_mode = none)");
     }
 }
 

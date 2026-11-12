@@ -855,9 +855,12 @@ Current tests
        ``buildings_restart``, ``buildings_restart_matches``, ``abort_buildings_restart_changed``,
        ``abort_buildings_restart_none``, ``abort_buildings_inputs``, ``abort_buildings_type``,
        ``abort_buildings_wall_inputs``, ``abort_buildings_wall_tke_form``, ``abort_buildings_z0_with_drag``,
+       ``abort_buildings_restart_theta``, ``abort_buildings_theta_inputs``, ``abort_buildings_theta_surface``,
+       ``abort_buildings_theta_surface_missing``, ``abort_buildings_theta_surface_unused``, ``abort_buildings_theta_form``,
        ``buildings_defaults_fraction_stress``, ``buildings_defaults_roof_stress``, ``buildings_defaults_drag`` (each with its ``_clean``)
      - The building geometry (:doc:`buildings`): each column's volume against the height map, the wall mask, a restart on
-       another layout, the refusals, and the defaults of ``buildings.wall_speed`` and ``buildings.wall_tke`` with each
+       another layout, the refusals (those of ``buildings.theta_mode`` and ``buildings.theta_surface`` among them, and a
+       restart without theta's terms of a checkpoint written with them), and the defaults of ``buildings.wall_speed``, ``buildings.wall_tke`` and ``buildings.theta_mode`` with each
        ``buildings.wall_form``, as the log gives them.
    * - ``building_courtyard_clean``, ``building_courtyard_run``, ``building_courtyard_flow``,
        ``building_courtyard_all_faces_clean``, ``building_courtyard_all_faces_run``, ``building_courtyard_all_faces_flow``
@@ -877,6 +880,10 @@ Current tests
        ``building_cube_wall_k_source_run``, ``building_cube_wall_k_source_flow``, ``building_cube_drag_clean``,
        ``building_cube_drag_run``, ``building_cube_drag_flow``, ``building_cube_smooth_walls_clean``,
        ``building_cube_smooth_walls_run``, ``building_cube_smooth_walls_length``, ``building_cube_smooth_walls_flow``,
+       ``building_cube_heated_clean``, ``building_cube_heated_run``, ``building_cube_heated_heat``,
+       ``building_cube_heated_flow``, ``building_cube_theta_none_clean``, ``building_cube_theta_none_run``,
+       ``building_cube_theta_none_flow``, ``building_cube_heated_roof_clean``, ``building_cube_heated_roof_run``,
+       ``building_cube_heated_roof_heat``, ``abort_buildings_theta_frozen``,
        ``abort_buildings_newton``,
        ``abort_buildings_lusgs``, ``abort_buildings_levels``, ``abort_buildings_mlmg``
      - One block in a log-law wind (``Tests/Canonical_RANS/Building_Cube``): the run converges, speeds in solid cells
@@ -888,7 +895,12 @@ Current tests
        ``buildings.wall_form = drag`` and no ``buildings.wall_tke`` the fixed rows act alone and the closure does not see
        the block. With walls smoother than the ground (``buildings.z0`` 0.01 m on ``bc.surface_z0`` 0.1 m) the
        turbulence plotfile's ``walldist`` in the wall cells is the wall's distance plus its own roughness less the
-       ground's, 2.41 m. The stages and back ends that have no buildings yet are
+       ground's, 2.41 m. With walls 5 K warmer than the air and gravity on (``buildings.theta_mode = fixed``) the
+       solid cells are at 305 K, the air stays between the inflow's and the walls' temperature, and the heat the
+       walls give equals the heat carried through the planes downstream within 2 %; the same with the roof inside a
+       layer (0.92 of its cells solid), where the wall cells' reference cells carry most of the exchange. With
+       ``buildings.theta_mode = none`` the deck keeps its values, theta is solved inside the block (the deck's default
+       holds it at 300 K there) and the log has no line with the walls' heat. The stages and back ends that have no buildings yet are
        refused.
    * - ``abort_canopy_restart_changed``, ``abort_canopy_restart_none``, ``abort_canopy_inputs``
      - A restart with one patch's LAI changed, and one without a canopy, stop naming ``io.restart``; a deck of canopy

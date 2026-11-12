@@ -35,7 +35,7 @@
 //   sides had the law).
 // - buildings.wall_form = drag: the fixed rows alone (Kynema-SGF's laminar pathway).
 //
-// k at buildings: BuildingTke.H. theta: PR-42. On a slope a roof's speed is horizontal: its
+// k at buildings: BuildingTke.H. theta: BuildingTheta.H. On a slope a roof's speed is horizontal: its
 // tilt is not taken out. A side is vertical, so (v, w) and (u, w) are parallel to it.
 
 #include "Buildings.H"
@@ -64,6 +64,36 @@ amrex::Real form7_ustar2 (amrex::Real u_own, amrex::Real u_ref, amrex::Real beta
 //! The component of BuildingForcing::rate() after the three rates: the largest u*^2 of the
 //! cell's walls (m^2/s^2), which the closure's wall value of k reads (BuildingTke.H).
 inline constexpr int kBuildingUstar2 = 3;
+//! The heat exchange of the cell's walls with the law (1/s; BuildingTheta.H): the sum over
+//! the walls of the coefficient on the cell's own theta - theta_b, and, in a partly solid
+//! cell, the coefficient on the reference cell's theta - theta_b for its wall along x, y, z
+//! (such a cell has one wall along a direction at most; the reference cell is the next one
+//! out from that wall).
+inline constexpr int kBuildingHeatOwn = 4, kBuildingHeatRefX = 5, kBuildingHeatRefY = 6, kBuildingHeatRefZ = 7;
+inline constexpr int kNumBuildingRates = 8;
+
+//! The heat transfer velocities (m/s) of one wall under the form 7 law with a given surface
+//! temperature, neutral (ERF ib_wall::wall_state, surface_temp, psi_h = 0):
+//!   q = u* theta*,  theta* = (1 - beta) kappa (theta - theta_b) / ln(d1 / z0)
+//!                          +      beta  kappa (theta_ref - theta_b) / ln(d2 / z0),
+//! q the kinematic heat flux from the air to the wall (K m/s), with the momentum law's u*
+//! (us2 = u*^2), its floor of 10 z0 on both distances, and the own term alone where there is
+//! no reference cell (d2 = 0). own multiplies theta - theta_b, ref multiplies
+//! theta_ref - theta_b. Both are 0 at rest.
+AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
+void form7_heat_velocities (amrex::Real us2, amrex::Real beta, amrex::Real d1, amrex::Real d2, amrex::Real z0, amrex::Real kappa,
+                            amrex::Real& own, amrex::Real& ref) noexcept
+{
+    const amrex::Real floor = amrex::Real(10) * z0;
+    const amrex::Real c = kappa * std::sqrt(us2);
+    own = c / std::log(amrex::max(d1, floor) / z0);
+    ref = 0;
+    if (d2 <= amrex::Real(0)) { return; }
+    // beta = 0 (a fluid cell, which can have a wall on both sides of a direction) gives ref = 0
+    // exactly: BuildingTheta reads no reference cell there.
+    own *= amrex::Real(1) - beta;
+    ref = beta * c / std::log(amrex::max(d2, floor) / z0);
+}
 
 //! The mean of a velocity component over a cell's two faces, with the faces' weights (1, or 0 on
 //! a fixed row with buildings.wall_speed = open_faces): an edge or corner cell then takes the open
@@ -100,7 +130,8 @@ public:
     [[nodiscard]] bool side_law () const { return m_wall_form == BuildingWallForm::fraction_stress; }
     //! The rates at the cells (one ghost layer) from the last update: component c < 3 is the
     //! rate on velocity component c, the sum over the cell's walls parallel to it; component
-    //! kBuildingUstar2 is the largest u*^2 of the cell's walls.
+    //! kBuildingUstar2 is the largest u*^2 of the cell's walls; kBuildingHeatOwn and the three
+    //! after it are the walls' heat exchange coefficients.
     [[nodiscard]] const amrex::MultiFab& rate () const { return m_rate; }
 
     //! The wall cells with a wall under the law, and those among them whose fluid centroid is

@@ -37,7 +37,9 @@ velocities of the two forms differ by about 0.02 m/s at most (w by 0.0204 m/s in
 0.20 m²/s². The `all_faces` plotfile equalled the one of `main` before the
 open faces' mean (c57ad06) at zero tolerance. Since the solid cells' rows left the residual norm of k the runs stop at
 other iterations than `main` at 8448d15 (138 and 139); the default's velocities differ from that plotfile by at most
-1.4e-4 m/s, and its building distances not at all.
+1.4e-4 m/s, and its building distances not at all. Theta's building terms (`buildings.theta_mode`, `ambient` by
+default) leave the velocities and k bit for bit, in the same 135 iterations (measured against
+`buildings.theta_mode = none`); theta differs by up to 0.007 K.
 
 ## CTest
 `building_courtyard_clean`, `building_courtyard_run`, `building_courtyard_flow`, `building_courtyard_all_faces_clean`,

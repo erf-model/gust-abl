@@ -7,8 +7,8 @@ immersed forcing with the form 7 wall law of ERF (``erf.if_wall_form = fraction_
 
 **Status.** The geometry acts on momentum with SIMPLEC and z-line sweeps on one level (`Momentum`_). Roofs,
 undersides and sides have the wall law, and the closure sees the buildings (`Turbulence`_): :math:`k` has its wall
-value beside them and the length scale their distance. :math:`\theta` has no building terms yet, and answers near
-buildings are not validated. The run refuses
+value beside them and the length scale their distance. :math:`\theta` exchanges heat with the walls at a given wall
+temperature (`Temperature`_). Answers near buildings are not validated. The run refuses
 ``steady.stage = simplec_newton``, ``steady.sweep = lusgs``, ``mesh.hierarchy_levels`` above 1 and
 ``solver.poisson_backend = mlmg``, and fluid sealed off by buildings.
 
@@ -190,7 +190,8 @@ includes the fixed faces, so ``open_faces`` is above it there. A cell with no fi
 its parallel components (a plain roof or side cell) is not affected. ``all_faces`` takes the mean of both faces, as
 before; it is the default with ``roof_stress``, which also accepts ``open_faces`` (the roofs' speed then skips the
 sides' fixed faces). A checkpoint written before this choice restarts with ``all_faces`` and is refused with
-``open_faces``, so a ``fraction_stress`` deck that continues such a run has to name ``all_faces``.
+``open_faces``, so a ``fraction_stress`` deck that continues such a run has to name ``all_faces`` (and
+``buildings.wall_tke = off`` and ``buildings.theta_mode = none``, for the same reason: `Turbulence`_, `Temperature`_).
 
 On the courtyard of ``Tests/Canonical_RANS/Building_Courtyard``, :math:`k` in an inner corner's wall cell is 0.023 m²/s²
 with ``open_faces`` and 0.008 m²/s² with ``all_faces``, and the velocities differ by about 0.02 m/s at most. One block on
@@ -313,13 +314,73 @@ stops on :math:`k` as that run would have, and reads the lengths and distances o
 
 ``buildings.wall_tke = off`` leaves the closure as it was before these terms: :math:`k` is solved in every cell with
 the ground's distance alone. A checkpoint written before them restarts with ``off``, together with ``buildings.wall_speed = all_faces``
-(`Momentum`_), and is refused with ``on``. ``on``
+(`Momentum`_) and ``buildings.theta_mode = none`` (`Temperature`_), and is refused with ``on``. ``on``
 needs the wall law on every wall, so it is refused with ``roof_stress`` and ``drag``.
 
 On the block of the first figure, :math:`k` in the roof's wall cell is 0.41 m²/s² with these terms and 8.6 m²/s²
 without, against 0.35 m²/s² upstream at that height, and without them :math:`k` in the solid cells was 3 m²/s². On the
 ridge of the second figure the air now reverses in a thin layer on the roof (u in the roof's wall cell -0.17 m/s; it was
 3.90 m/s), as the eddy viscosity there is lower.
+
+Temperature
+-----------
+
+``buildings.theta_mode`` selects how :math:`\theta` meets a building, with the form 7 treatment for a given surface
+temperature :math:`\theta_b` (ERF ``ib_wall::wall_state``, ``surface_temp``), neutral. It needs the wall law on every
+wall (``buildings.wall_form = fraction_stress``) and is ``ambient`` by default with it.
+
+**Solid cells** hold :math:`\theta = \theta_b`: the row is :math:`R_\theta = \theta - \theta_b`, an identity row, as
+those of :math:`k`.
+
+**Wall cells.** Each wall takes heat from the air of its cell at the kinematic flux
+
+.. math::
+
+   q = u_*\,\theta_*, \qquad
+   \theta_* = (1 - \beta)\,\frac{\kappa\,(\theta - \theta_b)}{\ln(d_1 / z_0)}
+            + \beta\,\frac{\kappa\,(\theta_\mathrm{ref} - \theta_b)}{\ln(d_2 / z_0)},
+
+with :math:`u_*` the momentum law's friction velocity of that wall (`Momentum`_), :math:`d_1` and :math:`d_2` its two
+distances with the same floor of :math:`10 z_0`, :math:`z_0` = ``buildings.z0``, :math:`\theta` the cell's and
+:math:`\theta_\mathrm{ref}` the reference cell's (the next one out along the wall's normal), and the own term alone,
+without its factor :math:`1 - \beta`, where there is no reference cell. :math:`q > 0` cools the air. Over the cell,
+
+.. math::
+
+   R_\theta \mathrel{+}= \sum_\mathrm{walls} \frac{f\,q}{\Delta_n},
+
+with :math:`f` the wall's part of its face's area and :math:`\Delta_n` the cell's size along its normal, as for the
+stress. The coefficient on the cell's own :math:`\theta` goes into :math:`a_P`; the reference cell's part is in the
+residual alone. There are no stability functions: the exchange does not feel the temperature difference it makes.
+With no wind along a wall :math:`u_*` is zero and so is the exchange.
+
+**No conduction.** The diffusive flux of :math:`\theta` through the blocked part of a face is closed, in the residual
+and in the implicit rows, as that of :math:`k`. The wall's flux above is the whole exchange.
+
+**The walls' temperature.**
+
+- ``ambient``: :math:`\theta_b` is the reference profile (``bc.theta_profile``) at the cell's height, and each cell's
+  :math:`\theta` is compared with its own height's, the reference cell's too. A state at the profile exchanges no
+  heat, so a neutral run stays neutral; where :math:`\theta` leaves the profile the walls pull it back.
+- ``fixed``: :math:`\theta_b` = ``buildings.theta_surface`` (K) on every wall. Warm walls heat the air beside them,
+  and with gravity on that air is buoyant, so the flow near the building is no longer neutral.
+- ``none``: :math:`\theta` as before these terms: solved in every cell, with diffusion through the buildings' faces.
+
+The log gives the heat the walls take from the air at the end of the run, the sum of :math:`f q` times the walls'
+area (K m³/s; negative when they heat it; with ``ambient`` in a neutral run it is zero but for the small drift of
+:math:`\theta` from the profile during the iteration, 1e-4 K m³/s on the block). On the block of the first figure with walls 5 K above the air and gravity
+on, the run stops in 105 iterations, the walls give 585 K m³/s, and the heat carried through the planes downstream,
+:math:`\sum u\,(\theta - 300\ \mathrm{K})\,\Delta y\,\Delta z`, is 583 K m³/s. The air is at most 1.07 K above the
+inflow.
+
+The solid cells' rows are left out of the residual norm of :math:`\theta` and of the count of ``steady.confidence``,
+as those of :math:`k` (`Turbulence`_). With ``simplec.theta = frozen`` :math:`\theta` is data and these terms do not
+act; the key is then refused when given as ``ambient`` or ``fixed`` (frozen :math:`\theta` needs grid sequencing,
+which buildings do not have yet, so the two do not meet today). On the three building cases of the tests, which are
+neutral with gravity off, ``ambient`` and ``none`` give the same velocities and :math:`k` bit for bit in the same
+number of iterations; :math:`\theta` differs by up to 0.007 K, its drift from 300 K without these terms. A checkpoint written before these terms
+restarts with ``buildings.theta_mode = none`` and is refused with the others; ``buildings.theta_surface`` is part of
+what a restart must keep.
 
 Limits
 ------
@@ -377,8 +438,31 @@ Limits
 - The wall value of :math:`k` is neutral and reads the speed parallel to the wall. On a wall that faces the flow that
   speed is small, so :math:`k` and the eddy viscosity in its wall cells are small too (0.008 m²/s² on the block's
   windward face, against 0.76 m²/s² one cell upstream). The ground's row does the same where the flow reattaches.
-- The shear production in the second cell from a wall still reads the wall cell's velocity, and :math:`\theta` has no
-  building terms yet.
+- The shear production in the second cell from a wall still reads the wall cell's velocity.
+- The walls' heat exchange is neutral and reads the wall law's :math:`u_*`, from the speed parallel to the wall. A
+  wall that faces the flow, or one in still air, exchanges little or nothing: there is no free-convection limit.
+  The own distance has the law's floor of :math:`10 z_0`. The walls have one temperature, or the reference
+  profile's; a temperature per wall, a given heat flux and stability functions on the walls are not there.
+- The exchange is the Reynolds analogy with a turbulent Prandtl number of 1 and the momentum's :math:`z_0` for heat:
+  the heat transfer velocity equals the momentum's, :math:`u_*^2 / U`. At 5 m/s 2.5 m from a wall with
+  :math:`z_0` = 0.1 m that is 0.081 m/s, about 98 W/m²/K, several times the 16 to 25 W/m²/K of bulk formulas for
+  building walls: with the default ``buildings.z0`` the exchange is an upper estimate. A smaller ``buildings.z0``
+  lowers it (33 W/m²/K at 0.01 m) and the wall's stress with it; there is no separate roughness for heat.
+- In a partly solid wall cell the reference cell's part of the exchange grows with :math:`\beta` and is not in the
+  implicit rows, so the row is no longer bounded by its neighbours: where a nearly solid cell is sheltered, its
+  :math:`\theta` could pass the walls'. On the heated block with its roof 2, 4.6 and 4.9 m into a 5 m layer
+  (:math:`\beta` = 0.4, 0.92, 0.98) the runs stop in 114, 133 and 138 iterations and the air stays below the walls'
+  305 K (at most 301.0, 302.3 and 303.6 K). The heat the walls give depends on where the roof lies in its layer:
+  585 K m³/s with the roof on a layer's face, and 688, 843 and 899 K m³/s for those three (each block is also a
+  little taller). The stress does the same.
+- This follows ERF's form with these differences: the distances' floor is :math:`10 z_0` (ERF: :math:`2 z_0`), as
+  for GUST's stress; no stability functions (ERF iterates the Obukhov length); the own term alone where there is no
+  reference cell; the steady form of the exchange (ERF integrates its decay over a time step); every wall with the
+  law, by its area (ERF: the wall below a column).
+- With ``ambient`` in a run whose :math:`\theta` is not at the reference profile (a column first guess with its own
+  stratification, a heated ground) the walls act as heat sinks or sources at the profile's temperature. Give
+  ``none`` where that is not wanted.
+- The wall value of :math:`k` does not feel the walls' heat: it has no buoyancy term.
 - The thin reversed layer on the roof of the block on the ridge is one cell deep and lies in partly solid cells; the
   block on flat ground, whose roof cells are fluid, has none. Its presence follows the mesh as well as the flow.
 - ERF and Kynema-SGF keep the :math:`k` equation in their wall cells and dissipate there with the flat first-cell

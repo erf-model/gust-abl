@@ -28,7 +28,7 @@ void BuildingForcing::build (const Buildings& b, const BuildingsOptions& opt, co
     m_detJ = &detJ;
     m_z0 = static_cast<amrex::Real>(opt.z0);
     m_wall_form = opt.wall_form;
-    m_rate.define(b.beta().boxArray(), b.beta().DistributionMap(), 4, 1);
+    m_rate.define(b.beta().boxArray(), b.beta().DistributionMap(), kNumBuildingRates, 1);
     m_rate.setVal(0.0);
     // The weight of each face in a cell's speed: 0 on a fixed row with buildings.wall_speed =
     // open_faces, else 1. A fixed row is a blocked face (fraction 1), but for w on the ground,
@@ -116,22 +116,33 @@ void BuildingForcing::update (const amrex::MultiFab& u, const amrex::MultiFab& v
             const amrex::Real own = speed(k);
             const amrex::Real inv = amrex::Real(1) / (amrex::max(own, umin) * J(i, j, k) * dzeta);
             const amrex::Real d1 = wl(i, j, k, kWallD1z), d2 = wl(i, j, k, kWallD2z);
-            amrex::Real rate = 0, top = 0;
+            const amrex::Real inv_dn = amrex::Real(1) / (J(i, j, k) * dzeta);
+            amrex::Real rate = 0, top = 0, heat_own = 0, heat_ref = 0, ho = 0, hr = 0;
             if ((mask & kWallRoof) != 0) {
                 const amrex::Real ref = k < khi ? speed(k + 1) : amrex::Real(0);
                 const amrex::Real us2 = form7_ustar2(own, ref, beta(i, j, k), d1, d2, z0, kappa);
-                rate += wall_area_fraction(fz(i, j, k), fz(i, j, k + 1), beta(i, j, k)) * us2 * inv;
+                const amrex::Real area = wall_area_fraction(fz(i, j, k), fz(i, j, k + 1), beta(i, j, k));
+                rate += area * us2 * inv;
                 top = amrex::max(top, us2);
+                form7_heat_velocities(us2, beta(i, j, k), d1, d2, z0, kappa, ho, hr);
+                heat_own += area * ho * inv_dn;
+                heat_ref += area * hr * inv_dn;
             }
             if ((mask & kWallUnder) != 0) {
                 const amrex::Real ref = k > klo ? speed(k - 1) : amrex::Real(0);
                 const amrex::Real us2 = form7_ustar2(own, ref, beta(i, j, k), d1, d2, z0, kappa);
-                rate += wall_area_fraction(fz(i, j, k + 1), fz(i, j, k), beta(i, j, k)) * us2 * inv;
+                const amrex::Real area = wall_area_fraction(fz(i, j, k + 1), fz(i, j, k), beta(i, j, k));
+                rate += area * us2 * inv;
                 top = amrex::max(top, us2);
+                form7_heat_velocities(us2, beta(i, j, k), d1, d2, z0, kappa, ho, hr);
+                heat_own += area * ho * inv_dn;
+                heat_ref += area * hr * inv_dn;
             }
             r(i, j, k, 0) = rate;
             r(i, j, k, 1) = rate;
             r(i, j, k, kBuildingUstar2) = top;
+            r(i, j, k, kBuildingHeatOwn) = heat_own;
+            r(i, j, k, kBuildingHeatRefZ) = heat_ref;
         });
     }
     if (side_law()) {
@@ -160,20 +171,30 @@ void BuildingForcing::update (const amrex::MultiFab& u, const amrex::MultiFab& v
                 const amrex::Real own = speed(i);
                 const amrex::Real inv = amrex::Real(1) / (amrex::max(own, umin) * dx);
                 const amrex::Real d1 = wl(i, j, k, kWallD1x), d2 = wl(i, j, k, kWallD2x);
-                amrex::Real rate = 0, top = r(i, j, k, kBuildingUstar2);
+                amrex::Real rate = 0, top = r(i, j, k, kBuildingUstar2), heat_own = 0, heat_ref = 0, ho = 0, hr = 0;
                 if ((mask & kWallXlo) != 0) {
                     const amrex::Real us2 = form7_ustar2(own, speed(i + 1), beta(i, j, k), d1, d2, z0, kappa);
-                    rate += wall_area_fraction(fx(i, j, k), fx(i + 1, j, k), beta(i, j, k)) * us2 * inv;
+                    const amrex::Real area = wall_area_fraction(fx(i, j, k), fx(i + 1, j, k), beta(i, j, k));
+                    rate += area * us2 * inv;
                     top = amrex::max(top, us2);
+                    form7_heat_velocities(us2, beta(i, j, k), d1, d2, z0, kappa, ho, hr);
+                    heat_own += area * ho / dx;
+                    heat_ref += area * hr / dx;
                 }
                 if ((mask & kWallXhi) != 0) {
                     const amrex::Real us2 = form7_ustar2(own, speed(i - 1), beta(i, j, k), d1, d2, z0, kappa);
-                    rate += wall_area_fraction(fx(i + 1, j, k), fx(i, j, k), beta(i, j, k)) * us2 * inv;
+                    const amrex::Real area = wall_area_fraction(fx(i + 1, j, k), fx(i, j, k), beta(i, j, k));
+                    rate += area * us2 * inv;
                     top = amrex::max(top, us2);
+                    form7_heat_velocities(us2, beta(i, j, k), d1, d2, z0, kappa, ho, hr);
+                    heat_own += area * ho / dx;
+                    heat_ref += area * hr / dx;
                 }
                 r(i, j, k, 1) += rate;
                 r(i, j, k, 2) += rate;
                 r(i, j, k, kBuildingUstar2) = top;
+                r(i, j, k, kBuildingHeatOwn) += heat_own;
+                r(i, j, k, kBuildingHeatRefX) = heat_ref;
             });
         }
         // Sides normal to y: on u and w.
@@ -198,20 +219,30 @@ void BuildingForcing::update (const amrex::MultiFab& u, const amrex::MultiFab& v
                 const amrex::Real own = speed(j);
                 const amrex::Real inv = amrex::Real(1) / (amrex::max(own, umin) * dy);
                 const amrex::Real d1 = wl(i, j, k, kWallD1y), d2 = wl(i, j, k, kWallD2y);
-                amrex::Real rate = 0, top = r(i, j, k, kBuildingUstar2);
+                amrex::Real rate = 0, top = r(i, j, k, kBuildingUstar2), heat_own = 0, heat_ref = 0, ho = 0, hr = 0;
                 if ((mask & kWallYlo) != 0) {
                     const amrex::Real us2 = form7_ustar2(own, speed(j + 1), beta(i, j, k), d1, d2, z0, kappa);
-                    rate += wall_area_fraction(fy(i, j, k), fy(i, j + 1, k), beta(i, j, k)) * us2 * inv;
+                    const amrex::Real area = wall_area_fraction(fy(i, j, k), fy(i, j + 1, k), beta(i, j, k));
+                    rate += area * us2 * inv;
                     top = amrex::max(top, us2);
+                    form7_heat_velocities(us2, beta(i, j, k), d1, d2, z0, kappa, ho, hr);
+                    heat_own += area * ho / dy;
+                    heat_ref += area * hr / dy;
                 }
                 if ((mask & kWallYhi) != 0) {
                     const amrex::Real us2 = form7_ustar2(own, speed(j - 1), beta(i, j, k), d1, d2, z0, kappa);
-                    rate += wall_area_fraction(fy(i, j + 1, k), fy(i, j, k), beta(i, j, k)) * us2 * inv;
+                    const amrex::Real area = wall_area_fraction(fy(i, j + 1, k), fy(i, j, k), beta(i, j, k));
+                    rate += area * us2 * inv;
                     top = amrex::max(top, us2);
+                    form7_heat_velocities(us2, beta(i, j, k), d1, d2, z0, kappa, ho, hr);
+                    heat_own += area * ho / dy;
+                    heat_ref += area * hr / dy;
                 }
                 r(i, j, k, 0) += rate;
                 r(i, j, k, 2) += rate;
                 r(i, j, k, kBuildingUstar2) = top;
+                r(i, j, k, kBuildingHeatOwn) += heat_own;
+                r(i, j, k, kBuildingHeatRefY) = heat_ref;
             });
         }
     }
