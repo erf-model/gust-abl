@@ -28,3 +28,11 @@ latex_elements = {
     "papersize": "letterpaper",
     "pointsize": "10pt",
 }
+
+# Link check: Wiley's article pages answer automated requests with 403, so a
+# DOI that resolves there (e.g. 10.1029/2020MS002141 in buildings.rst) fails
+# the check although the link works in a browser.
+linkcheck_ignore = [
+    r"https://doi\.org/10\.1029/.*",  # AGU DOIs resolve to Wiley
+    r"https://agupubs\.onlinelibrary\.wiley\.com/.*",
+]
