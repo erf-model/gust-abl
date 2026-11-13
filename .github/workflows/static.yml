@@ -2,7 +2,8 @@
 #
 # Pages serves what this job uploads, so the job builds the docs first (the
 # same strict build as docs.yml: docs/Makefile carries -W --keep-going) and
-# uploads only docs/_build/html, not the repository.
+# uploads only docs/_build/html, not the repository. The PDF (make -C docs
+# latexpdf) is copied into it as gust.pdf, which the front page links.
 name: Deploy documentation to Pages
 
 on:
@@ -44,6 +45,16 @@ jobs:
           python -m pip install -r docs/requirements.txt
       - name: Build the docs, treating warnings as errors
         run: make -C docs html
+      - name: Install LaTeX for the PDF
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends texlive-xetex texlive-latex-extra latexmk fonts-freefont-otf
+      - name: Build the PDF and add it to the pages
+        env:
+          LATEXMKOPTS: -interaction=nonstopmode -halt-on-error
+        run: |
+          make -C docs latexpdf
+          cp docs/_build/latex/gust.pdf docs/_build/html/gust.pdf
       - name: Setup Pages
         uses: actions/configure-pages@v5
       - name: Upload artifact
