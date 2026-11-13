@@ -63,6 +63,8 @@ On every push to ``main`` (or by hand), the ``deploy`` job builds the documentat
 errors, builds the PDF (``make -C docs latexpdf``), copies it into the HTML as ``gust.pdf`` (linked from the
 front page), and publishes ``docs/_build/html`` to GitHub Pages. Only the built pages and the PDF are uploaded, not
 the repository.
+The repository's Pages source must be *GitHub Actions* (Settings → Pages → Build and deployment); with
+*Deploy from a branch*, GitHub publishes the repository root instead of the Sphinx pages.
 
 Kestrel
 -------
