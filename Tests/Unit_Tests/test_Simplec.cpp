@@ -17,6 +17,7 @@
 #include "Reductions.H"
 #include "Residual.H"
 #include "Simplec.H"
+#include "LaminarTestHelpers.H"
 #include "TransportTestHelpers.H"
 
 #include <AMReX_ParallelDescriptor.H>
@@ -43,27 +44,9 @@ using gust::FaceType;
 using gust::Loc;
 using gust::ptest::PCase;
 using gust::trtest::tol;
-
-// A flat mesh with uniform layers: nx x ny x nz cells on Lx x Ly x H.
-PCase flat_case (int nx, int ny, int nz, double Lx, double Ly, double H, bool periodic_x, bool periodic_y, int max_grid = 64)
-{
-    PCase c;
-    c.in.mesh.n_cell = amrex::IntVect(nx, ny, nz);
-    c.in.mesh.prob_hi = {static_cast<amrex::Real>(Lx), static_cast<amrex::Real>(Ly), static_cast<amrex::Real>(H)};
-    c.in.mesh.is_periodic = {periodic_x ? 1 : 0, periodic_y ? 1 : 0, 0};
-    c.in.mesh.max_grid_size = {max_grid, max_grid};
-    c.make([] (double, double) { return 0.0; });
-    c.z.FillBoundary(c.geom.periodicity());
-    c.mesh.build_from_ground(c.in, c.geom, c.z);
-    gust::trtest::smooth_vertical_ghost_nodes(c);
-    return c;
-}
-
-void define_state (gust::State& q, const PCase& c)
-{
-    q.define(c.ba, c.dm);
-    amrex::MultiFab::Copy(q.z_phys_nd, c.z, 0, 0, 1, c.z.nGrow());
-}
+using gust::lamtest::define_state;
+using gust::lamtest::flat_case;
+using gust::lamtest::Laminar;
 
 // Random values on every point of mf, periodic in x and y also in the
 // vertical ghost rows (test_Predictor.cpp).
@@ -118,36 +101,6 @@ void copy_state (gust::State& to, const gust::State& from)
     amrex::MultiFab::Copy(to.theta, from.theta, 0, 0, 1, 2);
     amrex::MultiFab::Copy(to.tke, from.tke, 0, 0, 1, 2);
 }
-
-// Fixed uniform diffusivities, the boundary conditions and the residual
-// inputs of a laminar case (no closure, no wall model).
-struct Laminar
-{
-    amrex::MultiFab nu, gt, gk;
-    gust::BoundaryInputs bin;
-    std::unique_ptr<gust::BoundaryConditions> bc;
-    gust::ResidualInputs in;
-    gust::PoissonOptions popt;
-    void make (const PCase& c, double visc, FaceType ground, FaceType top, FaceType xlo = FaceType::periodic,
-               FaceType xhi = FaceType::periodic)
-    {
-        for (auto* mf : {&nu, &gt, &gk}) {
-            mf->define(c.ba, c.dm, 1, 1);
-            mf->setVal(static_cast<amrex::Real>(visc));
-        }
-        in.nu = &nu;
-        in.gamma_theta = &gt;
-        in.gamma_tke = &gk;
-        in.theta_ref.z = {-1000, 5000};
-        in.theta_ref.theta = {300, 300};
-        in.buoyancy.gravity = 0;
-        bin.face = {xlo, c.in.mesh.is_periodic[1] ? FaceType::periodic : FaceType::slip_wall, ground,
-                    xhi, c.in.mesh.is_periodic[1] ? FaceType::periodic : FaceType::slip_wall, top};
-        bc = std::make_unique<gust::BoundaryConditions>(bin, c.geom, c.mesh, in.coriolis);
-        in.bc = bc.get();
-        popt.reltol = amrex::Real(0.1);
-    }
-};
 
 // The predictor's d fields of a state (one predictor step on a copy).
 void predictor_fields (const gust::State& q, const gust::ResidualInputs& in, const PCase& c,

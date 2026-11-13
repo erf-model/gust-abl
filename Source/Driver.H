@@ -52,12 +52,14 @@ namespace gust {
 //! The solver stage the application runs (steady.stage): none writes the
 //! state and stops; simplec runs the SIMPLEC stage (Simplec.H) under the
 //! driver; simplec_newton runs SIMPLEC, then the Newton stage (NewtonStage.H)
-//! once the switch rules allow it, with the fallback to SIMPLEC.
-enum class StageKind { none, simplec, simplec_newton };
+//! once the switch rules allow it, with the fallback to SIMPLEC; unsteady
+//! runs physical steps of dual time stepping (TimeDriver.H), each converged
+//! by the SIMPLEC stage under the driver.
+enum class StageKind { none, simplec, simplec_newton, unsteady };
 
 struct SteadyOptions
 {
-    StageKind stage{StageKind::none};    //!< steady.stage (none | simplec | simplec_newton)
+    StageKind stage{StageKind::none};    //!< steady.stage (none | simplec | simplec_newton | unsteady)
     SteadyParams criterion;              //!< steady.residual_*, monitor_* (SteadyCriterion.H)
     int max_iterations{10000};           //!< steady.max_iterations (>= 1)
     amrex::Real cfl0{1};                 //!< steady.cfl0 (> 0): the CFL of the first iterations

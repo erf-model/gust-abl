@@ -35,6 +35,7 @@ add_executable(unit_tests
     Unit_Tests/test_ImplicitOperator.cpp
     Unit_Tests/test_MassFlux.cpp
     Unit_Tests/test_Residual.cpp
+    Unit_Tests/test_TimeDriver.cpp
     Unit_Tests/test_TimeTerm.cpp
     Unit_Tests/test_ResidualWorkspace.cpp
     Unit_Tests/test_SurfaceLayer.cpp
@@ -306,6 +307,34 @@ gust_add_test(NAME abort_buildings_theta_surface NP 1 LABELS "regression;smoke"
               PREFIX ${EXPECT_ABORT} "buildings\\.theta_surface must be finite and > 0" --
               COMMAND $<TARGET_FILE:gust> ${BUILDINGS_CASE}/inputs_buildings buildings.file=${BUILDINGS_CASE}/building_map.txt
                       buildings.theta_mode=fixed buildings.theta_surface=-3 ${GUST_TEST_AMREX_FLAGS})
+# The refusals of steady.stage = unsteady (TimeDriver.H, App.cpp), on the
+# unsteady 2-D hill deck (Canonical_RANS/Unsteady_Hill_2D) and the steady one.
+set(UNSTEADY_DECK ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Unsteady_Hill_2D/inputs_unsteady_hill2d)
+gust_add_test(NAME abort_unsteady_stop_time_missing NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT} "unsteady\\.stop_time is required with steady\\.stage = unsteady" --
+              COMMAND $<TARGET_FILE:gust> ${UNSTEADY_DECK} unsteady.dt=60 io.write_checkpoint=0 init.first_guess=profile
+                      ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_unsteady_dt_and_cfl NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT} "unsteady\\.dt and unsteady\\.cfl > 0 are exclusive" --
+              COMMAND $<TARGET_FILE:gust> ${UNSTEADY_DECK} unsteady.stop_time=600 unsteady.dt=60 unsteady.cfl=0.5
+                      io.write_checkpoint=0 init.first_guess=profile ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_unsteady_checkpoint NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT} "io\\.write_checkpoint = 1 is not supported with steady\\.stage = unsteady" --
+              COMMAND $<TARGET_FILE:gust> ${UNSTEADY_DECK} unsteady.stop_time=600 unsteady.dt=60 init.first_guess=profile
+                      ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_unsteady_steady_stop_keys NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT} "steady\\.max_iterations has no effect with steady\\.stage = unsteady"
+                     "steady\\.sequencing = 1 is not supported with steady\\.stage = unsteady" --
+              COMMAND $<TARGET_FILE:gust> ${UNSTEADY_DECK} unsteady.stop_time=600 unsteady.dt=60 io.write_checkpoint=0
+                      steady.max_iterations=10 steady.sequencing=1 init.first_guess=profile ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_unsteady_hybrid NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT} "convection\\.hybrid_sigma_max is not supported with steady\\.stage = unsteady" --
+              COMMAND $<TARGET_FILE:gust> ${UNSTEADY_DECK} unsteady.stop_time=600 unsteady.dt=60 io.write_checkpoint=0
+                      convection.hybrid_sigma_max=0.5 convection.hybrid_height=200 turb.realizability=1 init.first_guess=profile ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_unsteady_key_without_stage NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT} "unsteady\\.dt has no effect without steady\\.stage = unsteady" --
+              COMMAND $<TARGET_FILE:gust> ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Neutral_Hill_2D/inputs_steady_hill2d_restart
+                      unsteady.dt=60 steady.max_iterations=1 init.first_guess=profile ${GUST_TEST_AMREX_FLAGS})
 gust_add_test(NAME abort_buildings_theta_surface_missing NP 1 LABELS "regression;smoke"
               PREFIX ${EXPECT_ABORT} "buildings\\.theta_surface is required with buildings\\.theta_mode = fixed" --
               COMMAND $<TARGET_FILE:gust> ${BUILDINGS_CASE}/inputs_buildings buildings.file=${BUILDINGS_CASE}/building_map.txt
@@ -1418,6 +1447,14 @@ gust_add_test(NAME rt_steady_hill2d_restart_continued NP 2 LABELS "regression;sm
               FIXTURES_REQUIRED steady_hill2d_first FIXTURES_SETUP steady_hill2d_continued
               COMMAND $<TARGET_FILE:gust> ${HILL2D_CASE}/inputs_steady_hill2d_restart steady.max_iterations=10
                       io.restart=steady_hill2d_restart_chk00005 ${GUST_TEST_AMREX_FLAGS})
+# An unsteady run restarted from the steady run's checkpoint: two steps of 60 s
+# from its state, the driver history continued (TimeDriver.H).
+gust_add_test(NAME rt_unsteady_hill2d_from_steady NP 2 LABELS "regression;smoke" RUN_DIR ${SHR_DIR}/unsteady
+              FIXTURES_REQUIRED steady_hill2d_first
+              PREFIX ${EXPECT_ABORT} --success "restarted from \\.\\./steady_hill2d_restart_chk00005"
+                     "gust: unsteady: 2 physical steps to t = 120 s" --
+              COMMAND $<TARGET_FILE:gust> ${UNSTEADY_DECK} io.restart=../steady_hill2d_restart_chk00005
+                      unsteady.stop_time=120 unsteady.dt=60 io.write_checkpoint=0 ${GUST_TEST_AMREX_FLAGS})
 gust_add_test(NAME rt_steady_hill2d_restart_straight NP 2 LABELS "regression;smoke" RUN_DIR ${SHR_DIR}/straight
               FIXTURES_SETUP steady_hill2d_straight
               COMMAND $<TARGET_FILE:gust> ${HILL2D_CASE}/inputs_steady_hill2d_restart steady.max_iterations=10
@@ -1641,6 +1678,16 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
                   PREFIX ${Python3_EXECUTABLE} ${SUPPORT}/check_steady_hill.py
                          --erf-check check_hill.py --orders 2 --
                   COMMAND $<TARGET_FILE:gust> ${HILL2D_CASE}/inputs_steady_hill2d ${GUST_TEST_AMREX_FLAGS})
+    # RT-6.2.1 (plan rev. 6, sub-phase 6.2, beyond the plan): the same hill as
+    # unsteady RANS (Canonical_RANS/Unsteady_Hill_2D), ten steps of 60 s on 1,
+    # 2 and 4 ranks: the step log, the same inner counts and the same answer
+    # (1e-9). MPI builds only: the script sets the rank count through -n.
+    if(GUST_MPI)
+        gust_add_test(NAME rt_unsteady_hill2d NP 2 LABELS "regression"
+                      PREFIX ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Unsteady_Hill_2D/check_unsteady_hill2d.py --
+                      COMMAND $<TARGET_FILE:gust> ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Unsteady_Hill_2D/inputs_unsteady_hill2d ${GUST_TEST_AMREX_FLAGS})
+        set_tests_properties(rt_unsteady_hill2d PROPERTIES ENVIRONMENT PYTHONDONTWRITEBYTECODE=1 TIMEOUT 1200)
+    endif()
     # The same case with the line LU-SGS sweeps (two symmetric
     # sweeps, CFL cap 16): the verdict, the residual drop and ERF's checks.
     set(HILL_COL_DIR ${CMAKE_CURRENT_BINARY_DIR}/run/rt_steady_hill2d_column)

@@ -230,9 +230,10 @@ LevelSolver::LevelSolver (const RunSetup& s, const Mesh& mesh, const amrex::Geom
                           const amrex::BoxArray& ba, const amrex::DistributionMapping& dm, const std::string& label,
                           bool newton, const amrex::MultiFab* z0_fine, const Canopy* canopy_in,
                           const amrex::MultiFab* canopy_fine_detJ, BuildingForcing* buildings, const BuildingTke* building_tke,
-                          const BuildingTheta* building_theta)
+                          const BuildingTheta* building_theta, const TimeTerm* time)
     : bc(s.bin, geom, mesh, s.fopt.coriolis), closure(s.copt), surf(s.surf)
 {
+    if (time != nullptr && !label.empty()) { amrex::Abort("gust: LevelSolver: the physical time term is for level 0 only"); }
     bc.set_theta_ground_extension(s.simplec.theta_frozen);
     if (canopy_in != nullptr && canopy_fine_detJ != nullptr) {
         canopy_field.restrict_from(*canopy_in, *canopy_fine_detJ, geom, mesh, ba, dm);
@@ -323,6 +324,7 @@ LevelSolver::LevelSolver (const RunSetup& s, const Mesh& mesh, const amrex::Geom
         }
     }
     closure.check_wall_distance(dist, ground_roughness(res_in.surface));
+    res_in.time = time;   // before the stage copies res_in
     auto stage = std::make_unique<SimplecStage>(s.simplec, s.sopt.zline_sweeps, res_in, &closure, s.popt, mesh, geom, z_nd,
                                                 s.copt.tke_floor, ba, dm, line_sweep_options(s.sopt));
     m_stage = stage.get();

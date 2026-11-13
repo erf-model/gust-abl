@@ -20,6 +20,8 @@
 #include "MeshHierarchy.H"
 #include "Poisson.H"
 #include "Sequencing.H"
+#include "TimeDriver.H"
+#include "TimeTerm.H"
 #include "Simplec.H"
 #include "State.H"
 #include "SurfaceLayer.H"
@@ -72,6 +74,10 @@ void run ()
     const bool initialize = (iopt.first_guess != InitOptions::FirstGuess::none);
     const bool solve = (sopt.stage != StageKind::none);
     const bool newton = (sopt.stage == StageKind::simplec_newton);
+    const bool unsteady = (sopt.stage == StageKind::unsteady);
+    // steady.stage = unsteady (TimeDriver.H): the unsteady.* keys; without it every one has no effect.
+    UnsteadyOptions uopt;
+    if (unsteady) { uopt = read_unsteady_options(); }
     BoundaryInputs bin;
     PoissonOptions popt;
     SurfaceLayerOptions surf;
@@ -102,6 +108,10 @@ void run ()
         }
         if (cin.hybrid.active() && !(copt.realizability > 0)) {
             err.emplace_back("convection.hybrid_sigma_max needs turb.realizability > 0 (the blend follows the nu_t cap)");
+        }
+        if (cin.hybrid.active() && unsteady) {
+            err.emplace_back("convection.hybrid_sigma_max is not supported with steady.stage = unsteady (the blend "
+                             "changes with the inner residual, so the operator would change within and between steps)");
         }
         if (cin.hybrid.active() && !in.io.restart.empty()) {
             err.emplace_back("convection.hybrid_sigma_max is not supported with io.restart (the blend is not in the "
@@ -163,6 +173,31 @@ void run ()
     if (solve) {
         for (auto& e : check_sequencing_options(seq, sopt.criterion, in.mesh)) { err.push_back(std::move(e)); }
     }
+    if (unsteady) {
+        // The steady stop and its monitors are not the stop of an unsteady run (TimeDriver.H).
+        for (const auto& k : sopt.given) {
+            if (k == "max_iterations" || k == "residual_drop_orders" || k == "monitor_rel_tol" || k == "monitor_window"
+                || k == "confidence" || k == "confidence_height") {
+                err.emplace_back("steady." + k + " has no effect with steady.stage = unsteady (each physical step stops at "
+                                 "unsteady.inner_drop_orders or unsteady.max_inner)");
+            }
+        }
+        if (seq.enabled) {
+            err.emplace_back("steady.sequencing = 1 is not supported with steady.stage = unsteady yet (the first step "
+                             "starts from the first guess or the restart on level 0)");
+        }
+        if (in.io.write_checkpoint == 1) {
+            err.emplace_back("io.write_checkpoint = 1 is not supported with steady.stage = unsteady yet (the checkpoint "
+                             "of q^n and the time is not written); set io.write_checkpoint = 0");
+        }
+        if (amrex::ParmParse("io").contains("iteration_log")) {
+            err.emplace_back("io.iteration_log has no effect with steady.stage = unsteady (one line per physical step)");
+        }
+    } else {
+        for (const InputEntry& e : parmparse_entries()) {
+            if (e.name.rfind("unsteady.", 0) == 0) { err.emplace_back(e.name + " has no effect without steady.stage = unsteady"); }
+        }
+    }
     // The forest canopy (Canopy.H): read in every run, so that a run without
     // the stage writes the drag field with its plotfile.
     const CanopyOptions canopy_opt = read_canopy_options(in.terrain.idw_neighbors, static_cast<double>(in.terrain.idw_power));
@@ -206,10 +241,12 @@ void run ()
         }
         // The Newton keys without the Newton stage: reported above.
         if (!newton) { reported = reported || e.find("'steady.newton_") != std::string::npos; }
+        // The unsteady keys without the unsteady stage: reported above.
+        if (!unsteady) { reported = reported || e.find("'unsteady.") != std::string::npos; }
         if (!reported) { err.push_back(e); }
     }
     if (solve && !initialize && in.io.restart.empty()) {
-        err.emplace_back("steady.stage = " + std::string(newton ? "simplec_newton" : "simplec") + " needs a first guess: init.first_guess = profile, init.first_guess = column "
+        err.emplace_back("steady.stage = " + std::string(newton ? "simplec_newton" : unsteady ? "unsteady" : "simplec") + " needs a first guess: init.first_guess = profile, init.first_guess = column "
                          "or io.restart (the state would start at rest with theta = 0)");
     }
     if (initialize && !in.io.restart.empty()) {
@@ -546,10 +583,18 @@ void run ()
                 building_theta.build(buildings, building_forcing, buildings_opt, geom, state.z_phys_nd, mesh.detJ, bin.theta_ref);
             }
         }
+        // steady.stage = unsteady: the physical time term on level 0 (dt set by the time driver at every step;
+        // with unsteady.cfl the first value is a placeholder until the first step).
+        std::unique_ptr<TimeTerm> time_term;
+        if (unsteady) {
+            TimeTermOptions topt;
+            topt.dt = uopt.cfl > 0 ? amrex::Real(1) : uopt.dt;
+            time_term = std::make_unique<TimeTerm>(topt, ba, dm);
+        }
         LevelSolver level0(setup, mesh, geom, state.z_phys_nd, ba, dm, "", newton, nullptr,
                            canopy.active() ? &canopy : nullptr, nullptr, buildings.active() ? &building_forcing : nullptr,
                            (buildings.active() && buildings_opt.wall_tke) ? &building_tke : nullptr,
-                           building_heat ? &building_theta : nullptr);
+                           building_heat ? &building_theta : nullptr, time_term.get());
         if (buildings.active()) {
             // After the wall distance above: its Poisson solve does not see the buildings.
             mesh.set_open_faces(buildings.beta_face(0), buildings.beta_face(1), buildings.beta_face(2), buildings.beta(), geom);
@@ -618,7 +663,37 @@ void run ()
         SteadyVerdict v = driver.verdict();
         IterationPrinter log(setup.log);
         int done = 0;
-        while (static_cast<int>(driver.history().records.size()) < sopt.max_iterations) {
+        amrex::Real phys_time = 0;   // the plotfile's time: the physical time of an unsteady run
+        if (unsteady) {
+            amrex::Print() << "gust: unsteady: physical steps to t = " << uopt.stop_time << " s, "
+                           << (uopt.cfl > 0 ? "dt from unsteady.cfl " + std::to_string(double(uopt.cfl))
+                                            : "dt " + std::to_string(double(uopt.dt)) + " s")
+                           << "; each step to " << uopt.inner_drop_orders << " orders below its first residual (floor "
+                           << "steady.residual_tol " << sopt.criterion.residual_tol << ") or " << uopt.max_inner
+                           << " inner iterations\n";
+            TimeDriver td(uopt, *time_term, driver, mesh, geom, sopt.criterion.residual_tol, [&] (State& s) {
+                bc.fill_ghosts(s, res_in.surface, fopt.buoyancy, false, nullptr);
+            });
+            while (!td.finished()) {
+                const StepRecord& st = td.advance(state);
+                done += st.inner;
+                state.step += st.inner;
+                amrex::Print() << "gust: " << format_step(st) << "\n";
+            }
+            v = driver.verdict();
+            v.reasons.clear();   // the steady criterion's unmet items are not a stop of the unsteady run
+            if (td.diverged()) {
+                v.status = SteadyStatus::Diverged;
+                v.reasons.emplace_back("a residual became NaN or infinite in physical step " + std::to_string(td.records().size()));
+            }
+            phys_time = td.time();
+            const int nsteps = static_cast<int>(td.records().size());
+            amrex::Print() << "gust: unsteady: " << nsteps << " physical steps to t = " << td.time() << " s, "
+                           << td.inner_iterations() << " inner iterations ("
+                           << (nsteps > 0 ? double(td.inner_iterations()) / nsteps : 0.0) << " per step), "
+                           << td.unconverged_steps() << " steps stopped at unsteady.max_inner\n";
+        }
+        while (!unsteady && static_cast<int>(driver.history().records.size()) < sopt.max_iterations) {
             v = driver.step(state);
             ++done;
             ++state.step;
@@ -627,7 +702,8 @@ void run ()
             log.print(driver, simplec_stage, last, "", newton_stage);
             if (v.status != SteadyStatus::NotSteady) { break; }
         }
-        const char* status = (v.status == SteadyStatus::Steady) ? "steady"
+        const char* status = unsteady ? (v.status == SteadyStatus::Diverged ? "diverged" : "unsteady run ended")
+                           : (v.status == SteadyStatus::Steady) ? "steady"
                            : (v.status == SteadyStatus::Diverged) ? "diverged" : "not steady";
         std::string reasons;
         for (const auto& r : v.reasons) { reasons += "\n  " + r; }
@@ -647,7 +723,8 @@ void run ()
         }
         check_overwrite();   // the step is final here, before any output
         if (in.io.write_plotfile == 1) {
-            const auto name = write_plotfile(in.io.plot_file, state, geom, &mesh.detJ, canopy_plot, lad_plot, beta_plot, wall_plot);
+            const auto name = write_plotfile(in.io.plot_file, state, geom, &mesh.detJ, canopy_plot, lad_plot, beta_plot, wall_plot,
+                                             phys_time);
             amrex::Print() << "gust: wrote " << name << "\n";
             write_hierarchy();
         }

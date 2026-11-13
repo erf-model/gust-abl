@@ -22,11 +22,13 @@ const amrex::Vector<std::string>& plot_var_names ();
 //! canopy_lad (the leaf area density, with canopy.heat on) as "canopy_lad".
 //! With buildings (Buildings.H), their solid fraction follows as "building_beta"
 //! and component 0 of building_wall, the wall mask, as "building_wall".
+//! time: the plotfile's time (the physical time of an unsteady run, else 0).
 //! Returns the directory name.
 std::string write_plotfile (const std::string& prefix, const State& state,
                             const amrex::Geometry& geom, const amrex::MultiFab* detJ = nullptr,
                             const amrex::MultiFab* canopy_drag = nullptr, const amrex::MultiFab* canopy_lad = nullptr,
-                            const amrex::MultiFab* building_beta = nullptr, const amrex::MultiFab* building_wall = nullptr);
+                            const amrex::MultiFab* building_beta = nullptr, const amrex::MultiFab* building_wall = nullptr,
+                            amrex::Real time = 0);
 
 //! Write <prefix>NNNNN: a text Header (format version, bytes per real, step,
 //! mesh in hex floats, BoxArray) and every State field as a VisMF MultiFab

@@ -396,7 +396,8 @@ Quick reference
      -
    * - ``steady.stage``
      - ``none``
-     - ``none`` (build and stop), ``simplec``, or ``simplec_newton`` (SIMPLEC, then Newton)
+     - ``none`` (build and stop), ``simplec``, ``simplec_newton`` (SIMPLEC, then Newton), or ``unsteady`` (physical
+       time steps, `unsteady`_)
    * - ``steady.max_iterations``
      - ``10000``
      - Iteration limit
@@ -472,6 +473,18 @@ Quick reference
    * - ``steady.newton_preconditioner``
      - ``simplec``
      - Newton preconditioner: ``identity`` or ``simplec``
+   * - **Unsteady runs** (`unsteady`_)
+     -
+     -
+   * - ``unsteady.stop_time``
+     - —
+     - Physical time the run ends at (s); required with ``steady.stage = unsteady``
+   * - ``unsteady.dt``, ``unsteady.cfl``
+     - —, ``0``
+     - Fixed physical step (s), or a target convective CFL for a global step
+   * - ``unsteady.inner_drop_orders``, ``unsteady.max_inner``
+     - ``3``, ``50``
+     - Inner stop of each physical step: residual drop (orders) and iteration limit
    * - **SIMPLEC** (`simplec`_)
      -
      -
@@ -1187,8 +1200,9 @@ writes them and stops; the other ``steady.*`` keys are then refused.
      - Range and meaning
    * - ``steady.stage``
      - ``none``
-     - ``none``, ``simplec`` or ``simplec_newton``: SIMPLEC, then the Newton stage once the switch rules allow it,
-       with the fallback to SIMPLEC (:doc:`solution_algorithm`).
+     - ``none``, ``simplec``, ``simplec_newton`` or ``unsteady``. ``simplec_newton``: SIMPLEC, then the Newton stage
+       once the switch rules allow it, with the fallback to SIMPLEC (:doc:`solution_algorithm`). ``unsteady``:
+       backward-Euler physical steps, each converged by SIMPLEC pseudo-time iterations (`unsteady`_).
    * - ``steady.max_iterations``
      - ``10000``
      - ≥ 1. Iteration limit over the whole run, restarts included. With grid sequencing it applies to each level.
@@ -1373,6 +1387,49 @@ The ``steady.newton_*`` and ``steady.switch_*`` keys are read with ``steady.stag
 continuation of :doc:`solution_algorithm`. In the Newton stage its CFL ramps from ``steady.cfl_max`` to
 ``steady.newton_cfl_max`` with the SER keys; the SER law's residual term takes ``steady.newton_cfl_max`` as its
 starting CFL, so ``steady.ser_exponent`` rarely limits the ramp there.
+
+``unsteady``
+------------
+
+See :ref:`time-driver`. Read with ``steady.stage = unsteady``; without it every ``unsteady.*`` key aborts as a key
+with no effect. In an unsteady run the steady stop does not apply, so ``steady.max_iterations``,
+``steady.residual_drop_orders``, ``steady.monitor_rel_tol``, ``steady.monitor_window``, ``steady.confidence``,
+``steady.confidence_height`` and ``io.iteration_log`` abort as keys with no effect; ``steady.residual_tol`` is the
+floor of the inner stop. ``steady.residual_ref_iterations`` sets how many inner iterations, counted over the run,
+hold the CFL at ``steady.cfl0``; the other ``steady.*`` keys of the SIMPLEC stage act as in a steady run.
+``steady.sequencing = 1``, ``convection.hybrid_sigma_max`` > 0 and ``io.write_checkpoint = 1`` are not supported
+yet and abort; as 1 is the checkpoint's default, an unsteady deck sets ``io.write_checkpoint = 0``.
+A run may start from a steady checkpoint (``io.restart``): its physical time starts at 0 and the driver's history
+(CFL, residual reference, hold) continues from the checkpoint (:ref:`time-driver`).
+
+.. list-table::
+   :header-rows: 1
+   :widths: 34 12 54
+
+   * - Input
+     - Default
+     - Range and meaning
+   * - ``unsteady.stop_time``
+     - —
+     - Required; finite and > 0 (s). The physical time the run ends at; the last step is shortened to end there.
+   * - ``unsteady.dt``
+     - —
+     - Finite and > 0 with a finite 1/dt (s). The physical step. Required unless ``unsteady.cfl`` > 0; refused with it.
+       The last step takes the time left when that is within 0.1 % of dt.
+   * - ``unsteady.cfl``
+     - ``0``
+     - 0 (use ``unsteady.dt``) or finite and > 0. The target convective CFL: each step's :math:`\Delta t` is this
+       times the inverse of the largest convective rate over the cells. A field at rest has no such rate and stops
+       the run at the first step.
+   * - ``unsteady.inner_drop_orders``
+     - ``3``
+     - Finite, > 0 and ≤ 15. A step ends when every scaled residual is at or below :math:`10^{-d}` times its value at
+       the step's start, or below ``steady.residual_tol``. 3 keeps the algebraic error below the time error when the
+       inner iteration converges slowly; 1 does not (:ref:`time-driver`).
+   * - ``unsteady.max_inner``
+     - ``50``
+     - ≥ 1. Inner iterations of a step at most; a step that reaches it is reported and the run goes on (it does not
+       fail the run).
 
 ``simplec``
 -----------

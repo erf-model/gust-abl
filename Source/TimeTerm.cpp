@@ -31,6 +31,17 @@ TimeTerm::TimeTerm (const TimeTermOptions& opt, const amrex::BoxArray& ba, const
     m_tke.define(ba, dm, 1, ngrow_state);
 }
 
+void TimeTerm::set_dt (amrex::Real dt, const std::string& what)
+{
+    TimeTermOptions o;
+    o.dt = dt;
+    if (!check_time_term_options(o).empty()) {
+        amrex::Abort("gust: TimeTerm: " + what + " = " + std::to_string(double(dt)) + ": must be finite and > 0, with a finite 1/dt");
+    }
+    m_opt.dt = dt;
+    m_inv_dt = amrex::Real(1) / dt;
+}
+
 namespace {
 
 void require_same_layout (const char* op, const char* what, const amrex::MultiFab& a, const amrex::MultiFab& b)
