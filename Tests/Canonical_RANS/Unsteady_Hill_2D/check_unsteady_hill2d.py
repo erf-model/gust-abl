@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""RT-6.2.1: the 2-D hill as unsteady RANS on 1, 2 and 4 ranks.
+"""RT-6.2.1 and RT-6.3.1: the 2-D hill as unsteady RANS on 1, 2 and 4 ranks,
+its outputs and a restart.
 
     check_unsteady_hill2d.py -- LAUNCHER... GUST [ARGS ...]
 
@@ -8,7 +9,9 @@ application (the script sets the rank count: it replaces the number after
 "-n" or "-np" for the 1- and 4-rank runs). ARGS are the deck
 (Tests/Canonical_RANS/Unsteady_Hill_2D/inputs_unsteady_hill2d) and the flags.
 The script runs the deck from the log-law first guess in np2/, np1/ and np4/
-(each emptied first) and checks:
+(each emptied first), with the probes of probes_hill2d.txt, the averages from
+t = 90 s (mid-step 2) and a plotfile and a checkpoint every five steps, and
+checks:
   - the 2-rank run logs ten physical steps of 60 s, ending at t = 600 s, every
     step converged (none stopped at unsteady.max_inner), and the summary line;
   - the 1- and 4-rank runs log the same steps with the same inner iteration
@@ -21,9 +24,22 @@ The script runs the deck from the log-law first guess in np2/, np1/ and np4/
     unsteady.max_inner = 60 with their residual still above 0.93 of its start;
   - the 2-rank plotfile's header carries the physical time, 600 s;
   - the flow has moved: u at the hill top 50 m above the ground differs from
-    the short run's (nearly the first guess) by more than 0.1 m/s.
+    the short run's (nearly the first guess) by more than 0.1 m/s;
+  - RT-6.3.1 (sub-phase 6.3, beyond the plan), the outputs: the probe file has
+    a row at t = 0 and one per step; the plotfiles of step 5 (t = 300 s) and
+    step 10 carry u_mean ... tke_mean and u_var ... tke_var, which at every
+    probe's cell equal the weighted mean and variance of that probe's rows
+    computed here in two passes, with the weights 30 s for step 2 (90..120 s)
+    and 60 s for the later steps;
+  - the restart (in restart/): from the 2-rank checkpoint of step 5 to 600 s,
+    with the 2-rank probe file copied in. The log continues from t = 300 s at
+    step 6 with the 2-rank run's inner counts; the final plotfile (state and
+    averages) and the probe file are byte for byte the 2-rank run's, and so are
+    the final checkpoint's fields, its Unsteady record and averages.
 The exit code is the verdict.
 """
+import filecmp
+import math
 import os
 import re
 import shutil
@@ -35,6 +51,9 @@ sys.path.insert(0, os.path.join(HERE, "..", "..", "..", "extern_erf"))
 import erf_plotfile as ep  # noqa: E402
 
 FIELDS = ["u", "v", "w", "p", "theta", "tke"]
+AVG = ["u", "v", "w", "theta", "tke"]
+PROBES = os.path.join(HERE, "probes_hill2d.txt")
+EPS = 2.0 ** -52
 STEP = re.compile(r"^gust: step (\d+): t = (\S+) s, dt = (\S+) s, (\d+) inner iterations, inner residual (\S+)(.*)$")
 
 
@@ -73,6 +92,58 @@ def last_plotfile(stdout, where):
     return os.path.join(where, wrote[-1])
 
 
+def plotfiles(stdout):
+    return [ln.split()[-1] for ln in stdout.splitlines()
+            if ln.startswith("gust: wrote ") and "_plt" in ln and "_level" not in ln]
+
+
+def checkpoints(stdout):
+    return [ln.split()[-1] for ln in stdout.splitlines() if re.match(r"^gust: wrote chk\d+$", ln)]
+
+
+def read_probes(path):
+    """The probe file: the cells (i, j, k) from the header and the rows (t, values...)."""
+    cells, rows = [], []
+    with open(path) as fh:
+        for ln in fh:
+            if ln.startswith("# probe "):
+                arrow = ln.split("->")[1].split()
+                cells.append(tuple(int(x) for x in arrow[:3]))
+            elif ln[0].isdigit():
+                rows.append([float(x) for x in ln.split(",")])
+    return cells, rows
+
+
+def hand_averages(rows, start):
+    """Two-pass weighted mean and variance of every column after the time start: the weight of the
+    row at t^{n+1} is t^{n+1} - max(t^n, start), when > 0."""
+    weights = []
+    for prev, row in zip(rows, rows[1:]):
+        w = row[0] - max(prev[0], start)
+        if w > 0:
+            weights.append((w, row[1:]))
+    total = sum(w for w, _ in weights)
+    ncol = len(rows[0]) - 1
+    mean = [sum(w * x[c] for w, x in weights) / total for c in range(ncol)]
+    var = [sum(w * (x[c] - mean[c]) ** 2 for w, x in weights) / total for c in range(ncol)]
+    return mean, var, total
+
+
+def same_tree(a, b, skip=()):
+    """The files of directory a that differ from b's (or are missing in b)."""
+    bad = []
+    for root, _, files in os.walk(a):
+        for f in files:
+            pa = os.path.join(root, f)
+            rel = os.path.relpath(pa, a)
+            if rel in skip:
+                continue
+            pb = os.path.join(b, rel)
+            if not os.path.exists(pb) or not filecmp.cmp(pa, pb, shallow=False):
+                bad.append(rel)
+    return bad
+
+
 def plotfile_time(path):
     # AMReX plotfile Header: version, the number of variables, their names, the dimension, then the time.
     with open(os.path.join(path, "Header")) as fh:
@@ -90,7 +161,9 @@ def main(argv):
         raise SystemExit(__doc__)
     cmd = argv[2:]
     fresh = ["init.first_guess=profile", "io.write_checkpoint=0"]
-    ten = fresh + ["unsteady.stop_time=600", "unsteady.dt=60"]
+    outputs = ["unsteady.stop_time=600", "unsteady.dt=60", "unsteady.average_start=90", "unsteady.plot_interval=5",
+               "unsteady.checkpoint_interval=5", "unsteady.probes_file=" + PROBES]
+    ten = ["init.first_guess=profile"] + outputs
     ok = True
 
     def check(good, what):
@@ -137,6 +210,61 @@ def main(argv):
     k = min(range(len(a["z"][ii][0])), key=lambda kk: abs(a["z"][ii][0][kk] - zg - 50.0))
     du = abs(a["u"][ii][0][k] - c["u"][ii][0][k])
     check(du > 0.1, "u at the hill top 50 m above the ground moved by %.3f m/s (> 0.1) over 600 s" % du)
+
+    # RT-6.3.1: the averages against the probes' rows.
+    cells, rows = read_probes(os.path.join("np2", "unsteady_hill2d_plt_probes.csv"))
+    check(len(rows) == 11 and abs(rows[0][0]) == 0 and abs(rows[-1][0] - 600) < 1e-9,
+          "the probe file has 11 rows, t = 0 to 600 s (got %d)" % len(rows))
+    plts = plotfiles(two)
+    check(len(plts) == 2, "two plotfiles, steps 5 and 10 (got %d)" % len(plts))
+    for plt, upto in zip(plts, (300.0, 600.0)):
+        path = os.path.join("np2", plt)
+        check(abs(plotfile_time(path) - upto) < 1e-9, "%s carries t = %g s" % (plt, upto))
+        _, avg = ep.read_fields(path, [f + "_mean" for f in AVG] + [f + "_var" for f in AVG])
+        mean, var, total = hand_averages([r for r in rows if r[0] <= upto + 1e-9], 90.0)
+        worst_m = worst_v = 0.0
+        for n, (i, j, k) in enumerate(cells):
+            for c, f in enumerate(AVG):
+                col = n * len(AVG) + c
+                series = [r[1 + col] for r in rows]
+                scale = max(abs(x) for x in series) or 1.0
+                worst_m = max(worst_m, abs(avg[f + "_mean"][i][j][k] - mean[col]) / scale)
+                # Round-off of the deviations d (about eps scale each) bounds the variance's error by
+                # about eps scale sqrt(var): theta's variance is 1e-11 on a scale of 300.
+                tol = 1e-12 * var[col] + 64 * EPS * scale * math.sqrt(var[col]) + 1e-300
+                worst_v = max(worst_v, abs(avg[f + "_var"][i][j][k] - var[col]) / tol)
+        check(worst_m <= 1e-13 and worst_v <= 1,
+              "%s: the averages at the probes are the rows' weighted mean (%.1e of the scale) and variance (%.2f of "
+              "its round-off bound) over %g s" % (plt, worst_m, worst_v, total))
+
+    # RT-6.3.1: the restart from the checkpoint of step 5.
+    chks = checkpoints(two)
+    check(len(chks) == 2, "two checkpoints, steps 5 and 10 (got %d)" % len(chks))
+    shutil.rmtree("restart", ignore_errors=True)
+    os.makedirs("restart")
+    shutil.copy(os.path.join("np2", "unsteady_hill2d_plt_probes.csv"), "restart")
+    full = with_ranks(cmd, 2) + ["io.restart=../np2/" + chks[0]] + outputs
+    print("check_unsteady_hill2d: in restart/: %s" % " ".join(full))
+    out = subprocess.run(full, cwd="restart", check=False, capture_output=True, text=True)
+    if out.returncode != 0:
+        sys.stdout.write(out.stdout[-4000:] + out.stderr[-4000:])
+        raise SystemExit("check_unsteady_hill2d: the restart failed with code %d" % out.returncode)
+    rs = steps(out.stdout)
+    check("gust: unsteady: continues from t = 300 s after 5 physical steps" in out.stdout, "the restart continues at t = 300 s")
+    check([m.group(1) for m in rs] == [str(n) for n in range(6, 11)]
+          and [m.group(4) for m in rs] == [m.group(4) for m in s2[5:]],
+          "the restart runs steps 6 to 10 with the 2-rank inner counts")
+    rp = plotfiles(out.stdout)
+    check(bool(rp) and rp[-1] == plts[-1] and not same_tree(os.path.join("np2", plts[-1]), os.path.join("restart", rp[-1])),
+          "the restart's final plotfile is byte for byte the 2-rank run's")
+    check(filecmp.cmp(os.path.join("np2", "unsteady_hill2d_plt_probes.csv"),
+                      os.path.join("restart", "unsteady_hill2d_plt_probes.csv"), shallow=False),
+          "the restart's probe file is byte for byte the 2-rank run's")
+    rc = checkpoints(out.stdout)
+    # The driver history records wall-clock times; everything else is compared.
+    diff = same_tree(os.path.join("np2", chks[-1]), os.path.join("restart", rc[-1]), skip=("Driver",)) if rc else ["(none)"]
+    check(not diff, "the restart's final checkpoint is byte for byte the 2-rank run's but Driver (differs: %s)"
+          % (" ".join(diff) or "nothing"))
 
     print("check_unsteady_hill2d: %s" % ("pass" if ok else "FAIL"))
     return 0 if ok else 1

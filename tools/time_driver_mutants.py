@@ -39,7 +39,7 @@ M = [
  ("TD12", "set_dt does not change 1/dt", T,
   "    m_inv_dt = amrex::Real(1) / dt;\n", "\n"),
  ("TD13", "the time a sum of rounded steps for a fixed step", D,
-  "(m_opt.cfl > 0 ? m_time + double(dt) : n * double(m_opt.dt))", "(m_time + double(dt))"),
+  "(m_opt.cfl > 0 ? m_time + double(dt) : fixed)", "(m_time + double(dt))"),
  ("TD14", "a target CFL over a field at rest accepted", D,
   "if (cfl > 0 && dt >= cfl / (2 * kMinRate)) {", "if (false) {"),
  ("TD15", "a step that is not finite accepted", D,

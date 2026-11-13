@@ -667,6 +667,63 @@ checked by ``rt_unsteady_hill2d``: without it every step stops at ``unsteady.max
      - The CFL ramp of an unsteady run stops at a steady verdict
      - ``CflRampsOnWhenTheVerdictIsSteady``
 
+The one-line mutants of the unsteady outputs and the restart (``Source/UnsteadyOutput.cpp`` and
+``Source/TimeDriver.cpp``), each run against ``UnsteadyOutput.*`` and ``TimeDriver.Resume*`` on two ranks with the
+unit-test flags by ``tools/unsteady_output_mutants.py`` (macOS arm64, AppleClang). All 10 are killed.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 6 50 44
+
+   * - Mutant
+     - Change
+     - Failing tests
+   * - UO1
+     - The weight :math:`t^{n+1} - t^n` (the averaging start ignored)
+     - ``AveragesAreTheWeightedSeries``, ``NothingAveragedBeforeTheStart``
+   * - UO2
+     - West's :math:`w/W` with :math:`W` before the add
+     - ``AveragesAreTheWeightedSeries``
+   * - UO3
+     - :math:`M_2` from the old mean only
+     - ``AveragesAreTheWeightedSeries``
+   * - UO4
+     - A tie takes the higher cell
+     - ``ProbesTakeTheNearestCell``
+   * - UO5
+     - :math:`h` measured from :math:`z = 0`, not from the ground
+     - ``ProbesTakeTheNearestCell``
+   * - UO6
+     - A point on the high face not given the last cell
+     - ``ProbesTakeTheNearestCell``
+   * - UO7
+     - A restart drops the probe row at the checkpoint's time
+     - ``ProbeFileOnRestart``
+   * - UO8
+     - A resumed fixed step summed from the checkpoint's time (the record's anchor dropped)
+     - ``ResumeContinuesTheTime``
+   * - UO9
+     - Another step after a restart keeps the checkpoint's anchor
+     - ``ResumeContinuesTheTime``
+   * - UO10
+     - A resumed run numbers its steps from 1
+     - ``ResumeContinuesTheTime``
+   * - UO11
+     - A clipped last step keeps the anchor (the next step at :math:`(n_0 + 1)\,\Delta t`)
+     - ``ResumeContinuesTheTime``
+   * - UO12
+     - Every last step moves the anchor (a chain of restarts at full steps drifts by round-off)
+     - ``ResumeContinuesTheTime``
+   * - UO13
+     - The record's anchor time not written
+     - ``CheckpointRoundTrip``
+   * - UO14
+     - A kept probe file reported as new (the checkpoint's row written twice)
+     - ``ProbeFileOnRestart``
+   * - UO15
+     - A restart without a probe file reported as kept (no first row)
+     - ``ProbeFileOnRestart``
+
 The one-line mutants of the Newton stage (``Source/NewtonStage.cpp`` and the switch rules in ``Source/Driver.cpp``),
 each run against ``Driver.*`` and ``NewtonStage.*`` on two ranks with the unit-test flags by
 ``tools/newton_stage_mutants.py`` (macOS arm64, AppleClang). 13 of 15 are killed. N14 and N15 survive: they matter only
@@ -1342,16 +1399,31 @@ Current tests
        iterations (measured 12; 60, the limit, without the time term in the stage); the plotfile's header carries
        600 s; u at the hill top 50 m above the ground moves by more than 0.1 m/s over 600 s (0.134). It checks the
        driver's bookkeeping and rank independence, not a measured or closed-form answer (the order in :math:`\Delta t`
-       is the unit test's). About 15 s. Label ``regression``; MPI builds.
+       is the unit test's). RT-6.3.1 (sub-phase 6.3, beyond the plan), the outputs, with four probes, the averages
+       from 90 s and a plotfile and a checkpoint every five steps: 11 probe rows; plotfiles at 300 and 600 s whose
+       averages at each probe's cell equal the two-pass weighted mean and variance of its rows; the restart from the
+       2-rank checkpoint of step 5 continues at 300 s with steps 6 to 10 and the same inner counts, and its final
+       plotfile and probe file are byte for byte the straight run's, as is its final checkpoint except the driver
+       history's wall-clock columns. About 16 s. Label ``regression``; MPI builds.
    * - ``rt_unsteady_hill2d_from_steady``
      - The unsteady deck restarted from the 5-iteration checkpoint of ``rt_steady_hill2d_restart_first``: two steps
        of 60 s to 120 s, the restart and the summary line matched. Label ``regression;smoke``; MPI builds.
-   * - ``abort_unsteady_stop_time_missing``, ``abort_unsteady_dt_and_cfl``, ``abort_unsteady_checkpoint``, ``abort_unsteady_steady_stop_keys``, ``abort_unsteady_hybrid``, ``abort_unsteady_key_without_stage``
+   * - ``abort_unsteady_stop_time_missing``, ``abort_unsteady_dt_and_cfl``, ``abort_unsteady_steady_stop_keys``, ``abort_unsteady_hybrid``, ``abort_unsteady_key_without_stage``
      - The refusals of ``steady.stage = unsteady``, each message matched: ``unsteady.stop_time`` missing,
-       ``unsteady.dt`` with ``unsteady.cfl``, the default ``io.write_checkpoint = 1``, ``steady.max_iterations`` and
+       ``unsteady.dt`` with ``unsteady.cfl``, ``steady.max_iterations`` and
        ``steady.sequencing = 1`` with the unsteady stage, ``convection.hybrid_sigma_max`` > 0 with it, and
        ``unsteady.dt`` in a steady run. Label
        ``regression;smoke``.
+   * - ``abort_unsteady_output_ranges``, ``abort_unsteady_interval_needs_output``, ``abort_unsteady_probes_missing``, ``abort_unsteady_probe_outside``
+     - The refusals of the output keys, each message matched: ``unsteady.average_start`` after the stop time and
+       negative intervals; an interval with ``io.write_plotfile`` or ``io.write_checkpoint`` = 0; a probe file that
+       does not exist; a probe outside the domain (two ranks). Label ``regression;smoke``.
+   * - ``rt_unsteady_hill2d_chk``, ``abort_unsteady_restart_average_start``, ``abort_unsteady_restart_past_stop``,
+       ``abort_unsteady_restart_probes``
+     - Two steps of 60 s with the four probes that write ``chk00096`` with its ``Unsteady`` record, and the refusals of
+       a restart from it: another ``unsteady.average_start``, ``unsteady.stop_time`` not after the checkpoint's 120 s,
+       and another probe file (``probes_restart_hill2d.txt``) than the one the probe CSV was written for. Label
+       ``regression;smoke``; MPI builds.
    * - ``rt_steady_hill2d_lusgs``
      - The 2-D hill with the line LU-SGS sweeps (``inputs_steady_hill2d_lusgs``: two symmetric sweeps,
        CFL cap 16) to the verdict with a two-order drop and ERF's ``check_hill.py --physics``. Measured: 3048
@@ -1755,6 +1827,34 @@ GoogleTest suite
        ``convective_dt`` over the channel at rest gives a step refused as "at rest". With a steady criterion met at once
        (tolerance 1e30, no drop, window 2) and ``steady.ser_max_growth = 1.1``, the verdict is Steady and the CFL
        still ramps above 2 over the Stokes run (from rest to 1 s in steps of 0.1 s).
+   * - ``UnsteadyOutput.AveragesAreTheWeightedSeries``, ``UnsteadyOutput.NothingAveragedBeforeTheStart``
+     - UT-6.3.1 (beyond the plan): a non-uniform state that changes with time on six boxes, six irregular steps
+       (0.7 to 2.5 s) with ``unsteady.average_start`` = 1 s inside the second step. The running mean and variance of
+       every cell and field equal a two-pass weighted mean and variance (1e-14 and 1e-11 relative), with the weights
+       :math:`t^{n+1} - \max(t^n, t_a)` and the first step left out; the plot names are ``u_mean`` … ``tke_var``. Steps
+       all before the start leave :math:`W = 0` and every plotted field 0.
+   * - ``UnsteadyOutput.CheckpointRoundTrip``
+     - The averages read on another box layout and the ``Unsteady`` record (values with no short decimal form, step
+       counts above :math:`2^{31}`, the time anchor) come back bit for bit; a directory without a record reads as none.
+   * - ``UnsteadyOutput.ParseProbes``
+     - Comments and blank lines are skipped; two numbers, a word, NaN, :math:`h = 0` and four numbers are each refused
+       with ``unsteady.probes_file``, the line and the reason; a file with no probe is refused.
+   * - ``UnsteadyOutput.ProbesTakeTheNearestCell``
+     - UT-6.3.2 (beyond the plan): on flat ground with layers of 0.125 m, :math:`h` = 0.3 takes the cell at 0.3125 m,
+       the tie :math:`h` = 0.25 the lower cell (0.1875 m), the domain's high corner the last cell and the low corner
+       the first; a probe samples its cell's closed-form values. On a bump the cell is the one nearest :math:`h` above
+       the local ground, from a host scan of the node heights.
+   * - ``UnsteadyOutput.ProbeFileOnRestart``
+     - A new file has the header and one row per call; reopened with the time 1, it keeps the rows up to 1, and
+       the rows written after it make the file equal to the run without the restart. ``open`` reports the kept file
+       (true) and a new file (false, also for a restart that finds no file: then only the header is written).
+   * - ``TimeDriver.ResumeContinuesTheTime``
+     - UT-6.3.3 (beyond the plan): a driver resumed after step 3 of 0.1 s numbers its steps 4 to 10 and gives the
+       times of the run without the restart bit for bit; with 0.05 s after the checkpoint, the times are
+       :math:`t_0 + n \cdot 0.05` and the run ends at its stop time. After a clipped last step (0.3 s steps to 1 s,
+       anchor (1 s, 4)) a restart to 2 s ends its first step at 1.3 s, not 1.5 s. A chain of restarts (0.1 s to
+       0.3 s, then 0.05 s to 0.6 s and on to 1 s) gives the steps and times of one restart (0.05 s to 1 s) bit for
+       bit.
    * - ``CanopyTke.SourcesHaveTheirClosedForms``
      - UT-8.3.1: with a uniform 5 m/s wind, :math:`P_c = \beta_p f |U|^3` and :math:`D_c = \beta_d f |U| k` on every
        cell; where :math:`k = \beta_p |U|^2/\beta_d` they balance; the Patankar diagonal gains :math:`\beta_d f |U|`

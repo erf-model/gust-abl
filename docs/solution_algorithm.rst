@@ -680,8 +680,8 @@ partly inside a building scale the residual and the row by :math:`1 - f` (:doc:`
 
 **Storage.** :math:`q^n` is a copy of :math:`u, v, w, \theta, k` with their ghost cells, held by the ``TimeTerm``
 module (``Source/TimeTerm.H``). The residual reads only its valid points. Without a time term the residual and the
-rows are unchanged, bit for bit. :math:`q^n` is not yet written to the checkpoint; that comes with the unsteady
-outputs. The module checks that :math:`\Delta t` is finite and positive with a finite :math:`1/\Delta t`.
+rows are unchanged, bit for bit. :math:`q^n` is not written to the checkpoint: a checkpoint is written at the end
+of a step, where :math:`q^n` of the next step is the state itself. The module checks that :math:`\Delta t` is finite and positive with a finite :math:`1/\Delta t`.
 
 .. _time-driver:
 
@@ -736,6 +736,7 @@ for 100 iterations, about two and a half steps).
 **Restart.** A run may start from a checkpoint of a steady run (``io.restart``). Its physical time starts at 0, the
 state is the checkpoint's, and the driver's history continues: there is no new hold, and the CFL and the residual
 reference are the checkpoint's. A ``steady.stage = simplec_newton`` checkpoint cannot be continued (it has two stages).
+From a checkpoint of an unsteady run the run continues where it was (:ref:`unsteady-outputs`).
 
 **What a step reports.** One line per step: the time, :math:`\Delta t`, the inner iterations and the largest
 :math:`R_q^m / \max(R_q^1, \tau_R)` at the last one. A step that reaches ``unsteady.max_inner`` is marked and the run
@@ -747,10 +748,74 @@ step converged.
 **Order.** Backward Euler is first order in :math:`\Delta t`: halving the step halves the time error
 (``TimeDriver.StokesFirstProblemFirstOrder``, Stokes' first problem against its erfc profile).
 
-**Not supported yet.** Grid sequencing, the Newton stage, the hybrid upwind blend (``convection.hybrid_sigma_max`` > 0:
-it follows the inner residual, so the operator would change within and between steps), the checkpoint of :math:`q^n` and the time, and time
-averages and probes. A deck that asks for sequencing (``steady.sequencing = 1``) or a checkpoint stops with a message;
-the checkpoint is on by default, so an unsteady deck sets ``io.write_checkpoint = 0``.
+**Not supported yet.** Grid sequencing, the Newton stage and the hybrid upwind blend (``convection.hybrid_sigma_max`` > 0:
+it follows the inner residual, so the operator would change within and between steps). A deck that asks for
+sequencing (``steady.sequencing = 1``) or the blend stops with a message.
+
+.. _unsteady-outputs:
+
+Unsteady outputs
+----------------
+
+An unsteady run (``Source/UnsteadyOutput.H``) keeps running averages, writes probe rows, and writes plotfiles and
+checkpoints during the run, from which a later run continues.
+
+**Running averages.** After each step from :math:`t^n` to :math:`t^{n+1}` the mean and the variance of
+:math:`x \in \{u, v, w, \theta, k\}` (the cell-centred values, velocities averaged from the faces) are updated by
+the weighted form of West (D. H. D. West, *Updating mean and variance estimates: an improved method*,
+Communications of the ACM 22(9), 532–535, 1979):
+
+.. math::
+
+   w = t^{n+1} - \max(t^n, t_a), \qquad W \leftarrow W + w, \qquad d = x - \bar x, \qquad
+   \bar x \leftarrow \bar x + \frac{w}{W}\,d, \qquad M_2 \leftarrow M_2 + w\,d\,(x - \bar x),
+
+where :math:`t_a` is ``unsteady.average_start``, :math:`w` the step's weight (no update if :math:`w \le 0`),
+:math:`W` the time averaged so far, :math:`\bar x` the mean and :math:`M_2/W` the variance (the population
+variance in time, with no :math:`W/(W - w)` correction). Each step's state stands for the whole step, as backward
+Euler does: the averages are the time integrals of the piecewise-constant answer, a right-end rectangle rule. For a
+smoothly varying answer that rule differs from the time integral of the continuous signal by
+:math:`O(\Delta t)`, the order of the scheme itself. The update gives the two-pass weighted mean and variance of
+the same series up to round-off (``UnsteadyOutput.AveragesAreTheWeightedSeries``: relative :math:`10^{-14}` for the
+mean and :math:`10^{-11}` for the variance in double precision; :math:`10^{-6}` and :math:`10^{-3}` in single, where
+the fields and the update are ``float``). **Why this form:** one pass, no sum of squares (whose difference would lose
+the variance of :math:`\theta`, about :math:`10^{-11}` K² on 300 K, to round-off), and the same answer for any step
+lengths.
+
+**Probes.** ``unsteady.probes_file`` lists points ``x y h``. A probe's column is the cell containing
+:math:`(x, y)` (a point on the domain's high face takes the last cell); its height above the ground of a cell is the
+mean of its 8 node heights less the mean of the 4 bottom nodes of the column. The probe takes the cell whose height is
+nearest :math:`h`, the lower on a tie; values are the cell's, not interpolated. The CSV's header lists each probe's
+point, cell and cell height; then one row ``t, p1_u, …, pN_tke`` at the start and one per step, printed to 17 digits.
+
+**Plotfiles and checkpoints.** Every ``unsteady.plot_interval`` and ``unsteady.checkpoint_interval`` physical steps,
+and at the end. A checkpoint adds a text record ``Unsteady`` (the time, the step count, the fixed :math:`\Delta t`,
+:math:`t_a`, :math:`W` and the time anchor below, as hexadecimal floats) and :math:`\bar x` and :math:`M_2` as MultiFabs. A run that
+diverges writes no final checkpoint: its state is not the state at the record's time.
+
+**Restart.** From an unsteady checkpoint the run takes its state, history, averages and record. The time goes on from
+the record's. With a fixed :math:`\Delta t`, total step :math:`N` ends at
+
+.. math::
+
+   t^N = t_\star + (N - n_\star)\,\Delta t,
+
+with the anchor :math:`(t_\star, n_\star) = (0, 0)` at the start of a run. The anchor moves to
+:math:`(t^N, N)` after a clipped last step (one that ends at ``unsteady.stop_time`` more than 0.1 % of
+:math:`\Delta t` from the formula), and to :math:`(t_0, n_0)` at a restart with another :math:`\Delta t` than the
+checkpoint's, where :math:`t_0` and :math:`n_0` are the checkpoint's time and step count. The record keeps the anchor.
+**Why:** the time is a product, not a sum of rounded steps, so a restart with the same :math:`\Delta t` gives the times
+of the run without the restart bit for bit; after a clipped last step the next step is one :math:`\Delta t` later; a
+chain of restarts gives the times of one restart (``TimeDriver.ResumeContinuesTheTime``). With ``unsteady.cfl``
+the time is the sum of the steps. Steps are numbered on from :math:`n_0`. The probe file (``<io.plot_file>_probes.csv``,
+so the restart must run where that path finds the earlier file) keeps its rows up to :math:`t_0`, and its header must
+match the probes given; the log gives the time of the last row kept. A restart that finds no probe file starts a new
+one at :math:`t_0` and says so in the log. A checkpoint at a step boundary continues the run bit for bit
+(``rt_unsteady_hill2d``). A last step that ended within 0.1 % of :math:`\Delta t` of the formula keeps the anchor:
+the first step after a restart then spans :math:`t^{N+1} - t^N`, which differs from the :math:`\Delta t` of its
+time term by at most that 0.1 %; the averages weight it by the span. ``unsteady.average_start`` must equal the record's, and ``unsteady.stop_time`` must be later
+than :math:`t_0`. A steady run may also start from an unsteady checkpoint; it takes the state and history and ignores
+the averages.
 
 .. _convergence-criteria:
 

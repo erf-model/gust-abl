@@ -45,12 +45,17 @@ std::string write_plotfile (const std::string& prefix, const State& state,
                             const amrex::Geometry& geom, const amrex::MultiFab* detJ,
                             const amrex::MultiFab* canopy_drag, const amrex::MultiFab* canopy_lad,
                             const amrex::MultiFab* building_beta, const amrex::MultiFab* building_wall,
-                            amrex::Real time)
+                            amrex::Real time, const amrex::MultiFab* extra,
+                            const std::vector<std::string>* extra_names)
 {
+    const int n_extra = (extra != nullptr) ? extra->nComp() : 0;
+    if (extra != nullptr && (extra_names == nullptr || static_cast<int>(extra_names->size()) != n_extra)) {
+        amrex::Abort("gust: write_plotfile: one name per extra field");
+    }
     const std::string name = amrex::Concatenate(prefix, state.step, 5);
     const amrex::BoxArray& ba = state.p.boxArray();
     const int ncomp = 7 + (detJ ? 1 : 0) + (canopy_drag ? 1 : 0) + (canopy_lad ? 1 : 0)
-                      + (building_beta ? 1 : 0) + (building_wall ? 1 : 0);
+                      + (building_beta ? 1 : 0) + (building_wall ? 1 : 0) + n_extra;
     amrex::MultiFab plt(ba, state.p.DistributionMap(), ncomp, 0);
 
     for (amrex::MFIter mfi(plt, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
@@ -100,6 +105,10 @@ std::string write_plotfile (const std::string& prefix, const State& state,
     if (building_wall != nullptr) {
         amrex::MultiFab::Copy(plt, *building_wall, 0, static_cast<int>(names.size()), 1, 0);
         names.emplace_back("building_wall");
+    }
+    if (extra != nullptr) {
+        amrex::MultiFab::Copy(plt, *extra, 0, static_cast<int>(names.size()), n_extra, 0);
+        for (const auto& n : *extra_names) { names.push_back(n); }
     }
     amrex::WriteSingleLevelPlotfile(name, plt, names, geom, time, state.step);
     amrex::VisMF::Write(state.z_phys_nd, name + "/Level_0/z_phys_nd");
