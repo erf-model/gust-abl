@@ -101,6 +101,27 @@ the closure takes the nearer of the ground and the nearest building wall, each w
   On flat ground :math:`d` is the height. Over terrain it approximates the true distance; the error is largest at
   convex crests (:doc:`results`).
 
+Laminar flow
+------------
+
+``turb.closure = none`` turns the closure off, for laminar flow and verification cases:
+
+.. math::
+
+   \nu = \nu_\mathrm{mol}, \qquad \gamma_\theta = \alpha_\mathrm{mol}, \qquad \gamma_k = \nu_\mathrm{mol},
+   \qquad \nu_t = P_s = P_b = \varepsilon = 0,
+
+- :math:`\nu_\mathrm{mol}` (``turb.nu_molecular``, required > 0) and :math:`\alpha_\mathrm{mol}`
+  (``turb.alpha_molecular``): the molecular viscosity and heat diffusivity.
+
+:math:`k` is then a passive scalar: it is transported and diffused but has no sources, and nothing reads it. The
+fields are constant, ghost cells included, so a laminar run costs no closure evaluation. The inputs of the k–L
+closure, and the options built on it (a canopy, the surface layer, the column first guess, the Newton correction of
+the SIMPLEC stage, the buildings' wall laws and wall k), are refused with ``none`` (:doc:`inputs`, ``turb``); so is
+``turb.face_mean``, since every face mean of a constant gives the same value. The upwind blend
+(``convection.hybrid_sigma_max``) needs ``turb.realizability``, a k–L input, so a laminar run has none. The
+laminar cylinder (``Tests/Canonical_RANS/Cylinder_Laminar``, :doc:`buildings`, Validation) uses it.
+
 Model options
 -------------
 

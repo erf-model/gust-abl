@@ -17,11 +17,13 @@ gravity on (`buildings.theta_mode = fixed`), theta without its building terms (`
 | `inputs_cube_drag` | The same with `buildings.wall_form = drag` and no `buildings.z0` or `buildings.wall_tke`. |
 | `inputs_cube_smooth_walls` | The same with `buildings.z0 = 0.01` (the ground has 0.1 m) and a turbulence plotfile. |
 | `inputs_cube_heated` | The same with walls at 305 K (`buildings.theta_mode = fixed`) and gravity on. |
+| `inputs_cube_unsteady` | `inputs_cube` without a stage or first guess and with checkpoints, for the force file's unsteady CTests (PR-49): the command line gives `steady.stage = unsteady`. |
 | `cube.txt` | The block in ERF's format. |
 | `cube_24p6.txt` | The block 24.6 m high: its roof ends 4.6 m into a 5 m layer, so the roof's cells are 0.92 solid. |
 | `inputs_abort_newton`, `inputs_abort_lusgs` | The deck with a stage or sweep that has no buildings yet: refused. |
 | `plot_cube.py` | Writes `docs/figures/buildings/block_flow.png`. Not a test. |
 | `check_cube_length.py` | The turbulence plotfile's `walldist` in three wall cells and far upstream: the wall's distance plus `buildings.z0` less the ground's roughness where a wall is the nearer. The exit code is the verdict. |
+| `check_force_file.py` | The force file's CTests: two plotfiles hold the same bytes (a run with `buildings.force_file` against one without), two force files are the same (a restart against the uninterrupted run), or a restarted file starts at the checkpoint's time with the uninterrupted rows. The exit code is the verdict. |
 | `check_cube_heat.py` | The heated block: theta in the solid cells and in the air, and the heat the walls give (the log's line) against the heat carried through the planes downstream and against the deck's value. The exit code is the verdict. |
 | `check_cube.py` | Speeds in the solid, the volume flux along x, reversal behind and speed-up above, and u in a wall cell of the roof and of a side and k in the roof's wall cell (`--roof`, `--side`, `--k-roof`). The exit code is the verdict. |
 
@@ -81,3 +83,9 @@ it moves with the buoyancy of the warmed air, not with the walls' terms.
 `building_cube_heated_roof_clean`, `building_cube_heated_roof_run`, `building_cube_heated_roof_heat`, `abort_buildings_theta_frozen`,
 `abort_buildings_newton`, `abort_buildings_lusgs`,
 `abort_buildings_levels`, `abort_buildings_mlmg`.
+`force_file_cube_clean`, `force_file_cube_plain`, `force_file_cube_file`, `force_file_cube_bit_identical`,
+`force_file_cube_first`, `force_file_cube_stray_row`, `force_file_cube_restart`, `force_file_cube_restart_rows`,
+`force_file_cube_restart_no_file`, `force_file_cube_restart_no_file_rows`, `force_file_cube_other_header`,
+`abort_force_file_restart_header` (PR-49): `buildings.force_file` in four unsteady steps of 0.5 s on two ranks does not
+change the solution, a restart reproduces the uninterrupted file (a stray row past the checkpoint dropped), a restart
+that finds no file starts it at the checkpoint's time, and a file of another header is refused.

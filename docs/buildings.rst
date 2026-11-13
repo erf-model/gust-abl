@@ -414,6 +414,52 @@ restarts with ``buildings.theta_mode = none`` and is refused with the others; ``
 what a restart must keep.
 
 
+Force on the buildings
+----------------------
+
+``buildings.force_file`` writes the force the air exerts on the buildings, per unit density, to a CSV file
+``t,Fx,Fy,Fz`` (m⁴/s²; multiply by the air density for newtons). It is the momentum residual over the blocked
+faces, taken before the buildings' fixed rows replace it:
+
+.. math::
+
+   F_c = -\sum_{f\,:\,\beta_f = 1} R_c(f)\, V_f, \qquad V_f = J_f\,\Delta x\,\Delta y\,\Delta\zeta,
+
+- :math:`R_c(f)`: the residual of velocity component :math:`c` at face :math:`f` (per unit volume: convection,
+  diffusion, pressure gradient and sources, :eq:`rans`), without the time term: on a fixed face :math:`u_c = 0` at
+  both time levels, so the time term is 0 there;
+- :math:`\beta_f`: the face's solid fraction (``beta_face``); the sum runs over the faces normal to :math:`c` that are
+  fully blocked;
+- :math:`J_f`: the mean of the two cells' :math:`\det J` (the control volume of the face, as in the residual).
+
+**Why the residual:** at a blocked face the row equation of the free flow would be :math:`R_c = 0`; the fixed row
+holds the velocity at zero instead, so :math:`-R_c V_f` is the momentum the wall must remove per unit time, its force
+on the air with the sign turned. Summed over the solid, the interior faces cancel (their fluxes telescope), and what
+remains is the pressure and the viscous stress on the wetted faces.
+
+**What it includes:** the pressure on each wetted face and the viscous stress of the fluxes to the zero velocity of
+the fixed rows (``buildings.wall_form = drag``, or the forms with a wall law, whose sink then appears in :math:`R`).
+On the staircase of cells the pressure is the difference across the solid's faces, half a cell from the wall.
+The tangential velocity is held at 0 at the solid cell's centre, also half a cell inside the wall: the wall acts as
+if it had a slip length of half a cell, which lowers the viscous stress (about 14 % of the friction drag of a
+cylinder at Re = 40 with ten cells across, about 8 % with twenty: an estimate from the shear layer's thickness, not a
+measurement). A sink from the Rayleigh or sponge damping layers (:doc:`boundary_conditions`) on a blocked face is part
+of :math:`R` too; keep the buildings out of the damping layers.
+
+The faces on a domain face that is not periodic are left out (boundary rows), and so is the ground's :math:`w`: a
+building's force does not include the ground under it. For a building on the ground, :math:`F_z` is therefore not its
+lift: the vertical faces of a column telescope to the pressure above the roof less the pressure in the lowest solid
+cell, which the pressure solve does not update (the correction is 0 in solid cells). The same holds for
+:math:`F_x` or :math:`F_y` of a building that touches a domain face that is not periodic. A body clear of the ground
+and of those faces, such as the laminar cylinder, has the full force on every component. Faces shared by two boxes count once. One row is written
+after a steady solve; with ``steady.stage = unsteady`` one at the start and one after each step. On a restart the
+file keeps its rows up to the checkpoint's time and continues.
+
+The unit tests ``BuildingLoads.PressureGradientTelescopesThroughABlock`` (a linear pressure gives
+:math:`-\nabla p` times the block's volume, on one and several boxes) and
+``BuildingLoads.ShearOverASolidLayerGivesThePlateDrag`` (a linear shear over a solid layer gives
+:math:`\nu S L_x L_y`) check it.
+
 Validation
 ----------
 
@@ -473,6 +519,56 @@ matter:
 The measurements are those of I. P. Castro, H. Cheng and R. Reynolds (2006,
 https://doi.org/10.1007/s10546-005-5747-7); the values are digitized from Fig. 3 of Muñoz-Esparza et al. (2020,
 https://doi.org/10.1029/2020MS002141, CC BY-NC-ND 4.0). We thank them.
+
+Laminar flow past a circular cylinder (``Tests/Canonical_RANS/Cylinder_Laminar``, ``turb.closure = none``, ten
+cells across, blockage 1/12) checks the steady solver against the unsteady driver (dual time stepping, :doc:`solution_algorithm`), and the force
+file, rather than accuracy:
+
+.. list-table::
+   :header-rows: 1
+
+   * - Re
+     - Run
+     - Cd
+     - Lift
+     - St
+     - Lw/D
+   * - 40
+     - steady
+     - 1.6985
+     - Cl 0.001
+     - –
+     - 1.963
+   * - 40
+     - unsteady, dt 0.05 s, mean over 80–120 s
+     - 1.6985
+     - amplitude 0.000
+     - –
+     - 1.963
+   * - 100
+     - steady
+     - stops at 6000 iterations, residual ~1e-2
+     - Cl 0.13
+     - –
+     - –
+   * - 100
+     - unsteady, dt 0.05 s, mean over 100–160 s
+     - 1.428
+     - amplitude 0.209
+     - 0.164
+     - 1.86
+   * - 100
+     - unsteady, dt 0.025 s
+     - 1.445
+     - amplitude 0.240
+     - 0.167
+     - 1.72
+
+At Re = 40, where the flow is steady, the unsteady run settles to the steady answer. At Re = 100 the unsteady run
+sheds at St = 0.164 (Williamson 1996: 0.164) and the steady solver does not settle. Cd is about 10 % above the
+published unbounded values (1.50–1.52 at Re 40); first-order upwinding everywhere (``convection.limiter = upwind``)
+raises it by a further 11 %, and halving dt raises the lift amplitude by 15 % (BDF1 damping). The case README has
+the sensitivity runs and the references.
 
 A building on a hill has no tunnel measurements that we know of, so no such case is compared here.
 

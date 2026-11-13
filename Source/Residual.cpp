@@ -351,7 +351,7 @@ void residual (const State& q, const ResidualInputs& in, const Mesh& mesh, const
         in.bc->add_damping(q, R);
         in.bc->apply_rows(q, R);
     }
-    if (in.buildings != nullptr) { in.buildings->apply_rows(q.u, q.v, q.w, R.u, R.v, R.w); }
+    if (in.buildings != nullptr && in.building_rows) { in.buildings->apply_rows(q.u, q.v, q.w, R.u, R.v, R.w); }
     if (in.building_tke != nullptr) { in.building_tke->apply_rows(q.tke, R.tke, building_k_row(in)); }
     if (in.building_theta != nullptr) { in.building_theta->apply_rows(q.theta, R.theta); }
 

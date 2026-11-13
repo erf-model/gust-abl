@@ -724,6 +724,71 @@ unit-test flags by ``tools/unsteady_output_mutants.py`` (macOS arm64, AppleClang
      - A restart without a probe file reported as kept (no first row)
      - ``ProbeFileOnRestart``
 
+The one-line mutants of the force on the buildings and the laminar closure (``Source/BuildingLoads.cpp``,
+``Source/Residual.cpp`` and ``Source/Closure.cpp``), each run against ``BuildingLoads.*`` and ``Closure.Laminar*`` on
+two ranks with the unit-test flags by ``tools/building_loads_mutants.py`` (macOS arm64, AppleClang). All 9 are killed.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 6 50 44
+
+   * - Mutant
+     - Change
+     - Failing tests
+   * - BL1
+     - Faces shared by two boxes counted twice (``sum`` for ``sum_unique``)
+     - ``FaceVolumeIsTheMeanOfItsTwoCells``, ``PressureGradientTelescopesThroughABlock``,
+       ``ShearOverASolidLayerGivesThePlateDrag``
+   * - BL2
+     - The buildings' fixed rows kept in the residual of the force
+     - ``PressureGradientTelescopesThroughABlock``, ``ShearOverASolidLayerGivesThePlateDrag``
+   * - BL3
+     - The faces on a non-periodic domain face counted
+     - ``FaceVolumeIsTheMeanOfItsTwoCells``, ``PressureGradientTelescopesThroughABlock``
+   * - BL4
+     - The face volume from half the mean :math:`J`
+     - ``FaceVolumeIsTheMeanOfItsTwoCells``, ``PressureGradientTelescopesThroughABlock``,
+       ``ShearOverASolidLayerGivesThePlateDrag``
+   * - BL5
+     - ``turb.closure = none`` runs the k-L closure
+     - ``LaminarClosureGivesTheMolecularDiffusivities``
+   * - BL6
+     - ``turb.nu_molecular = 0`` accepted with ``turb.closure = none``
+     - ``LaminarClosureGivesTheMolecularDiffusivities``
+   * - BL7
+     - k-L keys accepted with ``turb.closure = none``
+     - ``LaminarClosureGivesTheMolecularDiffusivities``
+   * - BL8
+     - :math:`k` diffuses with ``alpha_molecular`` in place of ``nu_molecular``
+     - ``LaminarClosureGivesTheMolecularDiffusivities``
+   * - BL9
+     - The face volume from one cell's :math:`J` (:math:`J_{i} + J_{i}` for :math:`J_{i-1} + J_{i}`)
+     - ``FaceVolumeIsTheMeanOfItsTwoCells``
+
+The one-line mutants of the force file in unsteady runs and restarts (``Source/App.cpp``,
+``Source/BuildingLoads.cpp``), each run against the CTests ``force_file*`` (the cube with the wall law, four steps of
+0.5 s on two ranks) by ``tools/force_file_mutants.py`` (macOS arm64, AppleClang). All 4 are killed.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 6 50 44
+
+   * - Mutant
+     - Change
+     - Failing tests
+   * - FF1
+     - The force evaluation changes the state (:math:`u + 10^{-12}`)
+     - ``force_file_cube_bit_identical``, ``force_file_cube_restart_no_file_rows``
+   * - FF2
+     - A restart drops the force row at the checkpoint's time
+     - ``force_file_cube_restart_rows``
+   * - FF3
+     - A restart that finds no force file reported as kept (no first row)
+     - ``force_file_cube_restart_no_file_rows``
+   * - FF4
+     - A restart's force file of another header accepted
+     - ``abort_force_file_restart_header``
+
 The one-line mutants of the Newton stage (``Source/NewtonStage.cpp`` and the switch rules in ``Source/Driver.cpp``),
 each run against ``Driver.*`` and ``NewtonStage.*`` on two ranks with the unit-test flags by
 ``tools/newton_stage_mutants.py`` (macOS arm64, AppleClang). 13 of 15 are killed. N14 and N15 survive: they matter only

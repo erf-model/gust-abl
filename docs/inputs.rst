@@ -271,6 +271,9 @@ Quick reference
    * - ``buildings.format``
      - ``erf``
      - ``erf`` (ERF's text layout) or ``xyz`` (``x y height [zstart]`` lines)
+   * - ``buildings.force_file``
+     - none
+     - CSV of the force on the buildings per unit density (m⁴/s²)
    * - ``buildings.small_volfrac``
      - ``0.005``
      - Solid fractions within this of 0 or 1 become 0 or 1
@@ -337,6 +340,9 @@ Quick reference
    * - **Turbulence model** (`turb`_)
      -
      -
+   * - ``turb.closure``
+     - ``kl``
+     - ``kl`` (the k-L closure) or ``none`` (laminar)
    * - ``turb.Cmu0``
      - ``0.5562``
      - Model constant :math:`C_{\mu 0}`
@@ -357,7 +363,7 @@ Quick reference
      - TKE diffusion Schmidt number
    * - ``turb.nu_molecular``, ``turb.alpha_molecular``
      - ``0``, ``0``
-     - Molecular viscosity and heat diffusivity (m²/s)
+     - Molecular viscosity and heat diffusivity (m²/s); ``nu_molecular`` > 0 with ``turb.closure = none``
    * - ``turb.kappa``
      - ``0.41``
      - von Kármán constant
@@ -1005,6 +1011,9 @@ refuses buildings other than those of the run it continues.
    * - ``buildings.format``
      - ``erf``
      - ``erf``: ``nx``, ``ny``, the x values, the y values, the heights with x the slow index. ``xyz``: ``x y height`` or ``x y height zstart`` lines holding each point of a rectangular grid once, in any order; solid from ``zstart`` (≥ 0, and below ``height`` where ``height`` > 0; default 0) to ``height``.
+   * - ``buildings.force_file``
+     - none
+     - A file name, not empty: the CSV ``t,Fx,Fy,Fz`` of the force on the buildings per unit density (m⁴/s²), from the momentum residual over their blocked faces (:doc:`buildings`, Force on the buildings). One row after a steady solve; with ``steady.stage = unsteady`` one at the start and one per step, and a restart keeps the rows up to the checkpoint's time. Needs ``steady.stage``.
    * - ``buildings.small_volfrac``
      - ``0.005``
      - In [0, 0.5). Below it a fraction is 0, within it of 1 the fraction is 1. At 0, round-off alone is clipped.
@@ -1103,6 +1112,9 @@ See :doc:`turbulence_model`. Read with the SIMPLEC stage only.
    * - Input
      - Default
      - Range and meaning
+   * - ``turb.closure``
+     - ``kl``
+     - ``kl`` or ``none``. ``kl``: the k-L closure (:doc:`turbulence_model`). ``none``: laminar flow; the viscosity is ``turb.nu_molecular`` (then required > 0), the heat diffusivity ``turb.alpha_molecular``, :math:`\nu_t` and every closure source are 0, and :math:`k` is a passive scalar diffusing with ``turb.nu_molecular``. With ``none`` only ``turb.nu_molecular``, ``turb.alpha_molecular`` and ``turb.tke_floor`` may be given (``turb.face_mean`` has no effect on constant diffusivities), and a canopy, ``bc.zlo = surface_layer``, ``init.first_guess = column``, ``steady.stage = simplec_newton``, ``buildings.wall_form`` other than ``drag`` and ``buildings.wall_tke = on`` are refused. May change across a restart, as the other ``turb.*`` inputs: ``kl`` to ``none`` leaves the checkpoint's :math:`\nu_t` history unused, ``none`` to ``kl`` starts the closure without one, and an unsteady restart's running averages then hold both models.
    * - ``turb.Cmu0``
      - ``0.5562``
      - Finite, > 0: :math:`C_{\mu 0}`; also used by the wall k and the inflow profile's equilibrium :math:`k`.
@@ -1129,7 +1141,7 @@ See :doc:`turbulence_model`. Read with the SIMPLEC stage only.
      - Finite, > 0: :math:`\gamma_k = \nu_\mathrm{mol} + \nu_t/\sigma_k`.
    * - ``turb.nu_molecular``, ``turb.alpha_molecular``
      - ``0``, ``0``
-     - Finite, ≥ 0 (m²/s): molecular viscosity and heat diffusivity.
+     - Finite, ≥ 0 (m²/s): molecular viscosity and heat diffusivity. ``turb.nu_molecular`` > 0 with ``turb.closure = none``.
    * - ``turb.kappa``
      - ``0.41``
      - Finite, > 0: von Kármán constant; also used by the wall law and the inflow profile's :math:`\nu_t`.

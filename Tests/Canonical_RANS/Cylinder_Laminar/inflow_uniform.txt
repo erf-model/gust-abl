@@ -1,0 +1,3 @@
+# Uniform inflow of the laminar cylinder (make_cylinder.py): z u v theta k
+0 1 0 300 0
+12 1 0 300 0

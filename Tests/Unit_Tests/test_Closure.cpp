@@ -1095,4 +1095,71 @@ TEST(Closure, RelaxationCheckpointAndFrozenSwitches)
     (void)cc;
 }
 
+// PR-49, UT-6.4.1 (beyond the plan): turb.closure = none is a laminar run. The fields are the molecular
+// diffusivities at every point (ghost cells included), nu_t and every source 0, on a sheared, stratified
+// state where the k-L closure gives nu_t > 0; the checks require nu_molecular > 0 and refuse the keys of
+// the k-L closure.
+TEST(Closure, LaminarClosureGivesTheMolecularDiffusivities)
+{
+    PCase c = make_mesh(8, 8, 8, 0, false);
+    gust::State q;
+    define_state(q, c);
+    gust::trtest::fill_loc(q.u, Loc::xface, c, [] (double, double, double z) { return 0.02 * z; });
+    q.v.setVal(0.0);
+    q.w.setVal(0.0);
+    q.p.setVal(0.0);
+    gust::trtest::fill_loc(q.theta, Loc::cell, c, [] (double, double, double z) { return 300 + 0.004 * z; });
+    q.tke.setVal(amrex::Real(0.4));
+    amrex::MultiFab dist;
+    gust::height_above_ground(q.z_phys_nd, dist);
+    const gust::BuoyancyOptions buoy;
+    ClosureOptions opt;
+    opt.nu_molecular = amrex::Real(0.025);
+    opt.alpha_molecular = amrex::Real(0.03);
+    {
+        // The k-L closure on the same state: a turbulent nu_t, so the laminar values below are not the closure's.
+        gust::Closure kl(opt);
+        gust::ClosureFields f;
+        kl.evaluate(q, dist, amrex::Real(0.1), buoy, c.mesh, c.geom, f);
+        EXPECT_GT(f.nut.min(0), 0.1);
+    }
+    opt.kind = gust::ClosureKind::none;
+    gust::Closure lam(opt);
+    EXPECT_TRUE(lam.laminar());
+    gust::ClosureFields f;
+    lam.evaluate(q, dist, amrex::Real(0.1), buoy, c.mesh, c.geom, f);
+    const auto range = [] (const amrex::MultiFab& mf) {
+        return std::make_pair(double(mf.min(0, mf.nGrow())), double(mf.max(0, mf.nGrow())));
+    };
+    EXPECT_EQ(range(f.nu), std::make_pair(double(amrex::Real(0.025)), double(amrex::Real(0.025))));
+    EXPECT_EQ(range(f.gamma_theta), std::make_pair(double(amrex::Real(0.03)), double(amrex::Real(0.03))));
+    EXPECT_EQ(range(f.gamma_tke), std::make_pair(double(amrex::Real(0.025)), double(amrex::Real(0.025))));
+    for (const amrex::MultiFab* mf : {&f.nut, &f.Ps, &f.Pb, &f.eps, &f.dSdk, &f.dSdk_exact, &f.dnutdk, &f.cap_ratio}) {
+        EXPECT_EQ(range(*mf), std::make_pair(0.0, 0.0));
+    }
+    EXPECT_FALSE(f.canopy);
+
+    // The checks: nu_molecular > 0, and the k-L keys refused by name; the laminar keys pass.
+    ClosureOptions bad = opt;
+    bad.nu_molecular = 0;
+    auto err = gust::check_closure_options(bad);
+    ASSERT_EQ(err.size(), 1u);
+    EXPECT_NE(err[0].find("turb.nu_molecular"), std::string::npos) << err[0];
+    bad = opt;
+    bad.given = {"closure", "nu_molecular", "alpha_molecular", "tke_floor"};
+    EXPECT_TRUE(gust::check_closure_options(bad).empty());
+    bad.given.emplace_back("Cmu0");
+    bad.given.emplace_back("wall_distance");
+    bad.given.emplace_back("face_mean");   // no effect on constant diffusivities
+    err = gust::check_closure_options(bad);
+    ASSERT_EQ(err.size(), 3u);
+    EXPECT_NE(err[0].find("turb.Cmu0 has no effect with turb.closure = none"), std::string::npos) << err[0];
+    EXPECT_NE(err[1].find("turb.wall_distance"), std::string::npos) << err[1];
+    EXPECT_NE(err[2].find("turb.face_mean"), std::string::npos) << err[2];
+    // The same keys with the k-L closure pass, and so does nu_molecular = 0.
+    bad.kind = gust::ClosureKind::kl;
+    bad.nu_molecular = 0;
+    EXPECT_TRUE(gust::check_closure_options(bad).empty());
+}
+
 } // namespace

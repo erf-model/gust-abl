@@ -24,7 +24,7 @@ namespace gust {
 namespace {
 
 const char* const kBuildingsKeys[] = {"type", "file", "format", "small_volfrac", "z0", "wall_form", "wall_tke", "wall_speed", "theta_mode", "theta_surface",
-                                     "limiter_zone"};
+                                     "limiter_zone", "force_file"};
 constexpr const char* kBuildingsMagic = "gust_buildings";
 constexpr int kBuildingsVersion = 1;
 
@@ -227,6 +227,7 @@ BuildingsOptions read_buildings_options ()
     pp.query("type", opt.type_name);
     pp.query("file", opt.file);
     pp.query("format", opt.format);
+    pp.query("force_file", opt.force_file);
     std::string s;
     if (pp.query("small_volfrac", s) && !parse_number(s, opt.small_volfrac)) {
         opt.parse_errors.emplace_back("buildings.small_volfrac = " + s + " is not a number");
@@ -331,6 +332,9 @@ std::vector<std::string> check_buildings_options (const BuildingsOptions& opt)
     }
     if (opt.wall_form == BuildingWallForm::drag && has(opt.given, "z0")) {
         err.emplace_back("buildings.z0 has no effect with buildings.wall_form = drag (no wall law)");
+    }
+    if (has(opt.given, "force_file") && opt.force_file.empty()) {
+        err.emplace_back("buildings.force_file must name a file (got an empty value)");
     }
     if (opt.file.empty()) {
         err.emplace_back("buildings.file is required with buildings.type = immersed_forcing");

@@ -29,6 +29,7 @@ set(GUST_SOURCES
     SurfaceLayer.cpp
     SurfaceRoughness.cpp
     BuildingForcing.cpp
+    BuildingLoads.cpp
     BuildingTheta.cpp
     BuildingTke.cpp
     Buildings.cpp

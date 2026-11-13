@@ -2,6 +2,7 @@
 
 #include "AblSetup.H"
 #include "BoundaryConditions.H"
+#include "BuildingLoads.H"
 #include "Buildings.H"
 #include "BuildingForcing.H"
 #include "BuildingTheta.H"
@@ -217,12 +218,31 @@ void run ()
                          "eddy-viscosity cap and the upwind blend that needs it)");
     }
     for (auto& e : check_buildings_options(buildings_opt)) { err.push_back(std::move(e)); }
+    if (!solve && buildings_opt.active() && !buildings_opt.force_file.empty()) {
+        err.emplace_back("buildings.force_file has no effect without steady.stage (the force is the residual of a solved state)");
+    }
     if (solve && buildings_opt.active()) {
         if (newton) { err.emplace_back("buildings.type = immersed_forcing is not supported with steady.stage = simplec_newton yet"); }
         if (sopt.sweep != SweepKind::zjacobi) { err.emplace_back("buildings.type = immersed_forcing needs z-line sweeps (steady.sweep) for now"); }
         if (in.mesh.hierarchy_levels > 1) { err.emplace_back("buildings.type = immersed_forcing needs mesh.hierarchy_levels = 1 for now"); }
         if (popt.backend == "mlmg") {
             err.emplace_back("solver.poisson_backend = mlmg cannot solve with buildings (no solid cells in its operator); use gmres_mlmg or gmres_fft");
+        }
+    }
+    // turb.closure = none (laminar, Closure.H): the options that model turbulence, or need the k-L closure, are refused.
+    if (solve && copt.kind == ClosureKind::none) {
+        if (canopy_opt.active()) { err.emplace_back("canopy.type needs turb.closure = kl (the canopy acts through the k-L closure's k terms)"); }
+        if (surface_layer) { err.emplace_back("bc.zlo = surface_layer needs turb.closure = kl (a laminar run has no wall law); use no_slip or slip_wall"); }
+        if (iopt.first_guess == InitOptions::FirstGuess::column) {
+            err.emplace_back("init.first_guess = column needs turb.closure = kl (the column solves the k-L closure); use profile");
+        }
+        if (newton) { err.emplace_back("steady.stage = simplec_newton is not supported with turb.closure = none"); }
+        if (buildings_opt.active() && buildings_opt.wall_form != BuildingWallForm::drag) {
+            err.emplace_back("buildings.wall_form = " + buildings_opt.wall_form_name + " needs turb.closure = kl (a wall law); use drag, "
+                             "the no-slip staircase wall, with turb.closure = none");
+        }
+        if (buildings_opt.active() && buildings_opt.wall_tke) {
+            err.emplace_back("buildings.wall_tke = on needs turb.closure = kl (k is passive in a laminar run)");
         }
     }
     if (solve && buildings_opt.active() && simplec.theta_frozen && !buildings_opt.theta_mode_name.empty()
@@ -610,6 +630,19 @@ void run ()
         const ResidualInputs& res_in = level0.res_in;
         const SimplecStage& simplec_stage = level0.stage();
         Driver& driver = level0.driver();
+        // buildings.force_file (BuildingLoads.H): the force at the state, its ghost cells filled first.
+        std::unique_ptr<BuildingLoads> loads;
+        if (buildings.active() && !buildings_opt.force_file.empty()) {
+            loads = std::make_unique<BuildingLoads>(buildings_opt.force_file);
+            // A steady run starts its file now, so a path that cannot be written stops the run before the solve.
+            if (!unsteady) { loads->open(-1.0); }
+        }
+        auto force_now = [&] () {
+            bc.fill_ghosts(state, res_in.surface, fopt.buoyancy, false, nullptr);
+            ResidualInputs fin = res_in;
+            if (!simplec_stage.hybrid_sigma().empty()) { fin.hybrid_sigma = &simplec_stage.hybrid_sigma(); }
+            return loads->evaluate(state, fin, mesh, geom, buildings);
+        };
         if (restart) {
             // The histories: the driver's and the closure's nu_t (both
             // written with the checkpoint; the driver's must exist).
@@ -728,6 +761,10 @@ void run ()
                 amrex::Print() << "gust: unsteady: continues from t = " << urec.time << " s after " << urec.steps
                                << " physical steps (averaged over " << urec.weight << " s)\n";
             }
+            if (loads) {
+                // The first row is the state the run starts from (a restart that kept the file has it).
+                if (!loads->open(resumed ? urec.time : -1.0)) { loads->write_row(td.time_exact(), force_now()); }
+            }
             if (!uopt.probes_file.empty()) {
                 int exists = 0;
                 if (amrex::ParallelDescriptor::IOProcessor()) { exists = std::filesystem::exists(uopt.probes_file) ? 1 : 0; }
@@ -769,6 +806,7 @@ void run ()
                 if (td.diverged()) { break; }
                 averages->add(state, t0, td.time_exact());
                 if (probes) { probes->write_row(probes_out, td.time_exact(), state); }
+                if (loads) { loads->write_row(td.time_exact(), force_now()); }
                 // Every so many steps; the last step's outputs are the run's final ones, below.
                 const std::int64_t n = td.total_steps();
                 if (!td.finished() && uopt.plot_interval > 0 && n % uopt.plot_interval == 0) { write_full_plotfile(td.time()); }
@@ -818,6 +856,12 @@ void run ()
             building_forcing.update(state.u, state.v, state.w);
             amrex::Print() << "gust: buildings: the walls take " << double(building_theta.wall_heat(state.theta))
                            << " K m^3/s of heat from the air (negative: they heat it)\n";
+        }
+        if (loads && !unsteady && v.status != SteadyStatus::Diverged) {
+            const auto F = force_now();
+            loads->write_row(0.0, F);
+            amrex::Print() << "gust: buildings: force on the buildings (per unit density) " << F[0] << " " << F[1] << " " << F[2]
+                           << " m^4/s^2 to " << loads->file() << "\n";
         }
         check_overwrite();   // the step is final here, before any output
         if (in.io.write_plotfile == 1) {

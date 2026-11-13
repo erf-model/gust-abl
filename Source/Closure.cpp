@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <limits>
 #include <string>
 #include <utility>
@@ -23,7 +24,22 @@ namespace {
 
 const char* const kKeys[] = {"Cmu0", "Cb", "Rt_crit", "Rt_min", "max_geom_lscale", "tke_floor", "sigma_k",
                              "nu_molecular", "alpha_molecular", "kappa", "nut_relax", "frozen_switch", "face_mean",
-                             "wall_distance", "ri_gate", "realizability"};
+                             "wall_distance", "ri_gate", "realizability", "closure"};
+
+//! The keys turb.closure = none keeps: every other key belongs to the k–L closure. turb.face_mean is not
+//! kept: with constant diffusivities every face mean gives the same face value.
+bool laminar_key (const std::string& key)
+{
+    return key == "closure" || key == "nu_molecular" || key == "alpha_molecular" || key == "tke_floor";
+}
+
+//! A value as %g (a short form that keeps the sign and the exponent of a small value).
+std::string short_value (double x)
+{
+    char buf[32];
+    std::snprintf(buf, sizeof(buf), "%g", x);
+    return buf;
+}
 
 //! The bits of encode() that FreezeScope holds.
 constexpr int kFloorBit = 16;
@@ -210,6 +226,18 @@ std::vector<std::string> check_closure_options (const ClosureOptions& opt)
     bad(opt.nut_relax, "nut_relax", "finite, > 0 and <= 1", [&] { return opt.nut_relax > 0 && opt.nut_relax <= 1; });
     bad(opt.ri_gate, "ri_gate", "0 (off) or finite, >= 1e-6 and <= 1",
         [&] { return opt.ri_gate == 0 || (opt.ri_gate >= amrex::Real(1e-6) && opt.ri_gate <= 1); });
+    if (opt.kind == ClosureKind::none) {
+        // isnan first: the ordered comparison traps on NaN (bad() above reports the NaN).
+        if (!std::isnan(opt.nu_molecular) && !(opt.nu_molecular > 0)) {
+            err.emplace_back("turb.nu_molecular = " + short_value(opt.nu_molecular)
+                             + ": must be > 0 with turb.closure = none (a laminar run has no other viscosity)");
+        }
+        for (const auto& key : opt.given) {
+            if (!laminar_key(key)) {
+                err.emplace_back("turb." + key + " has no effect with turb.closure = none (it belongs to the k-L closure)");
+            }
+        }
+    }
     bad(opt.realizability, "realizability", "0 (off) or finite, >= 0.01 and <= 10",
         [&] { return opt.realizability == 0 || (opt.realizability >= amrex::Real(0.01) && opt.realizability <= 10); });
     return err;
@@ -238,6 +266,14 @@ ClosureOptions read_closure_options ()
     pp.query("nut_relax", opt.nut_relax);
     pp.query("ri_gate", opt.ri_gate);
     pp.query("realizability", opt.realizability);
+    for (const char* key : kKeys) {
+        if (pp.contains(key)) { opt.given.emplace_back(key); }
+    }
+    std::string kind = "kl";
+    pp.query("closure", kind);
+    if (kind == "kl") { opt.kind = ClosureKind::kl; }
+    else if (kind == "none") { opt.kind = ClosureKind::none; }
+    else { amrex::Abort("gust: turb.closure = " + kind + ": must be kl or none"); }
     int frozen = opt.frozen_switch ? 1 : 0;
     pp.query("frozen_switch", frozen);
     if (frozen != 0 && frozen != 1) { amrex::Abort("gust: turb.frozen_switch must be 0 or 1"); }
@@ -397,6 +433,10 @@ void Closure::evaluate (const State& q, const amrex::MultiFab& dist_in, const Ro
                         ClosureFields& f, ClosureScratch* scratch) const
 {
     const char* op = "Closure::evaluate";
+    if (laminar()) {
+        evaluate_laminar(q, f);
+        return;
+    }
     check_canopy_layout(op, q);
     check_operator_field(op, "tke", q.tke, Loc::cell, mesh, 2);
     check_operator_field(op, "theta", q.theta, Loc::cell, mesh, 2);
@@ -516,6 +556,19 @@ void Closure::evaluate (const State& q, const amrex::MultiFab& dist_in, const Ro
     // sink on the Patankar and exact diagonals.
     f.canopy = (m_canopy_f != nullptr);
     if (f.canopy) { add_canopy_tke(q, *m_canopy_f, m_beta_p, m_beta_d, c.tke_floor, f); }
+}
+
+void Closure::evaluate_laminar (const State& q, ClosureFields& f) const
+{
+    if (m_canopy_f != nullptr) { amrex::Abort("gust: Closure::evaluate: a canopy needs turb.closure = kl"); }
+    if (f.empty()) { f.define(q.p.boxArray(), q.p.DistributionMap()); }
+    // Constant fields, ghost cells included: no kernel of the k-L closure runs.
+    f.nu.setVal(m_opt.nu_molecular, 0, 1, f.nu.nGrow());
+    f.gamma_theta.setVal(m_opt.alpha_molecular, 0, 1, f.gamma_theta.nGrow());
+    f.gamma_tke.setVal(m_opt.nu_molecular, 0, 1, f.gamma_tke.nGrow());
+    f.nut.setVal(0.0, 0, 1, f.nut.nGrow());
+    for (auto* mf : {&f.length, &f.Rt, &f.Ps, &f.Pb, &f.eps, &f.dSdk, &f.dSdk_exact, &f.dnutdk, &f.cap_ratio}) { mf->setVal(0.0); }
+    f.canopy = false;
 }
 
 void Closure::check_canopy_layout (const char* op, const State& q) const
