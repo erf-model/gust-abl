@@ -60,7 +60,9 @@ by hand (``workflow_dispatch``), not on pull requests.
 --------------------------------
 
 On every push to ``main`` (or by hand), the ``deploy`` job builds the documentation as above, with warnings as
-errors, and publishes ``docs/_build/html`` to GitHub Pages. Only the built HTML is uploaded, not the repository.
+errors, builds the PDF (``make -C docs latexpdf``), copies it into the HTML as ``gust.pdf`` (linked from the
+front page), and publishes ``docs/_build/html`` to GitHub Pages. Only the built pages and the PDF are uploaded, not
+the repository.
 
 Kestrel
 -------

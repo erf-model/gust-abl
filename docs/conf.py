@@ -17,3 +17,14 @@ master_doc = "index"
 
 # Labelled equations are numbered and can be cited with :eq:`label`.
 numfig = True
+
+# PDF (make -C docs latexpdf): xelatex, because the text carries Unicode
+# (primes, Greek letters, dashes) that pdflatex refuses. Sphinx's default
+# xelatex fonts (GNU FreeFont, by file name) come with TeX Live and, on
+# Ubuntu, with fonts-freefont-otf.
+latex_engine = "xelatex"
+latex_documents = [(master_doc, "gust.tex", "GUST documentation", author, "manual")]
+latex_elements = {
+    "papersize": "letterpaper",
+    "pointsize": "10pt",
+}

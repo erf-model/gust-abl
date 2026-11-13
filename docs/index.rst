@@ -22,6 +22,10 @@ GUST reuses ERF components where they fit:
 The initial field comes from a mass-consistent model in the style of WindNinja, which follows
 `FastWindTerrain <https://github.com/hgopalan/FastWindTerrain>`__.
 
+.. only:: html
+
+   This documentation is also available as a single PDF: `gust.pdf <gust.pdf>`__.
+
 Development status
 ------------------
 

@@ -70,7 +70,8 @@ the documentation.
 
 The full documentation is at <https://erf-model.github.io/gust-abl/>: building and running, every input with its
 range, the governing equations, discretization and solution algorithm, test cases and results. The sources are
-in [`docs/`](docs/); to build them locally:
+in [`docs/`](docs/), and the same pages as one PDF at <https://erf-model.github.io/gust-abl/gust.pdf>. To
+build them locally:
 
 ```bash
 python3 -m pip install -r docs/requirements.txt

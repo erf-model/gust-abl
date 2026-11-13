@@ -131,3 +131,12 @@ Documentation
 
 Warnings are errors (``-W`` in ``docs/Makefile``), so the local build and the CI build are the same. The pages
 are written to ``docs/_build/html``.
+
+The same pages as one PDF need a TeX distribution with XeLaTeX and ``latexmk`` (on Ubuntu: ``texlive-xetex``,
+``texlive-latex-extra``, ``latexmk`` and ``fonts-freefont-otf``):
+
+.. code-block:: bash
+
+   make -C docs latexpdf
+
+The PDF is written to ``docs/_build/latex/gust.pdf``.
