@@ -33,12 +33,8 @@ bool has (const std::vector<std::string>& v, const std::string& s)
     return std::find(v.begin(), v.end(), s) != v.end();
 }
 
-std::string hexfloat (double v)
-{
-    char b[64];
-    std::snprintf(b, sizeof(b), "%a", v);
-    return b;
-}
+// The same text on every platform: it goes into the restart hash (Sha256.H).
+std::string hexfloat (double v) { return hexfloat_canonical(v); }
 
 bool parse_number (const std::string& tok, double& v)
 {
