@@ -169,6 +169,9 @@ struct ResidualInputs
     //! residual adds it to u, v, w, theta and k, and implicit_rows adds 1/dt to their diagonals,
     //! both before the rows that replace their own (the wall-k, Dirichlet and building rows).
     const TimeTerm* time{nullptr};
+    //! false: the residual leaves the buildings' fixed rows out (BuildingForcing::apply_rows), so the
+    //! blocked faces keep their momentum residual, from which BuildingLoads sums the force on them.
+    bool building_rows{true};
 };
 
 //! Scratch fields of residual() and jvp, kept between calls so that a

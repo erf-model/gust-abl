@@ -106,6 +106,24 @@ std::string sha256_hex (const std::string& bytes)
     return s.hex();
 }
 
+std::string canonical_hexfloat_text (const std::string& a)
+{
+    const std::size_t p = a.find('p');
+    const std::size_t dot = a.find('.');
+    if (p == std::string::npos || dot == std::string::npos || dot > p) { return a; }
+    std::size_t end = p;
+    while (end > dot + 1 && a[end - 1] == '0') { --end; }
+    if (end == dot + 1) { end = dot; }
+    return a.substr(0, end) + a.substr(p);
+}
+
+std::string hexfloat_canonical (double v)
+{
+    char b[64];
+    std::snprintf(b, sizeof(b), "%a", v);
+    return canonical_hexfloat_text(b);
+}
+
 std::string sha256_file (const std::string& path)
 {
     std::ifstream is(path, std::ios::binary);

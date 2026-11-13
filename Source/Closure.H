@@ -60,6 +60,12 @@
 //   kappa 0.41 (> 0)   nut_relax 1 ((0, 1])   frozen_switch 1 (0 | 1: freeze the floor during the Newton stage, Smoothness.H)
 //   ri_gate 0 (0: off, or in [1e-6, 1]: the stratification gate below)
 //   face_mean arithmetic | logarithmic (Diffusion_K.H)   wall_distance terrain_height | tucker
+//   closure kl | none (kl). none is a laminar run: nu = nu_molecular, gamma_theta =
+//   alpha_molecular, gamma_tke = nu_molecular, nu_t = 0 and no k sources (Closure::evaluate
+//   sets the fields, no kernel of the k–L closure runs). k is then a passive scalar: it is
+//   transported with nu_molecular and acts on nothing. none needs nu_molecular > 0, and
+//   refuses the keys of the k–L closure (each has no effect); tke_floor, nu_molecular,
+//   alpha_molecular and face_mean stay.
 
 #include "Closure_K.H"
 #include "Diffusion_K.H"
@@ -79,6 +85,9 @@
 namespace gust {
 
 enum class WallDistanceKind { terrain_height, tucker };
+
+//! turb.closure: the k–L closure, or none (laminar: the molecular diffusivities alone).
+enum class ClosureKind { kl, none };
 
 //! What freeze_switches records: every decision (all), or the k floor's
 //! alone (floor: the branch and the Rt smoothings are still decided from
@@ -108,6 +117,9 @@ struct ClosureOptions
     //! turb.realizability = C_r (0: off, or finite and > 0): nu_t <= C_r k / S
     //! (ClosureWake.H), applied to the new nu_t before the nu_t relaxation.
     amrex::Real realizability{0};
+    //! turb.closure (kl): none is a laminar run (the molecular diffusivities, nu_t = 0, no k sources).
+    ClosureKind kind{ClosureKind::kl};
+    std::vector<std::string> given;   //!< the turb.* keys given (read_closure_options)
 };
 
 //! Problems with the options, one message per problem, each naming turb.<key>.
@@ -235,6 +247,8 @@ public:
     [[nodiscard]] const amrex::MultiFab* cap_weight () const { return m_cap_weight; }
 
     [[nodiscard]] const ClosureOptions& options () const { return m_opt; }
+    //! turb.closure = none: a laminar run.
+    [[nodiscard]] bool laminar () const { return m_opt.kind == ClosureKind::none; }
     [[nodiscard]] const ClosureConstants& constants () const { return m_c; }
 
 private:
@@ -250,6 +264,8 @@ private:
     FreezeScope m_scope{FreezeScope::all};
     const amrex::MultiFab* m_canopy_f{nullptr};
     const amrex::MultiFab* m_cap_weight{nullptr};
+    //! turb.closure = none: the molecular diffusivities on f, nu_t and every source 0.
+    void evaluate_laminar (const State& q, ClosureFields& f) const;
     //! Abort unless the drag field (when set) is on q's cells.
     void check_canopy_layout (const char* op, const State& q) const;
     amrex::Real m_beta_p{1}, m_beta_d{4}, m_alpha{0};

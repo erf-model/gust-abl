@@ -93,6 +93,9 @@ struct BuildingsOptions
     BuildingsType type{BuildingsType::none};
     std::string type_name{"none"};   //!< buildings.type as given
     std::string file;                //!< buildings.file
+    //! buildings.force_file: the CSV of the force on the buildings (BuildingLoads.H); empty: none.
+    //! Needs a stage (App); not part of the restart hash.
+    std::string force_file;
     std::string format{"erf"};       //!< buildings.format: erf or xyz
     double small_volfrac{0.005};     //!< buildings.small_volfrac, in [0, 0.5)
     double z0{0.1};                  //!< buildings.z0 (m), > 0: the roughness of the wall law

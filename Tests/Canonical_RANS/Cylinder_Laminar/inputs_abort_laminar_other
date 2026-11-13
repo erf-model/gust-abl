@@ -1,0 +1,35 @@
+# The deck for the CTest abort_laminar_other_options (PR-49): the cylinder with
+# turb.closure = none and the other options that need the k-L closure (a canopy,
+# the column first guess, the Newton correction). Each must be refused by name.
+mesh.prob_lo       = -6. 0. 0.
+mesh.prob_hi       = 14. 0.1 12.
+mesh.n_cell        = 200 2 120
+mesh.is_periodic   = 0 1 0
+mesh.max_grid_size = 64 2
+
+terrain.type = flat
+
+bc.xlo = inflow
+bc.xhi = outflow
+bc.zlo = slip_wall
+bc.zhi = slip_wall
+bc.inflow_profile = file
+bc.theta_profile_z = 0.
+bc.theta_profile   = 300.
+
+forcing.gravity = 0.
+
+turb.closure         = none
+turb.nu_molecular    = 0.025
+
+buildings.type      = immersed_forcing
+buildings.format    = xyz
+buildings.wall_form = drag
+
+canopy.type = patches
+
+init.first_guess = column
+
+steady.stage = simplec_newton
+steady.sweep = zjacobi
+io.write_checkpoint = 0

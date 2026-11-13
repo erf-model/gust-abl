@@ -34,6 +34,15 @@ std::string sha256_hex (const std::string& bytes);
 //! cannot be opened or read.
 std::string sha256_file (const std::string& path);
 
+//! A value as hex-float text with the same bytes on every platform, for text that is hashed: printf's
+//! "%a" with the mantissa's trailing zeros removed (MSVC pads it to 13 hex digits, glibc and Apple's libc
+//! do not: 0.5 is "0x1.0000000000000p-1" on Windows and "0x1p-1" elsewhere).
+std::string hexfloat_canonical (double v);
+
+//! The canonical form of "%a" text: the trailing zeros of the mantissa's fraction removed, and its
+//! point too when nothing is left after it. Text in that form already is returned unchanged.
+std::string canonical_hexfloat_text (const std::string& a);
+
 } // namespace gust
 
 #endif

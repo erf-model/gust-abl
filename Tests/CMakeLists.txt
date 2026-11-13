@@ -42,6 +42,7 @@ add_executable(unit_tests
     Unit_Tests/test_SurfaceLayer.cpp
     Unit_Tests/test_SurfaceRoughness.cpp
     Unit_Tests/test_BuildingForcing.cpp
+    Unit_Tests/test_BuildingLoads.cpp
     Unit_Tests/test_BuildingTheta.cpp
     Unit_Tests/test_BuildingTke.cpp
     Unit_Tests/test_Buildings.cpp
@@ -398,6 +399,118 @@ gust_add_test(NAME abort_buildings_z0_with_drag NP 1 LABELS "regression;smoke"
               COMMAND $<TARGET_FILE:gust> ${BUILDINGS_CASE}/inputs_buildings buildings.file=${BUILDINGS_CASE}/building_map.txt
                       buildings.z0=1 buildings.wall_form=drag buildings.wall_speed=all_faces ${GUST_TEST_AMREX_FLAGS})
 
+# --- Laminar cylinder (plan rev. 6, sub-phase 6.4, PR-49) ------------------------
+# turb.closure = none and buildings.force_file (Closure.H, BuildingLoads.H) on the
+# staircase cylinder of Canonical_RANS/Cylinder_Laminar: the refusals, and the
+# steady Re = 40 flow at D/d = 10 against its pinned drag, lift and wake length.
+set(CYLINDER_CASE ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Cylinder_Laminar)
+set(CYLINDER_FILES buildings.file=${CYLINDER_CASE}/cylinder_10.txt bc.inflow_file=${CYLINDER_CASE}/inflow_uniform.txt)
+gust_add_test(NAME abort_laminar_nu_zero NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT} "turb\\.nu_molecular = 0: must be > 0 with turb\\.closure = none" --
+              COMMAND $<TARGET_FILE:gust> ${CYLINDER_CASE}/inputs_cylinder "mesh.n_cell=200 2 120" ${CYLINDER_FILES}
+                      turb.nu_molecular=0 steady.stage=simplec ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_laminar_kl_key NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT} "turb\\.Cmu0 has no effect with turb\\.closure = none"
+                     "turb\\.face_mean has no effect with turb\\.closure = none" --
+              COMMAND $<TARGET_FILE:gust> ${CYLINDER_CASE}/inputs_cylinder "mesh.n_cell=200 2 120" ${CYLINDER_FILES}
+                      turb.nu_molecular=0.025 turb.Cmu0=0.5 turb.face_mean=arithmetic steady.stage=simplec
+                      ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_laminar_cross_checks NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT} "bc\\.zlo = surface_layer needs turb\\.closure = kl"
+                     "buildings\\.wall_form = fraction_stress needs turb\\.closure = kl"
+                     "buildings\\.wall_tke = on needs turb\\.closure = kl" --
+              COMMAND $<TARGET_FILE:gust> ${CYLINDER_CASE}/inputs_abort_laminar ${CYLINDER_FILES} ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_laminar_other_options NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT} "canopy\\.type needs turb\\.closure = kl"
+                     "init\\.first_guess = column needs turb\\.closure = kl"
+                     "steady\\.stage = simplec_newton is not supported with turb\\.closure = none" --
+              COMMAND $<TARGET_FILE:gust> ${CYLINDER_CASE}/inputs_abort_laminar_other ${CYLINDER_FILES} ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_force_file_without_stage NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT} "buildings\\.force_file has no effect without steady\\.stage" --
+              COMMAND $<TARGET_FILE:gust> ${CYLINDER_CASE}/inputs_cylinder "mesh.n_cell=200 2 120" ${CYLINDER_FILES}
+                      turb.nu_molecular=0.025 ${GUST_TEST_AMREX_FLAGS})
+# RT-6.4.1: Re = 40, D/d = 10, steady (about 2 minutes on 2 ranks).
+set(CYLINDER_RE40_DIR ${CMAKE_CURRENT_BINARY_DIR}/run/rt_cylinder_re40)
+add_test(NAME rt_cylinder_re40_clean
+         COMMAND ${Python3_EXECUTABLE} -c
+                 "import shutil, os, sys; shutil.rmtree(sys.argv[1], ignore_errors=True); os.makedirs(sys.argv[1])"
+                 ${CYLINDER_RE40_DIR})
+set_tests_properties(rt_cylinder_re40_clean PROPERTIES LABELS "regression" FIXTURES_SETUP cylinder_re40_clean)
+gust_add_test(NAME rt_cylinder_re40_run NP 2 LABELS "regression" RUN_DIR ${CYLINDER_RE40_DIR}
+              FIXTURES_REQUIRED cylinder_re40_clean FIXTURES_SETUP cylinder_re40
+              PREFIX ${EXPECT_ABORT} --success --timeout 900 "gust: steady after" --
+              COMMAND $<TARGET_FILE:gust> ${CYLINDER_CASE}/inputs_cylinder "mesh.n_cell=200 2 120" ${CYLINDER_FILES}
+                      turb.nu_molecular=0.025 steady.stage=simplec steady.max_iterations=3000 ${GUST_TEST_AMREX_FLAGS})
+set_tests_properties(rt_cylinder_re40_run PROPERTIES TIMEOUT 900)
+gust_add_test(NAME rt_cylinder_re40 NP 1 LABELS "regression" RUN_DIR ${CYLINDER_RE40_DIR}
+              FIXTURES_REQUIRED cylinder_re40
+              COMMAND ${Python3_EXECUTABLE} ${CYLINDER_CASE}/compare_cylinder.py --run . --re 40 --cells-per-d 10
+                      --check-cd 1.68,1.72 --check-cl=-0.01,0.01 --check-lw 1.93,2.00)
+set_tests_properties(rt_cylinder_re40 PROPERTIES ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
+
+# buildings.force_file in unsteady runs (BuildingLoads.H): the cube with the wall law, four steps of 0.5 s
+# (init.first_guess on the command line: a restart refuses it).
+# The force file does not change the solution; a restart reproduces the uninterrupted file (a stray row
+# past the checkpoint dropped), and one that finds no file starts it at the checkpoint's time.
+set(FORCE_CUBE_CASE ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Building_Cube)
+set(FORCE_CUBE_DIR ${CMAKE_CURRENT_BINARY_DIR}/run/force_file_cube)
+set(FORCE_CUBE_ARGS ${FORCE_CUBE_CASE}/inputs_cube_unsteady buildings.file=${FORCE_CUBE_CASE}/cube.txt
+                    steady.stage=unsteady unsteady.dt=0.5 unsteady.max_inner=10)
+add_test(NAME force_file_cube_clean
+         COMMAND ${Python3_EXECUTABLE} -c
+                 "import shutil, os, sys; shutil.rmtree(sys.argv[1], ignore_errors=True); [os.makedirs(os.path.join(sys.argv[1], d)) for d in ('plain', 'file', 'restart', 'missing', 'header')]"
+                 ${FORCE_CUBE_DIR})
+set_tests_properties(force_file_cube_clean PROPERTIES LABELS "regression" FIXTURES_SETUP force_cube_clean)
+gust_add_test(NAME force_file_cube_plain NP 2 LABELS "regression" RUN_DIR ${FORCE_CUBE_DIR}/plain
+              FIXTURES_REQUIRED force_cube_clean FIXTURES_SETUP force_cube_plain
+              COMMAND $<TARGET_FILE:gust> ${FORCE_CUBE_ARGS} init.first_guess=profile unsteady.stop_time=2
+                      ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME force_file_cube_file NP 2 LABELS "regression" RUN_DIR ${FORCE_CUBE_DIR}/file
+              FIXTURES_REQUIRED force_cube_clean FIXTURES_SETUP force_cube_file
+              COMMAND $<TARGET_FILE:gust> ${FORCE_CUBE_ARGS} init.first_guess=profile unsteady.stop_time=2
+                      buildings.force_file=force.csv ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME force_file_cube_bit_identical NP 1 LABELS "regression" RUN_DIR ${FORCE_CUBE_DIR}
+              FIXTURES_REQUIRED "force_cube_plain;force_cube_file"
+              COMMAND ${Python3_EXECUTABLE} ${FORCE_CUBE_CASE}/check_force_file.py same-plotfile plain/cube_plt00040
+                      file/cube_plt00040)
+gust_add_test(NAME force_file_cube_first NP 2 LABELS "regression" RUN_DIR ${FORCE_CUBE_DIR}/restart
+              FIXTURES_REQUIRED force_cube_clean FIXTURES_SETUP force_cube_first
+              COMMAND $<TARGET_FILE:gust> ${FORCE_CUBE_ARGS} init.first_guess=profile unsteady.stop_time=1 buildings.force_file=force.csv
+                      ${GUST_TEST_AMREX_FLAGS})
+# A row past the checkpoint, as a run stopped after its checkpoint leaves: the restart drops it.
+add_test(NAME force_file_cube_stray_row
+         COMMAND ${Python3_EXECUTABLE} -c "import sys; open(sys.argv[1], 'a').write('1.5,9,9,9\\n')"
+                 ${FORCE_CUBE_DIR}/restart/force.csv)
+set_tests_properties(force_file_cube_stray_row PROPERTIES LABELS "regression"
+                     FIXTURES_REQUIRED force_cube_first FIXTURES_SETUP force_cube_stray)
+gust_add_test(NAME force_file_cube_restart NP 2 LABELS "regression" RUN_DIR ${FORCE_CUBE_DIR}/restart
+              FIXTURES_REQUIRED "force_cube_stray" FIXTURES_SETUP force_cube_restart
+              COMMAND $<TARGET_FILE:gust> ${FORCE_CUBE_ARGS} unsteady.stop_time=2 buildings.force_file=force.csv
+                      io.restart=chk00020 ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME force_file_cube_restart_rows NP 1 LABELS "regression" RUN_DIR ${FORCE_CUBE_DIR}
+              FIXTURES_REQUIRED "force_cube_restart;force_cube_file"
+              COMMAND ${Python3_EXECUTABLE} ${FORCE_CUBE_CASE}/check_force_file.py same-file file/force.csv
+                      restart/force.csv)
+gust_add_test(NAME force_file_cube_restart_no_file NP 2 LABELS "regression" RUN_DIR ${FORCE_CUBE_DIR}/missing
+              FIXTURES_REQUIRED force_cube_first FIXTURES_SETUP force_cube_missing
+              COMMAND $<TARGET_FILE:gust> ${FORCE_CUBE_ARGS} unsteady.stop_time=2 buildings.force_file=force.csv
+                      io.restart=../restart/chk00020 ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME force_file_cube_restart_no_file_rows NP 1 LABELS "regression" RUN_DIR ${FORCE_CUBE_DIR}
+              FIXTURES_REQUIRED "force_cube_missing;force_cube_file"
+              COMMAND ${Python3_EXECUTABLE} ${FORCE_CUBE_CASE}/check_force_file.py tail-file file/force.csv
+                      missing/force.csv 1)
+# A force file of another kind where the restart expects its own: refused, not overwritten.
+add_test(NAME force_file_cube_other_header
+         COMMAND ${Python3_EXECUTABLE} -c "import sys; open(sys.argv[1], 'w').write('t,u,v\\n0,1,2\\n')"
+                 ${FORCE_CUBE_DIR}/header/force.csv)
+set_tests_properties(force_file_cube_other_header PROPERTIES LABELS "regression"
+                     FIXTURES_REQUIRED force_cube_clean FIXTURES_SETUP force_cube_header)
+gust_add_test(NAME abort_force_file_restart_header NP 2 LABELS "regression" RUN_DIR ${FORCE_CUBE_DIR}/header
+              FIXTURES_REQUIRED "force_cube_header;force_cube_first"
+              PREFIX ${EXPECT_ABORT} "buildings\\.force_file = force\\.csv: the restart's file has another header" --
+              COMMAND $<TARGET_FILE:gust> ${FORCE_CUBE_ARGS} unsteady.stop_time=2 buildings.force_file=force.csv
+                      io.restart=../restart/chk00020 ${GUST_TEST_AMREX_FLAGS})
+
 # --- One block in a log-law wind (BuildingForcing.H) ---------------------------
 set(BUILDING_CUBE_CASE ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Building_Cube)
 set(BUILDING_CUBE_DIR ${CMAKE_CURRENT_BINARY_DIR}/run/building_cube)
@@ -408,7 +521,7 @@ add_test(NAME building_cube_clean
 set_tests_properties(building_cube_clean PROPERTIES LABELS "regression;smoke" FIXTURES_SETUP building_cube_clean)
 gust_add_test(NAME building_cube_run NP 2 LABELS "regression;smoke" RUN_DIR ${BUILDING_CUBE_DIR}
               FIXTURES_REQUIRED building_cube_clean FIXTURES_SETUP building_cube
-              PREFIX ${EXPECT_ABORT} --success "gust: steady after" --
+              PREFIX ${EXPECT_ABORT} --success --timeout 900 "gust: steady after" --
               COMMAND $<TARGET_FILE:gust> ${BUILDING_CUBE_CASE}/inputs_cube buildings.file=${BUILDING_CUBE_CASE}/cube.txt
                       ${GUST_TEST_AMREX_FLAGS})
 gust_add_test(NAME building_cube_flow NP 1 LABELS "regression;smoke" RUN_DIR ${BUILDING_CUBE_DIR}
@@ -424,7 +537,7 @@ set_tests_properties(building_cube_roof_stress_clean PROPERTIES LABELS "regressi
                      FIXTURES_SETUP building_cube_roof_stress_clean)
 gust_add_test(NAME building_cube_roof_stress_run NP 2 LABELS "regression;smoke" RUN_DIR ${BUILDING_CUBE_ROOF_DIR}
               FIXTURES_REQUIRED building_cube_roof_stress_clean FIXTURES_SETUP building_cube_roof_stress
-              PREFIX ${EXPECT_ABORT} --success "gust: steady after" --
+              PREFIX ${EXPECT_ABORT} --success --timeout 900 "gust: steady after" --
               COMMAND $<TARGET_FILE:gust> ${BUILDING_CUBE_CASE}/inputs_cube buildings.file=${BUILDING_CUBE_CASE}/cube.txt
                       buildings.wall_form=roof_stress ${GUST_TEST_AMREX_FLAGS})
 gust_add_test(NAME building_cube_roof_stress_flow NP 1 LABELS "regression;smoke" RUN_DIR ${BUILDING_CUBE_ROOF_DIR}
@@ -441,7 +554,7 @@ set_tests_properties(building_cube_wall_tke_off_clean PROPERTIES LABELS "regress
                      FIXTURES_SETUP building_cube_wall_tke_off_clean)
 gust_add_test(NAME building_cube_wall_tke_off_run NP 2 LABELS "regression;smoke" RUN_DIR ${BUILDING_CUBE_NOTKE_DIR}
               FIXTURES_REQUIRED building_cube_wall_tke_off_clean FIXTURES_SETUP building_cube_wall_tke_off
-              PREFIX ${EXPECT_ABORT} --success "gust: steady after" --
+              PREFIX ${EXPECT_ABORT} --success --timeout 900 "gust: steady after" --
               COMMAND $<TARGET_FILE:gust> ${BUILDING_CUBE_CASE}/inputs_cube buildings.file=${BUILDING_CUBE_CASE}/cube.txt
                       buildings.wall_tke=off ${GUST_TEST_AMREX_FLAGS})
 gust_add_test(NAME building_cube_wall_tke_off_flow NP 1 LABELS "regression;smoke" RUN_DIR ${BUILDING_CUBE_NOTKE_DIR}
@@ -458,7 +571,7 @@ set_tests_properties(building_cube_wall_k_source_clean PROPERTIES LABELS "regres
                      FIXTURES_SETUP building_cube_wall_k_source_clean)
 gust_add_test(NAME building_cube_wall_k_source_run NP 2 LABELS "regression;smoke" RUN_DIR ${BUILDING_CUBE_SOURCE_DIR}
               FIXTURES_REQUIRED building_cube_wall_k_source_clean FIXTURES_SETUP building_cube_wall_k_source
-              PREFIX ${EXPECT_ABORT} --success "gust: steady after" --
+              PREFIX ${EXPECT_ABORT} --success --timeout 900 "gust: steady after" --
               COMMAND $<TARGET_FILE:gust> ${BUILDING_CUBE_CASE}/inputs_cube buildings.file=${BUILDING_CUBE_CASE}/cube.txt
                       bc.surface_wall_k=source ${GUST_TEST_AMREX_FLAGS})
 gust_add_test(NAME building_cube_wall_k_source_flow NP 1 LABELS "regression;smoke" RUN_DIR ${BUILDING_CUBE_SOURCE_DIR}
@@ -665,7 +778,7 @@ foreach(form open_faces all_faces)
     set_tests_properties(${_name}_clean PROPERTIES LABELS "regression;smoke" FIXTURES_SETUP ${_name}_clean)
     gust_add_test(NAME ${_name}_run NP 2 LABELS "regression;smoke" RUN_DIR ${_dir}
                   FIXTURES_REQUIRED ${_name}_clean FIXTURES_SETUP ${_name}
-                  PREFIX ${EXPECT_ABORT} --success "gust: steady after" --
+                  PREFIX ${EXPECT_ABORT} --success --timeout 900 "gust: steady after" --
                   COMMAND $<TARGET_FILE:gust> ${BUILDING_COURT_CASE}/inputs_courtyard
                           buildings.file=${BUILDING_COURT_CASE}/courtyard.txt buildings.wall_speed=${form}
                           ${GUST_TEST_AMREX_FLAGS})
@@ -1788,7 +1901,7 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
     set_tests_properties(rt_steady_hill3d_neutral_clean PROPERTIES LABELS "nightly" FIXTURES_SETUP hill3d_neutral_clean)
     gust_add_test(NAME rt_steady_hill3d_neutral_zjacobi NP 4 LABELS "nightly" RUN_DIR ${RT221_DIR}/zjacobi
                   FIXTURES_REQUIRED hill3d_neutral_clean FIXTURES_SETUP hill3d_neutral_zjacobi
-                  PREFIX ${EXPECT_ABORT} --success "gust: steady after" --
+                  PREFIX ${EXPECT_ABORT} --success --timeout 900 "gust: steady after" --
                   COMMAND $<TARGET_FILE:gust> ${HILL3D_NEUTRAL_CASE}/inputs_steady_hill3d_neutral
                           ${GUST_TEST_AMREX_FLAGS})
     # The default back end, gmres_mlmg, for the pressure correction and for the
@@ -1868,7 +1981,7 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
     set(CNBL_DIR ${CMAKE_CURRENT_BINARY_DIR}/run/rt_precursor_askervein_cnbl)
     gust_add_test(NAME rt_precursor_askervein_cnbl NP 2 LABELS "regression" RUN_DIR ${CNBL_DIR}
                   FIXTURES_SETUP precursor_askervein_cnbl
-                  PREFIX ${EXPECT_ABORT} --success "gust: steady after" --
+                  PREFIX ${EXPECT_ABORT} --success --timeout 900 "gust: steady after" --
                   COMMAND $<TARGET_FILE:gust> ${CNBL_CASE}/inputs_precursor_askervein_cnbl
                           ${GUST_TEST_AMREX_FLAGS})
     # The table check reads a companion run stopped at the table's own step
@@ -1917,7 +2030,7 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
     set_tests_properties(rt_precursor_askervein_cnbl_table PROPERTIES LABELS "regression"
                     FIXTURES_REQUIRED precursor_askervein_cnbl_fixed)
     gust_add_test(NAME rt_steady_askervein_cnbl NP 2 LABELS "regression"
-                  PREFIX ${EXPECT_ABORT} --success "gust: steady after" --
+                  PREFIX ${EXPECT_ABORT} --success --timeout 900 "gust: steady after" --
                   COMMAND $<TARGET_FILE:gust> ${CNBL_CASE}/inputs_steady_askervein_cnbl
                           terrain.file=${PROJECT_SOURCE_DIR}/extern_erf/askervein.txt
                           bc.inflow_file=${CNBL_CASE}/askervein_cnbl_inflow.txt

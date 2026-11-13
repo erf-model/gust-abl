@@ -1,0 +1,5 @@
+# Probe points of the laminar cylinder (README.md): x y h (m), h the height above the ground. The
+# axis is at (0, 6 - dx); the lift and the wake give the shedding frequency.
+2.   0.05  6.    # wake, 2 D behind the axis
+5.   0.05  6.    # wake, 5 D behind the axis
+2.   0.05  6.5   # wake, 2 D behind, half a diameter above the axis

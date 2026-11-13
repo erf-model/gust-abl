@@ -63,3 +63,25 @@ TEST (Sha256, FileDigestMatchesBytes)
 }
 
 } // namespace
+
+// The hex-float text that goes into the restart hashes (Buildings, Canopy) has the same bytes on every
+// platform. MSVC pads "%a" to 13 hex digits; glibc and Apple's libc print the shortest form. The pins are
+// the glibc forms, which the hashes pinned in test_BuildingForcing and test_BuildingTke were made with.
+TEST (Sha256, HexfloatTextIsTheSameOnEveryPlatform)
+{
+    // MSVC's text, as it prints it, to the glibc form.
+    EXPECT_EQ(gust::canonical_hexfloat_text("0x1.0000000000000p-1"), "0x1p-1");
+    EXPECT_EQ(gust::canonical_hexfloat_text("0x1.99999999999a0p-4"), "0x1.99999999999ap-4");
+    EXPECT_EQ(gust::canonical_hexfloat_text("-0x1.8000000000000p+1"), "-0x1.8p+1");
+    EXPECT_EQ(gust::canonical_hexfloat_text("0x0.0000000000000p+0"), "0x0p+0");
+    // Text already in that form, and text with no fraction, unchanged.
+    EXPECT_EQ(gust::canonical_hexfloat_text("0x1.999999999999ap-4"), "0x1.999999999999ap-4");
+    EXPECT_EQ(gust::canonical_hexfloat_text("0x1p-1"), "0x1p-1");
+    EXPECT_EQ(gust::canonical_hexfloat_text("inf"), "inf");
+    // This platform's printf, through the canonical form.
+    EXPECT_EQ(gust::hexfloat_canonical(0.5), "0x1p-1");
+    EXPECT_EQ(gust::hexfloat_canonical(0.1), "0x1.999999999999ap-4");
+    EXPECT_EQ(gust::hexfloat_canonical(-3.0), "-0x1.8p+1");
+    EXPECT_EQ(gust::hexfloat_canonical(0.0), "0x0p+0");
+    EXPECT_EQ(gust::hexfloat_canonical(0.0001), "0x1.a36e2eb1c432dp-14");
+}

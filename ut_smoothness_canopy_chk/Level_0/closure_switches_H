@@ -1,0 +1,10 @@
+amrex::FabArray<amrex::IArrayBox> v1.0
+1
+(1,1,1)
+(2 0
+((0,0,0) (3,3,7) (0,0,0))
+((4,0,0) (7,3,7) (0,0,0))
+)
+2
+FabOnDisk: closure_switches_D_00000 0
+FabOnDisk: closure_switches_D_00000 1481

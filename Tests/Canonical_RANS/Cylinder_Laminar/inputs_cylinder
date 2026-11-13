@@ -1,0 +1,44 @@
+# Plan rev. 6, sub-phase 6.4 (PR-49), RT-6.4.1 to RT-6.4.3: laminar flow past a circular cylinder,
+# D = 1 m, U = 1 m/s, Re = U D / nu = 1 / turb.nu_molecular (README.md). The cylinder is a staircase
+# of solid cells (buildings.wall_form = drag: blocked faces are fixed rows u = 0, viscous fluxes to
+# the zero velocity, so the wall is no-slip) lying along y, which is periodic and two cells thick:
+# the flow plane is x-z, the axis at (0, 6 - dx) m (make_cylinder.py), the ground and top slip
+# walls 6 D away.
+# turb.closure = none: no turbulence model.
+# The run gives turb.nu_molecular, the map (buildings.file, from make_cylinder.py), the inflow
+# (bc.inflow_file = inflow_uniform.txt) and the mesh (mesh.n_cell = nx 2 nz) on the command line,
+# and steady.stage / unsteady.* for the unsteady runs.
+mesh.prob_lo       = -6. 0. 0.
+mesh.prob_hi       = 14. 0.1 12.
+mesh.is_periodic   = 0 1 0
+mesh.max_grid_size = 64 2
+
+terrain.type = flat
+
+bc.xlo = inflow
+bc.xhi = outflow
+bc.zlo = slip_wall
+bc.zhi = slip_wall
+bc.inflow_profile = file
+bc.theta_profile_z = 0.
+bc.theta_profile   = 300.
+
+forcing.gravity = 0.
+
+turb.closure         = none
+turb.alpha_molecular = 0.
+turb.tke_floor       = 0.
+
+buildings.type      = immersed_forcing
+buildings.format    = xyz
+buildings.wall_form = drag
+buildings.force_file = cylinder_force.csv
+
+init.first_guess = profile
+
+steady.sweep          = zjacobi
+steady.zline_sweeps   = 3
+steady.cfl_max        = 8
+
+io.plot_file = cylinder_plt
+io.write_checkpoint = 0
