@@ -6,6 +6,7 @@
 
 #include "State.H"
 
+#include <array>
 #include <string>
 #include <vector>
 
@@ -35,11 +36,36 @@ std::string write_plotfile (const std::string& prefix, const State& state,
                             const std::vector<std::string>* extra_names = nullptr);
 
 //! Write <prefix>NNNNN: a text Header (format version, bytes per real, step,
-//! mesh in hex floats, BoxArray) and every State field as a VisMF MultiFab
-//! with ghosts.
+//! mesh in hex floats, the reference z-levels in hex floats, BoxArray) and
+//! every State field as a VisMF MultiFab with ghosts. zlevels: the run's
+//! reference z-levels (Mesh::zlevels(), nz + 1 values); when null they are
+//! made from mesh (make_zlevels). A nested patch (NestParent.H) checks its
+//! own z-levels against these.
 //! Returns the directory name.
 std::string write_checkpoint (const std::string& prefix, State& state,
-                              const MeshInputs& mesh);
+                              const MeshInputs& mesh, const amrex::Vector<amrex::Real>* zlevels = nullptr);
+
+//! The checkpoint format version write_checkpoint writes (2: with the
+//! z-levels). read_checkpoint also reads version 1, which has none.
+inline constexpr int kCheckpointFormatVersion = 2;
+
+//! A checkpoint's Header, as read_checkpoint_header returns it.
+struct CheckpointHeader
+{
+    int version{0};
+    int step{0};
+    amrex::IntVect n_cell{0, 0, 0};
+    std::array<amrex::Real, 3> prob_lo{}, prob_hi{};
+    amrex::Array<int, 3> is_periodic{0, 0, 0};
+    //! The reference z-levels (nz + 1 values); empty in a version-1 checkpoint.
+    amrex::Vector<amrex::Real> zlevels;
+    amrex::BoxArray ba;   //!< cell-centred, as written
+};
+
+//! Read and check <dir>/Header (read on the I/O rank and broadcast). Aborts
+//! with "gust: <key> = <dir>: ..." if it is missing, corrupt, of an unknown
+//! format version, or was written with another precision.
+CheckpointHeader read_checkpoint_header (const std::string& dir, const std::string& key);
 
 //! Read a checkpoint into a State already defined on the current layout.
 //! Aborts, naming io.restart, if the Header is corrupt, was written with

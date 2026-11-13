@@ -62,7 +62,9 @@ namespace gust {
 
 struct InitOptions
 {
-    enum class FirstGuess { none, profile, column };
+    //! nest: the parent run of a nested patch (bc.nest_parent, NestParent.H),
+    //! interpolated at 2 2 1, then the correction below.
+    enum class FirstGuess { none, profile, column, nest };
     //! init.column_stability: how the column's surface sets theta (ColumnGuess.H): a Monin-Obukhov length
     //! (mol, the default; init.column_mol = 0 is neutral, theta held at the sounding), the surface heat
     //! flux (heat_flux: bc.surface_heat_flux) or a surface temperature (surface_temperature). Forms of
@@ -139,6 +141,15 @@ struct InitResult
 //! alpha_v != alpha_h (back end B has no split z-face coefficient).
 PoissonOptions initializer_poisson_options (const InitOptions& opt, const PoissonOptions& popt);
 
+//! w on the ground faces set so that the flux through the ground is zero
+//! (Omega = 0 there), from u and v with their ghost row below the ground as
+//! they are; w elsewhere goes through Omega and back. The correction keeps the
+//! ground flux fixed (Neumann), so the first guess must carry u.n = 0 there:
+//! first_guess_state calls it, and init.first_guess = nest after the
+//! parent's interpolation (whose zero-gradient ghost row below the ground is
+//! not the parent's).
+void zero_ground_flux (State& q, const Mesh& mesh, const amrex::Geometry& geom);
+
 amrex::Real first_guess_state (const InitOptions& opt, const BoundaryInputs& bc, const Mesh& mesh,
                                const amrex::Geometry& geom, State& q, const CoriolisOptions& coriolis = CoriolisOptions{},
                                const InflowProfile* column = nullptr, bool column_theta = false);
@@ -156,6 +167,16 @@ InitResult initialize_state (const InitOptions& opt, const BoundaryInputs& bc, c
                              const amrex::Geometry& geom, State& q, amrex::MultiFab* lambda = nullptr,
                              const CoriolisOptions& coriolis = CoriolisOptions{}, const InflowProfile* column = nullptr,
                              bool column_theta = false);
+
+//! Step 4 alone, on the first guess already in q (u, v, w at valid points
+//! and u, v with one ghost cell for the divergence; theta, k, p' as they
+//! are): the correction with opt's alpha_h and alpha_v, or none with
+//! opt.projection = 0 (the divergence reported as before and after).
+//! initialize_state calls it after first_guess_state; init.first_guess =
+//! nest after the parent's interpolation (NestParent.H). lambda: as for
+//! initialize_state.
+InitResult correct_initial_state (const InitOptions& opt, const BoundaryInputs& bc, const PoissonOptions& popt,
+                                  const Mesh& mesh, const amrex::Geometry& geom, State& q, amrex::MultiFab* lambda = nullptr);
 
 //! The O'Brien pass alone (for its test): Omega on the z-faces of q's layout
 //! from the column continuity of (u, v) with the top residual removed with

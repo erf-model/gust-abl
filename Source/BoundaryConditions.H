@@ -134,6 +134,10 @@ struct BoundaryInputs
     //! face (the initializer's first guess on a periodic domain): the
     //! bc.inflow_* keys are then checked and not refused.
     bool profile_needed{false};
+    //! bc.nest_parent: the checkpoint directory of the parent run of a nested
+    //! patch (NestParent.H); empty: none. Read with init.first_guess = nest,
+    //! which it requires and which requires it.
+    std::string nest_parent;
 };
 
 //! Give the wall model and the inflow profile's equilibrium k and nu_t the

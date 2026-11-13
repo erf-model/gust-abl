@@ -69,7 +69,8 @@ InitOptions read_init_options ()
     if (fg == "none") { opt.first_guess = InitOptions::FirstGuess::none; }
     else if (fg == "profile") { opt.first_guess = InitOptions::FirstGuess::profile; }
     else if (fg == "column") { opt.first_guess = InitOptions::FirstGuess::column; }
-    else { amrex::Abort("gust: init.first_guess = " + fg + ": must be none, profile or column"); }
+    else if (fg == "nest") { opt.first_guess = InitOptions::FirstGuess::nest; }
+    else { amrex::Abort("gust: init.first_guess = " + fg + ": must be none, profile, column or nest"); }
     int proj = 1;
     pp.query("projection", proj);
     if (proj != 0 && proj != 1) { amrex::Abort("gust: init.projection must be 0 or 1"); }
@@ -163,9 +164,15 @@ std::vector<std::string> check_init_options (const InitOptions& opt)
     }
     if (opt.first_guess == InitOptions::FirstGuess::none) {
         for (const auto& k : opt.given) {
-            if (k != "first_guess") { err.emplace_back("init." + k + " has no effect without init.first_guess = profile or column"); }
+            if (k != "first_guess") { err.emplace_back("init." + k + " has no effect without init.first_guess = profile, column or nest"); }
         }
     } else {
+        if (opt.first_guess == InitOptions::FirstGuess::nest) {
+            // The parent gives u, v, w, theta and k: the profile's keys have nothing to act on.
+            for (const char* k : {"z_agl_min", "k_decay_height", "obrien"}) {
+                if (given(k)) { err.emplace_back(std::string("init.") + k + " has no effect with init.first_guess = nest (the parent gives the field)"); }
+            }
+        }
         if (opt.first_guess != InitOptions::FirstGuess::column) {
             for (const char* k : {"column_tol", "column_max_iterations", "column_stability", "column_mol",
                                   "column_surface_theta", "column_target_u", "column_target_v", "column_target_height",
@@ -299,6 +306,19 @@ amrex::Real obrien_omega (const amrex::MultiFab& u, const amrex::MultiFab& v, co
     return worst;
 }
 
+void zero_ground_flux (State& q, const Mesh& mesh, const amrex::Geometry& geom)
+{
+    const int klo = geom.Domain().smallEnd(2);
+    amrex::MultiFab omega0(mesh.az.boxArray(), mesh.detJ.DistributionMap(), 1, 0);
+    omega_from_w(q.u, q.v, q.w, q.z_phys_nd, mesh, geom, omega0, 0);
+    for (amrex::MFIter mfi(omega0, false); mfi.isValid(); ++mfi) {
+        amrex::Box ground = mfi.validbox();
+        ground.setRange(2, klo, 1);
+        omega0[mfi].template setVal<amrex::RunOn::Device>(amrex::Real(0), ground, 0, 1);
+    }
+    w_from_omega(q.u, q.v, omega0, q.z_phys_nd, mesh, geom, q.w);
+}
+
 amrex::Real first_guess_state (const InitOptions& opt, const BoundaryInputs& bc, const Mesh& mesh,
                                const amrex::Geometry& geom, State& q, const CoriolisOptions& coriolis,
                                const InflowProfile* column, bool column_theta)
@@ -308,6 +328,9 @@ amrex::Real first_guess_state (const InitOptions& opt, const BoundaryInputs& bc,
         if (!err.empty()) { amrex::Abort("gust: first_guess_state: " + err.front()); }
     }
     if (opt.first_guess == InitOptions::FirstGuess::none) { return 0; }
+    if (opt.first_guess == InitOptions::FirstGuess::nest) {
+        amrex::Abort("gust: first_guess_state: init.first_guess = nest takes its field from the parent (NestParent.H)");
+    }
     const char* op = "first_guess_state";
     check_operator_field(op, "u", q.u, Loc::xface, mesh, 2);
     check_operator_field(op, "theta", q.theta, Loc::cell, mesh, 2);
@@ -328,16 +351,7 @@ amrex::Real first_guess_state (const InitOptions& opt, const BoundaryInputs& bc,
     fill_from_profile<stencil::XF>(q.u, 0, prof, opt.z_agl_min, 0, z, klo);
     fill_from_profile<stencil::YF>(q.v, 1, prof, opt.z_agl_min, 0, z, klo);
     q.w.setVal(0.0);
-    {
-        amrex::MultiFab omega0(mesh.az.boxArray(), mesh.detJ.DistributionMap(), 1, 0);
-        omega_from_w(q.u, q.v, q.w, z, mesh, geom, omega0, 0);
-        for (amrex::MFIter mfi(omega0, false); mfi.isValid(); ++mfi) {
-            amrex::Box ground = mfi.validbox();
-            ground.setRange(2, klo, 1);
-            omega0[mfi].template setVal<amrex::RunOn::Device>(amrex::Real(0), ground, 0, 1);
-        }
-        w_from_omega(q.u, q.v, omega0, z, mesh, geom, q.w);
-    }
+    zero_ground_flux(q, mesh, geom);
     // 2. theta from the sounding (absolute height; the reference itself, so
     // one ghost cell of the state is filled and the second stays 0 until the
     // boundary fill), or from a stratified column by height above the ground
@@ -378,9 +392,21 @@ InitResult initialize_state (const InitOptions& opt, const BoundaryInputs& bc, c
                              const amrex::Geometry& geom, State& q, amrex::MultiFab* lambda, const CoriolisOptions& coriolis,
                              const InflowProfile* column, bool column_theta)
 {
+    const amrex::Real obrien = first_guess_state(opt, bc, mesh, geom, q, coriolis, column, column_theta);
+    if (opt.first_guess == InitOptions::FirstGuess::none) { return InitResult{}; }
+    InitResult res = correct_initial_state(opt, bc, popt, mesh, geom, q, lambda);
+    res.obrien_top_residual = obrien;
+    return res;
+}
+
+InitResult correct_initial_state (const InitOptions& opt, const BoundaryInputs& bc, const PoissonOptions& popt,
+                                  const Mesh& mesh, const amrex::Geometry& geom, State& q, amrex::MultiFab* lambda)
+{
+    {
+        const auto err = check_init_options(opt);
+        if (!err.empty()) { amrex::Abort("gust: correct_initial_state: " + err.front()); }
+    }
     InitResult res;
-    res.obrien_top_residual = first_guess_state(opt, bc, mesh, geom, q, coriolis, column, column_theta);
-    if (opt.first_guess == InitOptions::FirstGuess::none) { return res; }
     const amrex::MultiFab& z = q.z_phys_nd;
     if (!opt.projection) {
         // The first guess as it is: the stage's own pressure correction removes

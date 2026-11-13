@@ -1,0 +1,38 @@
+# A misplaced patch (abort_nest_placement): inputs_patch shifted 10 m in x, off
+# the parent's cell faces, and 20 cells in y where its 12 parent cells need 24.
+# Both faults abort naming bc.nest_parent.
+mesh.n_cell        = 32 20 16
+mesh.prob_lo       = 410. 300. 0.
+mesh.prob_hi       = 1210. 900. 800.
+mesh.is_periodic   = 0 0 0
+mesh.max_grid_size = 10 9
+mesh.dz0           = 10.
+
+terrain.type            = agnesi
+terrain.hill_shape      = round
+terrain.hill_height     = 60.
+terrain.hill_half_width = 250.
+terrain.smoothing       = 0
+
+bc.xlo = inflow
+bc.xhi = outflow
+bc.ylo = inflow
+bc.yhi = outflow
+bc.zlo = surface_layer
+bc.zhi = slip_wall
+bc.inflow_profile   = power_law
+bc.inflow_speed     = 10.
+bc.inflow_zref      = 10.
+bc.inflow_alpha     = 0.14
+bc.inflow_direction = 20.
+bc.theta_profile_z  = 0. 800.
+bc.theta_profile    = 300. 305.
+bc.nest_parent      = nest_parent_chk00000
+
+init.first_guess = nest
+
+solver.poisson_reltol   = 1.e-10
+solver.poisson_max_iter = 200
+
+io.plot_file = nest_misplaced_plt
+io.chk_file  = nest_misplaced_chk

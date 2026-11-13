@@ -1,6 +1,7 @@
 #include "StateIO.H"
 
 #include "FileMagic.H"
+#include "ZLevels.H"
 
 #include <AMReX_ParallelDescriptor.H>
 #include <AMReX_PlotFileUtil.H>
@@ -18,7 +19,6 @@ namespace gust {
 namespace {
 
 constexpr const char* kCheckpointMagic = "gust-checkpoint";
-constexpr int kCheckpointVersion = 1;
 
 // Hex-float text, so a restart reads back the exact bits.
 std::string hexfloat (amrex::Real x)
@@ -28,9 +28,15 @@ std::string hexfloat (amrex::Real x)
     return buf;
 }
 
+[[noreturn]] void header_error (const std::string& key, const std::string& dir, const std::string& what)
+{
+    amrex::Abort("gust: " + key + " = " + dir + ": " + what);
+    std::abort();   // amrex::Abort throws or exits; never reached
+}
+
 void restart_error (const std::string& dir, const std::string& what)
 {
-    amrex::Abort("gust: io.restart = " + dir + ": " + what);
+    header_error("io.restart", dir, what);
 }
 
 } // namespace
@@ -115,15 +121,21 @@ std::string write_plotfile (const std::string& prefix, const State& state,
     return name;
 }
 
-std::string write_checkpoint (const std::string& prefix, State& state, const MeshInputs& mesh)
+std::string write_checkpoint (const std::string& prefix, State& state, const MeshInputs& mesh,
+                              const amrex::Vector<amrex::Real>* zlevels)
 {
+    const amrex::Vector<amrex::Real> zl = (zlevels != nullptr) ? *zlevels : make_zlevels(mesh, make_geometry(mesh));
+    if (static_cast<int>(zl.size()) != mesh.n_cell[2] + 1) {
+        amrex::Abort("gust: write_checkpoint: " + std::to_string(zl.size()) + " z-levels for "
+                     + std::to_string(mesh.n_cell[2]) + " layers");
+    }
     const std::string name = amrex::Concatenate(prefix, state.step, 5);
     amrex::PreBuildDirectorHierarchy(name, "Level_", 1, true);
 
     if (amrex::ParallelDescriptor::IOProcessor()) {
         std::ofstream os(name + "/Header");
         if (!os.good()) { amrex::FileOpenFailed(name + "/Header"); }
-        os << kCheckpointMagic << " " << kCheckpointVersion << "\n";
+        os << kCheckpointMagic << " " << kCheckpointFormatVersion << "\n";
         os << "real_bytes " << sizeof(amrex::Real) << "\n";
         os << "step " << state.step << "\n";
         os << "n_cell " << mesh.n_cell[0] << " " << mesh.n_cell[1] << " " << mesh.n_cell[2] << "\n";
@@ -133,6 +145,9 @@ std::string write_checkpoint (const std::string& prefix, State& state, const Mes
         for (int d = 0; d < 3; ++d) { os << " " << hexfloat(mesh.prob_hi[d]); }
         os << "\nis_periodic " << mesh.is_periodic[0] << " " << mesh.is_periodic[1] << " "
            << mesh.is_periodic[2] << "\n";
+        os << "zlevels " << zl.size();
+        for (const amrex::Real z : zl) { os << " " << hexfloat(z); }
+        os << "\n";
         state.p.boxArray().writeOn(os);
         os << "\n";
     }
@@ -159,7 +174,7 @@ std::string write_checkpoint (const std::string& prefix, State& state, const Mes
     return name;
 }
 
-void read_checkpoint (const std::string& dir, State& state, const MeshInputs& mesh)
+CheckpointHeader read_checkpoint_header (const std::string& dir, const std::string& key)
 {
     amrex::Vector<char> buf;
     amrex::ParallelDescriptor::ReadAndBcastFile(dir + "/Header", buf);
@@ -168,21 +183,23 @@ void read_checkpoint (const std::string& dir, State& state, const MeshInputs& me
     std::string magic;
     int version = 0;
     is >> magic >> version;
-    if (!is || !is_file_magic(magic, kCheckpointMagic) || version != kCheckpointVersion) {
-        restart_error(dir, "not a GUST checkpoint of format version "
-                           + std::to_string(kCheckpointVersion));
+    if (!is || !is_file_magic(magic, kCheckpointMagic) || version < 1 || version > kCheckpointFormatVersion) {
+        header_error(key, dir, "not a GUST checkpoint of format version 1 to "
+                           + std::to_string(kCheckpointFormatVersion));
     }
+    CheckpointHeader h;
+    h.version = version;
 
     // Each Header line is "key value(s)"; a missing key or value is a corrupt Header.
     auto expect_key = [&] (const char* want) {
-        std::string key;
-        is >> key;
-        if (!is || key != want) {
-            restart_error(dir, std::string("corrupt Header: expected '") + want + "'");
+        std::string tok;
+        is >> tok;
+        if (!is || tok != want) {
+            header_error(key, dir, std::string("corrupt Header: expected '") + want + "'");
         }
     };
     auto check_stream = [&] (const char* what) {
-        if (!is) { restart_error(dir, std::string("corrupt Header: bad value for '") + what + "'"); }
+        if (!is) { header_error(key, dir, std::string("corrupt Header: bad value for '") + what + "'"); }
     };
     auto read_real = [&] (const char* what) {
         std::string tok;
@@ -190,7 +207,7 @@ void read_checkpoint (const std::string& dir, State& state, const MeshInputs& me
         char* end = nullptr;
         const double x = std::strtod(tok.c_str(), &end);
         if (!is || tok.empty() || *end != '\0') {
-            restart_error(dir, std::string("corrupt Header: bad value for '") + what + "'");
+            header_error(key, dir, std::string("corrupt Header: bad value for '") + what + "'");
         }
         return static_cast<amrex::Real>(x);
     };
@@ -200,28 +217,54 @@ void read_checkpoint (const std::string& dir, State& state, const MeshInputs& me
     is >> real_bytes;
     check_stream("real_bytes");
     if (real_bytes != static_cast<int>(sizeof(amrex::Real))) {
-        restart_error(dir, "checkpoint was written with " + std::to_string(real_bytes)
+        header_error(key, dir, "checkpoint was written with " + std::to_string(real_bytes)
                            + "-byte reals; this build uses " + std::to_string(sizeof(amrex::Real)));
     }
 
     expect_key("step");
-    is >> state.step;
+    is >> h.step;
     check_stream("step");
 
-    amrex::IntVect n_cell;
+    amrex::IntVect& n_cell = h.n_cell;
     expect_key("n_cell");
     is >> n_cell[0] >> n_cell[1] >> n_cell[2];
     check_stream("n_cell");
-    std::array<amrex::Real, 3> lo{}, hi{};
+    std::array<amrex::Real, 3>& lo = h.prob_lo;
+    std::array<amrex::Real, 3>& hi = h.prob_hi;
     expect_key("prob_lo");
     for (int d = 0; d < 3; ++d) { lo[d] = read_real("prob_lo"); }
     expect_key("prob_hi");
     for (int d = 0; d < 3; ++d) { hi[d] = read_real("prob_hi"); }
-    amrex::Array<int, 3> per{};
+    amrex::Array<int, 3>& per = h.is_periodic;
     expect_key("is_periodic");
     is >> per[0] >> per[1] >> per[2];
     check_stream("is_periodic");
 
+    if (version >= 2) {
+        expect_key("zlevels");
+        int nz1 = 0;
+        is >> nz1;
+        check_stream("zlevels");
+        if (nz1 != n_cell[2] + 1) {
+            header_error(key, dir, "corrupt Header: " + std::to_string(nz1) + " z-levels for "
+                                   + std::to_string(n_cell[2]) + " layers");
+        }
+        h.zlevels.resize(nz1);
+        for (auto& z : h.zlevels) { z = read_real("zlevels"); }
+    }
+    h.ba.readFrom(is);
+    if (!is) { header_error(key, dir, "could not read the BoxArray from the Header"); }
+    return h;
+}
+
+void read_checkpoint (const std::string& dir, State& state, const MeshInputs& mesh)
+{
+    const CheckpointHeader h = read_checkpoint_header(dir, "io.restart");
+    state.step = h.step;
+    const amrex::IntVect& n_cell = h.n_cell;
+    const std::array<amrex::Real, 3>& lo = h.prob_lo;
+    const std::array<amrex::Real, 3>& hi = h.prob_hi;
+    const amrex::Array<int, 3>& per = h.is_periodic;
     if (n_cell != mesh.n_cell) {
         std::ostringstream os;
         os << "checkpoint mesh.n_cell = " << n_cell << " differs from the inputs' " << mesh.n_cell;
@@ -236,9 +279,7 @@ void read_checkpoint (const std::string& dir, State& state, const MeshInputs& me
         }
     }
 
-    amrex::BoxArray ba_chk;
-    ba_chk.readFrom(is);
-    if (!is) { restart_error(dir, "could not read the BoxArray from the Header"); }
+    const amrex::BoxArray& ba_chk = h.ba;
     const amrex::DistributionMapping dm_chk(ba_chk);
 
     for (auto& f : state.fields()) {

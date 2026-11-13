@@ -1,0 +1,39 @@
+# The parent of the nested patch (rt_nest_patch_hill): the mass-consistent
+# initial field over a round Witch of Agnesi hill, 60 m high with a 250 m
+# half-width, centred in a 1600 m x 1200 m domain of 50 m cells. 16 layers from
+# 10 m to 800 m (stretched). Power-law inflow from 20 degrees through xlo,
+# periodic in y. The sounding is stable (5 K over 800 m), so theta varies along a
+# terrain-following level over the hill (it is not a constant the nest could
+# reproduce by accident). The checkpoint is the patch's bc.nest_parent.
+mesh.n_cell        = 32 24 16
+mesh.prob_lo       = 0. 0. 0.
+mesh.prob_hi       = 1600. 1200. 800.
+mesh.is_periodic   = 0 1 0
+mesh.max_grid_size = 12 10
+mesh.dz0           = 10.
+
+terrain.type            = agnesi
+terrain.hill_shape      = round
+terrain.hill_height     = 60.
+terrain.hill_half_width = 250.
+terrain.smoothing       = 0
+
+bc.xlo = inflow
+bc.xhi = outflow
+bc.zlo = surface_layer
+bc.zhi = slip_wall
+bc.inflow_profile   = power_law
+bc.inflow_speed     = 10.
+bc.inflow_zref      = 10.
+bc.inflow_alpha     = 0.14
+bc.inflow_direction = 20.
+bc.theta_profile_z  = 0. 800.
+bc.theta_profile    = 300. 305.
+
+init.first_guess = profile
+
+solver.poisson_reltol   = 1.e-10
+solver.poisson_max_iter = 200
+
+io.plot_file = nest_parent_plt
+io.chk_file  = nest_parent_chk

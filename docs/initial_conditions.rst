@@ -34,6 +34,9 @@ Options
    * - ``column``
      - The steady solution of a single vertical column, computed first (below).
      - Terrain cases with Coriolis forcing.
+   * - ``nest``
+     - A parent run's checkpoint (``bc.nest_parent``) interpolated onto a patch that refines it 2 2 1 (below).
+     - A finer patch inside a coarser run.
 
 ``init.projection`` (default 1) switches the mass-consistent adjustment on or off. With 0, the solver's own pressure
 correction removes the divergence in its first iteration.
@@ -255,6 +258,61 @@ stratification). The 3-D first guess keeps :math:`\theta` from the sounding.
 **When to use it.** On the 2-D and 3-D hills the column start halves the iterations (:doc:`results`). On the flat
 ``Neutral_ABL_Flat`` case it does not converge: the column's :math:`k` at the sharp inversion base differs from the
 3-D solution, and a slow oscillation of :math:`k` develops there. Use ``profile`` for that case.
+
+Initial field from a parent run
+-------------------------------
+
+With ``init.first_guess = nest`` the run is a *patch*: a finer mesh inside a coarser *parent* run. The initial field
+is the parent's checkpoint (``bc.nest_parent``) interpolated onto the patch, then the mass-consistent adjustment
+below. The code is in ``Source/NestParent``.
+
+**Placement.** The patch refines the parent by 2 in x and y and keeps the parent's z-levels (refinement 2 2 1):
+
+- each patch cell edge lies on a parent cell face, to :math:`10^{-4}` of a parent cell;
+- the patch's z inputs (``mesh.n_cell`` z, ``mesh.prob_lo`` z, ``mesh.prob_hi`` z, ``mesh.dz0``,
+  ``mesh.stretch_ratio``, ``mesh.zlevels_file``) give the parent's z-levels bit for bit (the checkpoint stores them
+  as hexadecimal floats);
+- the patch keeps 2 parent cells from every non-periodic face of the parent, so the interpolation never reads the
+  parent's boundary ghost cells. Along a periodic direction of the parent the patch may reach the parent's faces,
+  and its ghost cells then read the periodic neighbours; a patch periodic in a direction must span the parent's full
+  width there, from the same ``mesh.prob_lo``.
+
+Any other placement stops the run, naming ``bc.nest_parent`` and listing each fault. The patch's terrain is its own;
+it should be the parent's terrain on the finer cells.
+
+**Interpolation.** Each field is interpolated at its own staggered point, bilinearly in x and y on each
+:math:`\zeta`-level, with no vertical interpolation. For a patch cell centre :math:`i` (index from the patch's low
+corner) and a parent offset :math:`o` (the parent cell under the patch's first cell), the parent position is
+
+.. math::
+
+   X = \frac{i + 1/2}{2} - \frac12 + o \quad\text{(cell centres)}, \qquad
+   X = \frac{i}{2} + o \quad\text{(faces and nodes)},
+
+and the value is :math:`(1 - t)\,q_I + t\,q_{I+1}` with :math:`I = \lfloor X \rfloor`, :math:`t = X - I`, in each
+horizontal direction. ``u`` uses the face axis in x and the centre axis in y; ``v`` the reverse; ``w``,
+:math:`\theta`, :math:`k` and :math:`p` the centre axes. A linear field is reproduced exactly. The parent's cells
+are read on the patch's own box layout, so the result does not depend on the number of ranks.
+
+**Values per level, not per height.** Where the patch's ground :math:`z_s` differs from the parent's interpolated
+ground by :math:`\Delta z_s`, a patch point sits higher or lower than the parent point it takes its value from by about
+:math:`\Delta z_s (1 - \zeta/H)`. For :math:`u, v, k`, which follow the height above the ground, this matters little.
+:math:`\theta` keeps the parent's value, so in a sounding with lapse rate :math:`\Gamma` it is off by about
+:math:`\Gamma\,\Delta z_s (1 - \zeta/H)` near the ground: 0.01 K in ``Nest_Patch_Hill`` (the same smooth hill on both
+meshes), of order 0.1–0.3 K for a ridge that the patch resolves tens of metres higher in an inversion of 0.01 K/m.
+
+**Ground flux.** After the interpolation, :math:`w` on the ground faces is set so that no mass crosses the ground with
+the patch's own slopes (:math:`\Omega = 0`), as for ``profile``: the adjustment keeps the ground flux fixed, so the
+first guess must carry it.
+
+**Checkpoint format.** The parent checkpoint must be format 2, which stores the z-levels. A format-1 checkpoint (from
+an earlier version) still restarts, but as a nest parent it stops the run; rerun the parent to write format 2.
+
+The patch's faces still use its own ``bc.*`` boundary types: an inflow face, a Rayleigh damping layer and a side
+sponge use the ``bc.inflow_*`` profile and the sounding, not the parent's field. Taking them from the parent is a
+later step. ``init.z_agl_min``, ``init.k_decay_height`` and ``init.obrien`` act on a profile and are refused with
+``nest``. Grid
+sequencing (``steady.sequencing = 1``) is refused with ``nest``: the patch starts on its own mesh from the parent.
 
 Mass-consistent adjustment
 --------------------------
