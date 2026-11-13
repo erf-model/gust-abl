@@ -53,9 +53,18 @@
 // MPI: the stage's norms and convective_dt are all-reduced, so every rank
 // takes the same dt and the same inner count.
 //
+// Restart (TimeDriver::resume): a checkpoint of an unsteady run records t^n,
+// the steps run and the fixed step (UnsteadyOutput.H). The run goes on from
+// there: steps are numbered on from the checkpoint's. A fixed step's time is
+// t_* + (N - n_*) dt for total step N, with the anchor (t_*, n_*) = (0, 0) at
+// the start, (t^N, N) after a clipped last step (one that ends more than 0.1 %
+// of dt from t_* + (N - n_*) dt) or (t^n, n) at a restart with another dt. The record
+// keeps the anchor, so a restart with the same fixed step gives the bits of the
+// run without the restart, also after a clipped last step or chained restarts.
+//
 // Inputs (unsteady.*, read with steady.stage = unsteady): see
-// UnsteadyOptions. Not in this module yet: the checkpoint of q^n and the
-// time, averages and probes (the unsteady outputs).
+// UnsteadyOptions. The outputs (averages, probes, plotfiles and checkpoints
+// every few steps) are UnsteadyOutput.H's and App.cpp's.
 
 #include "Driver.H"
 #include "Mesh.H"
@@ -83,6 +92,15 @@ struct UnsteadyOptions
     amrex::Real inner_drop_orders{3};
     //! unsteady.max_inner (>= 1; 50): the inner iterations of a step at most.
     int max_inner{50};
+    //! unsteady.average_start [s] (finite, >= 0 and < unsteady.stop_time; 0): the time the running averages
+    //! start at (UnsteadyOutput.H).
+    amrex::Real average_start{0};
+    //! unsteady.plot_interval (>= 0; 0): a plotfile every this many physical steps (0: at the end only).
+    int plot_interval{0};
+    //! unsteady.checkpoint_interval (>= 0; 0): a checkpoint every this many physical steps (0: at the end only).
+    int checkpoint_interval{0};
+    //! unsteady.probes_file (a file name; none): the probe points, "x y h" per line (UnsteadyOutput.H).
+    std::string probes_file;
     std::vector<std::string> given;   //!< the unsteady.* keys given
 };
 
@@ -132,6 +150,13 @@ public:
     TimeDriver (const UnsteadyOptions& opt, TimeTerm& term, Driver& driver, const Mesh& mesh,
                 const amrex::Geometry& geom, amrex::Real residual_tol, GhostFill fill);
 
+    //! Continue a run from a checkpoint at t^n = time after steps physical steps, run with the fixed
+    //! step dt_ref (0: with unsteady.cfl) and the time anchor (anchor_time, anchor_steps). The anchor
+    //! is kept when unsteady.dt equals dt_ref, else it becomes (time, steps). Before the first
+    //! advance; aborts, naming io.restart, when time is not finite and >= 0, not below
+    //! unsteady.stop_time, or the anchor is not finite, >= 0 and at or before (time, steps).
+    void resume (double time, long steps, double dt_ref, double anchor_time, long anchor_steps);
+
     //! One physical step (the header's steps 1 to 3). Aborts when the run has already reached
     //! unsteady.stop_time or diverged.
     const StepRecord& advance (State& q);
@@ -139,6 +164,13 @@ public:
     [[nodiscard]] bool finished () const { return m_diverged || m_done; }
     [[nodiscard]] bool diverged () const { return m_diverged; }
     [[nodiscard]] amrex::Real time () const { return static_cast<amrex::Real>(m_time); }
+    //! t^n in double, as the driver sums it.
+    [[nodiscard]] double time_exact () const { return m_time; }
+    //! The physical steps over the run, the checkpoint's included.
+    [[nodiscard]] long total_steps () const { return m_steps_ref + static_cast<long>(m_records.size()); }
+    //! The fixed step's time anchor: t^N = anchor_time() + (N - anchor_steps()) unsteady.dt.
+    [[nodiscard]] double anchor_time () const { return m_anchor_t; }
+    [[nodiscard]] long anchor_steps () const { return m_anchor_n; }
     [[nodiscard]] const std::vector<StepRecord>& records () const { return m_records; }
     //! The steps that reached unsteady.max_inner without meeting the inner stop.
     [[nodiscard]] int unconverged_steps () const;
@@ -154,6 +186,9 @@ private:
     amrex::Real m_tol;
     GhostFill m_fill;
     double m_time{0};   //!< t^n, in double (n dt for a fixed step)
+    long m_steps_ref{0};   //!< the steps of the checkpoint resumed (resume)
+    double m_anchor_t{0};  //!< the fixed step's time anchor t_*
+    long m_anchor_n{0};    //!< its total step n_a
     bool m_done{false};
     bool m_diverged{false};
     std::vector<StepRecord> m_records;

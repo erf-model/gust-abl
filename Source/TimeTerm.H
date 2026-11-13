@@ -26,10 +26,10 @@
 // the row by (1 - f), and so keep (1 - f) of the term in both.
 //
 // q^n is a copy of u, v, w, theta and k with their ghost cells (ngrow_state),
-// taken by store(). Only the valid points are read here. q^n is not yet
-// written to a checkpoint (that comes with the unsteady outputs). The time
-// driver (TimeDriver.H, steady.stage = unsteady) stores q^n and sets dt at
-// the start of every physical step.
+// taken by store(). Only the valid points are read here. q^n is not
+// written to a checkpoint: at the end of a step it is the state itself, and
+// the next step stores it. The time driver (TimeDriver.H, steady.stage =
+// unsteady) stores q^n and sets dt at the start of every physical step.
 
 #include "ImplicitOperator.H"
 #include "Residual.H"

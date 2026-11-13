@@ -26,12 +26,14 @@
 #include "State.H"
 #include "SurfaceLayer.H"
 #include "TurbulenceOutput.H"
+#include "UnsteadyOutput.H"
 #include "WallDistance.H"
 
 #include <AMReX_Print.H>
 #include <AMReX_Utility.H>
 
 #include <algorithm>
+#include <filesystem>
 #include <cstdio>
 #include <memory>
 #include <limits>
@@ -186,9 +188,11 @@ void run ()
             err.emplace_back("steady.sequencing = 1 is not supported with steady.stage = unsteady yet (the first step "
                              "starts from the first guess or the restart on level 0)");
         }
-        if (in.io.write_checkpoint == 1) {
-            err.emplace_back("io.write_checkpoint = 1 is not supported with steady.stage = unsteady yet (the checkpoint "
-                             "of q^n and the time is not written); set io.write_checkpoint = 0");
+        if (uopt.checkpoint_interval > 0 && in.io.write_checkpoint != 1) {
+            err.emplace_back("unsteady.checkpoint_interval > 0 needs io.write_checkpoint = 1");
+        }
+        if (uopt.plot_interval > 0 && in.io.write_plotfile != 1) {
+            err.emplace_back("unsteady.plot_interval > 0 needs io.write_plotfile = 1");
         }
         if (amrex::ParmParse("io").contains("iteration_log")) {
             err.emplace_back("io.iteration_log has no effect with steady.stage = unsteady (one line per physical step)");
@@ -619,6 +623,11 @@ void run ()
                            << " iterations, cfl " << driver.cfl() << ", reference hold " << driver.hold_iterations()
                            << " iterations" << (driver.history().hold == 0 ? " (released: a seeded level of grid sequencing)" : "")
                            << "\n";
+            UnsteadyRecord urec;
+            if (!unsteady && read_unsteady_record(in.io.restart, urec)) {
+                amrex::Print() << "gust: the checkpoint is of an unsteady run at t = " << urec.time
+                               << " s; the steady stage takes its state and driver history (its averages are not used)\n";
+            }
         }
         amrex::Print() << "gust: SIMPLEC stage: " << sopt.zline_sweeps << " " << sweep_name(sopt.sweep) << " sweeps";
         if (sopt.sweep == SweepKind::lusgs) {
@@ -664,6 +673,36 @@ void run ()
         IterationPrinter log(setup.log);
         int done = 0;
         amrex::Real phys_time = 0;   // the plotfile's time: the physical time of an unsteady run
+        // The unsteady run's outputs (UnsteadyOutput.H): averages, probes, and the record a checkpoint carries.
+        std::unique_ptr<RunningAverages> averages;
+        std::unique_ptr<Probes> probes;
+        const std::string probes_out = probes_output_file(in.io.plot_file);
+        UnsteadyRecord urec;
+        // A checkpoint with everything a restart reads: the state, the histories, the models' fields and,
+        // in an unsteady run, its record and the averages.
+        auto write_full_checkpoint = [&] (const UnsteadyRecord* rec) {
+            check_overwrite();
+            const auto name = write_checkpoint(in.io.chk_file, state, in.mesh);
+            write_driver_history(name, driver.history());
+            closure.write_checkpoint(name);
+            canopy.write_checkpoint(name);
+            buildings.write_checkpoint(name);
+            if (newton_stage != nullptr) { newton_stage->write_checkpoint(name); }
+            if (rec != nullptr) {
+                write_unsteady_record(name, *rec);
+                averages->write_checkpoint(name);
+            }
+            amrex::Print() << "gust: wrote " << name << "\n";
+        };
+        // A plotfile of the state, with the averages in an unsteady run, at the time t.
+        auto write_full_plotfile = [&] (amrex::Real t) {
+            amrex::MultiFab avg_fields;
+            std::vector<std::string> avg_names;
+            if (averages) { averages->plot_fields(avg_fields, avg_names); }
+            const auto name = write_plotfile(in.io.plot_file, state, geom, &mesh.detJ, canopy_plot, lad_plot, beta_plot, wall_plot, t,
+                                             averages ? &avg_fields : nullptr, averages ? &avg_names : nullptr);
+            amrex::Print() << "gust: wrote " << name << "\n";
+        };
         if (unsteady) {
             amrex::Print() << "gust: unsteady: physical steps to t = " << uopt.stop_time << " s, "
                            << (uopt.cfl > 0 ? "dt from unsteady.cfl " + std::to_string(double(uopt.cfl))
@@ -674,17 +713,76 @@ void run ()
             TimeDriver td(uopt, *time_term, driver, mesh, geom, sopt.criterion.residual_tol, [&] (State& s) {
                 bc.fill_ghosts(s, res_in.surface, fopt.buoyancy, false, nullptr);
             });
+            averages = std::make_unique<RunningAverages>(uopt.average_start, ba, dm);
+            // A checkpoint of an unsteady run: its time, steps and averages go on.
+            const bool resumed = restart && read_unsteady_record(in.io.restart, urec);
+            if (resumed) {
+                if (urec.average_start != double(uopt.average_start)) {
+                    char msg[160];
+                    std::snprintf(msg, sizeof(msg), "gust: unsteady.average_start = %.17g s differs from the checkpoint's %.17g s",
+                                  double(uopt.average_start), urec.average_start);
+                    amrex::Abort(std::string(msg) + " (io.restart = " + in.io.restart + "); the averages would mix two starts");
+                }
+                td.resume(urec.time, urec.steps, urec.dt, urec.anchor_time, urec.anchor_steps);
+                averages->read_checkpoint(in.io.restart, urec.weight);
+                amrex::Print() << "gust: unsteady: continues from t = " << urec.time << " s after " << urec.steps
+                               << " physical steps (averaged over " << urec.weight << " s)\n";
+            }
+            if (!uopt.probes_file.empty()) {
+                int exists = 0;
+                if (amrex::ParallelDescriptor::IOProcessor()) { exists = std::filesystem::exists(uopt.probes_file) ? 1 : 0; }
+                amrex::ParallelDescriptor::Bcast(&exists, 1, amrex::ParallelDescriptor::IOProcessorNumber());
+                if (exists == 0) { amrex::Abort("gust: unsteady.probes_file = " + uopt.probes_file + ": no such file"); }
+                amrex::Vector<char> text;
+                amrex::ParallelDescriptor::ReadAndBcastFile(uopt.probes_file, text);
+                std::vector<std::string> perr;
+                std::vector<Probe> list = parse_probes(std::string(text.dataPtr()), uopt.probes_file, perr);
+                if (!perr.empty()) {
+                    std::string all = "gust: invalid inputs:";
+                    for (const auto& e : perr) { all += "\n  " + e; }
+                    amrex::Abort(all);
+                }
+                probes = std::make_unique<Probes>(std::move(list), state.z_phys_nd, geom, uopt.probes_file);
+                const bool kept = probes->open(probes_out, uopt.probes_file, resumed ? urec.time : -1.0);
+                // The first row is the state the run starts from (a restart that kept the file has the
+                // checkpoint's row).
+                if (!kept) { probes->write_row(probes_out, td.time_exact(), state); }
+                amrex::Print() << "gust: unsteady: " << probes->probes().size() << " probes to " << probes_out << "\n";
+            }
+            auto record_now = [&] {
+                UnsteadyRecord r;
+                r.time = td.time_exact();
+                r.steps = td.total_steps();
+                r.dt = uopt.cfl > 0 ? 0.0 : double(uopt.dt);
+                r.average_start = double(uopt.average_start);
+                r.weight = averages->weight();
+                r.anchor_time = td.anchor_time();
+                r.anchor_steps = td.anchor_steps();
+                return r;
+            };
             while (!td.finished()) {
+                const double t0 = td.time_exact();
                 const StepRecord& st = td.advance(state);
                 done += st.inner;
                 state.step += st.inner;
                 amrex::Print() << "gust: " << format_step(st) << "\n";
+                if (td.diverged()) { break; }
+                averages->add(state, t0, td.time_exact());
+                if (probes) { probes->write_row(probes_out, td.time_exact(), state); }
+                // Every so many steps; the last step's outputs are the run's final ones, below.
+                const long n = td.total_steps();
+                if (!td.finished() && uopt.plot_interval > 0 && n % uopt.plot_interval == 0) { write_full_plotfile(td.time()); }
+                if (!td.finished() && uopt.checkpoint_interval > 0 && n % uopt.checkpoint_interval == 0) {
+                    const UnsteadyRecord r = record_now();
+                    write_full_checkpoint(&r);
+                }
             }
+            urec = record_now();
             v = driver.verdict();
             v.reasons.clear();   // the steady criterion's unmet items are not a stop of the unsteady run
             if (td.diverged()) {
                 v.status = SteadyStatus::Diverged;
-                v.reasons.emplace_back("a residual became NaN or infinite in physical step " + std::to_string(td.records().size()));
+                v.reasons.emplace_back("a residual became NaN or infinite in physical step " + std::to_string(td.total_steps()));
             }
             phys_time = td.time();
             const int nsteps = static_cast<int>(td.records().size());
@@ -723,9 +821,7 @@ void run ()
         }
         check_overwrite();   // the step is final here, before any output
         if (in.io.write_plotfile == 1) {
-            const auto name = write_plotfile(in.io.plot_file, state, geom, &mesh.detJ, canopy_plot, lad_plot, beta_plot, wall_plot,
-                                             phys_time);
-            amrex::Print() << "gust: wrote " << name << "\n";
+            write_full_plotfile(phys_time);
             write_hierarchy();
         }
         // The checkpoint first, with the Newton stage as it is (a restart
@@ -734,13 +830,12 @@ void run ()
         // turbulence plotfile sees the run's own closure. A diverged state is
         // not evaluated again.
         if (in.io.write_checkpoint == 1) {
-            const auto name = write_checkpoint(in.io.chk_file, state, in.mesh);
-            write_driver_history(name, driver.history());
-            closure.write_checkpoint(name);
-            canopy.write_checkpoint(name);
-            buildings.write_checkpoint(name);
-            if (newton_stage != nullptr) { newton_stage->write_checkpoint(name); }
-            amrex::Print() << "gust: wrote " << name << "\n";
+            if (unsteady && v.status == SteadyStatus::Diverged) {
+                // Its state is not t^n's (the record's): a restart would not continue the run.
+                amrex::Print() << "gust: no checkpoint: the unsteady run diverged\n";
+            } else {
+                write_full_checkpoint(unsteady ? &urec : nullptr);
+            }
         }
         if (newton_stage != nullptr && driver.stage() == 1 && v.status != SteadyStatus::Diverged) { newton_stage->leave(state); }
         if (!in.io.turb_plot_file.empty()) {

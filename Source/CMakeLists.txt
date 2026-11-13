@@ -25,6 +25,7 @@ set(GUST_SOURCES
     Residual.cpp
     TimeDriver.cpp
     TimeTerm.cpp
+    UnsteadyOutput.cpp
     SurfaceLayer.cpp
     SurfaceRoughness.cpp
     BuildingForcing.cpp

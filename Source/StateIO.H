@@ -7,6 +7,7 @@
 #include "State.H"
 
 #include <string>
+#include <vector>
 
 namespace gust {
 
@@ -23,12 +24,15 @@ const amrex::Vector<std::string>& plot_var_names ();
 //! With buildings (Buildings.H), their solid fraction follows as "building_beta"
 //! and component 0 of building_wall, the wall mask, as "building_wall".
 //! time: the plotfile's time (the physical time of an unsteady run, else 0).
+//! extra, with extra_names (one per component): cell-centred fields added last
+//! (an unsteady run's averages, UnsteadyOutput.H).
 //! Returns the directory name.
 std::string write_plotfile (const std::string& prefix, const State& state,
                             const amrex::Geometry& geom, const amrex::MultiFab* detJ = nullptr,
                             const amrex::MultiFab* canopy_drag = nullptr, const amrex::MultiFab* canopy_lad = nullptr,
                             const amrex::MultiFab* building_beta = nullptr, const amrex::MultiFab* building_wall = nullptr,
-                            amrex::Real time = 0);
+                            amrex::Real time = 0, const amrex::MultiFab* extra = nullptr,
+                            const std::vector<std::string>* extra_names = nullptr);
 
 //! Write <prefix>NNNNN: a text Header (format version, bytes per real, step,
 //! mesh in hex floats, BoxArray) and every State field as a VisMF MultiFab

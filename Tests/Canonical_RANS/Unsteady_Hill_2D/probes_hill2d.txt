@@ -1,0 +1,6 @@
+# Probe points of the unsteady 2-D hill (check_unsteady_hill2d.py): x y h,
+# h the height above the ground (m). The hill top is at x = 0.
+0.    20.  50.    # hill top, 50 m above the ground
+-1500. 20. 10.    # upstream, near the ground
+700.  20.  30.    # lee slope
+2560. 40.  500.   # the domain's high corner in x and y (takes the last column)

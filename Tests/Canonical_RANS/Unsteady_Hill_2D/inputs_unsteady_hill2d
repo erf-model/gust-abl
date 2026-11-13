@@ -1,15 +1,17 @@
-# Plan rev. 6, sub-phase 6.2 (beyond the plan), RT-6.2.1: the 2-D hill of
+# Plan rev. 6, sub-phases 6.2 and 6.3 (beyond the plan), RT-6.2.1 and
+# RT-6.3.1: the 2-D hill of
 # Tests/Canonical_RANS/Neutral_Hill_2D/inputs_steady_hill2d_restart (ERF's
 # Neutral_Hill_2D: the Witch of Agnesi ridge, 100 m high, half-width 500 m,
 # on 128 x 1 x 64 cells, the surface layer, Coriolis and the geostrophic wind
 # (10, 0) m/s) run as unsteady RANS by dual time stepping: ten backward-Euler
 # steps of 60 s from the log-law first guess to t = 600 s, each step converged
 # by SIMPLEC pseudo-time iterations two orders below its starting residual
-# (at most 60). The checkpoint is off (not supported with steady.stage =
-# unsteady yet). check_unsteady_hill2d.py gives init.first_guess = profile,
-# unsteady.stop_time, unsteady.dt and io.write_checkpoint = 0 on the command
-# line (600 s in steps of 60 s, and one step of 1e-3 s; a key may be given
-# once). The abort tests of Tests/CMakeLists.txt leave one of them out.
+# (at most 60). check_unsteady_hill2d.py gives init.first_guess = profile,
+# unsteady.stop_time, unsteady.dt and the outputs (averages, probes, a
+# plotfile and a checkpoint every five steps) on the command line (600 s in
+# steps of 60 s, and one step of 1e-3 s with io.write_checkpoint = 0; a key
+# may be given once). The abort tests of Tests/CMakeLists.txt leave one of
+# them out.
 mesh.n_cell        = 128 1 64
 mesh.prob_lo       = -2560. 0. 0.
 mesh.prob_hi       =  2560. 40. 1000.

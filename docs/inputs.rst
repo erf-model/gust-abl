@@ -485,6 +485,15 @@ Quick reference
    * - ``unsteady.inner_drop_orders``, ``unsteady.max_inner``
      - ``3``, ``50``
      - Inner stop of each physical step: residual drop (orders) and iteration limit
+   * - ``unsteady.average_start``
+     - ``0``
+     - Physical time the running averages and variances start at (s)
+   * - ``unsteady.plot_interval``, ``unsteady.checkpoint_interval``
+     - ``0``, ``0``
+     - A plotfile, a checkpoint every so many physical steps (0: at the end only)
+   * - ``unsteady.probes_file``
+     - —
+     - File of probe points ``x y h`` (h above the ground); one CSV row per step
    * - **SIMPLEC** (`simplec`_)
      -
      -
@@ -1397,10 +1406,11 @@ with no effect. In an unsteady run the steady stop does not apply, so ``steady.m
 ``steady.confidence_height`` and ``io.iteration_log`` abort as keys with no effect; ``steady.residual_tol`` is the
 floor of the inner stop. ``steady.residual_ref_iterations`` sets how many inner iterations, counted over the run,
 hold the CFL at ``steady.cfl0``; the other ``steady.*`` keys of the SIMPLEC stage act as in a steady run.
-``steady.sequencing = 1``, ``convection.hybrid_sigma_max`` > 0 and ``io.write_checkpoint = 1`` are not supported
-yet and abort; as 1 is the checkpoint's default, an unsteady deck sets ``io.write_checkpoint = 0``.
+``steady.sequencing = 1`` and ``convection.hybrid_sigma_max`` > 0 are not supported yet and abort.
 A run may start from a steady checkpoint (``io.restart``): its physical time starts at 0 and the driver's history
-(CFL, residual reference, hold) continues from the checkpoint (:ref:`time-driver`).
+(CFL, residual reference, hold) continues from the checkpoint (:ref:`time-driver`). From a checkpoint of an unsteady
+run it continues that run: its time, step count and averages. The outputs (averages, probes, plotfiles and checkpoints
+during the run) and the restart are described in :ref:`unsteady-outputs`.
 
 .. list-table::
    :header-rows: 1
@@ -1430,6 +1440,28 @@ A run may start from a steady checkpoint (``io.restart``): its physical time sta
      - ``50``
      - ≥ 1. Inner iterations of a step at most; a step that reaches it is reported and the run goes on (it does not
        fail the run).
+   * - ``unsteady.average_start``
+     - ``0``
+     - Finite, ≥ 0 and < ``unsteady.stop_time`` (s). The running mean and variance of :math:`u, v, w, \theta, k`
+       (cell-centred) are taken over the time after it, each step weighted by its part after this time. They are in
+       every plotfile as ``u_mean`` … ``tke_mean`` and ``u_var`` … ``tke_var`` (0 before any time is averaged). A
+       restart must give the checkpoint's value.
+   * - ``unsteady.plot_interval``
+     - ``0``
+     - ≥ 0. A plotfile after every so many physical steps, counted from the run's start (a restart counts on), and
+       the final one at the end. 0: the final one only. Needs ``io.write_plotfile = 1``. The plotfiles are numbered
+       by the total of inner iterations, as the final one.
+   * - ``unsteady.checkpoint_interval``
+     - ``0``
+     - ≥ 0. A checkpoint after every so many physical steps, as ``unsteady.plot_interval``, and the final one at the
+       end. Needs ``io.write_checkpoint = 1``. A run that diverges writes no final checkpoint.
+   * - ``unsteady.probes_file``
+     - —
+     - A file of probe points, one ``x y h`` per line (m; ``#`` starts a comment), :math:`h` > 0 the height above the
+       ground. Each probe takes the cell of its column whose centre is nearest :math:`h` (the lower one on a tie);
+       a point outside the domain or above the column's top aborts. The values of :math:`u, v, w, \theta, k` at the
+       start and after each step go to ``<io.plot_file>_probes.csv``; a restart keeps its rows up to the
+       checkpoint's time.
 
 ``simplec``
 -----------
@@ -1534,7 +1566,8 @@ otherwise.
      - 0 or 1: write the plotfile at the end of the run.
    * - ``io.write_checkpoint``
      - ``1``
-     - 0 or 1: write the checkpoint at the end of the run.
+     - 0 or 1: write the checkpoint at the end of the run (and, in an unsteady run, every
+       ``unsteady.checkpoint_interval`` steps).
    * - ``io.turb_plot_file``
      - none
      - Prefix of the turbulence plotfile with ERF's variable names (:doc:`output`). Needs the SIMPLEC stage.

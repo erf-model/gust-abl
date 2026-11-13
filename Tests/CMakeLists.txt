@@ -36,6 +36,7 @@ add_executable(unit_tests
     Unit_Tests/test_MassFlux.cpp
     Unit_Tests/test_Residual.cpp
     Unit_Tests/test_TimeDriver.cpp
+    Unit_Tests/test_UnsteadyOutput.cpp
     Unit_Tests/test_TimeTerm.cpp
     Unit_Tests/test_ResidualWorkspace.cpp
     Unit_Tests/test_SurfaceLayer.cpp
@@ -318,10 +319,28 @@ gust_add_test(NAME abort_unsteady_dt_and_cfl NP 1 LABELS "regression;smoke"
               PREFIX ${EXPECT_ABORT} "unsteady\\.dt and unsteady\\.cfl > 0 are exclusive" --
               COMMAND $<TARGET_FILE:gust> ${UNSTEADY_DECK} unsteady.stop_time=600 unsteady.dt=60 unsteady.cfl=0.5
                       io.write_checkpoint=0 init.first_guess=profile ${GUST_TEST_AMREX_FLAGS})
-gust_add_test(NAME abort_unsteady_checkpoint NP 1 LABELS "regression;smoke"
-              PREFIX ${EXPECT_ABORT} "io\\.write_checkpoint = 1 is not supported with steady\\.stage = unsteady" --
-              COMMAND $<TARGET_FILE:gust> ${UNSTEADY_DECK} unsteady.stop_time=600 unsteady.dt=60 init.first_guess=profile
+# The outputs' inputs (sub-phase 6.3, UnsteadyOutput.H): their ranges, the
+# intervals without their output, the probe file.
+gust_add_test(NAME abort_unsteady_output_ranges NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT} "unsteady\\.average_start = 700: must be finite, >= 0 and < unsteady\\.stop_time"
+                     "unsteady\\.plot_interval = -1: must be >= 0" "unsteady\\.checkpoint_interval = -2: must be >= 0" --
+              COMMAND $<TARGET_FILE:gust> ${UNSTEADY_DECK} unsteady.stop_time=600 unsteady.dt=60 unsteady.average_start=700
+                      unsteady.plot_interval=-1 unsteady.checkpoint_interval=-2 init.first_guess=profile ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_unsteady_interval_needs_output NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT} "unsteady\\.checkpoint_interval > 0 needs io\\.write_checkpoint = 1"
+                     "unsteady\\.plot_interval > 0 needs io\\.write_plotfile = 1" --
+              COMMAND $<TARGET_FILE:gust> ${UNSTEADY_DECK} unsteady.stop_time=600 unsteady.dt=60 unsteady.checkpoint_interval=2
+                      unsteady.plot_interval=2 io.write_checkpoint=0 io.write_plotfile=0 init.first_guess=profile
                       ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_unsteady_probes_missing NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT} "unsteady\\.probes_file = no_such_probes\\.txt: no such file" --
+              COMMAND $<TARGET_FILE:gust> ${UNSTEADY_DECK} unsteady.stop_time=600 unsteady.dt=60 io.write_checkpoint=0
+                      unsteady.probes_file=no_such_probes.txt init.first_guess=profile ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_unsteady_probe_outside NP 2 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT} "probe 2 \\(3000, 20, 50\\): x is outside the domain \\[-2560, 2560\\]" --
+              COMMAND $<TARGET_FILE:gust> ${UNSTEADY_DECK} unsteady.stop_time=600 unsteady.dt=60 io.write_checkpoint=0
+                      unsteady.probes_file=${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Unsteady_Hill_2D/probes_outside_hill2d.txt
+                      init.first_guess=profile ${GUST_TEST_AMREX_FLAGS})
 gust_add_test(NAME abort_unsteady_steady_stop_keys NP 1 LABELS "regression;smoke"
               PREFIX ${EXPECT_ABORT} "steady\\.max_iterations has no effect with steady\\.stage = unsteady"
                      "steady\\.sequencing = 1 is not supported with steady\\.stage = unsteady" --
@@ -1447,6 +1466,34 @@ gust_add_test(NAME rt_steady_hill2d_restart_continued NP 2 LABELS "regression;sm
               FIXTURES_REQUIRED steady_hill2d_first FIXTURES_SETUP steady_hill2d_continued
               COMMAND $<TARGET_FILE:gust> ${HILL2D_CASE}/inputs_steady_hill2d_restart steady.max_iterations=10
                       io.restart=steady_hill2d_restart_chk00005 ${GUST_TEST_AMREX_FLAGS})
+# An unsteady checkpoint (two steps of 60 s) and the refusals of a restart from
+# it: another averaging start, and a stop time not after the checkpoint's.
+set(UNSTEADY_CHK_DIR ${CMAKE_CURRENT_BINARY_DIR}/run/rt_unsteady_hill2d_chk)
+set(UNSTEADY_PROBES_DIR ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Unsteady_Hill_2D)
+gust_add_test(NAME rt_unsteady_hill2d_chk NP 2 LABELS "regression;smoke" RUN_DIR ${UNSTEADY_CHK_DIR}
+              FIXTURES_SETUP unsteady_hill2d_chk
+              PREFIX ${EXPECT_ABORT} --success "gust: wrote chk00096" --
+              COMMAND $<TARGET_FILE:gust> ${UNSTEADY_DECK} unsteady.stop_time=120 unsteady.dt=60 init.first_guess=profile
+                      unsteady.probes_file=${UNSTEADY_PROBES_DIR}/probes_hill2d.txt ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_unsteady_restart_average_start NP 2 LABELS "regression;smoke" RUN_DIR ${UNSTEADY_CHK_DIR}/avg
+              FIXTURES_REQUIRED unsteady_hill2d_chk
+              PREFIX ${EXPECT_ABORT} "unsteady\\.average_start = 30 s differs from the checkpoint's 0 s" --
+              COMMAND $<TARGET_FILE:gust> ${UNSTEADY_DECK} io.restart=../chk00096 unsteady.stop_time=600 unsteady.dt=60
+                      unsteady.average_start=30 io.write_checkpoint=0 ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_unsteady_restart_past_stop NP 2 LABELS "regression;smoke" RUN_DIR ${UNSTEADY_CHK_DIR}/stop
+              FIXTURES_REQUIRED unsteady_hill2d_chk
+              PREFIX ${EXPECT_ABORT} "the checkpoint is at t = 120 s, not before unsteady\\.stop_time = 120 s" --
+              COMMAND $<TARGET_FILE:gust> ${UNSTEADY_DECK} io.restart=../chk00096 unsteady.stop_time=120 unsteady.dt=60
+                      io.write_checkpoint=0 ${GUST_TEST_AMREX_FLAGS})
+# A restart with other probes than the checkpoint's run: its probe file (found
+# through io.plot_file, so it runs in the fixture's directory) has another
+# header. The refusal comes before any write, so the fixture's files stay.
+gust_add_test(NAME abort_unsteady_restart_probes NP 2 LABELS "regression;smoke" RUN_DIR ${UNSTEADY_CHK_DIR}
+              FIXTURES_REQUIRED unsteady_hill2d_chk
+              PREFIX ${EXPECT_ABORT} "was written for other probes \\(its header differs\\)" --
+              COMMAND $<TARGET_FILE:gust> ${UNSTEADY_DECK} io.restart=chk00096 unsteady.stop_time=600 unsteady.dt=60
+                      unsteady.probes_file=${UNSTEADY_PROBES_DIR}/probes_restart_hill2d.txt
+                      io.write_checkpoint=0 ${GUST_TEST_AMREX_FLAGS})
 # An unsteady run restarted from the steady run's checkpoint: two steps of 60 s
 # from its state, the driver history continued (TimeDriver.H).
 gust_add_test(NAME rt_unsteady_hill2d_from_steady NP 2 LABELS "regression;smoke" RUN_DIR ${SHR_DIR}/unsteady
