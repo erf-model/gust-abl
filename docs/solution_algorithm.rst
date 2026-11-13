@@ -646,6 +646,45 @@ so the verification pass is not short: 3650–4316 SIMPLEC iterations, 44–74 %
 for the whole run Newton solves the run's own equations, reaches 4e-11 in 5 steps, and needs no verification
 pass, at the cost of a 0.4–0.6 % different answer (:doc:`results`).
 
+.. _physical-time-term:
+
+Physical time term (dual time stepping)
+---------------------------------------
+
+Unsteady RANS by dual time stepping takes one backward-Euler (BDF1) step of physical length :math:`\Delta t` by a
+pseudo-time iteration to convergence. Each transported equation gains a physical time term,
+
+.. math::
+
+   R_q \leftarrow R_q + \frac{q - q^n}{\Delta t}, \qquad q = u, v, w, \theta, k,
+
+where :math:`R_q` is the residual per unit volume (as in the rest of this page), :math:`q` the current iterate and
+:math:`q^n` the solution at the last physical step. Continuity has no time term. When the pseudo-time iteration has
+driven :math:`R_q` to zero, :math:`q` is :math:`q^{n+1}` of the backward-Euler step.
+
+**The implicit rows.** The term's derivative with respect to :math:`q` is :math:`1/\Delta t` on the row's own
+diagonal. ``implicit_rows`` adds it to :math:`a_P`, to which the callers add the local pseudo-time term
+:math:`1/\Delta\tau`, so the
+line solves of :math:`u, v, w, \theta, k`, the momentum predictor and the SIMPLEC denominator
+:math:`d = a_P - \sum a_{nb}` all carry it. The Newton core's :math:`Jv`, a difference of residuals, sees it without
+a change. The rotation's step and the buoyancy step of the predictor, which use the same :math:`a_P`, also see
+:math:`1/\Delta t`: where :math:`\Delta t` is shorter than the rotation's own step, the rotation is advanced by
+backward Euler over :math:`\Delta t`. The fixed point does not change.
+
+**Rows that replace their residual.** The term is added before the rows that replace their residual: the wall-k rows
+with ``bc.surface_wall_k = dirichlet``, the Dirichlet rows of the boundary conditions and the fixed rows of buildings.
+``implicit_rows`` adds :math:`1/\Delta t` before the same rows become identity rows. Such a row carries no time term
+in either. Rows that add to the residual (damping, the source form of the wall-k rows) keep it. The k rows of cells
+partly inside a building scale the residual and the row by :math:`1 - f` (:doc:`buildings`), and so keep
+:math:`1 - f` of the term in both.
+
+**Storage.** :math:`q^n` is a copy of :math:`u, v, w, \theta, k` with their ghost cells, held by the ``TimeTerm``
+module (``Source/TimeTerm.H``). The residual reads only its valid points. Without a time term the residual and the
+rows are unchanged, bit for bit. :math:`q^n` is not yet written to the checkpoint; that comes with the unsteady
+outputs. The physical step will come from the input ``unsteady.dt`` with the time driver. Until then the key is not
+read, and a deck that sets it stops with "unknown namespace". The module checks that :math:`\Delta t` is finite and
+positive with a finite :math:`1/\Delta t`.
+
 .. _convergence-criteria:
 
 Convergence criteria

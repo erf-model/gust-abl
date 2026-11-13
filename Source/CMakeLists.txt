@@ -23,6 +23,7 @@ set(GUST_SOURCES
     MassFlux.cpp
     Forcing.cpp
     Residual.cpp
+    TimeTerm.cpp
     SurfaceLayer.cpp
     SurfaceRoughness.cpp
     BuildingForcing.cpp
