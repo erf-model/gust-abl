@@ -74,6 +74,7 @@
 #include <AMReX_Geometry.H>
 
 #include <functional>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -155,7 +156,7 @@ public:
     //! is kept when unsteady.dt equals dt_ref, else it becomes (time, steps). Before the first
     //! advance; aborts, naming io.restart, when time is not finite and >= 0, not below
     //! unsteady.stop_time, or the anchor is not finite, >= 0 and at or before (time, steps).
-    void resume (double time, long steps, double dt_ref, double anchor_time, long anchor_steps);
+    void resume (double time, std::int64_t steps, double dt_ref, double anchor_time, std::int64_t anchor_steps);
 
     //! One physical step (the header's steps 1 to 3). Aborts when the run has already reached
     //! unsteady.stop_time or diverged.
@@ -167,10 +168,10 @@ public:
     //! t^n in double, as the driver sums it.
     [[nodiscard]] double time_exact () const { return m_time; }
     //! The physical steps over the run, the checkpoint's included.
-    [[nodiscard]] long total_steps () const { return m_steps_ref + static_cast<long>(m_records.size()); }
+    [[nodiscard]] std::int64_t total_steps () const { return m_steps_ref + static_cast<std::int64_t>(m_records.size()); }
     //! The fixed step's time anchor: t^N = anchor_time() + (N - anchor_steps()) unsteady.dt.
     [[nodiscard]] double anchor_time () const { return m_anchor_t; }
-    [[nodiscard]] long anchor_steps () const { return m_anchor_n; }
+    [[nodiscard]] std::int64_t anchor_steps () const { return m_anchor_n; }
     [[nodiscard]] const std::vector<StepRecord>& records () const { return m_records; }
     //! The steps that reached unsteady.max_inner without meeting the inner stop.
     [[nodiscard]] int unconverged_steps () const;
@@ -186,9 +187,9 @@ private:
     amrex::Real m_tol;
     GhostFill m_fill;
     double m_time{0};   //!< t^n, in double (n dt for a fixed step)
-    long m_steps_ref{0};   //!< the steps of the checkpoint resumed (resume)
+    std::int64_t m_steps_ref{0}; //!< the steps of the checkpoint resumed (resume)
     double m_anchor_t{0};  //!< the fixed step's time anchor t_*
-    long m_anchor_n{0};    //!< its total step n_a
+    std::int64_t m_anchor_n{0}; //!< its total step n_a
     bool m_done{false};
     bool m_diverged{false};
     std::vector<StepRecord> m_records;

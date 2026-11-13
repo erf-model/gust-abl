@@ -148,7 +148,7 @@ TimeDriver::TimeDriver (const UnsteadyOptions& opt, TimeTerm& term, Driver& driv
     if (!m_fill) { amrex::Abort("gust: TimeDriver: no ghost fill"); }
 }
 
-void TimeDriver::resume (double time, long steps, double dt_ref, double anchor_time, long anchor_steps)
+void TimeDriver::resume (double time, std::int64_t steps, double dt_ref, double anchor_time, std::int64_t anchor_steps)
 {
     if (!m_records.empty()) { amrex::Abort("gust: TimeDriver::resume: after the first step"); }
     if (!std::isfinite(time) || !(time >= 0) || steps < 0) {
@@ -187,7 +187,7 @@ const StepRecord& TimeDriver::advance (State& q)
     m_term.store(q);
     // 3. The inner iterations.
     StepRecord s;
-    s.step = static_cast<int>(m_steps_ref + static_cast<long>(m_records.size())) + 1;
+    s.step = static_cast<int>(m_steps_ref + static_cast<std::int64_t>(m_records.size())) + 1;
     s.dt = dt;
     const amrex::Real drop = std::pow(amrex::Real(10), -m_opt.inner_drop_orders);
     std::vector<amrex::Real> threshold, ref;
@@ -224,7 +224,7 @@ const StepRecord& TimeDriver::advance (State& q)
         // clipped last step (one that ends more than 0.1 % of dt from t_* + (N - n_*) dt) moves the
         // anchor to (stop_time, N), so a restart to a later stop goes on from there; a full last
         // step keeps it, so a chain of restarts at full steps keeps the times of one run.
-        const long N = total_steps() + 1;
+        const std::int64_t N = total_steps() + 1;
         const double fixed = m_anchor_t + double(N - m_anchor_n) * double(m_opt.dt);
         m_time = last ? double(m_opt.stop_time) : (m_opt.cfl > 0 ? m_time + double(dt) : fixed);
         if (last && m_opt.cfl <= 0 && std::abs(m_time - fixed) > 1.0e-3 * double(m_opt.dt)) {

@@ -43,6 +43,7 @@
 #include <AMReX_Geometry.H>
 #include <AMReX_MultiFab.H>
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -131,12 +132,12 @@ private:
 struct UnsteadyRecord
 {
     double time{0};          //!< t^n [s]
-    long steps{0};           //!< physical steps run to t^n
+    std::int64_t steps{0}; //!< physical steps run to t^n
     double dt{0};            //!< the fixed step unsteady.dt [s]; 0 with unsteady.cfl
     double average_start{0}; //!< unsteady.average_start [s]
     double weight{0};        //!< W, the averages' summed weight [s]
     double anchor_time{0};   //!< the fixed step's time anchor t_* [s] (TimeDriver.H)
-    long anchor_steps{0};    //!< its total step n_a
+    std::int64_t anchor_steps{0}; //!< its total step n_a
 };
 
 //! <dir>/Unsteady, text with hex floats (I/O rank).

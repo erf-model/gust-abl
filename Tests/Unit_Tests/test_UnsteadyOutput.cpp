@@ -262,12 +262,12 @@ TEST(UnsteadyOutput, CheckpointRoundTrip)
     avg.write_checkpoint(dir);
     gust::UnsteadyRecord r;
     r.time = 1.0 / 3.0;
-    r.steps = 123456789012L;
+    r.steps = std::int64_t{123456789012};
     r.dt = 0.1;
     r.average_start = 2.0 / 7.0;
     r.weight = avg.weight();
     r.anchor_time = 1.0 / 7.0;
-    r.anchor_steps = 98765432101L;
+    r.anchor_steps = std::int64_t{98765432101};
     gust::write_unsteady_record(dir, r);
     amrex::ParallelDescriptor::Barrier();
 
@@ -463,10 +463,10 @@ TEST(TimeDriver, ResumeContinuesTheTime)
     struct Ran {
         std::vector<gust::StepRecord> records;
         double time{0};
-        long steps{0};
+        std::int64_t steps{0};
         double dt{0};
         double anchor_time{0};
-        long anchor_steps{0};
+        std::int64_t anchor_steps{0};
     };
     auto run = [&] (const gust::UnsteadyOptions& uo, const Ran* from) {
         gust::State q;

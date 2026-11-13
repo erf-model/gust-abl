@@ -770,7 +770,7 @@ void run ()
                 averages->add(state, t0, td.time_exact());
                 if (probes) { probes->write_row(probes_out, td.time_exact(), state); }
                 // Every so many steps; the last step's outputs are the run's final ones, below.
-                const long n = td.total_steps();
+                const std::int64_t n = td.total_steps();
                 if (!td.finished() && uopt.plot_interval > 0 && n % uopt.plot_interval == 0) { write_full_plotfile(td.time()); }
                 if (!td.finished() && uopt.checkpoint_interval > 0 && n % uopt.checkpoint_interval == 0) {
                     const UnsteadyRecord r = record_now();
