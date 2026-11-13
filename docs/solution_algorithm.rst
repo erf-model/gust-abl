@@ -681,9 +681,76 @@ partly inside a building scale the residual and the row by :math:`1 - f` (:doc:`
 **Storage.** :math:`q^n` is a copy of :math:`u, v, w, \theta, k` with their ghost cells, held by the ``TimeTerm``
 module (``Source/TimeTerm.H``). The residual reads only its valid points. Without a time term the residual and the
 rows are unchanged, bit for bit. :math:`q^n` is not yet written to the checkpoint; that comes with the unsteady
-outputs. The physical step will come from the input ``unsteady.dt`` with the time driver. Until then the key is not
-read, and a deck that sets it stops with "unknown namespace". The module checks that :math:`\Delta t` is finite and
-positive with a finite :math:`1/\Delta t`.
+outputs. The module checks that :math:`\Delta t` is finite and positive with a finite :math:`1/\Delta t`.
+
+.. _time-driver:
+
+Time driver
+-----------
+
+With ``steady.stage = unsteady`` the run marches physical time from 0 to ``unsteady.stop_time`` in backward-Euler
+steps (``Source/TimeDriver.H``). Each step does three things.
+
+1. **The step length.** The ghost cells are filled and :math:`\Delta t` is chosen: ``unsteady.dt``, or with
+   ``unsteady.cfl`` > 0 one global step
+
+   .. math::
+
+      \Delta t = \frac{C}{\max_\text{cells}\left(|u_c|/\Delta x + |v_c|/\Delta y + |\Omega_c|/(J\,\Delta\zeta)\right)},
+
+   where :math:`C` is ``unsteady.cfl``, :math:`u_c, v_c` the cell-centred horizontal velocities, :math:`\Omega_c`
+   the cell-centred contravariant vertical velocity and :math:`J\,\Delta\zeta` the cell's height: the convective
+   rate of the local pseudo-time step without its diffusive part or floor. The last step ends the run at
+   ``unsteady.stop_time``: a step within 0.1 % of the time left takes all of it, so no sliver of a step is left.
+   A :math:`\Delta t` that is not finite, or a target CFL over a field at rest (no convective rate), stops the run
+   with a message. The time is accumulated in double precision (:math:`n\,\Delta t` for a fixed step).
+2. **The old state.** :math:`q^n \leftarrow q`, and the time term takes :math:`\Delta t`.
+3. **The inner iterations.** Pseudo-time iterations of the SIMPLEC stage, with the time term, run until every scaled
+   residual satisfies
+
+   .. math::
+
+      R_q^m \le \max\left(10^{-d}\,R_q^1,\ \tau_R\right),
+
+   where :math:`R_q^m` is the norm of equation :math:`q` at inner iteration :math:`m`, :math:`d` is
+   ``unsteady.inner_drop_orders`` and :math:`\tau_R` is ``steady.residual_tol``; or until ``unsteady.max_inner``
+   iterations have run. :math:`R_q^1` is the residual at :math:`q = q^n`, where the time term is zero: the steady
+   residual of the previous step's answer. The floor :math:`\tau_R` ends a step whose start is already steady at once,
+   instead of asking for round-off.
+
+**How far to converge a step.** :math:`R_q^1` is about :math:`|\partial q/\partial t|`, so the inner stop leaves an
+algebraic error of order :math:`10^{-d}\,\Delta t\,|\partial q/\partial t|`, against the backward-Euler error of order
+:math:`\Delta t^2 |\partial^2 q/\partial t^2|/2` per step. In a 1-D model of Stokes' first problem with a slowly
+converging inner solver (point Jacobi), the algebraic error at the end was 3 to 5 times the time error with
+:math:`d = 1`, about half of it with :math:`d = 2` and below a tenth with :math:`d = 3`; with the line sweeps it stayed
+below 0.06 of it for every :math:`d`. The default is :math:`d = 3`; :math:`d = 2` is cheaper where the time history
+need not be accurate (a run to a periodic or settled state).
+
+**Why the steady stop is not used.** The steady verdict also asks the monitors to settle over a window and the
+residual to drop from a reference held over the first iterations. Inside a physical step neither applies: the step's
+answer is not steady, and the reference changes every step. The driver's CFL ramp (SER) runs whatever the verdict says,
+and the ramp and the histories carry on across steps. The hold at ``steady.cfl0`` lasts the first
+``steady.residual_ref_iterations`` inner iterations of the run, which may span several steps (the 2-D hill deck holds
+for 100 iterations, about two and a half steps).
+
+**Restart.** A run may start from a checkpoint of a steady run (``io.restart``). Its physical time starts at 0, the
+state is the checkpoint's, and the driver's history continues: there is no new hold, and the CFL and the residual
+reference are the checkpoint's. A ``steady.stage = simplec_newton`` checkpoint cannot be continued (it has two stages).
+
+**What a step reports.** One line per step: the time, :math:`\Delta t`, the inner iterations and the largest
+:math:`R_q^m / \max(R_q^1, \tau_R)` at the last one. A step that reaches ``unsteady.max_inner`` is marked and the run
+goes on; the summary counts such steps, and the run still exits normally (check the count). A residual that becomes
+NaN or infinite ends the run as diverged. The plotfile carries the physical time; its number is the total of inner
+iterations. With ``io.turb_plot_file`` the residual fields include the time term of the last step, the residual that
+step converged.
+
+**Order.** Backward Euler is first order in :math:`\Delta t`: halving the step halves the time error
+(``TimeDriver.StokesFirstProblemFirstOrder``, Stokes' first problem against its erfc profile).
+
+**Not supported yet.** Grid sequencing, the Newton stage, the hybrid upwind blend (``convection.hybrid_sigma_max`` > 0:
+it follows the inner residual, so the operator would change within and between steps), the checkpoint of :math:`q^n` and the time, and time
+averages and probes. A deck that asks for sequencing (``steady.sequencing = 1``) or a checkpoint stops with a message;
+the checkpoint is on by default, so an unsteady deck sets ``io.write_checkpoint = 0``.
 
 .. _convergence-criteria:
 

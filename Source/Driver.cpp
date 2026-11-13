@@ -215,7 +215,8 @@ SteadyOptions read_steady_options ()
         if (stage == "none") { opt.stage = StageKind::none; }
         else if (stage == "simplec") { opt.stage = StageKind::simplec; }
         else if (stage == "simplec_newton") { opt.stage = StageKind::simplec_newton; }
-        else { amrex::Abort("gust: steady.stage = " + stage + ": must be none, simplec or simplec_newton"); }
+        else if (stage == "unsteady") { opt.stage = StageKind::unsteady; }
+        else { amrex::Abort("gust: steady.stage = " + stage + ": must be none, simplec, simplec_newton or unsteady"); }
     }
     std::string machine;
     if (pp.query("machine", machine) && !parse_machine(machine, opt.machine)) {
@@ -466,7 +467,9 @@ SteadyVerdict Driver::step (State& q)
         m_conf_steady = true;
         v = verdict();
     }
-    if (v.status == SteadyStatus::NotSteady) {
+    // An unsteady run (TimeDriver.H) does not stop at the verdict: its CFL ramps on whatever the verdict says
+    // (else a run that settles, or a restart from a steady checkpoint, would freeze the CFL).
+    if (v.status == SteadyStatus::NotSteady || (m_opt.stage == StageKind::unsteady && v.status == SteadyStatus::Steady)) {
         m_h.cfl = next_cfl(r);
         apply_switch_rules(rec.iteration, r, res, q);
     }
@@ -511,7 +514,7 @@ void Driver::restore (const DriverHistory& h_in, State& q)
     if (h.accounts.size() != m_stages.size()) {
         amrex::Abort("gust: Driver::restore: the history has " + std::to_string(h.accounts.size()) + " stages, this driver "
                      + std::to_string(m_stages.size()) + " (a steady.stage = simplec_newton checkpoint cannot continue with "
-                     "steady.stage = simplec)");
+                     "steady.stage = simplec or unsteady)");
     }
     if (h.stage < 0 || h.stage >= static_cast<int>(m_stages.size())) {
         amrex::Abort("gust: Driver::restore: the history's stage " + std::to_string(h.stage) + " does not exist");

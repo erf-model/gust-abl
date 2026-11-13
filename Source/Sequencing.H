@@ -176,6 +176,8 @@ struct RunSetup
 //! With a canopy (Canopy.H), level 0 takes the run's (canopy, built from the
 //! inputs) and a coarse level restricts it (canopy with canopy_fine_detJ, level
 //! 0's detJ) into its own canopy_field.
+//! time: the physical time term of steady.stage = unsteady (TimeTerm.H, on
+//! level 0's layout; level 0 only), set in res_in before the stage copies it.
 //! label prefixes its log lines ("" for level 0, whose lines are those of a
 //! run without sequencing).
 class LevelSolver
@@ -185,7 +187,8 @@ public:
                  const amrex::BoxArray& ba, const amrex::DistributionMapping& dm, const std::string& label,
                  bool newton = false, const amrex::MultiFab* z0_fine = nullptr, const Canopy* canopy = nullptr,
                  const amrex::MultiFab* canopy_fine_detJ = nullptr, BuildingForcing* buildings = nullptr,
-                 const BuildingTke* building_tke = nullptr, const BuildingTheta* building_theta = nullptr);
+                 const BuildingTke* building_tke = nullptr, const BuildingTheta* building_theta = nullptr,
+                 const TimeTerm* time = nullptr);
     // res_in, the stage's copy of it and the driver's diffusivity point into
     // this object: it can be neither copied nor moved.
     LevelSolver (const LevelSolver&) = delete;

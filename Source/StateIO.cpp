@@ -44,7 +44,8 @@ const amrex::Vector<std::string>& plot_var_names ()
 std::string write_plotfile (const std::string& prefix, const State& state,
                             const amrex::Geometry& geom, const amrex::MultiFab* detJ,
                             const amrex::MultiFab* canopy_drag, const amrex::MultiFab* canopy_lad,
-                            const amrex::MultiFab* building_beta, const amrex::MultiFab* building_wall)
+                            const amrex::MultiFab* building_beta, const amrex::MultiFab* building_wall,
+                            amrex::Real time)
 {
     const std::string name = amrex::Concatenate(prefix, state.step, 5);
     const amrex::BoxArray& ba = state.p.boxArray();
@@ -100,7 +101,7 @@ std::string write_plotfile (const std::string& prefix, const State& state,
         amrex::MultiFab::Copy(plt, *building_wall, 0, static_cast<int>(names.size()), 1, 0);
         names.emplace_back("building_wall");
     }
-    amrex::WriteSingleLevelPlotfile(name, plt, names, geom, 0.0, state.step);
+    amrex::WriteSingleLevelPlotfile(name, plt, names, geom, time, state.step);
     amrex::VisMF::Write(state.z_phys_nd, name + "/Level_0/z_phys_nd");
     return name;
 }

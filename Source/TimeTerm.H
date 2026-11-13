@@ -27,9 +27,9 @@
 //
 // q^n is a copy of u, v, w, theta and k with their ghost cells (ngrow_state),
 // taken by store(). Only the valid points are read here. q^n is not yet
-// written to a checkpoint (that comes with the unsteady outputs), and
-// unsteady.dt is not yet read (the stage that steps q^n comes with the time
-// driver; until then a deck that sets it stops at the unknown namespace).
+// written to a checkpoint (that comes with the unsteady outputs). The time
+// driver (TimeDriver.H, steady.stage = unsteady) stores q^n and sets dt at
+// the start of every physical step.
 
 #include "ImplicitOperator.H"
 #include "Residual.H"
@@ -68,6 +68,10 @@ public:
 
     //! A(coef_P) += 1/dt: A holds the implicit coefficients (ImplicitOperator.H) of eq.
     void add_to_implicit (Equation eq, amrex::MultiFab& A) const;
+
+    //! A new physical step (the time driver's last step, or a step from a target CFL): the
+    //! check of the options, its message naming what; aborts.
+    void set_dt (amrex::Real dt, const std::string& what);
 
     [[nodiscard]] amrex::Real dt () const { return m_opt.dt; }
     [[nodiscard]] amrex::Real inverse_dt () const { return m_inv_dt; }

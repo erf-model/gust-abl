@@ -603,6 +603,70 @@ rows (DT8) and the ground and top :math:`w` faces only; the test case has no ope
      - A denormal ``unsteady.dt`` (infinite :math:`1/\Delta t`) accepted
      - ``OptionsNameTheInput``
 
+The one-line mutants of the time driver (``Source/TimeDriver.cpp``, ``Source/TimeTerm.cpp`` and the CFL ramp in
+``Source/Driver.cpp``), each run against ``TimeDriver.*`` on two ranks with the unit-test flags by
+``tools/time_driver_mutants.py`` (macOS arm64, AppleClang). All 16 are killed. TD7 and TD11 survived the first set of tests: every step there ended at the floor
+``steady.residual_tol``, and on flat ground the ghost cells do not enter :math:`\Delta t`. The tests
+``InnerStopIsRelativeToTheStepStart`` and ``StepFromTargetCflFillsTheGhostsFirst`` (a periodic bump) were added for
+them. That the application passes the time term to the stage (``res_in.time`` in ``Source/Sequencing.cpp``) is
+checked by ``rt_unsteady_hill2d``: without it every step stops at ``unsteady.max_inner``.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 6 50 44
+
+   * - Mutant
+     - Change
+     - Failing tests
+   * - TD1
+     - :math:`q^n` stored at the first step only
+     - ``InnerStopIsRelativeToTheStepStart``, ``SteadyProblemReachedAndHeld``, ``StokesFirstProblemFirstOrder``
+   * - TD2
+     - The time term keeps the first step's :math:`\Delta t`
+     - ``LastStepEndsAtStopTime``, ``StepFromTargetCfl``
+   * - TD3
+     - The last step not shortened
+     - ``LastStepEndsAtStopTime``, ``TimeIsStepCountTimesDtAndNoSliver``
+   * - TD4
+     - A tolerance of 1e-6 on the last step (a sliver step is left)
+     - ``TimeIsStepCountTimesDtAndNoSliver``
+   * - TD5
+     - The step from ``unsteady.cfl`` without the CFL
+     - ``StepFromTargetCfl``
+   * - TD6
+     - The inner stop without the floor at ``steady.residual_tol``
+     - ``SteadyProblemReachedAndHeld``
+   * - TD7
+     - The inner stop's reference taken at every iteration
+     - ``InnerStopIsRelativeToTheStepStart``
+   * - TD8
+     - One inner iteration more than ``unsteady.max_inner``
+     - ``MaxInnerIsReported``
+   * - TD9
+     - ``unsteady.inner_drop_orders`` above 15 accepted
+     - ``OptionsNameTheInput``
+   * - TD10
+     - ``unsteady.dt`` with ``unsteady.cfl`` > 0 accepted
+     - ``OptionsNameTheInput``
+   * - TD11
+     - The ghost cells not filled before :math:`\Delta t`
+     - ``StepFromTargetCflFillsTheGhostsFirst``
+   * - TD12
+     - ``set_dt`` does not change :math:`1/\Delta t`
+     - ``LastStepEndsAtStopTime``, ``StepFromTargetCfl``
+   * - TD13
+     - The time a sum of rounded steps for a fixed step
+     - ``TimeIsStepCountTimesDtAndNoSliver``
+   * - TD14
+     - A target CFL over a field at rest accepted
+     - ``StepDtChecks``
+   * - TD15
+     - A step that is not finite accepted
+     - ``StepDtChecks``
+   * - TD16
+     - The CFL ramp of an unsteady run stops at a steady verdict
+     - ``CflRampsOnWhenTheVerdictIsSteady``
+
 The one-line mutants of the Newton stage (``Source/NewtonStage.cpp`` and the switch rules in ``Source/Driver.cpp``),
 each run against ``Driver.*`` and ``NewtonStage.*`` on two ranks with the unit-test flags by
 ``tools/newton_stage_mutants.py`` (macOS arm64, AppleClang). 13 of 15 are killed. N14 and N15 survive: they matter only
@@ -1269,6 +1333,25 @@ Current tests
        upstream u* within 0.25–0.55 m/s, the upstream log law in the lowest three cells within 15 %. Measured: the
        verdict after 4576 iterations (49 s on two ranks), speed-up 0.59/0.50/0.43, u* = 0.354 m/s, every check
        passing (:doc:`solution_algorithm`). Label ``regression``; double only.
+   * - ``rt_unsteady_hill2d``
+     - RT-6.2.1 (plan rev. 6, sub-phase 6.2, beyond the plan): the same hill as unsteady RANS
+       (``Tests/Canonical_RANS/Unsteady_Hill_2D``): ten steps of 60 s from the log-law first guess, each to two orders
+       below its first residual (at most 60 inner iterations), on 2, 1 and 4 ranks. Checks: ten steps of 60 s ending at
+       600 s, none at ``unsteady.max_inner``; the same inner counts on 1 and 4 ranks (measured 48 48 21 18 18 19 19 19
+       19 19) and the same fields within 1e-9 (measured 7e-14 and 0); one step of 1e-3 s converges within 20 inner
+       iterations (measured 12; 60, the limit, without the time term in the stage); the plotfile's header carries
+       600 s; u at the hill top 50 m above the ground moves by more than 0.1 m/s over 600 s (0.134). It checks the
+       driver's bookkeeping and rank independence, not a measured or closed-form answer (the order in :math:`\Delta t`
+       is the unit test's). About 15 s. Label ``regression``; MPI builds.
+   * - ``rt_unsteady_hill2d_from_steady``
+     - The unsteady deck restarted from the 5-iteration checkpoint of ``rt_steady_hill2d_restart_first``: two steps
+       of 60 s to 120 s, the restart and the summary line matched. Label ``regression;smoke``; MPI builds.
+   * - ``abort_unsteady_stop_time_missing``, ``abort_unsteady_dt_and_cfl``, ``abort_unsteady_checkpoint``, ``abort_unsteady_steady_stop_keys``, ``abort_unsteady_hybrid``, ``abort_unsteady_key_without_stage``
+     - The refusals of ``steady.stage = unsteady``, each message matched: ``unsteady.stop_time`` missing,
+       ``unsteady.dt`` with ``unsteady.cfl``, the default ``io.write_checkpoint = 1``, ``steady.max_iterations`` and
+       ``steady.sequencing = 1`` with the unsteady stage, ``convection.hybrid_sigma_max`` > 0 with it, and
+       ``unsteady.dt`` in a steady run. Label
+       ``regression;smoke``.
    * - ``rt_steady_hill2d_lusgs``
      - The 2-D hill with the line LU-SGS sweeps (``inputs_steady_hill2d_lusgs``: two symmetric sweeps,
        CFL cap 16) to the verdict with a two-order drop and ERF's ``check_hill.py --physics``. Measured: 3048
@@ -1646,6 +1729,32 @@ GoogleTest suite
      - UT-6.1.3 (beyond the plan): at :math:`q = q^n` the residual is unchanged in value. That the steady path
        (no time term) is bit-identical is shown by the regression tests, whose golds are unchanged. ``unsteady.dt`` of 0, :math:`-1`, :math:`\infty`, NaN
        and the smallest denormal (infinite :math:`1/\Delta t`) are refused with the input named.
+   * - ``TimeDriver.StokesFirstProblemFirstOrder``
+     - UT-6.2.1 (beyond the plan): a lid started impulsively at 1 m/s over fluid at rest (:math:`\nu` = 0.01 m²/s,
+       1 m deep, 64 layers, four boxes) to :math:`T` = 1 s with :math:`\Delta t` = 0.1, 0.05 and 0.025 s. The
+       differences between successive runs halve: observed order 0.998, within 0.85–1.15. Against Stokes' first
+       problem, :math:`u = U\,\mathrm{erfc}((H - z)/(2\sqrt{\nu T}))`, the error at 0.025 s is 4.2e-3, below 1.5 times
+       the last difference (3.5e-3, the backward-Euler error); the Richardson value :math:`2u_{\Delta t/4} -
+       u_{\Delta t/2}` is within 8.2e-4 (the space error), below 1.5e-3. Double precision only.
+   * - ``TimeDriver.SteadyProblemReachedAndHeld``
+     - UT-6.2.2 (beyond the plan): the same channel from rest with :math:`\Delta t` = 10 s to 300 s reaches the Couette
+       profile :math:`u = Uz/H` within 1.6e-9 (bound 1e-8; single 1e-3). Started on the profile, each of three steps
+       takes one inner iteration and the profile does not change (1e-10).
+   * - ``TimeDriver.LastStepEndsAtStopTime``, ``TimeDriver.StepFromTargetCfl``, ``TimeDriver.MaxInnerIsReported``, ``TimeDriver.OptionsNameTheInput``
+     - 0.25 s in steps of 0.1 s is 0.1, 0.1, 0.05 s, ending at 0.25 s, with the time term's :math:`\Delta t` and
+       :math:`1/\Delta t` those of the last step. ``unsteady.cfl = 0.5`` on the Couette profile gives
+       :math:`\Delta t = 0.5\,\Delta x/u_\mathrm{top}` from ``advance`` (which fills the ghost cells) and from
+       ``convective_dt``. With ``unsteady.max_inner = 2`` and an unreachable stop, both steps take 2 inner iterations,
+       are counted as unconverged and their log line says so. Each range check names its key: ``stop_time`` missing,
+       0, :math:`-1`, :math:`\infty`, NaN; ``dt`` missing or 0; ``dt`` with ``cfl`` > 0; ``cfl`` :math:`-1` or NaN;
+       ``inner_drop_orders`` 0, 16 or NaN; ``max_inner`` 0.
+   * - ``TimeDriver.TimeIsStepCountTimesDtAndNoSliver``, ``TimeDriver.StepDtChecks``, ``TimeDriver.CflRampsOnWhenTheVerdictIsSteady``
+     - 1.00005 s in steps of 0.1 s is ten steps, the last 0.10005 s (within 0.1 % of the time left), not eleven with a
+       sliver; the time of step :math:`n` is exactly :math:`n` times 0.1 in double (nine sums of 0.1 are not). A
+       :math:`\Delta t` of 0, :math:`\infty` or NaN is refused naming ``unsteady.dt`` or ``unsteady.cfl``, and
+       ``convective_dt`` over the channel at rest gives a step refused as "at rest". With a steady criterion met at once
+       (tolerance 1e30, no drop, window 2) and ``steady.ser_max_growth = 1.1``, the verdict is Steady and the CFL
+       still ramps above 2 over the Stokes run (from rest to 1 s in steps of 0.1 s).
    * - ``CanopyTke.SourcesHaveTheirClosedForms``
      - UT-8.3.1: with a uniform 5 m/s wind, :math:`P_c = \beta_p f |U|^3` and :math:`D_c = \beta_d f |U| k` on every
        cell; where :math:`k = \beta_p |U|^2/\beta_d` they balance; the Patankar diagonal gains :math:`\beta_d f |U|`
