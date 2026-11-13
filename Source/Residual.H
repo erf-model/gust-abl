@@ -8,6 +8,9 @@
 //   R_theta = C(theta) - D_gamma(theta)
 //   R_k     = C_bounded,upwind(k) - D_gamma_k(k)
 //
+// and, for an unsteady run (ResidualInputs::time, TimeTerm.H), the physical
+// time term (q - q^n)/dt added to every equation but continuity.
+//
 // with C, D the convection and diffusion operators (Convection.H,
 // Diffusion.H), G and D(U) the pressure gradient and divergence
 // (MassFlux.H), and S the sources (Forcing.H): buoyancy on w, Coriolis and
@@ -62,6 +65,7 @@ class BuildingTheta;
 class CanopyFaceDrag;
 class CanopyHeat;
 struct CanopyRows;
+class TimeTerm;
 
 class BoundaryConditions;
 
@@ -161,6 +165,10 @@ struct ResidualInputs
     //! The buildings' terms of theta (BuildingTheta.H); null: none. Needs buildings, whose
     //! rates give the walls' heat exchange.
     const BuildingTheta* building_theta{nullptr};
+    //! The physical time term (q - q^n)/dt of dual time stepping (TimeTerm.H); null: steady. The
+    //! residual adds it to u, v, w, theta and k, and implicit_rows adds 1/dt to their diagonals,
+    //! both before the rows that replace their own (the wall-k, Dirichlet and building rows).
+    const TimeTerm* time{nullptr};
 };
 
 //! Scratch fields of residual() and jvp, kept between calls so that a

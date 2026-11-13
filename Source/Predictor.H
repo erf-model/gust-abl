@@ -80,7 +80,8 @@
 // amplifies it by (1 + f^2 dtau^2)^(1/2). In the same way as the buoyancy,
 // with tau_c = 1 / max(|f| / r, a_P - sum a_nb), r = rotation_relax in
 // (0, 1] (simplec.rotation_relax, 0.3) and a_P - sum a_nb the row's net
-// implicit diagonal (the wall drag, the damping and the value folds; the
+// implicit diagonal (the wall drag, the damping, the value folds and, with
+// the physical time term of TimeTerm.H, 1/dt; the
 // transport weights cancel against their neighbours), the u and v rows gain
 // f^2 max(tau_c, tau_own) on the diagonal (and d) and the Coriolis force
 // of the change the other component's residual predicts on the right-hand

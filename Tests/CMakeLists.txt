@@ -35,6 +35,7 @@ add_executable(unit_tests
     Unit_Tests/test_ImplicitOperator.cpp
     Unit_Tests/test_MassFlux.cpp
     Unit_Tests/test_Residual.cpp
+    Unit_Tests/test_TimeTerm.cpp
     Unit_Tests/test_ResidualWorkspace.cpp
     Unit_Tests/test_SurfaceLayer.cpp
     Unit_Tests/test_SurfaceRoughness.cpp

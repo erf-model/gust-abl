@@ -563,6 +563,46 @@ with the unit-test flags, F8–F15 and F20–F23 against the CTests ``rt_frozen_
      - The levels do not extend θ below the ground
      - ``rt_frozen_theta`` (first-cell Rt of the file-profile run)
 
+The one-line mutants of the physical time term (``Source/TimeTerm.cpp``, ``Source/Residual.cpp``), each run
+against ``TimeTerm.*`` on two ranks with the unit-test flags by ``tools/time_term_mutants.py`` (macOS arm64,
+AppleClang). All 9 are killed. The order of the term against the boundary and building rows is checked for the wall-k
+rows (DT8) and the ground and top :math:`w` faces only; the test case has no open faces and no buildings.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 6 50 44
+
+   * - Mutant
+     - Change
+     - Failing tests
+   * - DT1
+     - The time term with the wrong sign
+     - ``ResidualGainsTheClosedFormOnItsOwnRows``, ``DiagonalIsTheDerivativeOfTheTimeTerm``
+   * - DT2
+     - A factor 2 on :math:`1/\Delta t` in the residual
+     - ``ResidualGainsTheClosedFormOnItsOwnRows``, ``DiagonalIsTheDerivativeOfTheTimeTerm``
+   * - DT3
+     - A factor 2 on :math:`1/\Delta t` on the diagonal
+     - ``DiagonalIsTheDerivativeOfTheTimeTerm``
+   * - DT4
+     - :math:`q^n` taken from the current iterate
+     - ``ResidualGainsTheClosedFormOnItsOwnRows``, ``DiagonalIsTheDerivativeOfTheTimeTerm``
+   * - DT5
+     - ``store()`` does not copy :math:`q`
+     - ``NoChangeAtTheStoredState``
+   * - DT6
+     - The residual without the time term
+     - ``ResidualGainsTheClosedFormOnItsOwnRows``, ``DiagonalIsTheDerivativeOfTheTimeTerm``
+   * - DT7
+     - ``implicit_rows`` without :math:`1/\Delta t`
+     - ``DiagonalIsTheDerivativeOfTheTimeTerm``
+   * - DT8
+     - The time term added after the ``dirichlet`` wall-k rows
+     - ``ResidualGainsTheClosedFormOnItsOwnRows``
+   * - DT9
+     - A denormal ``unsteady.dt`` (infinite :math:`1/\Delta t`) accepted
+     - ``OptionsNameTheInput``
+
 The one-line mutants of the Newton stage (``Source/NewtonStage.cpp`` and the switch rules in ``Source/Driver.cpp``),
 each run against ``Driver.*`` and ``NewtonStage.*`` on two ranks with the unit-test flags by
 ``tools/newton_stage_mutants.py`` (macOS arm64, AppleClang). 13 of 15 are killed. N14 and N15 survive: they matter only
@@ -1592,6 +1632,20 @@ GoogleTest suite
      - The residual's momentum rows gain exactly the sink and ``implicit_rows``' :math:`a_P` exactly the diagonal
        (the off-diagonal coefficients and the :math:`\theta` rows unchanged); without the drag's rows
        ``implicit_rows`` refuses a canopy.
+   * - ``TimeTerm.ResidualGainsTheClosedFormOnItsOwnRows``
+     - UT-6.1.1 (beyond the plan): on the 2-D hill (k–L closure, wall law with ``dirichlet`` wall-k rows, slip top,
+       Rayleigh damping, four boxes) with a smooth non-uniform :math:`q - q^n`, the residual of :math:`u, v, w,
+       \theta, k` gains :math:`(q - q^n)/\Delta t` (1e-12 relative) on every row that keeps its residual, and nothing
+       on the ground and top :math:`w` faces and the first cells' wall-k rows; :math:`p` is bit-identical.
+   * - ``TimeTerm.DiagonalIsTheDerivativeOfTheTimeTerm``
+     - UT-6.1.2 (beyond the plan): ``implicit_rows``' off-diagonal coefficients are bit-identical with and without
+       the term; :math:`a_P` gains exactly :math:`1/\Delta t`, or nothing on the identity rows (counted); the change
+       of the time term's residual along a direction equals :math:`a_P`'s change times that direction (one-sided
+       difference, exact for a linear term up to round-off; 1e-6 relative).
+   * - ``TimeTerm.NoChangeAtTheStoredState``, ``TimeTerm.OptionsNameTheInput``
+     - UT-6.1.3 (beyond the plan): at :math:`q = q^n` the residual is unchanged in value. That the steady path
+       (no time term) is bit-identical is shown by the regression tests, whose golds are unchanged. ``unsteady.dt`` of 0, :math:`-1`, :math:`\infty`, NaN
+       and the smallest denormal (infinite :math:`1/\Delta t`) are refused with the input named.
    * - ``CanopyTke.SourcesHaveTheirClosedForms``
      - UT-8.3.1: with a uniform 5 m/s wind, :math:`P_c = \beta_p f |U|^3` and :math:`D_c = \beta_d f |U| k` on every
        cell; where :math:`k = \beta_p |U|^2/\beta_d` they balance; the Patankar diagonal gains :math:`\beta_d f |U|`
