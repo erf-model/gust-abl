@@ -1528,6 +1528,34 @@ Current tests
      - A misplaced patch (shifted 10 m, 20 cells in y), ``nest`` with ``steady.sequencing = 1``, a profile key with
        ``nest``, ``nest`` without ``bc.nest_parent``, ``bc.nest_parent`` without ``nest`` and a directory with no
        checkpoint ``Header`` each stop the run, naming the key.
+   * - ``rt_nest_validation_hill`` (fixtures ``rt_nest_validation_clean``, ``_parent``, ``_reference``, ``_d400``, ``_d600``)
+     - One-way nesting against a uniform fine run (``Tests/Canonical_RANS/Nest_Validation``; sub-phase 9.3, beyond
+       the plan): a 150 m round Agnesi hill of half-width 250 m in 3200 m × 2400 m. The whole domain runs to steady
+       on 100 m cells (the parent, 103 iterations) and on 50 m cells (the reference, 107), each in four boxes on two
+       ranks, and 50 m patches of half-width 400 m (four boxes, two ranks) and 600 m (six boxes of 12 × 8 cells,
+       three ranks) run to steady with four
+       ``nest`` faces. ``nest_validation.py compare``: the RMS of the velocity-vector difference between the 600 m
+       patch and the reference over the hill (within 250 m of the centre, below 100 m) is at most 0.2 % of the
+       speed scale 7.313 m/s (measured 0.091 %), at most a quarter of the parent's (2.362 %), and not
+       above the 400 m patch's (0.348 %). Double precision only. Mutants: six one-line mutants. Four fail it: the rows
+       of the high nest faces missing and the face row without the parent's value (``Source/NestFaces.cpp``; the
+       patches then miss the steady verdict), the script comparing one reference cell off in x, and the hill region
+       misplaced. Two leave the three numbers unchanged to the digits printed: the ghost fill of the nest faces not
+       called, and one ghost layer filled in place of all. The first guess (``init.first_guess = nest``) already puts
+       the parent's values in both ghost layers and nothing overwrites them, so a run from the first guess does not
+       exercise the fill of each iteration; a restart does, and ``rt_nest_faces_restart_matches`` fails on both.
+       This test does not cover the ghost fill.
+   * - ``rt_nest_validation_study`` (``nightly``; fixture ``rt_nest_validation_study_clean``)
+     - The study of the case README on four ranks: the 25 m and 12.5 m references, one nest from a 50 m parent at
+       half-widths 400 to 1000 m, the relaxation zone, a chain of three nests from 100 m, and the 600 m patch in four
+       boxes on 1, 2 and 4 ranks. Targets T1 to T5 of
+       the README are the verdict (:doc:`boundary_conditions`, *Where to put the nest faces*).
+   * - ``rt_askervein_nest_study`` (``nightly``; fixture ``rt_askervein_nest_clean``)
+     - One-way nesting on Askervein (``Tests/Real_Terrain/Askervein_Nest``) on four ranks: the 40 m parent, the 20 m
+       reference and 20 m patches of half-width 1000, 1400 and 2000 m around the hilltop. The 10 m speeds at the 30
+       masts of lines A and AA against the reference: the patches of 1400 and 2000 m at most half the parent's RMS
+       difference (measured 0.035 and 0.015 % against 1.208 %), no growth with the half-width, and no net-flux
+       warning (targets A1 to A3).
    * - ``rt_nest_faces_flat``, ``rt_nest_faces_flat_zone`` (fixtures ``rt_nest_faces_clean``, ``rt_nest_faces_flat_parent``)
      - A patch at 2 2 1 with four ``nest`` faces on flat ground (``Tests/Canonical_RANS/Nest_Faces``; sub-phase 9.2,
        beyond the plan). The parent (32 × 24 × 16 cells of 50 m, periodic in y, log-law inflow from 20°, neutral)

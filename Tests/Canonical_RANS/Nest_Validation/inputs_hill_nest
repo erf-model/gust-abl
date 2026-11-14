@@ -3,12 +3,12 @@
 # at refinement 2 2 1 of its parent, with four nest faces and the parent's
 # field as the first guess. nest_validation.py gives the patch's place and
 # cells (mesh.prob_lo, mesh.prob_hi, mesh.n_cell), its parent
-# (bc.nest_parent) and, for the zone comparison, bc.nest_relax_width on the
-# command line, and names the outputs. The hill of terrain.type = agnesi is
+# (bc.nest_parent), the boxes (mesh.max_grid_size, 48 unless the command gives
+# it) and, for the zone comparison, bc.nest_relax_width on the command line,
+# and names the outputs. The hill of terrain.type = agnesi is
 # centred in the domain, so a patch centred on (1600, 1200) m has the parent's
 # hill.
 mesh.is_periodic   = 0 0 0
-mesh.max_grid_size = 48
 mesh.dz0           = 10.
 
 terrain.type            = agnesi
