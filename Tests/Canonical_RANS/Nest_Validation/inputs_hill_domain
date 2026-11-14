@@ -1,0 +1,34 @@
+# The whole domain of the one-way nesting validation (sub-phase 9.3, beyond
+# plan rev. 6): a 150 m round Witch of Agnesi hill (half-width a = 250 m) in the
+# middle of 3200 m x 2400 m x 800 m, first layer 10 m, periodic in
+# y, a log-law inflow (u* = 0.4 m/s, z0 = 0.1 m) from 20 degrees at xlo,
+# outflow at xhi, the surface layer below and a slip top; the SIMPLEC stage to
+# the steady verdict. The deck is Nest_Faces/inputs_hill_parent on a domain
+# twice as long and wide, so that the nest faces can be moved away from the
+# hill. nest_validation.py gives the horizontal cells on the command line
+# (mesh.n_cell: 100, 50, 25 or 12.5 m cells; 16 layers in every run) and names the outputs.
+mesh.prob_lo       = 0. 0. 0.
+mesh.prob_hi       = 3200. 2400. 800.
+mesh.is_periodic   = 0 1 0
+mesh.dz0           = 10.
+
+terrain.type            = agnesi
+terrain.hill_shape      = round
+terrain.hill_height     = 150.
+terrain.hill_half_width = 250.
+terrain.smoothing       = 0
+
+bc.xlo = inflow
+bc.xhi = outflow
+bc.zlo = surface_layer
+bc.zhi = slip_wall
+bc.surface_z0 = 0.1
+bc.inflow_profile   = log_law
+bc.inflow_ustar     = 0.4
+bc.inflow_z0        = 0.1
+bc.inflow_direction = 20.
+
+init.first_guess = profile
+
+steady.stage          = simplec
+steady.max_iterations = 4000

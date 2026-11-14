@@ -1,0 +1,45 @@
+# A nested patch of the Askervein one-way nesting validation (sub-phase 9.3,
+# beyond plan rev. 6): a square of half-width D centred on the hilltop HT
+# (0, 0), at refinement 2 2 1 of the 40 m run of inputs_askervein_domain (20 m
+# cells, the same 18 layers), with four nest faces and the parent's field as
+# the first guess. askervein_nest.py gives the patch's place and cells
+# (mesh.prob_lo, mesh.prob_hi, mesh.n_cell), the terrain, the parent
+# (bc.nest_parent) and the outputs on the command line. Line LU-SGS without
+# grid sequencing (a nest face is refused with it). The ground is
+# extern_erf/askervein.txt sampled on the 20 m cells; the parent's is the same
+# file on 40 m cells, so the two differ on the nest faces, and
+# terrain.nest_blend_width takes the patch's ground to the parent's there.
+mesh.is_periodic   = 0 0 0
+mesh.max_grid_size = 64
+mesh.dz0           = 20.
+mesh.stretch_ratio = 1.08
+
+terrain.type             = erf_grid
+terrain.smoothing        = 0
+terrain.nest_blend_width = 200.
+
+bc.xlo = nest
+bc.xhi = nest
+bc.ylo = nest
+bc.yhi = nest
+bc.zlo = surface_layer
+bc.zhi = slip_wall
+bc.surface_z0      = 0.03
+bc.theta_profile_z = 0.
+bc.theta_profile   = 300.
+bc.rayleigh_zdamp    = 499.0048747962329
+bc.rayleigh_dampcoef = 0.2
+bc.rayleigh_fields   = w
+
+init.first_guess = nest
+
+solver.poisson_reltol   = 1.e-10
+solver.poisson_max_iter = 200
+
+forcing.gravity = 0.
+
+turb.tke_floor = 1.e-6
+
+steady.stage          = simplec
+steady.sweep          = lusgs
+steady.max_iterations = 20000

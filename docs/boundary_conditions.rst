@@ -422,6 +422,107 @@ hold every box's minimum and maximum), the patch's place in the parent, the zone
 width. A restart with other settings, or with another parent, stops, naming ``io.restart``. The parent's path is not
 part of the record: the parent may be moved.
 
+**Where to put the nest faces** (measured; sub-phase 9.3, beyond the plan). A patch was compared with a uniform run of
+the whole domain on the patch's cells, on a 150 m round Agnesi hill of half-width :math:`a` = 250 m
+(``Tests/Canonical_RANS/Nest_Validation``) and on Askervein (``Tests/Real_Terrain/Askervein_Nest``). :math:`D` is the
+half-width of a square patch centred on the hill. On the hill the difference is the RMS of the velocity-vector
+difference over the cells within :math:`a` of the centre and below 100 m, as a share of the speed scale
+:math:`(u_*/0.4)\ln(h/z_0)` = 7.31 m/s (the inflow speed at the hill's height :math:`h` is 7.14 m/s, with the solver's
+:math:`\kappa` = 0.41); *lee* is a square of half-width :math:`a` centred :math:`2a` downwind; *faces* is the two rings of
+cells beside the nest faces. One nest from a 50 m parent against the 25 m run:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 28 12 12 12 12 12 12
+
+   * - Run
+     - Cells
+     - Iterations
+     - Hill (%)
+     - Lee (%)
+     - Faces (%)
+     - Faces, largest (%)
+   * - 25 m, whole domain (the reference)
+     - 196 608
+     - 91
+     -
+     -
+     -
+     -
+   * - 50 m, whole domain (the parent)
+     - 49 152
+     - 107
+     - 0.700
+     - 0.541
+     - 0.133
+     - 1.826
+   * - Patch, :math:`D = 1.6a`
+     - 16 384
+     - 124
+     - 0.082
+     - 0.268
+     - 0.126
+     - 1.211
+   * - **Patch,** :math:`D = 2.4a`
+     - 36 864
+     - 131
+     - 0.019
+     - 0.247
+     - 0.125
+     - 1.391
+   * - Patch, :math:`D = 3.2a`
+     - 65 536
+     - 125
+     - 0.011
+     - 0.102
+     - 0.128
+     - 1.551
+   * - Patch, :math:`D = 4a`
+     - 102 400
+     - 122
+     - 0.008
+     - 0.031
+     - 0.131
+     - 1.690
+
+(The lee region reaches :math:`2.9a` downwind, so the patches of :math:`D = 1.6a` and :math:`2.4a` hold only part of
+it, ending on a nest face; over those parts the parent is 0.440 and 0.508 %. The parent's other numbers are over the
+regions of the :math:`D = 4a` patch.)
+
+- Over the hill the patch is within 0.02 % of the uniform fine run once the nest faces are :math:`2.4a` from the
+  hill's centre, against 0.70 % for the parent.
+- Beside the nest faces the patch keeps the parent's difference from the fine run (0.13 % RMS; 1.2 to 1.7 % at the
+  largest point, where the hill's wake leaves through a face).
+- *Rule (from this one case: attached flow, one wind direction,* :math:`a` *= five parent cells):* keep every nest
+  face at least one hill half-width beyond the region whose results are used. Faces :math:`0.3a` to :math:`0.6a`
+  beyond the region gave 0.08 to 0.10 %; faces :math:`1.1a` to :math:`1.4a` beyond gave 0.02 to 0.03 %. Whether the
+  distance scales with the hill or with the parent's cells is not separated by this case.
+- A chain of three nests from a 100 m run (50, 25 and 12.5 m cells; :math:`D = 4a`, :math:`3.2a`, :math:`2.4a`) was
+  within 0.044 % of the uniform 12.5 m run over the hill (the 100 m run: 3.11 %), with 250 880 cells in the four runs
+  against 786 432. No single 12.5 m nest from a uniform 25 m parent was run, so what the chain adds is not separated
+  from the finer cells.
+- The relaxation zone (3 and 5 cells, factor 1, at :math:`D = 2.4a`) changes none of these numbers by more than
+  0.001 %.
+- To the steady verdict a patch takes more iterations (122 to 131) than the uniform fine run started from the inflow
+  profile (91). The verdict is relative to each run's own first residuals, which the parent's field lowers (u: 0.015
+  against 0.37), and in these neutral runs the patch's last equation to pass is θ at its floor. The patch reaches
+  the fine run's final momentum residuals between iterations 70 and 80, and the two converge at the same rate. The
+  saving is in the cells.
+- On 1, 2 and 4 ranks (:math:`D = 2.4a` in four boxes) the patch takes 127 iterations and the fields agree to
+  7e-14 of the speed scale.
+
+On Askervein (40 m parent, 20 m patches centred on the hilltop, ``terrain.nest_blend_width = 200``; the masts of
+lines A and AA lie within 870 m of the hilltop in x and in y) the 10 m speeds at the 30 masts differ from the uniform 20 m run by
+0.076 %, 0.035 % and 0.015 % RMS for :math:`D` = 1000, 1400 and 2000 m (180 000, 352 800 and 720 000 cells against
+1 620 000), and by 1.21 % for the parent. At :math:`D` = 1000 m one mast (line A, 130 m from a face) lies in the ground
+blend, where the patch's ground differs from the reference's by up to 0.05 m; without it the RMS is 0.077 %. All
+numbers are from macOS arm64, double precision, four ranks.
+
+What these comparisons do not cover: the reference is the same solver with the same closure, so they measure the
+nesting error, not accuracy; neutral flow, refinement 2 2 1 with the same layers in every run, one wind direction per
+case; the flow over the hill is attached (no recirculation reaches a nest face); the patches are centred squares away
+from the domain's own boundaries; the zone was tried with factor 1 at one patch size.
+
 **Limits.**
 
 - Results on different numbers of ranks or box layouts agree to the steady tolerance, not bit for bit (the line sweeps

@@ -165,6 +165,8 @@ set(INIT_CASE           ${CMAKE_CURRENT_SOURCE_DIR}/Initialization/Mass_Consiste
 set(BUMP_CASE           ${CMAKE_CURRENT_SOURCE_DIR}/Initialization/Bump_Speedup_Trend)
 set(NEST_CASE           ${CMAKE_CURRENT_SOURCE_DIR}/Initialization/Nest_Patch_Hill)
 set(NEST_FACES_CASE     ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Nest_Faces)
+set(NEST_VALID_CASE     ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Nest_Validation)
+set(ASKERVEIN_NEST_CASE ${CMAKE_CURRENT_SOURCE_DIR}/Real_Terrain/Askervein_Nest)
 set(COLUMN_CASE         ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Neutral_Column)
 set(FLAT_CASE           ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Neutral_ABL_Flat)
 set(THIN_CELL_CASE      ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Thin_Cell_Flat)
@@ -1640,6 +1642,62 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
                   PREFIX ${EXPECT_ABORT} "terrain\\.nest_blend_width has no effect without a nest face" --
                   COMMAND $<TARGET_FILE:gust> ${NEST_FACES_CASE}/inputs_hill_parent terrain.nest_blend_width=50
                           ${GUST_TEST_AMREX_FLAGS})
+    # One-way nesting against a uniform fine run (Nest_Validation, sub-phase
+    # 9.3, beyond the plan): a 150 m hill in 3200 m x 2400 m. The smoke set
+    # runs the whole domain on 100 m cells (the parent) and on 50 m cells (the
+    # reference), and 50 m patches of half-width 400 and 600 m with four nest
+    # faces. The 600 m patch must be within 0.2 % of U_ref of the reference
+    # over the hill (RMS; measured 0.091 %), at most a quarter of its
+    # parent's difference (measured 2.36 %), and not above the 400 m patch
+    # (0.348 %). The nightly study is the README's: 25 m and 12.5 m
+    # references, one nest at four sizes, the zone and the chain of three,
+    # and D = 600 m on 1, 2 and 4 ranks, with targets T1 to T5. The smoke runs
+    # have four boxes each (the parent, the reference and the 400 m patch on
+    # two ranks) or six (the 600 m patch on three).
+    set(NESTV_DIR ${CMAKE_CURRENT_BINARY_DIR}/run/rt_nest_validation)
+    set(NESTV ${Python3_EXECUTABLE} ${NEST_VALID_CASE}/nest_validation.py)
+    add_test(NAME rt_nest_validation_clean
+             COMMAND ${Python3_EXECUTABLE} -c
+                     "import os, shutil, sys; [ (shutil.rmtree(d, ignore_errors=True), os.makedirs(d)) for d in sys.argv[1:] ]"
+                     ${NESTV_DIR})
+    set_tests_properties(rt_nest_validation_clean PROPERTIES LABELS "regression;smoke"
+                         FIXTURES_SETUP nest_validation_clean)
+    add_test(NAME rt_nest_validation_study_clean
+             COMMAND ${Python3_EXECUTABLE} -c
+                     "import os, shutil, sys; [ (shutil.rmtree(d, ignore_errors=True), os.makedirs(d)) for d in sys.argv[1:] ]"
+                     ${NESTV_DIR}_study)
+    set_tests_properties(rt_nest_validation_study_clean PROPERTIES LABELS "nightly"
+                         FIXTURES_SETUP nest_validation_study_clean)
+    gust_add_test(NAME rt_nest_validation_parent NP 2 LABELS "regression;smoke" RUN_DIR ${NESTV_DIR}
+                  FIXTURES_REQUIRED nest_validation_clean FIXTURES_SETUP nest_validation_parent
+                  PREFIX ${NESTV} run par100 100 --
+                  COMMAND $<TARGET_FILE:gust> ${NEST_VALID_CASE}/inputs_hill_domain "mesh.max_grid_size=16 12"
+                          ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME rt_nest_validation_reference NP 2 LABELS "regression;smoke" RUN_DIR ${NESTV_DIR}
+                  FIXTURES_REQUIRED nest_validation_clean FIXTURES_SETUP nest_validation_reference
+                  PREFIX ${NESTV} run ref50 50 --
+                  COMMAND $<TARGET_FILE:gust> ${NEST_VALID_CASE}/inputs_hill_domain "mesh.max_grid_size=32 24"
+                          ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME rt_nest_validation_d400 NP 2 LABELS "regression;smoke" RUN_DIR ${NESTV_DIR}
+                  FIXTURES_REQUIRED nest_validation_parent FIXTURES_SETUP nest_validation_d400
+                  PREFIX ${NESTV} nest d400 par100 400 --
+                  COMMAND $<TARGET_FILE:gust> ${NEST_VALID_CASE}/inputs_hill_nest "mesh.max_grid_size=8"
+                          ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME rt_nest_validation_d600 NP 3 LABELS "regression;smoke" RUN_DIR ${NESTV_DIR}
+                  FIXTURES_REQUIRED nest_validation_parent FIXTURES_SETUP nest_validation_d600
+                  PREFIX ${NESTV} nest d600 par100 600 --
+                  COMMAND $<TARGET_FILE:gust> ${NEST_VALID_CASE}/inputs_hill_nest "mesh.max_grid_size=13 9"
+                          ${GUST_TEST_AMREX_FLAGS})
+    add_test(NAME rt_nest_validation_hill
+             COMMAND ${NESTV} compare d600 ref50 par100 --rms-hill 2e-3 --ratio 0.25 --below d400
+             WORKING_DIRECTORY ${NESTV_DIR})
+    set_tests_properties(rt_nest_validation_hill PROPERTIES LABELS "regression;smoke"
+                         FIXTURES_REQUIRED "nest_validation_reference;nest_validation_d400;nest_validation_d600")
+    gust_add_test(NAME rt_nest_validation_study NP 4 LABELS "nightly" RUN_DIR ${NESTV_DIR}_study
+                  FIXTURES_REQUIRED nest_validation_study_clean
+                  PREFIX ${NESTV} study --
+                  COMMAND $<TARGET_FILE:gust> -- ${GUST_TEST_AMREX_FLAGS})
+    set_tests_properties(rt_nest_validation_study PROPERTIES TIMEOUT 7200)
     # The Tucker wall distance on ERF's Neutral_Hill_2D mesh: ERF's
     # wall-distance checks (Tests/Discretization/Wall_Distance/check_walldist.py), and the field against
     # Gold/walldist_hill2d_plt00000, at double-precision tolerances (double
@@ -2322,6 +2380,20 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
     set_tests_properties(rt_askervein_210_zjacobi_matches PROPERTIES LABELS "nightly"
                     FIXTURES_REQUIRED "askervein_210_zjacobi;askervein_210_lines"
                     ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
+    # One-way nesting on Askervein (Askervein_Nest, sub-phase 9.3, beyond the
+    # plan): the 40 m parent, the 20 m reference and 20 m patches of half-width
+    # 1000, 1400 and 2000 m around the hilltop; the 10 m speeds at the masts of
+    # lines A and AA against the reference, targets A1 to A3 of the README.
+    set(ASKNEST_DIR ${CMAKE_CURRENT_BINARY_DIR}/run/rt_askervein_nest)
+    add_test(NAME rt_askervein_nest_clean
+             COMMAND ${Python3_EXECUTABLE} -c "import os, shutil, sys; [ (shutil.rmtree(d, ignore_errors=True), os.makedirs(d)) for d in sys.argv[1:] ]"
+                ${ASKNEST_DIR})
+    set_tests_properties(rt_askervein_nest_clean PROPERTIES LABELS "nightly" FIXTURES_SETUP askervein_nest_clean)
+    gust_add_test(NAME rt_askervein_nest_study NP 4 LABELS "nightly" RUN_DIR ${ASKNEST_DIR}
+                  FIXTURES_REQUIRED askervein_nest_clean
+                  PREFIX ${Python3_EXECUTABLE} ${ASKERVEIN_NEST_CASE}/askervein_nest.py study --
+                  COMMAND $<TARGET_FILE:gust> -- ${GUST_TEST_AMREX_FLAGS})
+    set_tests_properties(rt_askervein_nest_study PROPERTIES TIMEOUT 7200 ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
     # Old against new for bc.inflow_tke_length: the line LU-SGS run with the
     # inflow k of before (unbounded length) reaches the lines of that run
     # (Gold/askervein_210_lines_unbounded.csv, #43) to 1e-4.
