@@ -28,6 +28,9 @@ Boundary types
    * - ``outflow``
      - x, y
      - Zero normal gradient for every field; :math:`p = 0`.
+   * - ``nest``
+     - x, y
+     - The parent run's field on the face of a nested patch (`Nest faces`_).
    * - ``slip_wall``
      - all
      - No flow through the face; no stress along it. At the top, :math:`\theta` may have a given gradient
@@ -296,11 +299,152 @@ residual:
 In stratified flow over a hill, damp :math:`\theta` together with :math:`w`. Gravity waves exchange energy between
 the two, and on ERF's 2-D hill damping :math:`w` alone let the pseudo-time iteration grow.
 
+Nest faces
+----------
+
+A *patch* is a finer run inside a finished, coarser *parent* run (:doc:`initial_conditions`). A lateral face of the
+patch with ``bc.<face> = nest`` takes its values from the parent's checkpoint (``bc.nest_parent``). The nesting is one
+way: the parent is not changed. The code is in ``Source/NestFaces``.
+
+On a nest face:
+
+- the normal velocity on the face is the parent's (a Dirichlet row);
+- the two ghost layers outside it hold the parent's :math:`u, v, w, \theta` and :math:`k`, interpolated at the ghost
+  points themselves (bilinear per :math:`\zeta`-level, as the first guess);
+- :math:`p'` has zero gradient through the face.
+
+One face may hold parts where the parent's flow enters and parts where it leaves. A patch with a nest face must start
+from the parent's field (``init.first_guess = nest``) or from a restart, and is refused with grid sequencing. A nest
+face may be combined with ``periodic`` and ``outflow`` faces; with an ``inflow`` face only if there is an
+``outflow`` face as well. A lateral wall beside a nest face is refused: the parent's flow crosses that face, and the
+first guess is the parent's field.
+
+**Net flux.** With zero-gradient :math:`p'` on every face, the pressure correction can remove a divergence only if the
+flux through the boundary has no net. The parent conserves mass on its own cells, not on the patch's faces after
+interpolation and with the patch's own ground. With :math:`V_f` the parent's normal velocity at face point :math:`f`,
+:math:`s_f = -1` on a low face and :math:`+1` on a high face, and :math:`W_f = a_f / \Delta x_d` (:math:`a_f` the flux
+area of the face in the terrain-following metric, :math:`\Delta x_d` the cell size along the normal),
+
+.. math::
+
+   \mathrm{net} = \sum_f s_f W_f V_f, \qquad \delta = \frac{\mathrm{net}}{\sum_f W_f}, \qquad
+   V_f \leftarrow V_f - s_f\,\delta .
+
+Every nest face point's outward velocity drops by the same :math:`\delta`, so each face's flux changes in proportion to
+its area. The two ghost layers of the normal velocity outside the face drop by :math:`\delta` with it, so the gradient
+across the face stays the parent's. The correction is applied once, at set-up, when no face of the patch is an
+``outflow`` (an outflow face's :math:`p' = 0` carries the net instead). The sums are formed in double precision in
+every build. The log reports the net as a fraction of the flux entering, and :math:`\delta`. On the hill of
+``Nest_Faces`` the net is 6.3e-6 of the flux entering and :math:`\delta` is 1.5e-5 m/s.
+
+The correction changes the parent's flow on the faces by :math:`\delta`. The log prints a warning when the net is
+above 1e-3 of the flux entering. The usual cause is a patch ground that differs from the parent's on the nest faces:
+with the same hill 100 m off the patch's centre the net was 2.4e-2 of the flux entering (:math:`\delta` = 5.7e-2 m/s),
+and 3.0e-5 with ``terrain.nest_blend_width = 250``.
+
+**Relaxation zone** (``bc.nest_relax_width``, off by default). In the :math:`N` cells inside each nest face, where the
+parent's flow enters, :math:`u, v, w, \theta` and :math:`k` are relaxed towards the parent's field
+:math:`q_\mathrm{parent}` (Davies 1976):
+
+.. math::
+
+   R \mathrel{+}= c\,(q - q_\mathrm{parent}), \qquad
+   c = \left(1 - \frac{s}{N}\right) f\,\frac{\max(0, U_\mathrm{in})}{N\,\Delta x_d} .
+
+- :math:`s`: distance from the face in cells (:math:`m + 1/2` for cell :math:`m` from the face, :math:`m` for a normal
+  velocity point), so the weight falls linearly from 1 at the face to 0 at the zone's inner end;
+- :math:`f`: ``bc.nest_relax_factor``; :math:`U_\mathrm{in}`: the parent's normal velocity on the face in the point's
+  own row, positive into the patch. Where the parent's flow leaves, :math:`c = 0`;
+- :math:`c` is added to the implicit diagonal. It does not depend on the solution, so the diagonal is the term's exact
+  derivative;
+- in a corner the two faces' rates add.
+
+With :math:`f = 1` the rate at the face is one over the time the parent's flow takes to cross the zone. With width 0
+no term is added and the residual is bit for bit that of the hard faces alone.
+
+*What the zone does and does not do.* A difference from the parent that enters the zone at the face is carried inwards
+while it decays at the rate :math:`c`. Integrated across the zone, the share that leaves the inner end is about
+:math:`e^{-f/2}`: 61 % with :math:`f = 1`, 0.7 % with :math:`f = 10`. The zone therefore holds the patch to the
+*parent's* (coarser) solution over its width. It is a robustness setting, for a patch whose iteration does not settle
+at hard faces; it does not make the patch more accurate. On the hill of ``Nest_Faces`` every setting below reached
+the steady verdict (73 to 109 iterations), and the difference from a run of the whole parent domain at the patch's
+resolution grew with :math:`N f`:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 40 30 30
+
+   * - Setting
+     - rms :math:`|u - u_\mathrm{fine}|` (m/s)
+     - max (m/s)
+   * - **no zone, no blend (default)**
+     - 1.37e-3
+     - 1.00e-2
+   * - :math:`N = 4,\ f = 1`
+     - 1.41e-3
+     - 1.01e-2
+   * - :math:`N = 4,\ f = 100`
+     - 2.70e-3
+     - 1.35e-2
+   * - :math:`N = 8,\ f = 100`
+     - 5.34e-3
+     - 3.10e-2
+   * - blend :math:`W = 100` m
+     - 1.55e-3
+     - 1.57e-2
+   * - blend :math:`W = 250` m
+     - 1.75e-3
+     - 1.82e-2
+
+In the cell on the ground the zone's term is added to the row that holds :math:`k` at its wall value, as the side
+sponge's is (the row's residual and diagonal both gain :math:`c`); the value the row holds moves towards the parent's
+:math:`k` there by the share :math:`c / (1 + c)` of their difference.
+
+**Ground blend** (``terrain.nest_blend_width``, off by default). The patch's terrain is its own. Where it differs from
+the parent's at a nest face, the parent's values are placed at other heights above the ground than they were computed
+at. With a width :math:`W > 0` the patch's ground :math:`h` becomes
+
+.. math::
+
+   h \leftarrow (1 - S)\,h_\mathrm{parent} + S\,h, \qquad S = t^2 (3 - 2t), \qquad t = \min(d / W, 1),
+
+with :math:`d` the distance to the nearest nest face and :math:`h_\mathrm{parent}` the parent's ground interpolated
+bilinearly at the node: the parent's ground on the face, the patch's own from :math:`W` inwards, with a continuous
+slope between. The log reports the largest change of the ground. The blend adds a slope of up to
+:math:`1.5\,|h - h_\mathrm{parent}| / W` to the ground, so a narrow width over a large difference steepens it. Like the
+zone, the blend moves the patch towards the parent (table above); use it when the grounds differ on the faces
+(the warning on the net flux), not otherwise. With a terrain mapping that smooths the levels (``terrain.smoothing`` 1 or 2) the node heights above the
+ground can still differ from the parent's at the face, because the smoothing sees each mesh's own ground.
+
+**Restart.** The checkpoint holds a record of the nest settings: the types of the four lateral faces, the parent's
+step and cells, a digest of the parent's content (its ``Header`` and the headers of its field and height files, which
+hold every box's minimum and maximum), the patch's place in the parent, the zone's width and factor and the blend
+width. A restart with other settings, or with another parent, stops, naming ``io.restart``. The parent's path is not
+part of the record: the parent may be moved.
+
+**Limits.**
+
+- Results on different numbers of ranks or box layouts agree to the steady tolerance, not bit for bit (the line sweeps
+  are local to a box).
+- Where the parent's flow leaves, a nest face still holds the parent's normal velocity and ghost values. With matched
+  ground this over-specified part showed no layer in the tests; a patch whose flow differs from the parent's at such a
+  part (a wake the parent does not resolve) meets the parent's values there. An ``outflow`` face is the alternative.
+- The Rayleigh layer and the side sponge relax :math:`u, v` and :math:`k` towards the ``bc.inflow_*`` profile, not the
+  parent's field. With a nest face and no ``inflow`` face the Rayleigh layer may damp :math:`w` and :math:`\theta`
+  only (``bc.rayleigh_fields = w`` or ``w theta``) and the sponge is refused.
+- Buildings (``buildings.type``) are refused with a nest face.
+- A canopy (``canopy.type``) on the patch: the parent's values on the nest faces feel the drag only if the parent run
+  had the same canopy. This is not checked, and the warning for canopy cells beside an ``inflow`` face does not count
+  nest faces. Give the parent the patch's canopy, or keep the forest a few cells inside the nest faces.
+- The nest faces are frozen: with ``steady.stage = unsteady`` the patch's boundary values do not change in time. The
+  tests cover ``steady.stage = simplec``; ``simplec_newton`` and ``unsteady`` use the same rows, fills and diagonal and
+  are accepted, but have no nest test yet. A patch is solved on level 0 only (grid sequencing is refused).
+
 Pressure
 --------
 
 The pressure correction is periodic where the mesh is periodic, Dirichlet (:math:`p = 0`) on ``outflow`` faces and
-Neumann on all other faces. The types follow ERF's ``get_fft_bc``.
+Neumann on all other faces (``nest`` faces included). The types follow ERF's ``get_fft_bc``.
 
 Ghost cells
 -----------

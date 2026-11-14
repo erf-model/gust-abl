@@ -301,6 +301,178 @@ them out of reach).
      - No ``zero_ground_flux`` after the interpolation (``Source/App.cpp``)
      - ``rt_nest_patch_hill`` (ground :math:`|\Omega|` 0.80 m/s)
 
+The one-line mutants of the nest faces (``Source/NestFaces.cpp`` and its hooks in ``Source/BoundaryConditions.cpp``,
+``Source/BoundaryDamping.cpp`` and ``Source/BoundaryInputs.cpp``; F52 in ``Source/NestParent.cpp``), each run against ``NestFaces.*`` on two ranks with
+the unit-test flags by ``tools/nest_faces_mutants.py`` (macOS arm64, AppleClang), and F40 by hand against
+``rt_nest_faces_hill_np1``. All 51 are killed (F41 to F52 came with the review's changes; there is no F45: the
+restart record without the parent's step is equivalent, as the content digest covers the ``Header``, which holds the
+step). F21 and F36 survived the first run; the hooks' comparison in
+``DiagonalIsTheSourcesDerivative`` and the pinned record text in ``RestartRecordIsCheckedAgainstTheInputs`` were added
+for them. One candidate was equivalent and is not in the table: a zone that starts on the normal velocity's face point
+(its term there is replaced by the Dirichlet row).
+
+.. list-table::
+   :header-rows: 1
+   :widths: 6 50 44
+
+   * - Mutant
+     - Change
+     - Failing tests
+   * - F1
+     - The net flux summed without the outward sign
+     - ``NetFluxIsZeroAfterTheCorrection``
+   * - F2
+     - The weight without 1 / dx (wrong between x and y faces)
+     - ``NetFluxIsZeroAfterTheCorrection``
+   * - F3
+     - The high face's flux read on the low side of its cell
+     - ``NetFluxIsZeroAfterTheCorrection``
+   * - F4
+     - The correction added with the wrong sign
+     - ``GhostsAndFacePointsHoldTheParentsValues``, ``NetFluxIsZeroAfterTheCorrection``, ``ZoneRateAndSourceEqualTheClosedForm``
+   * - F5
+     - The correction not applied
+     - ``GhostsAndFacePointsHoldTheParentsValues``, ``NetFluxIsZeroAfterTheCorrection``, ``ZoneRateAndSourceEqualTheClosedForm``
+   * - F6
+     - The correction applied with an outflow face
+     - ``NothingIsRemovedWithAnOutflowFace``
+   * - F7
+     - The correction on the valid points only (a ghost copy of a face point keeps the old value)
+     - ``GhostsAndFacePointsHoldTheParentsValues``, ``ZoneRateAndSourceEqualTheClosedForm``
+   * - F8
+     - The source with the wrong sign
+     - ``DiagonalIsTheSourcesDerivative``, ``ZoneRateAndSourceEqualTheClosedForm``
+   * - F9
+     - The weight reversed (0 at the face, 1 at the inner end)
+     - ``ZoneRateAndSourceEqualTheClosedForm``
+   * - F10
+     - Abs in place of max(0, U_in): the zone acts where the flow leaves
+     - ``ZoneRateAndSourceEqualTheClosedForm``
+   * - F11
+     - The inward direction of a high face taken as the low face's
+     - ``ZoneRateAndSourceEqualTheClosedForm``
+   * - F12
+     - Cell centres at the distance of the face points (no half cell)
+     - ``ZoneRateAndSourceEqualTheClosedForm``
+   * - F13
+     - The rate without 1 / N
+     - ``ZoneRateAndSourceEqualTheClosedForm``
+   * - F14
+     - Bc.nest_relax_factor ignored
+     - ``ZoneRateAndSourceEqualTheClosedForm``
+   * - F15
+     - The zone one cell short on a high face
+     - ``ZoneRateAndSourceEqualTheClosedForm``
+   * - F16
+     - The staggered point's U_in from one face point (no mean along the face)
+     - ``ZoneRateAndSourceEqualTheClosedForm``
+   * - F17
+     - W's U_in without the row below
+     - ``ZoneRateAndSourceEqualTheClosedForm``
+   * - F18
+     - K relaxed with theta's parent field
+     - ``ZoneRateAndSourceEqualTheClosedForm``
+   * - F19
+     - The diagonal twice the rate
+     - ``DiagonalIsTheSourcesDerivative``
+   * - F20
+     - The diagonal of w from the cell-centred rate
+     - ``DiagonalIsTheSourcesDerivative``, ``ZoneRateAndSourceEqualTheClosedForm``
+   * - F21
+     - The source not added (hook removed)
+     - ``DiagonalIsTheSourcesDerivative``
+   * - F22
+     - One ghost layer filled
+     - ``GhostsAndFacePointsHoldTheParentsValues``
+   * - F23
+     - The normal velocity's face point not filled
+     - ``GhostsAndFacePointsHoldTheParentsValues``
+   * - F24
+     - The homogeneous fill copies the parent
+     - ``GhostsAndFacePointsHoldTheParentsValues``
+   * - F25
+     - The row without the parent's value
+     - ``GhostsAndFacePointsHoldTheParentsValues``
+   * - F26
+     - The rows of the high faces missing
+     - ``GhostsAndFacePointsHoldTheParentsValues``
+   * - F27
+     - The nest fill not called (the profile fill's values stay)
+     - ``GhostsAndFacePointsHoldTheParentsValues``
+   * - F28
+     - A nest face without the parent's values not refused
+     - ``GhostsAndFacePointsHoldTheParentsValues``
+   * - F29
+     - A linear blend (no smoothstep)
+     - ``BlendedGroundIsTheParentsOnTheFaceAndThePatchsInside``
+   * - F30
+     - The blend measured from every lateral face, nest or not
+     - ``BlendedGroundIsTheParentsOnTheFaceAndThePatchsInside``
+   * - F31
+     - The blend's two grounds swapped
+     - ``BlendedGroundIsTheParentsOnTheFaceAndThePatchsInside``
+   * - F32
+     - Bc.nest_relax_width not bounded by the patch
+     - ``InputFaultsAreRefusedNamingTheKey``
+   * - F33
+     - Terrain.nest_blend_width of half the patch accepted
+     - ``InputFaultsAreRefusedNamingTheKey``
+   * - F34
+     - A nest face without bc.nest_parent accepted
+     - ``InputFaultsAreRefusedNamingTheKey``
+   * - F35
+     - A nest face without the parent's field as the first guess accepted
+     - ``InputFaultsAreRefusedNamingTheKey``
+   * - F36
+     - The restart record written as another version
+     - ``RestartRecordIsCheckedAgainstTheInputs``
+   * - F37
+     - A restart with other nest settings not refused
+     - ``RestartRecordIsCheckedAgainstTheInputs``
+   * - F38
+     - A record of another version read as this one
+     - ``RestartRecordIsCheckedAgainstTheInputs``
+   * - F39
+     - The zone's diagonal not added (hook removed)
+     - ``DiagonalIsTheSourcesDerivative``
+   * - F40 (by hand)
+     - The correction not applied (F5) in a run
+     - ``rt_nest_faces_hill_np1`` (the first pressure correction leaves a divergence of 9.8e-6, and the SIMPLEC
+       pressure correction stops: a net source the boundaries cannot carry)
+   * - F41
+     - The correction on the face plane only (the normal velocity's ghost layers keep the parent's value)
+     - ``GhostsAndFacePointsHoldTheParentsValues``
+   * - F42
+     - The restart record without the parent's content
+     - ``RestartRecordIsCheckedAgainstTheInputs``
+   * - F43
+     - The restart record with the nest faces only (not the other faces' types)
+     - ``RestartRecordIsCheckedAgainstTheInputs``
+   * - F44
+     - The restart record without the patch's place in the parent
+     - ``RestartRecordIsCheckedAgainstTheInputs``
+   * - F46
+     - A lateral no-slip wall beside a nest face accepted
+     - ``InputFaultsAreRefusedNamingTheKey``
+   * - F47
+     - A Rayleigh layer on k towards the inflow profile accepted on a patch
+     - ``InputFaultsAreRefusedNamingTheKey``
+   * - F48
+     - A sponge towards the inflow profile accepted on a patch
+     - ``InputFaultsAreRefusedNamingTheKey``
+   * - F49
+     - No warning for a large net flux
+     - ``SummaryWarnsAboveTheNetFluxThreshold``
+   * - F50
+     - The warning whatever the net flux
+     - ``SummaryWarnsAboveTheNetFluxThreshold``
+   * - F51
+     - The warning when nothing is removed (an outflow face)
+     - ``SummaryWarnsAboveTheNetFluxThreshold``
+   * - F52
+     - The content digest from the ``Header`` alone, not the fields' files (``Source/NestParent.cpp``)
+     - ``RestartRecordIsCheckedAgainstTheInputs``
+
 The one-line mutants of the canopy's drag field (``Source/Canopy.cpp``, ``Source/Canopy_K.H``), each run against
 ``Canopy.*`` on two ranks with the unit-test flags by ``tools/canopy_mutants.py`` (macOS arm64, AppleClang). All 18 are
 killed.
@@ -1356,6 +1528,48 @@ Current tests
      - A misplaced patch (shifted 10 m, 20 cells in y), ``nest`` with ``steady.sequencing = 1``, a profile key with
        ``nest``, ``nest`` without ``bc.nest_parent``, ``bc.nest_parent`` without ``nest`` and a directory with no
        checkpoint ``Header`` each stop the run, naming the key.
+   * - ``rt_nest_faces_flat``, ``rt_nest_faces_flat_zone`` (fixtures ``rt_nest_faces_clean``, ``rt_nest_faces_flat_parent``)
+     - A patch at 2 2 1 with four ``nest`` faces on flat ground (``Tests/Canonical_RANS/Nest_Faces``; sub-phase 9.2,
+       beyond the plan). The parent (32 × 24 × 16 cells of 50 m, periodic in y, log-law inflow from 20°, neutral)
+       runs to steady on two ranks (79 iterations); the patch (parent cells 8–23 by 6–17, boxes of at most 13 × 9
+       cells) starts from its checkpoint and runs to steady on three ranks (64 iterations), and on two ranks with
+       ``bc.nest_relax_width = 4`` (63). ``check_nest_faces.py``: the log names the nest faces and the net flux as
+       removed before the pressure solve, at most 1e-10 of the flux entering (measured 2.0e-13); the divergence
+       after the first pressure correction is at most 1e-8 × before; the steady verdict; and the mean over the 2 × 2
+       patch cells of every parent cell is within 1e-3 m/s (u, v, w) and 2e-3 m²/s² (k) of the parent's value
+       (measured 2.1e-4, 9.5e-5, 9.7e-5 and 3.5e-4). Double precision only.
+   * - ``rt_nest_faces_flat_open``
+     - The flat patch with ``bc.xlo = nest``, ``bc.xhi = outflow`` and periodic y (parent cells 8–23 in x, the parent's
+       whole width in y; 32 × 48 × 16 cells, boxes of at most 13 × 19, three ranks; ``inputs_flat_patch_open``). The
+       log reports the net flux (−1.000 of the flux entering: all of it enters through the one nest face) as not
+       removed, an outflow face carries it; the divergence after the first pressure correction is at most 1e-8 ×
+       before (1.8e-4, 9.0e-15); steady in 80 iterations; the 2 × 2 means are within 5e-3 m/s and 2e-3 m²/s² of the
+       parent (measured 1.6e-3, 5.7e-4, 1.0e-3 and 3.8e-4, the largest in the cells beside the outflow face, which
+       the parent does not have there).
+   * - ``rt_nest_faces_hill_np1``, ``_np2``, ``_np4``, ``rt_nest_faces_hill_np2_matches``, ``_np4_matches``, ``rt_nest_faces_hill_zone`` (fixture ``rt_nest_faces_hill_parent``)
+     - The same patch over a 60 m round Agnesi hill, with the parent's flow entering and leaving on every face. The
+       parent is steady in 84 iterations, the patch in 103 (one rank) and 102 (two and four). The same checks, with
+       the net flux between 1e-8 and 1e-3 of the flux entering (measured 6.3e-6, δ = 1.5e-5 m/s; the divergence
+       4.5e-2 before, 1.7e-12 after) and tolerances of 0.15 m/s and 0.06 m²/s² (measured 6.2e-2, 2.7e-2, 1.6e-2 and
+       2.4e-2: what the finer cells change over the hill). The final plotfiles on two and four ranks agree with one
+       rank to 1e-6, relative or absolute (measured 5.0e-7 absolute, in p; not bit for bit, the line sweeps are
+       local to a box). ``_zone``: ``bc.nest_relax_width = 4`` with ``terrain.nest_blend_width = 150`` passes the
+       same checks (104 iterations).
+   * - ``rt_nest_faces_restart_first``, ``_continued``, ``_straight``, ``_matches`` (fixtures ``rt_nest_faces_pair_a``, ``_pair_b``)
+     - The hill patch with ``bc.nest_relax_width = 2`` and ``terrain.nest_blend_width = 100`` for 10 iterations, a
+       restart to 20, and 20 straight, on the same boxes and two ranks: ``fcompare`` with zero tolerance. The
+       restarted run's log must name the nest faces, the zone of 2 cells and the blended ground (moved by up to
+       0.12 m). The parents here are two runs of the hill parent for 30 iterations (``inputs_hill_parent_pair``),
+       with u* = 0.4 m/s (``pair_a``, the chain's parent) and 0.6 m/s (``pair_b``).
+   * - ``abort_nest_faces_restart_zone``, ``_restart_blend``, ``_restart_parent``
+     - A restart of that patch with ``bc.nest_relax_width = 3``, with ``terrain.nest_blend_width = 150``, or from
+       ``pair_b`` (the same mesh, place and step, another flow) stops, naming ``io.restart``.
+   * - ``abort_nest_faces_no_parent``, ``_no_guess``, ``_sequencing``, ``_widths``, ``_blend_width``, ``_keys_unused``, ``_blend_unused``, ``_buildings``, ``_damping``
+     - A ``nest`` face without ``bc.nest_parent``, without the parent's first guess or a restart, or with
+       ``steady.sequencing = 1``; ``bc.nest_relax_width`` of half the patch or ``bc.nest_relax_factor`` = 0;
+       ``terrain.nest_blend_width`` of half the patch; the three keys without a ``nest`` face; buildings
+       (``buildings.type = immersed_forcing``); and a Rayleigh layer on u, v and k with no ``inflow`` face: each
+       stops the run, naming the key.
    * - ``rt_bc_neutral_flat``, ``rt_bc_neutral_flat_matches``
      - ``boundary_fluxes`` on ERF's Neutral_ABL_Flat mesh (8 × 8 × 64, 1000 m) with a fixed log-law state
        (u* = 0.35 m/s, z₀ = 0.1 m, 15°), the surface layer on the ground and a slip top: u* recovered at every ground
@@ -2728,6 +2942,46 @@ GoogleTest suite
    * - ``NestParent.PeriodicSeamUsesThePeriodicNeighbours`` (beyond the plan)
      - A patch reaching a periodic parent's face (its ghost cells cross the seam) and a periodic patch spanning the
        parent read the periodic neighbours: both match a host interpolation that wraps the index.
+   * - ``NestFaces.NetFluxIsZeroAfterTheCorrection`` (UT-9.2.1)
+     - A patch over a hill with four nest faces and a parent field whose net flux is above 1e-3 of the flux entering:
+       the reported net, flux entering and δ equal sums made on the host from ``Mesh::flux_area``; after the
+       correction the host's net is at most 1e-13 of the flux entering; every nest face point's outward velocity,
+       and the normal velocity's two ghost layers outside it, moved by δ and no other value of u, v or θ changed.
+   * - ``NestFaces.NothingIsRemovedWithAnOutflowFace``, ``NestFaces.TheNetFluxDoesNotDependOnTheRankMap`` (beyond the plan)
+     - With an outflow face the parent's values are kept and δ = 0. The net, the weight and δ are the same bits with
+       the rank map reversed.
+   * - ``NestFaces.GhostsAndFacePointsHoldTheParentsValues``, ``NestFaces.NoNestFaceAborts`` (beyond the plan)
+     - After ``fill_ghosts`` both ghost layers of u, v, w, θ and k outside the nest faces, and the normal velocity's
+       face points, hold the parent's bilinear field at those points (0 for a homogeneous fill); p is untouched; the
+       Dirichlet rows are :math:`q - V`. A ``NestFaces`` without a nest face, and a fill of a nest face without one,
+       abort.
+   * - ``NestFaces.BlendedGroundIsTheParentsOnTheFaceAndThePatchsInside`` (UT-9.2.2)
+     - With ``terrain.nest_blend_width``: the ground equals the parent's interpolated ground on the nest faces, the
+       patch's own beyond the width, and the closed-form smoothstep between; a face that is not ``nest`` keeps the
+       patch's ground.
+   * - ``NestFaces.ZoneRateAndSourceEqualTheClosedForm`` (UT-9.2.3)
+     - The rate at every point of u, v, w and the cell centres equals :math:`(1 - s/N)\,f\max(0, U_\mathrm{in})/(N\Delta x)`
+       computed on the host (corners add; zero where the parent's flow leaves and beyond N cells), and the source
+       equals :math:`c\,(q - q_\mathrm{parent})` for each of the five fields.
+   * - ``NestFaces.DiagonalIsTheSourcesDerivative`` (UT-9.2.4)
+     - The diagonal added for each equation equals the rate at its points, and equals the finite difference of the
+       source for a perturbation of the field.
+   * - ``NestFaces.WidthZeroLeavesTheResidualAndTheDiagonal`` (UT-9.2.5)
+     - With ``bc.nest_relax_width = 0`` the residual and the diagonal are bit for bit those without the hooks.
+   * - ``NestFaces.SummaryWarnsAboveTheNetFluxThreshold`` (beyond the plan)
+     - The summary warns, naming ``terrain.nest_blend_width``, when the net flux removed is above 1e-3 of the flux
+       entering, and not below it (a uniform flow on flat ground: net below 1e-6), nor when an outflow face carries
+       the net. With no flux entering it reports the mean outward velocity, not a ratio.
+   * - ``NestFaces.InputFaultsAreRefusedNamingTheKey``, ``NestFaces.RestartRecordIsCheckedAgainstTheInputs`` (beyond the plan)
+     - Each range and combination fault of ``bc.nest_relax_width`` (negative, half the patch),
+       ``bc.nest_relax_factor``, ``terrain.nest_blend_width``, ``bc.nest_parent`` and the ``nest`` face types gives a
+       message naming the key. ``bc.zlo`` or ``bc.zhi = nest``, and a lateral wall beside a nest face, are refused.
+       With no ``inflow`` face, ``bc.rayleigh_fields`` with u, v or tke and ``bc.sponge_width`` > 0 are refused; w
+       and theta are accepted, and all five with an ``inflow`` face. The restart record changes with the zone's
+       width and factor, the blend width, the type of any lateral face, the parent's step, the parent's content at
+       the same step, and the patch's place in the parent; not with the parent's path or a second read of the same
+       parent. A checkpoint is accepted with its own record and refused, naming ``io.restart``, with another, with
+       none where it has one, and with one where it has none.
    * - ``IO.SameDirectoryAsksTheFileSystem``
      - Audit A10 (P3): ``./``, trailing and doubled separators, an absolute path, ``..`` and a symbolic link all
        name the restart directory; another directory, and one that does not exist yet, do not.

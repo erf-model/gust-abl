@@ -16,6 +16,7 @@
 #include "Forcing.H"
 #include "StateIO.H"
 #include "Initializer.H"
+#include "NestFaces.H"
 #include "NestParent.H"
 #include "Inputs.H"
 #include "Mesh.H"
@@ -30,6 +31,7 @@
 #include "TurbulenceOutput.H"
 #include "UnsteadyOutput.H"
 #include "WallDistance.H"
+#include "ZLevels.H"
 
 #include <AMReX_Print.H>
 #include <AMReX_Utility.H>
@@ -278,19 +280,12 @@ void run ()
     if (initialize && !in.io.restart.empty()) {
         err.emplace_back("init.first_guess and io.restart are exclusive (a restart keeps its state)");
     }
-    {
-        // The nested patch (NestParent.H): the parent and its first guess go together.
-        const bool nest = iopt.first_guess == InitOptions::FirstGuess::nest;
-        if (nest && bin.nest_parent.empty()) {
-            err.emplace_back("init.first_guess = nest needs bc.nest_parent (the parent run's checkpoint)");
-        }
-        if (!nest && !bin.nest_parent.empty()) {
-            err.emplace_back("bc.nest_parent has no effect without init.first_guess = nest");
-        }
-        if (nest && solve && seq.enabled) {
-            err.emplace_back("init.first_guess = nest is not supported with steady.sequencing = 1 (the patch starts on "
-                             "level 0 from its parent)");
-        }
+    // The nested patch (NestParent.H, NestFaces.H): the parent, its first guess and the nest faces go together.
+    const bool nest_guess = iopt.first_guess == InitOptions::FirstGuess::nest;
+    const bool nest_face = has_nest_face(bin);
+    for (auto& e : check_nest_run(bin, in, nest_guess, solve && seq.enabled)) { err.push_back(std::move(e)); }
+    if (nest_face && buildings_opt.active()) {
+        err.emplace_back("buildings.type: buildings are not supported with a nest face (bc.xlo, bc.xhi, bc.ylo or bc.yhi = nest) yet");
     }
     for (const auto& e : check_column_guess(iopt, sopt, fopt, bin, surf, surface_layer)) { err.push_back(e); }
     if (amrex::ParmParse("io").contains("column_guess_file") && iopt.first_guess != InitOptions::FirstGuess::column) {
@@ -416,9 +411,27 @@ void run ()
         }
     };
     std::unique_ptr<InflowProfile> column;
+    // A nested patch's parent, read once: the first guess, the nest faces' values and the ground blend.
+    std::unique_ptr<NestParent> parent;
+    std::unique_ptr<NestFaces> nest_faces;
+    Mesh::GroundEdit ground_edit;
+    std::string nest_hash;
+    if (nest_guess || nest_face) {
+        const amrex::Real blend = in.terrain.nest_blend_width;
+        parent = std::make_unique<NestParent>(bin.nest_parent, in.mesh, make_zlevels(in.mesh, geom), ba, dm, blend > 0);
+        amrex::Print() << parent->summary();
+        if (blend > 0) { ground_edit = [&, blend] (amrex::MultiFab& z) { blend_nest_ground(*parent, bin, blend, geom, z); }; }
+        if (nest_face) { nest_hash = NestFaces::hash_inputs(*parent, bin, blend); }
+    }
+    auto build_nest_faces = [&] () {
+        if (!nest_face) { return; }
+        nest_faces = std::make_unique<NestFaces>(*parent, bin, geom, mesh);
+        amrex::Print() << nest_faces->summary();
+    };
     if (!restart) {
-        mesh.build(in, geom, state.z_phys_nd);
+        mesh.build(in, geom, state.z_phys_nd, ground_edit);
         build_canopy();
+        build_nest_faces();
         if (initialize) {
             // The converged column as the profile (ColumnGuess.H), then the
             // mass-consistent initial field (Initializer.H) or the first
@@ -522,9 +535,9 @@ void run ()
         }
         if (iopt.first_guess == InitOptions::FirstGuess::nest) {
             // The nested patch: the parent at 2 2 1, then the initializer's correction.
-            const NestParent parent(bin.nest_parent, in.mesh, mesh.zlevels(), state.p.boxArray(), state.p.DistributionMap());
-            amrex::Print() << parent.summary();
-            parent.interpolate(state);
+            parent->interpolate(state);
+            // The nest faces' normal velocities after the net flux is removed (NestFaces.H).
+            if (nest_faces) { for (int d = 0; d < 2; ++d) { nest_faces->fill(state, d, false); } }
             zero_ground_flux(state, mesh, geom);   // the patch's ground carries no flux, as in first_guess_state
             const InitResult r = correct_initial_state(iopt, bin, popt, mesh, geom, state);
             print_initializer(r, iopt, popt, "");
@@ -535,11 +548,16 @@ void run ()
         }
     } else {
         read_checkpoint(in.io.restart, state, in.mesh);
-        mesh.check_restart(in, geom, state.z_phys_nd);
+        NestFaces::check_restart(in.io.restart, nest_hash);
+        mesh.check_restart(in, geom, state.z_phys_nd, ground_edit);
         amrex::Print() << "gust: restarted from " << in.io.restart
                        << " at step " << state.step << "\n";
         build_canopy();
+        build_nest_faces();
     }
+    // The parent's images are not needed again: NestFaces holds its own copy on the patch.
+    ground_edit = nullptr;
+    parent.reset();
     const amrex::MultiFab* canopy_plot = canopy.active() ? &canopy.drag() : nullptr;
     const amrex::MultiFab* lad_plot = (canopy.active() && canopy.heat().on()) ? &canopy.lad() : nullptr;
     const amrex::MultiFab* beta_plot = buildings.active() ? &buildings.beta() : nullptr;
@@ -610,6 +628,7 @@ void run ()
         setup.simplec = simplec;
         setup.sopt = sopt;
         setup.newton = newton_opt;
+        setup.nest = nest_faces.get();
         setup.log = iteration_log(in.io.iteration_log);
         BuildingForcing building_forcing;
         BuildingTke building_tke;
@@ -744,6 +763,7 @@ void run ()
             closure.write_checkpoint(name);
             canopy.write_checkpoint(name);
             buildings.write_checkpoint(name);
+            NestFaces::write_checkpoint(name, nest_hash);
             if (newton_stage != nullptr) { newton_stage->write_checkpoint(name); }
             if (rec != nullptr) {
                 write_unsteady_record(name, *rec);
@@ -937,6 +957,7 @@ void run ()
         const auto name = write_checkpoint(in.io.chk_file, state, in.mesh, &mesh.zlevels());
         canopy.write_checkpoint(name);
         buildings.write_checkpoint(name);
+        NestFaces::write_checkpoint(name, nest_hash);
         amrex::Print() << "gust: wrote " << name << "\n";
     }
 }

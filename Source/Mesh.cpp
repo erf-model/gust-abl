@@ -113,9 +113,10 @@ void Mesh::define (const amrex::BoxArray& ba, const amrex::DistributionMapping& 
     m_min_detJ = 0;   // the minimum of the zeroed detJ, until make_metrics
 }
 
-void Mesh::build (const Inputs& in, const amrex::Geometry& geom, amrex::MultiFab& z_phys_nd)
+void Mesh::build (const Inputs& in, const amrex::Geometry& geom, amrex::MultiFab& z_phys_nd, const GroundEdit& ground_edit)
 {
     fill_terrain_surface(z_phys_nd, geom, in.terrain);
+    if (ground_edit) { ground_edit(z_phys_nd); }
     build_from_ground(in, geom, z_phys_nd);
 }
 
@@ -171,11 +172,12 @@ std::string fmt_real (amrex::Real x)
 }
 } // namespace
 
-void Mesh::check_restart (const Inputs& in, const amrex::Geometry& geom, amrex::MultiFab& z_phys_nd)
+void Mesh::check_restart (const Inputs& in, const amrex::Geometry& geom, amrex::MultiFab& z_phys_nd,
+                          const GroundEdit& ground_edit)
 {
     amrex::MultiFab rebuilt(z_phys_nd.boxArray(), z_phys_nd.DistributionMap(), 1, z_phys_nd.nGrowVect());
     rebuilt.setVal(0.0);
-    build(in, geom, rebuilt);
+    build(in, geom, rebuilt, ground_edit);
 
     // Valid nodes only, within restart_height_tolerance: another compiler
     // (or a GPU build) may contract the multiply-adds of the mesh build

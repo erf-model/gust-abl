@@ -308,9 +308,9 @@ first guess must carry it.
 **Checkpoint format.** The parent checkpoint must be format 2, which stores the z-levels. A format-1 checkpoint (from
 an earlier version) still restarts, but as a nest parent it stops the run; rerun the parent to write format 2.
 
-The patch's faces still use its own ``bc.*`` boundary types: an inflow face, a Rayleigh damping layer and a side
-sponge use the ``bc.inflow_*`` profile and the sounding, not the parent's field. Taking them from the parent is a
-later step. ``init.z_agl_min``, ``init.k_decay_height`` and ``init.obrien`` act on a profile and are refused with
+The patch's faces use its own ``bc.*`` boundary types. With ``bc.<face> = nest`` a lateral face takes the parent's
+field (:doc:`boundary_conditions`, *Nest faces*). An ``inflow`` face, a Rayleigh damping layer and a side sponge
+use the ``bc.inflow_*`` profile and the sounding, not the parent's field. ``init.z_agl_min``, ``init.k_decay_height`` and ``init.obrien`` act on a profile and are refused with
 ``nest``. Grid
 sequencing (``steady.sequencing = 1``) is refused with ``nest``: the patch starts on its own mesh from the parent.
 

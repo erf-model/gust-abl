@@ -235,6 +235,7 @@ LevelSolver::LevelSolver (const RunSetup& s, const Mesh& mesh, const amrex::Geom
 {
     if (time != nullptr && !label.empty()) { amrex::Abort("gust: LevelSolver: the physical time term is for level 0 only"); }
     bc.set_theta_ground_extension(s.simplec.theta_frozen);
+    bc.set_nest_faces(s.nest);
     if (canopy_in != nullptr && canopy_fine_detJ != nullptr) {
         canopy_field.restrict_from(*canopy_in, *canopy_fine_detJ, geom, mesh, ba, dm);
         canopy = &canopy_field;

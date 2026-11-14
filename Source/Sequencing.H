@@ -164,6 +164,9 @@ struct RunSetup
     //! The Newton stage's (steady.stage = simplec_newton; level 0 only).
     NewtonStageOptions newton;
     IterationLog log{IterationLog::table};   //!< io.iteration_log
+    //! The nest faces of a nested patch (NestFaces.H; level 0 only, no grid
+    //! sequencing); null without one. It must outlive the solver.
+    const NestFaces* nest{nullptr};
 };
 
 //! The SIMPLEC stage and its driver on one level's mesh, with the level's

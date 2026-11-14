@@ -1,13 +1,19 @@
 #include "NestParent.H"
 
+#include "Sha256.H"
+
 #include <AMReX_ParallelDescriptor.H>
 #include <AMReX_PlotFileUtil.H>
 #include <AMReX_Utility.H>
 #include <AMReX_VisMF.H>
 
+#include <algorithm>
 #include <cmath>
 #include <filesystem>
+#include <fstream>
 #include <sstream>
+#include <string>
+#include <vector>
 
 namespace gust {
 
@@ -134,7 +140,7 @@ std::vector<std::string> check_nest_placement (const CheckpointHeader& h, const 
 }
 
 NestParent::NestParent (const std::string& dir, const MeshInputs& patch, const amrex::Vector<amrex::Real>& patch_zlevels,
-                        const amrex::BoxArray& patch_ba, const amrex::DistributionMapping& patch_dm)
+                        const amrex::BoxArray& patch_ba, const amrex::DistributionMapping& patch_dm, bool with_ground)
     : m_dir(dir), m_patch_cells(patch.n_cell), m_patch_ba(patch_ba)
 {
     int has_header = 0;
@@ -155,6 +161,28 @@ NestParent::NestParent (const std::string& dir, const MeshInputs& patch, const a
     }
     m_step = h.step;
     m_parent_cells = h.n_cell;
+    {
+        // The digest of the parent's content (NestParent.H), read by the I/O rank.
+        if (amrex::ParallelDescriptor::IOProcessor()) {
+            std::string text;
+            std::vector<std::string> files{dir + "/Header"};
+            for (const char* f : {"u", "v", "w", "theta", "tke", "z_phys_nd"}) {
+                files.push_back(amrex::MultiFabFileFullPrefix(0, dir, "Level_", f) + "_H");
+            }
+            for (const auto& name : files) {
+                std::ifstream is(name, std::ios::binary);
+                std::ostringstream os;
+                os << is.rdbuf();
+                text += name.substr(dir.size()) + "\n" + os.str() + "\n";
+            }
+            m_digest = sha256_hex(text);
+        }
+        long n = static_cast<long>(m_digest.size());
+        const int root = amrex::ParallelDescriptor::IOProcessorNumber();
+        amrex::ParallelDescriptor::Bcast(&n, 1, root);
+        m_digest.resize(static_cast<std::size_t>(n));
+        if (n > 0) { amrex::ParallelDescriptor::Bcast(m_digest.data(), static_cast<std::size_t>(n), root); }
+    }
 
     MeshInputs pm;
     pm.n_cell = h.n_cell;
@@ -188,6 +216,16 @@ NestParent::NestParent (const std::string& dir, const MeshInputs& patch, const a
         it.mf->ParallelCopy(src, 0, 0, 1, amrex::IntVect(0), amrex::IntVect(kNestImageGhost, kNestImageGhost, 0), pgeom.periodicity());
     }
 
+    if (with_ground) {
+        // The node heights, as read_checkpoint reads them (their one ghost
+        // layer is in the file); valid parent nodes only are copied.
+        const amrex::IntVect nodes(1, 1, 1);
+        amrex::MultiFab src(amrex::convert(h.ba, nodes), pdm, 1, ngrow_nodal);
+        amrex::VisMF::Read(src, amrex::MultiFabFileFullPrefix(0, dir, "Level_", "z_phys_nd"));
+        m_z.define(amrex::convert(img, nodes), patch_dm, 1, amrex::IntVect(kNestImageGhost, kNestImageGhost, 0));
+        m_z.ParallelCopy(src, 0, 0, 1, amrex::IntVect(0), amrex::IntVect(kNestImageGhost, kNestImageGhost, 0), pgeom.periodicity());
+    }
+
     const int r = kNestRatio;
     m_cx = transfer::make_axis(fdom.smallEnd(0), pdom, pgeom.isPeriodic(0), 0, r, false, m_offset[0]);
     m_cy = transfer::make_axis(fdom.smallEnd(1), pdom, pgeom.isPeriodic(1), 1, r, false, m_offset[1]);
@@ -210,6 +248,16 @@ void NestParent::interpolate (State& patch) const
     for (amrex::MultiFab* mf : {&patch.theta, &patch.tke, &patch.p, &patch.u, &patch.v, &patch.w}) {
         zero_gradient_z(*mf);
     }
+}
+
+void NestParent::interpolate_ground (amrex::MultiFab& hp) const
+{
+    if (m_z.empty()) { amrex::Abort("gust: NestParent::interpolate_ground: the parent was read without its node heights"); }
+    if (hp.boxArray() != amrex::convert(m_patch_ba, amrex::IntVect(1, 1, 1)) || hp.DistributionMap() != m_z.DistributionMap()) {
+        amrex::Abort("gust: NestParent::interpolate_ground: hp is not nodal on the layout the parent was read for");
+    }
+    const amrex::IntVect ng(std::min(hp.nGrowVect()[0], ngrow_state), std::min(hp.nGrowVect()[1], ngrow_state), 0);
+    transfer::interpolate<stencil::XF | stencil::YF>(m_z, hp, m_nx, m_ny, ng);
 }
 
 std::string NestParent::summary () const

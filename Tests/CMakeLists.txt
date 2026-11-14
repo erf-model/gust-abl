@@ -66,6 +66,7 @@ add_executable(unit_tests
     Unit_Tests/test_Continuation.cpp
     Unit_Tests/test_NewtonPreconditioner.cpp
     Unit_Tests/test_Terrain.cpp
+    Unit_Tests/test_NestFaces.cpp
     Unit_Tests/test_NestParent.cpp
     Unit_Tests/test_Transfer.cpp
     Unit_Tests/test_Sequencing.cpp
@@ -163,6 +164,7 @@ set(WALLDIST_CASE       ${CMAKE_CURRENT_SOURCE_DIR}/Discretization/Wall_Distance
 set(INIT_CASE           ${CMAKE_CURRENT_SOURCE_DIR}/Initialization/Mass_Consistent_Askervein)
 set(BUMP_CASE           ${CMAKE_CURRENT_SOURCE_DIR}/Initialization/Bump_Speedup_Trend)
 set(NEST_CASE           ${CMAKE_CURRENT_SOURCE_DIR}/Initialization/Nest_Patch_Hill)
+set(NEST_FACES_CASE     ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Nest_Faces)
 set(COLUMN_CASE         ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Neutral_Column)
 set(FLAT_CASE           ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Neutral_ABL_Flat)
 set(THIN_CELL_CASE      ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Thin_Cell_Flat)
@@ -1477,6 +1479,166 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
     gust_add_test(NAME abort_nest_parent_not_a_checkpoint NP 1 LABELS "regression;smoke"
                   PREFIX ${EXPECT_ABORT} "bc\\.nest_parent = no_such_chk: no checkpoint Header there" --
                   COMMAND $<TARGET_FILE:gust> ${SMOKE_CASE}/inputs_smoke init.first_guess=nest bc.nest_parent=no_such_chk
+                          ${GUST_TEST_AMREX_FLAGS})
+    # The nest faces of a nested patch (NestFaces.H, sub-phase 9.2, beyond the
+    # plan): a parent to steady, then the patch over parent cells 8 to 23 x 6
+    # to 17 at 2 2 1 with its four lateral faces taken from the parent, to
+    # steady (check_nest_faces.py: the net flux removed, the first pressure
+    # correction converged, the steady verdict, the patch against its parent).
+    #  flat ground: the patch keeps the parent's profile (1e-3 m/s), also with
+    #    the relaxation zone;
+    #  the hill on 1, 2 and 4 ranks: steady on each, the same answer (1e-6;
+    #    the sweeps are box-local and the Krylov sums depend on the ranks, so
+    #    not bit for bit), and with the zone and the ground blend;
+    #  a restart (10 iterations, continued to 20, against 20 straight, same
+    #    boxes and ranks, with the zone and the ground blend): bit for bit; a
+    #    restart with another zone, another blend or another parent (the same
+    #    step, cells and ground, another flow) and the input faults stop,
+    #    naming the key.
+    set(NESTF_DIR ${CMAKE_CURRENT_BINARY_DIR}/run/rt_nest_faces)
+    set(NESTF_CHECK ${Python3_EXECUTABLE} ${NEST_FACES_CASE}/check_nest_faces.py)
+    add_test(NAME rt_nest_faces_clean
+             COMMAND ${Python3_EXECUTABLE} -c
+                     "import shutil, os, sys; shutil.rmtree(sys.argv[1], ignore_errors=True); os.makedirs(os.path.join(sys.argv[1], 'straight'))"
+                     ${NESTF_DIR})
+    set_tests_properties(rt_nest_faces_clean PROPERTIES LABELS "regression;smoke" FIXTURES_SETUP nest_faces_clean)
+    foreach(ground flat hill)
+        gust_add_test(NAME rt_nest_faces_${ground}_parent NP 2 LABELS "regression;smoke" RUN_DIR ${NESTF_DIR}
+                      FIXTURES_REQUIRED nest_faces_clean FIXTURES_SETUP nest_faces_${ground}_parent
+                      PREFIX ${NESTF_CHECK} parent ${ground}_parent --
+                      COMMAND $<TARGET_FILE:gust> ${NEST_FACES_CASE}/inputs_${ground}_parent ${GUST_TEST_AMREX_FLAGS})
+    endforeach()
+    gust_add_test(NAME rt_nest_faces_flat NP 3 LABELS "regression;smoke" RUN_DIR ${NESTF_DIR}
+                  FIXTURES_REQUIRED nest_faces_flat_parent
+                  PREFIX ${NESTF_CHECK} patch flat_parent_plt_final flat_patch 8 6 1e-3 2e-3 0 1e-10 --
+                  COMMAND $<TARGET_FILE:gust> ${NEST_FACES_CASE}/inputs_flat_patch ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME rt_nest_faces_flat_zone NP 2 LABELS "regression;smoke" RUN_DIR ${NESTF_DIR}
+                  FIXTURES_REQUIRED nest_faces_flat_parent
+                  PREFIX ${NESTF_CHECK} patch flat_parent_plt_final flat_zone 8 6 1e-3 2e-3 0 1e-10 --
+                  COMMAND $<TARGET_FILE:gust> ${NEST_FACES_CASE}/inputs_flat_patch bc.nest_relax_width=4
+                          ${GUST_TEST_AMREX_FLAGS})
+    # One nest face, an outflow face and periodic y (the patch spans the parent's width): nothing is removed.
+    gust_add_test(NAME rt_nest_faces_flat_open NP 3 LABELS "regression;smoke" RUN_DIR ${NESTF_DIR}
+                  FIXTURES_REQUIRED nest_faces_flat_parent
+                  PREFIX ${NESTF_CHECK} open flat_parent_plt_final flat_open 8 0 5e-3 2e-3 0.999 1.001 --
+                  COMMAND $<TARGET_FILE:gust> ${NEST_FACES_CASE}/inputs_flat_patch_open ${GUST_TEST_AMREX_FLAGS})
+    foreach(np 1 2 4)
+        gust_add_test(NAME rt_nest_faces_hill_np${np} NP ${np} LABELS "regression;smoke" RUN_DIR ${NESTF_DIR}
+                      FIXTURES_REQUIRED nest_faces_hill_parent FIXTURES_SETUP nest_faces_hill_np${np}
+                      PREFIX ${NESTF_CHECK} patch hill_parent_plt_final hill_np${np} 8 6 0.15 0.06 1e-8 1e-3 --
+                      COMMAND $<TARGET_FILE:gust> ${NEST_FACES_CASE}/inputs_hill_patch ${GUST_TEST_AMREX_FLAGS})
+    endforeach()
+    foreach(np 2 4)
+        gust_add_test(NAME rt_nest_faces_hill_np${np}_matches NP 1 LABELS "regression;smoke" RUN_DIR ${NESTF_DIR}
+                      FIXTURES_REQUIRED "nest_faces_hill_np1;nest_faces_hill_np${np}"
+                      COMMAND ${FCOMPARE} --rel_tol 1e-6 --abs_tol 1e-6 hill_np1_plt_final hill_np${np}_plt_final)
+    endforeach()
+    gust_add_test(NAME rt_nest_faces_hill_zone NP 2 LABELS "regression;smoke" RUN_DIR ${NESTF_DIR}
+                  FIXTURES_REQUIRED nest_faces_hill_parent
+                  PREFIX ${NESTF_CHECK} patch hill_parent_plt_final hill_zone 8 6 0.15 0.06 1e-8 1e-3 --
+                  COMMAND $<TARGET_FILE:gust> ${NEST_FACES_CASE}/inputs_hill_patch bc.nest_relax_width=4
+                          terrain.nest_blend_width=150 ${GUST_TEST_AMREX_FLAGS})
+    set(NESTF_RESTART $<TARGET_FILE:gust> ${NEST_FACES_CASE}/inputs_hill_patch_restart "mesh.max_grid_size=13 9"
+                      io.plot_file=hill_restart_plt io.chk_file=hill_restart_chk)
+    foreach(pair a b)
+        if(pair STREQUAL "a")
+            set(NESTF_USTAR 0.4)
+        else()
+            set(NESTF_USTAR 0.6)
+        endif()
+        gust_add_test(NAME rt_nest_faces_pair_${pair} NP 2 LABELS "regression;smoke" RUN_DIR ${NESTF_DIR}
+                      FIXTURES_REQUIRED nest_faces_clean FIXTURES_SETUP nest_faces_pair_${pair}
+                      COMMAND $<TARGET_FILE:gust> ${NEST_FACES_CASE}/inputs_hill_parent_pair bc.inflow_ustar=${NESTF_USTAR}
+                              steady.max_iterations=30 io.plot_file=pair_${pair}_plt io.chk_file=pair_${pair}_chk
+                              ${GUST_TEST_AMREX_FLAGS})
+    endforeach()
+    # The chain's nest settings: a zone and a ground blend.
+    set(NESTF_CHAIN bc.nest_relax_width=2 terrain.nest_blend_width=100)
+    gust_add_test(NAME rt_nest_faces_restart_first NP 2 LABELS "regression;smoke" RUN_DIR ${NESTF_DIR}
+                  FIXTURES_REQUIRED nest_faces_pair_a FIXTURES_SETUP nest_faces_restart_first
+                  COMMAND ${NESTF_RESTART} ${NESTF_CHAIN} bc.nest_parent=pair_a_chk00030 init.first_guess=nest
+                          steady.max_iterations=10 ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME rt_nest_faces_restart_continued NP 2 LABELS "regression;smoke" RUN_DIR ${NESTF_DIR}
+                  FIXTURES_REQUIRED nest_faces_restart_first FIXTURES_SETUP nest_faces_restart_continued
+                  PREFIX ${EXPECT_ABORT} --success "restarted from hill_restart_chk00010 at step 10"
+                         "nest faces: xlo xhi ylo yhi take the parent's"
+                         "nest faces: relaxation zone of 2 cells"
+                         "terrain\\.nest_blend_width = 100 m: the ground is the parent's on the nest faces; it moved by up to [1-9]" --
+                  COMMAND ${NESTF_RESTART} ${NESTF_CHAIN} bc.nest_parent=pair_a_chk00030 io.restart=hill_restart_chk00010
+                          steady.max_iterations=20 ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME rt_nest_faces_restart_straight NP 2 LABELS "regression;smoke" RUN_DIR ${NESTF_DIR}/straight
+                  FIXTURES_REQUIRED nest_faces_pair_a FIXTURES_SETUP nest_faces_restart_straight
+                  COMMAND ${NESTF_RESTART} ${NESTF_CHAIN} bc.nest_parent=../pair_a_chk00030 init.first_guess=nest
+                          steady.max_iterations=20 ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME rt_nest_faces_restart_matches NP 1 LABELS "regression;smoke" RUN_DIR ${NESTF_DIR}
+                  FIXTURES_REQUIRED "nest_faces_restart_continued;nest_faces_restart_straight"
+                  COMMAND ${FCOMPARE} hill_restart_plt00020 straight/hill_restart_plt00020)
+    set(NESTF_CHANGED "io\\.restart = hill_restart_chk00010: the checkpoint was written with other nest settings")
+    gust_add_test(NAME abort_nest_faces_restart_zone NP 1 LABELS "regression;smoke" RUN_DIR ${NESTF_DIR}
+                  FIXTURES_REQUIRED nest_faces_restart_first
+                  PREFIX ${EXPECT_ABORT} "${NESTF_CHANGED}" --
+                  COMMAND ${NESTF_RESTART} bc.nest_relax_width=3 terrain.nest_blend_width=100 bc.nest_parent=pair_a_chk00030
+                          io.restart=hill_restart_chk00010 steady.max_iterations=20 ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME abort_nest_faces_restart_blend NP 1 LABELS "regression;smoke" RUN_DIR ${NESTF_DIR}
+                  FIXTURES_REQUIRED nest_faces_restart_first
+                  PREFIX ${EXPECT_ABORT} "${NESTF_CHANGED}" --
+                  COMMAND ${NESTF_RESTART} bc.nest_relax_width=2 terrain.nest_blend_width=150 bc.nest_parent=pair_a_chk00030
+                          io.restart=hill_restart_chk00010 steady.max_iterations=20 ${GUST_TEST_AMREX_FLAGS})
+    # The other parent: the same step, cells, ground and place, another flow.
+    gust_add_test(NAME abort_nest_faces_restart_parent NP 1 LABELS "regression;smoke" RUN_DIR ${NESTF_DIR}
+                  FIXTURES_REQUIRED "nest_faces_restart_first;nest_faces_pair_b"
+                  PREFIX ${EXPECT_ABORT} "${NESTF_CHANGED}" --
+                  COMMAND ${NESTF_RESTART} ${NESTF_CHAIN} bc.nest_parent=pair_b_chk00030 io.restart=hill_restart_chk00010
+                          steady.max_iterations=20 ${GUST_TEST_AMREX_FLAGS})
+    # What a patch with nest faces does not take: buildings, and a damping layer towards the inflow profile.
+    gust_add_test(NAME abort_nest_faces_buildings NP 1 LABELS "regression;smoke" RUN_DIR ${NESTF_DIR}
+                  FIXTURES_REQUIRED nest_faces_hill_parent
+                  PREFIX ${EXPECT_ABORT} "buildings\\.type: buildings are not supported with a nest face" --
+                  COMMAND ${NESTF_RESTART} bc.nest_parent=hill_parent_chk_final init.first_guess=nest
+                          steady.max_iterations=5 buildings.type=immersed_forcing
+                          buildings.file=${BUILDINGS_CASE}/building_map.txt ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME abort_nest_faces_damping NP 1 LABELS "regression;smoke" RUN_DIR ${NESTF_DIR}
+                  FIXTURES_REQUIRED nest_faces_hill_parent
+                  PREFIX ${EXPECT_ABORT} "bc\\.rayleigh_fields: with a nest face and no inflow face the Rayleigh layer may damp w and theta only" --
+                  COMMAND ${NESTF_RESTART} bc.nest_parent=hill_parent_chk_final init.first_guess=nest
+                          steady.max_iterations=5 bc.rayleigh_zdamp=600 bc.rayleigh_dampcoef=0.1 ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME abort_nest_faces_no_parent NP 1 LABELS "regression;smoke" RUN_DIR ${NESTF_DIR}
+                  FIXTURES_REQUIRED nest_faces_clean
+                  PREFIX ${EXPECT_ABORT} "bc\\.xlo = nest needs bc\\.nest_parent" --
+                  COMMAND ${NESTF_RESTART} init.first_guess=nest steady.max_iterations=5 ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME abort_nest_faces_no_guess NP 1 LABELS "regression;smoke" RUN_DIR ${NESTF_DIR}
+                  FIXTURES_REQUIRED nest_faces_hill_parent
+                  PREFIX ${EXPECT_ABORT} "bc\\.xlo = nest needs init\\.first_guess = nest" --
+                  COMMAND ${NESTF_RESTART} bc.nest_parent=hill_parent_chk_final init.first_guess=profile
+                          steady.max_iterations=5 ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME abort_nest_faces_sequencing NP 1 LABELS "regression;smoke" RUN_DIR ${NESTF_DIR}
+                  FIXTURES_REQUIRED nest_faces_hill_parent
+                  PREFIX ${EXPECT_ABORT} "bc\\.xlo = nest is not supported with steady\\.sequencing = 1" --
+                  COMMAND ${NESTF_RESTART} bc.nest_parent=hill_parent_chk_final init.first_guess=nest
+                          steady.max_iterations=5 steady.sequencing=1 ${GUST_TEST_AMREX_FLAGS})
+    # The terrain.* fault is reported with the run's inputs, the bc.* faults
+    # with the boundary conditions (two lists), so two runs each.
+    gust_add_test(NAME abort_nest_faces_widths NP 1 LABELS "regression;smoke" RUN_DIR ${NESTF_DIR}
+                  FIXTURES_REQUIRED nest_faces_hill_parent
+                  PREFIX ${EXPECT_ABORT}
+                         "bc\\.nest_relax_width = 12: must be below half the patch's cells in y \\(24 cells\\)"
+                         "bc\\.nest_relax_factor = 0\\.0+: must be finite and > 0" --
+                  COMMAND ${NESTF_RESTART} bc.nest_parent=hill_parent_chk_final init.first_guess=nest
+                          steady.max_iterations=5 bc.nest_relax_width=12 bc.nest_relax_factor=0 ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME abort_nest_faces_blend_width NP 1 LABELS "regression;smoke" RUN_DIR ${NESTF_DIR}
+                  FIXTURES_REQUIRED nest_faces_hill_parent
+                  PREFIX ${EXPECT_ABORT}
+                         "terrain\\.nest_blend_width = 300: must be below half the patch's width in y \\(300 m\\)" --
+                  COMMAND ${NESTF_RESTART} bc.nest_parent=hill_parent_chk_final init.first_guess=nest
+                          steady.max_iterations=5 terrain.nest_blend_width=300 ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME abort_nest_faces_keys_unused NP 1 LABELS "regression;smoke"
+                  PREFIX ${EXPECT_ABORT} "bc\\.nest_relax_width has no effect without a nest face"
+                         "bc\\.nest_relax_factor has no effect without bc\\.nest_relax_width > 0" --
+                  COMMAND $<TARGET_FILE:gust> ${NEST_FACES_CASE}/inputs_hill_parent bc.nest_relax_width=0
+                          bc.nest_relax_factor=2 ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME abort_nest_faces_blend_unused NP 1 LABELS "regression;smoke"
+                  PREFIX ${EXPECT_ABORT} "terrain\\.nest_blend_width has no effect without a nest face" --
+                  COMMAND $<TARGET_FILE:gust> ${NEST_FACES_CASE}/inputs_hill_parent terrain.nest_blend_width=50
                           ${GUST_TEST_AMREX_FLAGS})
     # The Tucker wall distance on ERF's Neutral_Hill_2D mesh: ERF's
     # wall-distance checks (Tests/Discretization/Wall_Distance/check_walldist.py), and the field against

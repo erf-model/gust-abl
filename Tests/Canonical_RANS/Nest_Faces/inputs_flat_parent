@@ -1,0 +1,30 @@
+# The parent of the flat nested patch (rt_nest_faces_flat_parent).
+# 32 x 24 x 16 cells of 50 m over 1600 m x 1200 m x 800 m (first layer 10 m),
+# periodic in y, a log-law inflow (u* = 0.4 m/s, z0 = 0.1 m) from 20 degrees
+# at xlo, outflow at xhi, the surface layer below and a slip top; the SIMPLEC
+# stage to the steady verdict. check_nest_faces.py names the outputs
+# (io.plot_file, io.chk_file) and copies the last checkpoint and plotfile to
+# flat_parent_chk_final and flat_parent_plt_final for the patch.
+mesh.n_cell        = 32 24 16
+mesh.prob_lo       = 0. 0. 0.
+mesh.prob_hi       = 1600. 1200. 800.
+mesh.is_periodic   = 0 1 0
+mesh.max_grid_size = 16 12
+mesh.dz0           = 10.
+
+terrain.type = flat
+
+bc.xlo = inflow
+bc.xhi = outflow
+bc.zlo = surface_layer
+bc.zhi = slip_wall
+bc.surface_z0 = 0.1
+bc.inflow_profile   = log_law
+bc.inflow_ustar     = 0.4
+bc.inflow_z0        = 0.1
+bc.inflow_direction = 20.
+
+init.first_guess = profile
+
+steady.stage          = simplec
+steady.max_iterations = 2000

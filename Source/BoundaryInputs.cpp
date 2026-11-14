@@ -15,11 +15,11 @@ namespace gust {
 
 namespace {
 
-constexpr int kNumTypes = 7;
+constexpr int kNumTypes = 8;
 const char* const kNames[kNumTypes] = {"periodic", "inflow", "outflow", "slip_wall", "no_slip_wall",
-                                       "surface_layer", "geostrophic"};
+                                       "surface_layer", "geostrophic", "nest"};
 const char* const kErfNames[kNumTypes] = {"Periodic", "Inflow", "Outflow", "SlipWall", "NoSlipWall",
-                                          "surface_layer", "SlipWall"};
+                                          "surface_layer", "SlipWall", "Inflow"};
 const char* const kFaceKeys[6] = {"xlo", "ylo", "zlo", "xhi", "yhi", "zhi"};
 
 } // namespace
@@ -62,7 +62,7 @@ BoundaryInputs read_boundary_inputs ()
                           "theta_profile_z", "theta_profile", "zhi_theta_grad", "rayleigh_zdamp",
                           "rayleigh_dampcoef", "rayleigh_fields", "rayleigh_height", "sponge_width", "sponge_strength",
                           "outflow_transport", "xlo_wall_velocity", "xhi_wall_velocity", "ylo_wall_velocity", "yhi_wall_velocity",
-                          "zlo_wall_velocity", "zhi_wall_velocity", "nest_parent"};
+                          "zlo_wall_velocity", "zhi_wall_velocity", "nest_parent", "nest_relax_width", "nest_relax_factor"};
     std::vector<std::string> errs;
     for (const char* key : keys) {
         if (!pp.contains(key)) { continue; }
@@ -150,7 +150,15 @@ BoundaryInputs read_boundary_inputs ()
     if (pp.query("nest_parent", in.nest_parent) && in.nest_parent.empty()) {
         amrex::Abort("gust: bc.nest_parent: the parent checkpoint's directory must not be empty");
     }
+    pp.query("nest_relax_width", in.nest_relax_width);
+    pp.query("nest_relax_factor", in.nest_relax_factor);
     return in;
+}
+
+bool has_nest_face (const BoundaryInputs& in)
+{
+    for (const FaceType t : in.face) { if (t == FaceType::nest) { return true; } }
+    return false;
 }
 
 std::vector<std::string> check_boundary_inputs (const BoundaryInputs& in, const amrex::Geometry& geom,
@@ -177,6 +185,9 @@ std::vector<std::string> check_boundary_inputs (const BoundaryInputs& in, const 
             if (t == FaceType::surface_layer || t == FaceType::geostrophic) {
                 err.emplace_back(key + " = " + face_type_name(t) + ": only the ground (zlo) or the top (zhi) take this type");
             }
+        } else if (t == FaceType::nest) {
+            err.emplace_back(key + " = nest: only the lateral faces (xlo, xhi, ylo, yhi) take this type; the patch keeps the "
+                             "parent's z-levels, so its ground and top are the parent's (use the parent's " + key + ")");
         } else if (ori.isLow()) {
             if (t != FaceType::surface_layer && t != FaceType::slip_wall && t != FaceType::no_slip_wall) {
                 err.emplace_back(key + " = " + face_type_name(t) + ": the ground must be surface_layer, slip_wall or no_slip_wall");
@@ -278,6 +289,61 @@ std::vector<std::string> check_boundary_inputs (const BoundaryInputs& in, const 
     }
     if (given("outflow_transport") && !any_outflow) {
         err.emplace_back("bc.outflow_transport has no effect without an outflow face");
+    }
+    // The nest faces (NestFaces.H).
+    const bool any_nest = has_nest_face(in);
+    if (any_nest && any_inflow && !any_outflow) {
+        err.emplace_back("a nest face with an inflow face needs an outflow face: the inflow profile's flux and the parent's "
+                         "do not balance, and only an outflow face can carry the difference");
+    }
+    if (any_nest) {
+        // A lateral wall on a patch: the parent's flow crosses that face (the
+        // first guess is the parent's field), so the wall's zero flux is not
+        // the parent's.
+        for (int d = 0; d < 2; ++d) {
+            for (const auto side : {amrex::Orientation::low, amrex::Orientation::high}) {
+                const amrex::Orientation o(d, side);
+                const FaceType t = in.face[o];
+                if (t == FaceType::slip_wall || t == FaceType::no_slip_wall) {
+                    err.emplace_back(std::string("bc.") + kFaceKeys[o] + " = " + face_type_name(t) + " is not supported with a nest "
+                                     "face: the parent's flow crosses that face. Use nest, outflow or (both faces) periodic");
+                }
+            }
+        }
+        // The damping layers relax u, v and k towards the bc.inflow_* profile, not the parent.
+        if (!any_inflow) {
+            const auto& rf = in.rayleigh_fields;
+            if (in.rayleigh_zdamp > 0 && (rf[0] || rf[1] || rf[4])) {
+                err.emplace_back("bc.rayleigh_fields: with a nest face and no inflow face the Rayleigh layer may damp w and theta "
+                                 "only (bc.rayleigh_fields = w, or w theta): u, v and tke would relax towards the bc.inflow_* "
+                                 "profile, not the parent");
+            }
+            if (in.sponge_width > 0) {
+                err.emplace_back("bc.sponge_width > 0 is not supported with a nest face and no inflow face: the sponge relaxes "
+                                 "towards the bc.inflow_* profile, not the parent");
+            }
+        }
+    }
+    const int N = in.nest_relax_width;
+    if (N < 0) {
+        err.emplace_back("bc.nest_relax_width = " + std::to_string(N) + ": must be >= 0 (cells; 0: no relaxation zone)");
+    } else if (given("nest_relax_width") && !any_nest) {
+        err.emplace_back("bc.nest_relax_width has no effect without a nest face (bc.xlo, bc.xhi, bc.ylo or bc.yhi = nest)");
+    } else if (N > 0) {
+        for (int d = 0; d < 2; ++d) {
+            const bool on = in.face[amrex::Orientation(d, amrex::Orientation::low)] == FaceType::nest
+                         || in.face[amrex::Orientation(d, amrex::Orientation::high)] == FaceType::nest;
+            const int n = geom.Domain().length(d);
+            if (on && !(2 * static_cast<long>(N) < n)) {
+                err.emplace_back("bc.nest_relax_width = " + std::to_string(N) + ": must be below half the patch's cells in "
+                                 + (d == 0 ? "x" : "y") + " (" + std::to_string(n) + " cells)");
+            }
+        }
+    }
+    if (!(in.nest_relax_factor > 0 && std::isfinite(in.nest_relax_factor))) {
+        err.emplace_back("bc.nest_relax_factor = " + std::to_string(in.nest_relax_factor) + ": must be finite and > 0");
+    } else if (given("nest_relax_factor") && !(N > 0)) {
+        err.emplace_back("bc.nest_relax_factor has no effect without bc.nest_relax_width > 0");
     }
     return err;
 }
