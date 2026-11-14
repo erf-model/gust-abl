@@ -23,6 +23,10 @@
 //                                  centre; k and p' zero gradient
 //   geostrophic    (SlipWall)      the top held at the geostrophic wind (u_g, v_g of
 //                                  the Coriolis options), w = 0; theta as slip_wall
+//   nest           (Inflow)        a lateral face of a nested patch (NestFaces.H): the
+//                                  normal velocity on the face and u, v, w, theta and k
+//                                  in the ghost cells are the parent run's
+//                                  (bc.nest_parent); p' zero gradient
 // On the ground and the top the normal velocity's value is the one with no
 // flux through the face, Omega = 0: w = z_x u_f + z_y v_f (MassFlux_K.H), 0
 // over flat ground; the initializer's first guess uses the same
@@ -56,6 +60,10 @@
 // periodic where the geometry is, odd (Dirichlet p' = 0) for outflow, even
 // (Neumann) for every other type.
 //
+// A nest face's fills, rows and relaxation zone are NestFaces'; this class
+// calls them (the fills after each direction's own, the rows after its own,
+// the zone with the damping).
+//
 // Damping, off by default (ERF's rayleigh_zdamp, rayleigh_dampcoef and
 // sponge_strength):
 //   Rayleigh  R += c(z) (q - q_ref) above z_damp,  c = coef sin^2(pi/2 (z - z_damp)/(z_top - z_damp))
@@ -83,7 +91,9 @@
 
 namespace gust {
 
-enum class FaceType { periodic, inflow, outflow, slip_wall, no_slip_wall, surface_layer, geostrophic };
+enum class FaceType { periodic, inflow, outflow, slip_wall, no_slip_wall, surface_layer, geostrophic, nest };
+
+class NestFaces;
 
 //! The face type's name in the inputs (bc.xlo etc.), and ERF's name for it.
 const char* face_type_name (FaceType t);
@@ -138,7 +148,15 @@ struct BoundaryInputs
     //! patch (NestParent.H); empty: none. Read with init.first_guess = nest,
     //! which it requires and which requires it.
     std::string nest_parent;
+    //! bc.nest_relax_width: the relaxation zone inside each nest face, in
+    //! cells (NestFaces.H; 0: none), and bc.nest_relax_factor: its rate as a
+    //! multiple of the parent's inward speed over the zone's width.
+    int nest_relax_width{0};
+    amrex::Real nest_relax_factor{1};
 };
+
+//! Whether a lateral face is a nest face.
+bool has_nest_face (const BoundaryInputs& in);
 
 //! Give the wall model and the inflow profile's equilibrium k and nu_t the
 //! closure's constants (turb.Cmu0, turb.kappa, and the length cap
@@ -249,6 +267,11 @@ public:
     //! between the first two cells. Off by default; not in homogeneous fills.
     void set_theta_ground_extension (bool on) { m_theta_ground_extension = on; }
 
+    //! The nest faces' values, rows and relaxation zone (NestFaces.H), which
+    //! must outlive this object and its copies. Needed before the first fill
+    //! when a face is nest (fill_ghosts aborts without it).
+    void set_nest_faces (const NestFaces* nest) { m_nest = nest; }
+
     //! The slabs outside the domain of one layout, each with the box that
     //! owns it (the ghost-copy exchange at the end of fill_ghosts).
     struct GhostSlabs
@@ -270,6 +293,7 @@ private:
     CoriolisOptions m_coriolis;
     InflowProfile m_profile;
     bool m_theta_ground_extension{false};   //!< set_theta_ground_extension
+    const NestFaces* m_nest{nullptr};       //!< set_nest_faces
     //! Built once per layout: a new BoxArray per fill would rebuild AMReX's
     //! copy pattern every time. The cache holds its layouts (no id reuse).
     mutable std::vector<GhostSlabs> m_ghost_slabs;

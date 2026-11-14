@@ -3,6 +3,7 @@
 // (split from BoundaryConditions.cpp, audit A11).
 #include "BoundaryConditions.H"
 #include "BoundaryConditions_K.H"
+#include "NestFaces.H"
 
 #include "CVFluxes.H"
 #include "Heights_K.H"
@@ -100,6 +101,7 @@ void point_heights (int t, const NodeZ& nz, int i, int j, int k, int klo, amrex:
 
 void BoundaryConditions::add_damping (const State& q, ResidualFields& R) const
 {
+    if (m_nest != nullptr) { m_nest->add_relaxation(q, R); }
     if (!damping_on()) { return; }
     const int klo = m_geom.Domain().smallEnd(2);
     const InflowProfile::View prof = m_profile.view();
@@ -194,6 +196,7 @@ BoundaryConditions::CanopyZoneCounts BoundaryConditions::canopy_in_boundary_zone
 
 void BoundaryConditions::add_damping_to_implicit (Equation eq, Loc loc, const amrex::MultiFab& z_nd, amrex::MultiFab& A) const
 {
+    if (m_nest != nullptr) { m_nest->add_relaxation_to_implicit(eq, loc, A); }
     if (!damping_on()) { return; }
     const int klo = m_geom.Domain().smallEnd(2);
     const DampingCoef coef = damping_coef(m_in, m_geom, m_mesh.zlevels().back());

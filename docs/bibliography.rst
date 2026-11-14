@@ -11,6 +11,9 @@ and water level are in Bolund_Validation.pdf of the Bolund measurement archive (
 Burchard, H., Petersen, O. (1999). Models of turbulence in the marine environment — a comparative study of
 two-equation turbulence models. *Journal of Marine Systems* 21, 29–53.
 
+Davies, H. C. (1976). A lateral boundary formulation for multi-level prediction models. *Quarterly Journal of the
+Royal Meteorological Society* 102, 405–418.
+
 Dyer, A. J. (1974). A review of flux-profile relationships. *Boundary-Layer Meteorology* 7, 363–372.
 
 Elliott, W. P. (1958). The growth of the atmospheric internal boundary layer. *Transactions, American Geophysical

@@ -11,6 +11,8 @@
 
 #include <AMReX_BoxList.H>
 #include <AMReX_ParmParse.H>
+#include "NestFaces.H"
+
 #include <AMReX_TagParallelFor.H>
 
 #include <algorithm>
@@ -36,6 +38,10 @@ Rule rule_for (Field f, FaceType t, int d, bool lo)
     switch (t) {
     case FaceType::inflow:
         return (f == f_p) ? Rule::even : Rule::profile;
+    case FaceType::nest:
+        // As the inflow: the ghosts hold given values (the parent's; NestFaces
+        // fills them), and the normal velocity's face point is a Dirichlet row.
+        return (f == f_p) ? Rule::even : Rule::profile;
     case FaceType::outflow:
         return (f == f_p) ? Rule::odd : Rule::even;
     case FaceType::slip_wall:
@@ -56,38 +62,6 @@ Rule rule_for (Field f, FaceType t, int d, bool lo)
     default:
         return Rule::even;
     }
-}
-
-//! The ghost slab of layer L (1 or 2) outside face (d, lo) of a box, grown
-//! over the other directions as fill_bc_ghosts: fully over the directions
-//! already filled (e < d), and over later ones only where values exist
-//! (inside the domain, or across periodic faces).
-amrex::Box ghost_slab (const amrex::Box& vb, const amrex::Box& dom, const amrex::Geometry& geom, int d, bool lo,
-                       int layer, int ng)
-{
-    const bool nodal_d = vb.type(d) == amrex::IndexType::NODE;
-    const int edge = lo ? dom.smallEnd(d) : (nodal_d ? dom.bigEnd(d) + 1 : dom.bigEnd(d));
-    amrex::Box gb = vb;
-    for (int e = 0; e < AMREX_SPACEDIM; ++e) {
-        if (e == d) { continue; }
-        gb.grow(e, ng);
-        if (e > d && !geom.isPeriodic(e)) {
-            const bool nodal_e = vb.type(e) == amrex::IndexType::NODE;
-            gb.setSmall(e, std::max(gb.smallEnd(e), dom.smallEnd(e)));
-            gb.setBig(e, std::min(gb.bigEnd(e), nodal_e ? dom.bigEnd(e) + 1 : dom.bigEnd(e)));
-        }
-    }
-    const int g = lo ? edge - layer : edge + layer;
-    gb.setSmall(d, g);
-    gb.setBig(d, g);
-    return gb;
-}
-
-//! Whether box vb touches the domain face (d, lo).
-bool touches (const amrex::Box& vb, const amrex::Box& dom, int d, bool lo)
-{
-    const bool nodal_d = vb.type(d) == amrex::IndexType::NODE;
-    return lo ? vb.smallEnd(d) == dom.smallEnd(d) : vb.bigEnd(d) == (nodal_d ? dom.bigEnd(d) + 1 : dom.bigEnd(d));
 }
 
 //! The inputs, after the checks (every message, each naming its key); the
@@ -224,6 +198,7 @@ void add_field_tags (amrex::Vector<FillTag>& tags, amrex::MultiFab& q, int f, in
 {
     const amrex::Orientation o(d, lo ? amrex::Orientation::low : amrex::Orientation::high);
     const FaceType ft = in.face[o];
+    if (ft == FaceType::nest && f != f_p) { return; }   // NestFaces::fill
     const Rule rule = rule_for(static_cast<Field>(f), ft, d, lo);
     amrex::Real value = 0;
     if (ft == FaceType::geostrophic) { value = (f == f_u) ? cor.ug : (f == f_v) ? cor.vg : amrex::Real(0); }
@@ -471,6 +446,10 @@ void BoundaryConditions::fill_ghosts (State& q, const SurfaceLayerOptions* surfa
     if (ground_wall && !homogeneous && surface_opt == nullptr) {
         amrex::Abort("gust: fill_ghosts: bc.zlo = surface_layer needs the surface-layer options");
     }
+    if (m_nest == nullptr && has_nest_face(m_in)) {
+        amrex::Abort("gust: fill_ghosts: a nest face (bc.xlo, bc.xhi, bc.ylo or bc.yhi = nest) needs the parent's values "
+                     "(set_nest_faces)");
+    }
     amrex::MultiFab* fields[n_fields] = {&q.u, &q.v, &q.w, &q.p, &q.theta, &q.tke};
     for (auto* mf : fields) {
         if (mf->nGrow() < 2) { amrex::Abort("gust: fill_ghosts: the state needs two ghost cells"); }
@@ -525,6 +504,7 @@ void BoundaryConditions::fill_ghosts (State& q, const SurfaceLayerOptions* surfa
         // fill_direction); the no-flux w of the ground and the top reads u and
         // v there, so it comes after. The p, theta and k fills do not read w.
         fill_direction(q, d, m_in, m_geom, prof, m_coriolis, gg, homogeneous);
+        if (m_nest != nullptr) { m_nest->fill(q, d, homogeneous); }
         if (d == 2) { fill_no_flux_w(q, m_in, m_geom); }
     }
     if (m_theta_ground_extension && !homogeneous) { extend_theta_below_ground(q.theta, q.z_phys_nd, m_geom); }
@@ -719,6 +699,7 @@ void BoundaryConditions::apply_rows (const State& q, ResidualFields& R, bool hom
             }
         }
     }
+    if (m_nest != nullptr) { m_nest->apply_rows(q, R, homogeneous); }
 }
 
 void BoundaryConditions::dirichlet_rows (Equation eq, Loc loc, const Mesh& mesh, amrex::MultiFab& mask) const

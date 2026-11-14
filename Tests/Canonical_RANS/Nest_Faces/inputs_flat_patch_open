@@ -1,0 +1,27 @@
+# The flat patch with one nest face, an outflow face and periodic y
+# (rt_nest_faces_flat_open). Parent cells 8 to 23 in x and the parent's whole
+# periodic width in y at refinement 2 2 1: 32 x 48 cells of 25 m from
+# (400, 0) m to (1200, 1200) m, on uneven boxes. xlo takes the parent's flow
+# (nest); xhi is an outflow face, so the net flux through the nest face is
+# not removed: the outflow face carries it. The first guess is the parent's
+# field. check_nest_faces.py names the outputs.
+mesh.n_cell        = 32 48 16
+mesh.prob_lo       = 400. 0. 0.
+mesh.prob_hi       = 1200. 1200. 800.
+mesh.is_periodic   = 0 1 0
+mesh.max_grid_size = 13 19
+mesh.dz0           = 10.
+
+terrain.type = flat
+
+bc.xlo = nest
+bc.xhi = outflow
+bc.zlo = surface_layer
+bc.zhi = slip_wall
+bc.surface_z0 = 0.1
+bc.nest_parent = flat_parent_chk_final
+
+init.first_guess = nest
+
+steady.stage          = simplec
+steady.max_iterations = 2000

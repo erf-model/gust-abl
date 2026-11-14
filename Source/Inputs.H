@@ -86,6 +86,9 @@ struct TerrainInputs
     //! Grid hierarchy: level l's ground is smoothed by hierarchy_passes (2^l - 1)
     //! passes (MeshHierarchy.H).
     int hierarchy_passes{1};
+    //! A nested patch (NestFaces.H): the width (m) over which the ground goes
+    //! from the parent's on a nest face to the patch's own; 0: no blend.
+    amrex::Real nest_blend_width{0};
     //! Keys given in the inputs (a key with no effect for the chosen type is an error).
     std::vector<std::string> given;
 };

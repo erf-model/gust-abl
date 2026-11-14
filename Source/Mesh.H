@@ -8,6 +8,7 @@
 #include <AMReX_Vector.H>
 
 #include <array>
+#include <functional>
 #include <limits>
 #include <string>
 
@@ -70,8 +71,13 @@ public:
 
     //! Build z_phys_nd from the inputs: z-levels (make_zlevels), the ground
     //! (fill_terrain_surface) and ERF's terrain-fitted coordinates with
-    //! terrain.smoothing; then the metrics.
-    void build (const Inputs& in, const amrex::Geometry& geom, amrex::MultiFab& z_phys_nd);
+    //! terrain.smoothing; then the metrics. ground_edit, when given, is
+    //! called on z_phys_nd between the ground and the coordinates (the k = 0
+    //! slab holds the ground, ghost nodes included; a nested patch's ground
+    //! blend, NestFaces.H).
+    using GroundEdit = std::function<void(amrex::MultiFab&)>;
+    void build (const Inputs& in, const amrex::Geometry& geom, amrex::MultiFab& z_phys_nd,
+                const GroundEdit& ground_edit = nullptr);
 
     //! As build, for a ground already written into the k = 0 slab of
     //! z_phys_nd (ghost nodes in x and y included); terrain.type is not used.
@@ -83,7 +89,7 @@ public:
     //! say so in the log when the nodes differ within it), take the rebuilt
     //! nodes, ghosts included, then compute the metrics.
     void check_restart (const Inputs& in, const amrex::Geometry& geom,
-                        amrex::MultiFab& z_phys_nd);
+                        amrex::MultiFab& z_phys_nd, const GroundEdit& ground_edit = nullptr);
 
     //! For node heights built by another Mesh (from) and copied onto this
     //! mesh's layout, ghost nodes included (a hierarchy level gathered onto

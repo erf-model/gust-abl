@@ -1,0 +1,31 @@
+# Two parents of one patch that differ in their flow alone
+# (rt_nest_faces_pair_a, _b): inputs_hill_parent without bc.inflow_ustar, the
+# iteration cap and the output names, which the tests give on the command line
+# (u* = 0.4 and 0.6 m/s, 30 iterations each: the same step, cells and ground).
+# The restart chain's patch is nested in the first; a restart of it with the
+# second as bc.nest_parent stops (abort_nest_faces_restart_parent).
+mesh.n_cell        = 32 24 16
+mesh.prob_lo       = 0. 0. 0.
+mesh.prob_hi       = 1600. 1200. 800.
+mesh.is_periodic   = 0 1 0
+mesh.max_grid_size = 16 12
+mesh.dz0           = 10.
+
+terrain.type            = agnesi
+terrain.hill_shape      = round
+terrain.hill_height     = 60.
+terrain.hill_half_width = 250.
+terrain.smoothing       = 0
+
+bc.xlo = inflow
+bc.xhi = outflow
+bc.zlo = surface_layer
+bc.zhi = slip_wall
+bc.surface_z0 = 0.1
+bc.inflow_profile   = log_law
+bc.inflow_z0        = 0.1
+bc.inflow_direction = 20.
+
+init.first_guess = profile
+
+steady.stage = simplec

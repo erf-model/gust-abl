@@ -82,8 +82,9 @@ public:
     //! Aborts, naming bc.nest_parent, if dir has no Header, the Header is
     //! not a GUST checkpoint of format version 2 or later, or the placement
     //! breaks a rule above.
+    //! with_ground: read the parent's node heights too (interpolate_ground).
     NestParent (const std::string& dir, const MeshInputs& patch, const amrex::Vector<amrex::Real>& patch_zlevels,
-                const amrex::BoxArray& patch_ba, const amrex::DistributionMapping& patch_dm);
+                const amrex::BoxArray& patch_ba, const amrex::DistributionMapping& patch_dm, bool with_ground = false);
 
     //! Set u, v, w, p', theta and k of patch (defined on the layout given to
     //! the constructor) from the parent: at the valid points and the
@@ -95,8 +96,22 @@ public:
     //! domain faces' ghost cells. z_phys_nd is not touched.
     void interpolate (State& patch) const;
 
+    //! The parent's node heights at the patch's nodes (hp: nodal, on the
+    //! patch's layout, at least one ghost node in x and y; one or more
+    //! z-levels from the ground up), bilinear per z-level as the fields: a
+    //! patch node on a parent node takes its height, one between two or four
+    //! takes their mean. The ground is level 0. Aborts unless the parent was
+    //! read with_ground.
+    void interpolate_ground (amrex::MultiFab& hp) const;
+
+    [[nodiscard]] const std::string& dir () const { return m_dir; }
     [[nodiscard]] const amrex::IntVect& offset () const { return m_offset; }
     [[nodiscard]] int parent_step () const { return m_step; }
+    //! SHA-256 of the checkpoint's Header and of the headers of its u, v, w,
+    //! theta, tke and z_phys_nd files (text; they hold every box's minimum
+    //! and maximum): two parents with other fields or another ground differ,
+    //! whatever the patch's layout or ranks.
+    [[nodiscard]] const std::string& content_digest () const { return m_digest; }
     [[nodiscard]] const amrex::IntVect& parent_cells () const { return m_parent_cells; }
     //! One line for the log: the parent, its step and cells, the patch's place in it.
     [[nodiscard]] std::string summary () const;
@@ -104,12 +119,14 @@ public:
 private:
     std::string m_dir;
     int m_step{0};
+    std::string m_digest;
     amrex::IntVect m_offset{0, 0, 0};
     amrex::IntVect m_parent_cells{0, 0, 0};
     amrex::IntVect m_patch_cells{0, 0, 0};
     amrex::BoxArray m_patch_ba;
     // The parent's values under the patch's boxes (parent indices).
     amrex::MultiFab m_u, m_v, m_w, m_p, m_theta, m_tke;
+    amrex::MultiFab m_z;   //!< the parent's node heights (with_ground), else empty
     transfer::Axis m_cx, m_cy, m_nx, m_ny;
 };
 

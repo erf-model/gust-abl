@@ -52,6 +52,7 @@ set(GUST_SOURCES
     LineSweeps.cpp
     Sequencing.cpp
     Simplec.cpp
+    NestFaces.cpp
     NestParent.cpp
     Transfer.cpp
     Newton.cpp

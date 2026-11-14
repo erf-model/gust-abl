@@ -88,6 +88,9 @@ Quick reference
    * - ``terrain.gamma_m``
      - ``0.5``
      - Smallest layer thickness under STF, relative to flat
+   * - ``terrain.nest_blend_width``
+     - ``0``
+     - Width (m) over which a patch's ground blends to the parent's at ``nest`` faces
    * - ``terrain.hill_height``
      - required for ``agnesi``
      - Hill height (m)
@@ -231,7 +234,10 @@ Quick reference
      - QNSE coefficients
    * - ``bc.nest_parent``
      - none
-     - Parent run's checkpoint for ``init.first_guess = nest``
+     - Parent run's checkpoint for ``init.first_guess = nest`` and ``nest`` faces
+   * - ``bc.nest_relax_width``, ``bc.nest_relax_factor``
+     - ``0``, ``1``
+     - Relaxation zone inside ``nest`` faces: width (cells) and rate factor
    * - **Forest canopy** (`canopy`_)
      -
      -
@@ -655,6 +661,11 @@ Quick reference
      - ``1``
      - Integer from 0 to 64; only with ``mesh.hierarchy_levels`` > 1. The ground of level :math:`l` is smoothed by
        this number times :math:`(2^l - 1)` passes (:doc:`grid_hierarchy`).
+   * - ``terrain.nest_blend_width``
+     - ``0``
+     - Finite, ≥ 0 (m), below half the patch's width across its ``nest`` faces; 0: off. Refused without a ``nest``
+       face. The patch's ground becomes the parent's on the ``nest`` faces and its own from this distance inwards,
+       with a smoothstep between (:doc:`boundary_conditions`).
 
 ``init``
 --------
@@ -774,10 +785,13 @@ types, the inflow profile and the sounding; the other keys act in the SIMPLEC st
    * - ``bc.xlo``, ``bc.xhi``, ``bc.ylo``, ``bc.yhi``
      - ``periodic``
      - ``periodic`` exactly when ``mesh.is_periodic`` is 1 in that direction; otherwise ``inflow``, ``outflow``,
-       ``slip_wall`` or ``no_slip_wall``.
+       ``slip_wall``, ``no_slip_wall`` or ``nest`` (the parent run's field on the face of a nested patch,
+       :doc:`boundary_conditions`). ``nest`` needs ``bc.nest_parent`` and ``init.first_guess = nest`` or
+       ``io.restart``; it is refused with ``steady.sequencing = 1``, with a ``slip_wall`` or ``no_slip_wall`` lateral
+       face, with buildings, and with an ``inflow`` face unless there is an ``outflow`` face too.
    * - ``bc.zlo``
      - ``surface_layer``
-     - ``surface_layer``, ``slip_wall`` or ``no_slip_wall``.
+     - ``surface_layer``, ``slip_wall`` or ``no_slip_wall`` (``nest`` is for the lateral faces only).
    * - ``bc.zhi``
      - ``slip_wall``
      - ``slip_wall``, ``no_slip_wall`` or ``geostrophic`` (needs Coriolis with geostrophic forcing).
@@ -831,14 +845,16 @@ types, the inflow profile and the sounding; the other keys act in the SIMPLEC st
      - Finite, ≥ 0 (1/s); needs ``bc.rayleigh_zdamp`` > 0.
    * - ``bc.rayleigh_fields``
      - ``u v w theta tke``
-     - One or more of ``u v w theta tke``; needs ``bc.rayleigh_zdamp`` > 0.
+     - One or more of ``u v w theta tke``; needs ``bc.rayleigh_zdamp`` > 0. With a ``nest`` face and no ``inflow``
+       face only ``w`` and ``theta`` (u, v and k relax towards the ``bc.inflow_*`` profile, not the parent).
    * - ``bc.rayleigh_height``
      - ``absolute``
      - ``absolute`` or ``above_ground``: the height used for the layer's coefficient and for θ's reference
        (:math:`u, v, k` always use the height above the ground).
    * - ``bc.sponge_width``
      - ``0`` (off)
-     - Finite, ≥ 0 (m); > 0 needs an inflow or outflow face and ``bc.sponge_strength`` > 0.
+     - Finite, ≥ 0 (m); > 0 needs an inflow or outflow face and ``bc.sponge_strength`` > 0. Refused with a ``nest``
+       face and no ``inflow`` face.
    * - ``bc.sponge_strength``
      - ``0``
      - Finite, ≥ 0 (1/s); needs ``bc.sponge_width`` > 0.
@@ -892,13 +908,24 @@ types, the inflow profile and the sounding; the other keys act in the SIMPLEC st
    * - ``bc.nest_parent``
      - none
      - A checkpoint directory of the parent run, written by this version (checkpoint format 2, which holds the
-       z-levels); required with ``init.first_guess = nest`` and refused without it (no effect). The patch must refine
+       z-levels); required with ``init.first_guess = nest`` or a ``nest`` face and refused without both (no effect). The patch must refine
        the parent by 2 2 1, lie on the parent's cell faces (to :math:`10^{-4}` of a parent cell), keep 2 parent cells
        from every non-periodic face of the parent (it may reach a periodic face), span the full width of a direction in
        which it is periodic (``mesh.prob_lo`` and ``mesh.prob_hi`` equal to the parent's there), and have the parent's
        z-levels bit for bit (``mesh.n_cell`` z, ``mesh.prob_lo`` z, ``mesh.prob_hi`` z, ``mesh.dz0``,
        ``mesh.stretch_ratio``, ``mesh.zlevels_file``). Any other placement, a directory without a checkpoint ``Header`` or a
        format-1 checkpoint stops the run, naming this key (:doc:`initial_conditions`).
+   * - ``bc.nest_relax_width``
+     - ``0``
+     - Integer ≥ 0 (cells), below half the patch's cells across its ``nest`` faces; 0: no zone. Refused without a
+       ``nest`` face. The number of cells inside each ``nest`` face over which u, v, w, θ and k are relaxed towards
+       the parent's field where the parent's flow enters. A robustness setting: it holds the patch to the parent's
+       coarser solution over the zone (:doc:`boundary_conditions`).
+   * - ``bc.nest_relax_factor``
+     - ``1``
+     - Finite, > 0. Multiplies the zone's rate; with 1 the rate at the face is the parent's inward velocity over the
+       zone's width. About :math:`e^{-f/2}` of a difference from the parent passes the zone (61 % with 1, 0.7 % with
+       10). Refused without ``bc.nest_relax_width`` > 0.
 
 The wall model and the inflow profile's equilibrium :math:`k` and :math:`\nu_t` use the turbulence model's
 ``turb.Cmu0`` and ``turb.kappa``, and the inflow profile its ``turb.max_geom_lscale``. Without the SIMPLEC stage
@@ -1018,7 +1045,7 @@ refuses buildings other than those of the run it continues.
      - Meaning and range
    * - ``buildings.type``
      - ``none``
-     - ``none`` or ``immersed_forcing``.
+     - ``none`` or ``immersed_forcing``. Refused with a ``nest`` face.
    * - ``buildings.file``
      - required when on
      - The height map, readable. Heights above the local ground (m), finite and ≥ 0. At least one building in the domain, none reaching the top layer, and in a periodic direction the map no wider than the domain.

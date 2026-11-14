@@ -1,0 +1,36 @@
+# The nested patch over the hill (rt_nest_faces_hill_np1, _np2, _np4, _zone and
+# the restart chain). The hill is centred in both domains.
+# Parent cells 8 to 23 in x and 6 to 17 in y at refinement 2 2 1: 32 x 24
+# cells of 25 m from (400, 300) m to (1200, 900) m, with the parent's 16
+# layers, on uneven boxes. The four lateral faces are nest faces (plan
+# sub-phase 9.2): the parent's normal velocity on the face, the parent's u, v,
+# w, theta and k in the ghost cells, zero-gradient p'. With the wind from 20
+# degrees, xlo and ylo are inflow faces and xhi and yhi outflow faces; the
+# deck does not say which. The first guess is the parent's field
+# (init.first_guess = nest). check_nest_faces.py names the outputs.
+mesh.n_cell        = 32 24 16
+mesh.prob_lo       = 400. 300. 0.
+mesh.prob_hi       = 1200. 900. 800.
+mesh.is_periodic   = 0 0 0
+mesh.max_grid_size = 13 9
+mesh.dz0           = 10.
+
+terrain.type            = agnesi
+terrain.hill_shape      = round
+terrain.hill_height     = 60.
+terrain.hill_half_width = 250.
+terrain.smoothing       = 0
+
+bc.xlo = nest
+bc.xhi = nest
+bc.ylo = nest
+bc.yhi = nest
+bc.zlo = surface_layer
+bc.zhi = slip_wall
+bc.surface_z0 = 0.1
+bc.nest_parent = hill_parent_chk_final
+
+init.first_guess = nest
+
+steady.stage          = simplec
+steady.max_iterations = 2000

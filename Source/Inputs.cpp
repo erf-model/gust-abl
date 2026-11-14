@@ -92,7 +92,7 @@ Inputs parse_inputs ()
         amrex::ParmParse pp("terrain");
         auto& t = in.terrain;
         for (const char* key : {"type", "file", "smoothing", "gamma_m", "hill_height", "hill_half_width",
-                                "hill_shape", "idw_neighbors", "idw_power", "hierarchy_passes"}) {
+                                "hill_shape", "idw_neighbors", "idw_power", "hierarchy_passes", "nest_blend_width"}) {
             if (pp.contains(key)) {
                 t.given.emplace_back(key);
                 if (pp.countval(key) != 1) {
@@ -108,6 +108,7 @@ Inputs parse_inputs ()
         pp.query("hill_half_width", t.hill_half_width);
         pp.query("hill_shape", t.hill_shape);
         pp.query("idw_neighbors", t.idw_neighbors);
+        pp.query("nest_blend_width", t.nest_blend_width);
         pp.query("idw_power", t.idw_power);
         pp.query("hierarchy_passes", t.hierarchy_passes);
         // The roughness map (bc.surface_z0_file, SurfaceRoughness.H) shares the IDW keys.
@@ -143,7 +144,7 @@ Inputs parse_inputs ()
              {"mesh", {"n_cell", "prob_lo", "prob_hi", "is_periodic", "max_grid_size", "dz0",
                        "stretch_ratio", "zlevels_file", "hierarchy_levels"}},
              {"terrain", {"type", "file", "smoothing", "gamma_m", "hill_height", "hill_half_width",
-                          "hill_shape", "idw_neighbors", "idw_power", "hierarchy_passes"}},
+                          "hill_shape", "idw_neighbors", "idw_power", "hierarchy_passes", "nest_blend_width"}},
              {"io", {"plot_file", "chk_file", "restart", "write_plotfile", "write_checkpoint", "turb_plot_file",
                      "iteration_log", "column_guess_file"}}}) {
         amrex::ParmParse pp(ns);

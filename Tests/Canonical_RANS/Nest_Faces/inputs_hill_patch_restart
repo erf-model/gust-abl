@@ -1,0 +1,27 @@
+# The nested patch over the hill without a first guess, an iteration cap, the
+# boxes or the parent's path: the restart chain (rt_nest_faces_restart_*)
+# gives init.first_guess = nest or io.restart, steady.max_iterations,
+# mesh.max_grid_size, bc.nest_parent and the output names on the command line
+# (a restart refuses init.first_guess; the straight run is in a
+# sub-directory). Otherwise inputs_hill_patch.
+mesh.n_cell        = 32 24 16
+mesh.prob_lo       = 400. 300. 0.
+mesh.prob_hi       = 1200. 900. 800.
+mesh.is_periodic   = 0 0 0
+mesh.dz0           = 10.
+
+terrain.type            = agnesi
+terrain.hill_shape      = round
+terrain.hill_height     = 60.
+terrain.hill_half_width = 250.
+terrain.smoothing       = 0
+
+bc.xlo = nest
+bc.xhi = nest
+bc.ylo = nest
+bc.yhi = nest
+bc.zlo = surface_layer
+bc.zhi = slip_wall
+bc.surface_z0 = 0.1
+
+steady.stage = simplec
