@@ -31,6 +31,7 @@
 #include "Residual.H"
 #include "State.H"
 #include "StateIO.H"
+#include "TestHelpers.H"
 #include "ZLevels.H"
 
 #include <AMReX_ParallelDescriptor.H>
@@ -867,6 +868,7 @@ TEST (NestFaces, InputFaultsAreRefusedNamingTheKey)
         b.face[3] = gust::FaceType::outflow; b.sponge_width = 100; b.sponge_strength = amrex::Real(0.1); }),
                     "bc.sponge_width > 0 is not supported with a nest face and no inflow face"));
     for (const double bad : {0.0, -1.0, std::numeric_limits<double>::infinity(), std::numeric_limits<double>::quiet_NaN()}) {
+        const gust::test::ScopedNoInvalidTrap no_trap;   // a NaN input: the cast or an ordered compare may raise FE_INVALID
         EXPECT_TRUE(has(errs([bad] (gust::BoundaryInputs& b) { b.nest_relax_width = 2; b.nest_relax_factor = static_cast<amrex::Real>(bad); }),
                         "bc.nest_relax_factor = ")) << bad;
     }
@@ -906,7 +908,10 @@ TEST (NestFaces, InputFaultsAreRefusedNamingTheKey)
     EXPECT_TRUE(blend(499, good).empty());
     EXPECT_TRUE(has(blend(500, good), "terrain.nest_blend_width = 500: must be below half the patch's width in y (500 m)"));
     EXPECT_TRUE(has(blend(-1, good), "terrain.nest_blend_width = "));
-    EXPECT_TRUE(has(blend(std::numeric_limits<double>::quiet_NaN(), good), "terrain.nest_blend_width = "));
+    {
+        const gust::test::ScopedNoInvalidTrap no_trap;   // a NaN input, as above
+        EXPECT_TRUE(has(blend(std::numeric_limits<double>::quiet_NaN(), good), "terrain.nest_blend_width = "));
+    }
     EXPECT_TRUE(has(blend(std::numeric_limits<double>::infinity(), good), "terrain.nest_blend_width = "));
     EXPECT_TRUE(has(blend(100, none), "terrain.nest_blend_width has no effect without a nest face"));
     EXPECT_TRUE(has(blend(0, none), "terrain.nest_blend_width has no effect without a nest face"));

@@ -340,7 +340,8 @@ std::vector<std::string> check_boundary_inputs (const BoundaryInputs& in, const 
             }
         }
     }
-    if (!(in.nest_relax_factor > 0 && std::isfinite(in.nest_relax_factor))) {
+    // isfinite first: an ordered compare of a NaN raises FE_INVALID, which the runs trap.
+    if (!std::isfinite(in.nest_relax_factor) || !(in.nest_relax_factor > 0)) {
         err.emplace_back("bc.nest_relax_factor = " + std::to_string(in.nest_relax_factor) + ": must be finite and > 0");
     } else if (given("nest_relax_factor") && !(N > 0)) {
         err.emplace_back("bc.nest_relax_factor has no effect without bc.nest_relax_width > 0");
