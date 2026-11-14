@@ -1,0 +1,48 @@
+# The whole Askervein domain of the one-way nesting validation (sub-phase 9.3,
+# beyond plan rev. 6): Tests/Real_Terrain/Askervein_210/
+# inputs_steady_askervein_210 (ERF's setup: 6 km x 6 km, 18 layers, a 20 m
+# first layer stretched by 1.08, the power-law inflow from 210 degrees through
+# xlo and ylo, outflow through xhi and yhi, Rayleigh damping of w from 499 m,
+# neutral) without its cells and output names: askervein_nest.py gives
+# mesh.n_cell (150 150 18 for the 40 m parent, 300 300 18 for the 20 m
+# reference), the terrain, the inflow table and the outputs on the command
+# line. Line LU-SGS with two-level grid sequencing, as rt_steady_askervein_210.
+mesh.prob_lo       = -3000. -3000. 0.
+mesh.prob_hi       =  3000.  3000. 440.   # z: the computational spacing; the stretched layers end at 749 m
+mesh.max_grid_size = 64
+mesh.dz0           = 20.
+mesh.stretch_ratio = 1.08
+mesh.hierarchy_levels = 2
+
+terrain.type      = erf_grid
+terrain.smoothing = 0
+
+bc.xlo = inflow
+bc.ylo = inflow
+bc.xhi = outflow
+bc.yhi = outflow
+bc.zlo = surface_layer
+bc.zhi = slip_wall
+bc.surface_z0      = 0.03
+bc.inflow_profile  = file
+bc.theta_profile_z = 0.
+bc.theta_profile   = 300.
+bc.rayleigh_zdamp    = 499.0048747962329
+bc.rayleigh_dampcoef = 0.2
+bc.rayleigh_fields   = w
+
+init.first_guess = profile
+init.alpha_h     = 1.0
+init.alpha_v     = 0.5
+
+solver.poisson_reltol   = 1.e-10
+solver.poisson_max_iter = 200
+
+forcing.gravity = 0.
+
+turb.tke_floor = 1.e-6
+
+steady.stage          = simplec
+steady.sweep          = lusgs
+steady.sequencing     = 1
+steady.max_iterations = 20000
