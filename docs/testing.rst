@@ -131,7 +131,8 @@ is killed:
      - ``steady.line_alternate = 1`` with ``steady.zline_sweeps = 1`` accepted (the option read and ignored)
      - ``Driver.DivergenceStopsAndTheChecksNameTheirInput``
 
-The one-line mutants of the transfers between levels (``Source/Transfer.cpp``), each run against ``Transfer.*`` on two ranks with the
+The one-line mutants of the transfers between levels (``Source/Transfer.cpp``; T11–T15 in its interpolation kernel,
+``Source/Transfer_K.H``), each run against ``Transfer.*`` on two ranks with the
 unit-test flags (SNaN fill, FPE trap) by ``tools/transfer_mutants.py``. 23 are killed. Three survive and the script
 lists them as equivalent: T6 and T9 change no value, and T24 changes only the ``gmres_fft`` solver's path, so its result
 agrees with the original's to the solver tolerance. A first run, without the SNaN and FPE flags and before ``TargetNodeHeightsComeFromTheHierarchy``,
@@ -189,7 +190,7 @@ signal in that test (SIGILL on macOS arm64), so the tests after it did not run.
      - ``OneCellDirectionIsConstant`` (crash)
    * - T15
      - x weights swapped on the upper y row
-     - ``ProlongationOfBilinearFieldsIsExact``, ``ProlongedTkeIsAboveTheFloor``, ``RoundTripIsTheClosedFormSmoother``, ``OneCellDirectionIsConstant``
+     - ``ProlongationOfBilinearFieldsIsExact``, ``RoundTripIsTheClosedFormSmoother``, ``OneCellDirectionIsConstant``
    * - T16
      - w interpolated with the nodal x axis
      - ``ProlongationOfBilinearFieldsIsExact`` (crash)
@@ -223,6 +224,82 @@ signal in that test (SIGILL on macOS arm64), so the tests after it did not run.
    * - T26
      - p′ not restored after the projection
      - ``ProlongationAndProjectionIsDivergenceFree``
+
+The one-line mutants of the nested patch's parent reader (``Source/NestParent.cpp``, ``Source/StateIO.cpp`` and the
+periodic axis in ``Source/Transfer_K.H``), each run against ``NestParent.*`` and ``IO.CheckpointHeader*`` on two ranks
+with the unit-test flags by ``tools/nest_mutants.py`` (macOS arm64, AppleClang), and N20 by hand against
+``rt_nest_patch_hill``. All 20 are killed. Three earlier
+candidates were equivalent and were replaced: a z shift of the image box (every box spans the column), ``w`` through
+the cell-centred stencil (it is cell-centred in x and y) and reading the parent's ghost cells (the 2-cell margin keeps
+them out of reach).
+
+.. list-table::
+   :header-rows: 1
+   :widths: 6 50 44
+
+   * - Mutant
+     - Change
+     - Failing tests
+   * - N1
+     - u interpolated with the cell-centred x axis (wrong stagger)
+     - ``BilinearFieldIsReproducedOnFlatGround``, ``BilinearFieldIsReproducedOnAHill``, ``PeriodicSeamUsesThePeriodicNeighbours``
+   * - N2
+     - v interpolated with the cell-centred y axis (wrong stagger)
+     - the same three
+   * - N3
+     - w interpolated with the nodal x axis (wrong stagger)
+     - the same three
+   * - N4
+     - One term of the kernel reads the level above (wrong k)
+     - ``BilinearFieldIsReproducedOnFlatGround`` (crash)
+   * - N5
+     - Offset subtracted from the axis bounds with the wrong sign
+     - ``ValuesDoNotDependOnLayoutOrRanks`` (crash)
+   * - N6
+     - The patch's position in the parent ignored
+     - ``BilinearFieldIsReproducedOnFlatGround`` (crash)
+   * - N7
+     - Periodic direction clamped as before (extrapolates past index −1)
+     - ``PeriodicSeamUsesThePeriodicNeighbours``
+   * - N8
+     - No horizontal ghost layers
+     - the three of N1
+   * - N9
+     - No z ghost rows
+     - the three of N1
+   * - N10
+     - z ghost rows below the ground copy the second level (wrong k)
+     - the three of N1
+   * - N11
+     - Parent images filled without the periodic images
+     - ``PeriodicSeamUsesThePeriodicNeighbours`` (crash)
+   * - N12
+     - Margin of one parent cell
+     - ``EachPlacementFaultIsRefusedNamingTheKey``
+   * - N13
+     - Ratio not checked
+     - ``EachPlacementFaultIsRefusedNamingTheKey``
+   * - N14
+     - z-levels not compared
+     - ``EachPlacementFaultIsRefusedNamingTheKey``
+   * - N15
+     - Alignment tolerance of half a parent cell
+     - ``EachPlacementFaultIsRefusedNamingTheKey``
+   * - N16
+     - A format-1 parent accepted
+     - ``OldOrMissingCheckpointAbortsNamingTheKey``
+   * - N17
+     - z-levels written in single-precision decimal
+     - ``IO.CheckpointHeaderKeepsTheZLevels`` and the four interpolation tests
+   * - N18
+     - z-level count not checked on read
+     - ``IO.CheckpointHeaderKeepsTheZLevels``
+   * - N19
+     - A missing Header key names the token read, not the caller's key
+     - ``IO.CheckpointHeaderKeepsTheZLevels``
+   * - N20 (by hand)
+     - No ``zero_ground_flux`` after the interpolation (``Source/App.cpp``)
+     - ``rt_nest_patch_hill`` (ground :math:`|\Omega|` 0.80 m/s)
 
 The one-line mutants of the canopy's drag field (``Source/Canopy.cpp``, ``Source/Canopy_K.H``), each run against
 ``Canopy.*`` on two ranks with the unit-test flags by ``tools/canopy_mutants.py`` (macOS arm64, AppleClang). All 18 are
@@ -1265,6 +1342,20 @@ Current tests
        both codes), every speed-up above 1 at 20, 40, 80 and 150 m, the two codes within 0.02, 0.01, 0.005 and 0.003
        of each other at those heights (measured 0.011, 0.0057, 0.0020, 0.0008), and GUST's own values and
        iterations pinned (1e-6, 10 %). Double precision only (:doc:`initial_conditions`).
+   * - ``rt_nest_patch_hill`` (fixtures ``rt_nest_patch_hill_clean``, ``rt_nest_patch_hill_parent``)
+     - A nested patch at 2 2 1 over a 60 m round Agnesi hill (``Tests/Initialization/Nest_Patch_Hill``): the parent
+       (32 × 24 × 16 cells of 50 m, periodic in y, stable sounding) runs on two ranks and writes a checkpoint; the
+       patch (parent cells 8–23 by 6–17) starts from it with ``init.first_guess = nest`` on three ranks.
+       ``check_nest.py``: without the adjustment, θ and k of every patch cell equal the bilinear interpolation per
+       ζ-level of the parent's plotfile, computed in Python independently of ``Source/Transfer_K.H``, to a relative
+       1e-12 (measured 3.8e-16, 4.4e-16), and both vary along a level; with it, the log names the parent cells
+       covered, the divergence after is at most 10 × 1e-10 × before, and on every ground face of the patch's checkpoint
+       :math:`|\Omega| = |w - z_x u - z_y v|` (the code's averages, ghost row included) is at most 1e-12 × max
+       :math:`|w|` there: no mass crosses the ground. Double precision only.
+   * - ``abort_nest_placement``, ``abort_nest_inputs``, ``abort_nest_init_keys``, ``abort_nest_parent_missing``, ``abort_nest_parent_unused``, ``abort_nest_parent_not_a_checkpoint``
+     - A misplaced patch (shifted 10 m, 20 cells in y), ``nest`` with ``steady.sequencing = 1``, a profile key with
+       ``nest``, ``nest`` without ``bc.nest_parent``, ``bc.nest_parent`` without ``nest`` and a directory with no
+       checkpoint ``Header`` each stop the run, naming the key.
    * - ``rt_bc_neutral_flat``, ``rt_bc_neutral_flat_matches``
      - ``boundary_fluxes`` on ERF's Neutral_ABL_Flat mesh (8 × 8 × 64, 1000 m) with a fixed log-law state
        (u* = 0.35 m/s, z₀ = 0.1 m, 15°), the surface layer on the ground and a slip top: u* recovered at every ground
@@ -2613,6 +2704,30 @@ GoogleTest suite
        layout) restarts bit-identical. ``IO.CheckpointGhostImagesAreTheNeighboursValues`` (audit A5): with the state's
        ghosts stale, every ghost image in the written file equals the neighbouring box's (or periodic image's) valid
        value, and the state keeps its own ghosts (main wrote the stale values: about 2800 per field here).
+   * - ``IO.CheckpointHeaderKeepsTheZLevels``
+     - A checkpoint on a stretched mesh (``mesh.dz0`` = 100/7) writes format 2; its Header gives back the step, the
+       cell counts, the box layout and every z-level bit for bit (hexadecimal floats). A Header with one z-level
+       removed, and a Header without its ``zlevels`` line, stop the read, naming ``bc.nest_parent`` (not the token
+       found in the key's place).
+   * - ``NestParent.BilinearFieldIsReproducedOnFlatGround``, ``NestParent.BilinearFieldIsReproducedOnAHill`` (UT-9.1.1)
+     - A parent field bilinear in x and y with a different slope on each level, at each field's own staggered point,
+       is reproduced on every patch point, ghosts included (the z ghost rows equal the nearest level), on flat ground
+       and over a hill (relative 1e-11; 2e-5 in single precision).
+   * - ``NestParent.EachPlacementFaultIsRefusedNamingTheKey`` (UT-9.1.2)
+     - A patch outside the parent, within 2 parent cells of a low or high face, misaligned by 30 m or 25 m, at
+       ratio 4 or 1, on other z-levels (cell count, top or ``mesh.dz0``), periodic in a direction where the parent is
+       not, periodic in z, or wider or narrower than a periodic parent, each stops with ``bc.nest_parent`` in the
+       message; a patch reaching a periodic parent's faces is accepted.
+   * - ``NestParent.OldOrMissingCheckpointAbortsNamingTheKey``
+     - A format-1 checkpoint still restarts, but as a nest parent stops naming ``bc.nest_parent`` and the format;
+       a directory that does not exist stops too.
+   * - ``NestParent.ValuesDoNotDependOnLayoutOrRanks`` (UT-9.1.3)
+     - A smooth, not bilinear parent field interpolated with four pairs of parent and patch box layouts (one box
+       each, several, and rank maps in reverse order) gives the same patch values bit for bit; run on 1, 2 and 4
+       ranks by the ``unit_np*`` tests.
+   * - ``NestParent.PeriodicSeamUsesThePeriodicNeighbours`` (beyond the plan)
+     - A patch reaching a periodic parent's face (its ghost cells cross the seam) and a periodic patch spanning the
+       parent read the periodic neighbours: both match a host interpolation that wraps the index.
    * - ``IO.SameDirectoryAsksTheFileSystem``
      - Audit A10 (P3): ``./``, trailing and doubled separators, an absolute path, ``..`` and a symbolic link all
        name the restart directory; another directory, and one that does not exist yet, do not.

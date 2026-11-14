@@ -16,6 +16,7 @@
 #include "Forcing.H"
 #include "StateIO.H"
 #include "Initializer.H"
+#include "NestParent.H"
 #include "Inputs.H"
 #include "Mesh.H"
 #include "MeshHierarchy.H"
@@ -94,7 +95,8 @@ void run ()
         bin = read_boundary_inputs();
         // The first guess uses the profile on any geometry; a restart keeps
         // the deck of the run it continues, inflow keys included.
-        bin.profile_needed = initialize || !in.io.restart.empty();
+        // A nest's first guess is its parent's field, not the profile.
+        bin.profile_needed = (initialize && iopt.first_guess != InitOptions::FirstGuess::nest) || !in.io.restart.empty();
         popt = read_poisson_options();
         surface_layer = (bin.face[amrex::Orientation(2, amrex::Orientation::low)] == FaceType::surface_layer);
         // The surface layer's options are not used by the initial field; they
@@ -270,11 +272,25 @@ void run ()
         if (!reported) { err.push_back(e); }
     }
     if (solve && !initialize && in.io.restart.empty()) {
-        err.emplace_back("steady.stage = " + std::string(newton ? "simplec_newton" : unsteady ? "unsteady" : "simplec") + " needs a first guess: init.first_guess = profile, init.first_guess = column "
+        err.emplace_back("steady.stage = " + std::string(newton ? "simplec_newton" : unsteady ? "unsteady" : "simplec") + " needs a first guess: init.first_guess = profile, column or nest "
                          "or io.restart (the state would start at rest with theta = 0)");
     }
     if (initialize && !in.io.restart.empty()) {
         err.emplace_back("init.first_guess and io.restart are exclusive (a restart keeps its state)");
+    }
+    {
+        // The nested patch (NestParent.H): the parent and its first guess go together.
+        const bool nest = iopt.first_guess == InitOptions::FirstGuess::nest;
+        if (nest && bin.nest_parent.empty()) {
+            err.emplace_back("init.first_guess = nest needs bc.nest_parent (the parent run's checkpoint)");
+        }
+        if (!nest && !bin.nest_parent.empty()) {
+            err.emplace_back("bc.nest_parent has no effect without init.first_guess = nest");
+        }
+        if (nest && solve && seq.enabled) {
+            err.emplace_back("init.first_guess = nest is not supported with steady.sequencing = 1 (the patch starts on "
+                             "level 0 from its parent)");
+        }
     }
     for (const auto& e : check_column_guess(iopt, sopt, fopt, bin, surf, surface_layer)) { err.push_back(e); }
     if (amrex::ParmParse("io").contains("column_guess_file") && iopt.first_guess != InitOptions::FirstGuess::column) {
@@ -504,7 +520,15 @@ void run ()
                 column = std::make_unique<InflowProfile>(cg.z, cg.u, cg.v, cg.theta, cg.tke, bin.theta_ref);
             }
         }
-        if (initialize && !sequencing) {
+        if (iopt.first_guess == InitOptions::FirstGuess::nest) {
+            // The nested patch: the parent at 2 2 1, then the initializer's correction.
+            const NestParent parent(bin.nest_parent, in.mesh, mesh.zlevels(), state.p.boxArray(), state.p.DistributionMap());
+            amrex::Print() << parent.summary();
+            parent.interpolate(state);
+            zero_ground_flux(state, mesh, geom);   // the patch's ground carries no flux, as in first_guess_state
+            const InitResult r = correct_initial_state(iopt, bin, popt, mesh, geom, state);
+            print_initializer(r, iopt, popt, "");
+        } else if (initialize && !sequencing) {
             const InitResult r = initialize_state(iopt, bin, popt, mesh, geom, state, nullptr, fopt.coriolis, column.get(),
                                                   column_sets_theta(iopt, surf));
             print_initializer(r, iopt, popt, "");
@@ -715,7 +739,7 @@ void run ()
         // in an unsteady run, its record and the averages.
         auto write_full_checkpoint = [&] (const UnsteadyRecord* rec) {
             check_overwrite();
-            const auto name = write_checkpoint(in.io.chk_file, state, in.mesh);
+            const auto name = write_checkpoint(in.io.chk_file, state, in.mesh, &mesh.zlevels());
             write_driver_history(name, driver.history());
             closure.write_checkpoint(name);
             canopy.write_checkpoint(name);
@@ -910,7 +934,7 @@ void run ()
         write_hierarchy();
     }
     if (in.io.write_checkpoint == 1) {
-        const auto name = write_checkpoint(in.io.chk_file, state, in.mesh);
+        const auto name = write_checkpoint(in.io.chk_file, state, in.mesh, &mesh.zlevels());
         canopy.write_checkpoint(name);
         buildings.write_checkpoint(name);
         amrex::Print() << "gust: wrote " << name << "\n";

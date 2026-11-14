@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 The one-line mutants of the transfer operators
-(Source/Transfer.cpp).
+(Source/Transfer.cpp; the interpolation kernel in Source/Transfer_K.H).
 
 Run against Transfer.* by the shared runner tools/mutants.py (two ranks, the
 unit-test flags). The table is in docs/testing.rst.
@@ -11,6 +11,7 @@ unit-test flags). The table is in docs/testing.rst.
 import mutants
 
 F = "Source/Transfer.cpp"
+K = "Source/Transfer_K.H"
 M = [
  # restriction
  ("T1", "cell means not detJ-weighted", F,
@@ -35,16 +36,16 @@ M = [
  ("T10", "coarse z_phys_nd not set by restrict_state", F,
   "amrex::MultiFab::Copy(coarse.z_phys_nd, h.z_phys_nd(lc), 0, 0, 1, ngrow_nodal);", ";"),
  # interpolation
- ("T11", "cell-centred position shifted by half a fine cell", F,
+ ("T11", "cell-centred position shifted by half a fine cell", K,
   "const int m = Nodal ? (i - a.flo) : (2 * (i - a.flo) + 1 - a.r);",
   "const int m = Nodal ? (i - a.flo) : (2 * (i - a.flo) - a.r);"),
- ("T12", "no linear extrapolation at a non-periodic face (reads past the last centre)", F,
+ ("T12", "no linear extrapolation at a non-periodic face (reads past the last centre)", K,
   "a.imax = N - 2;", "a.imax = N - 1;"),
- ("T13", "periodic direction extrapolates instead of reading the periodic image", F,
-  "a.imin = -1;", "a.imin = 0;"),
- ("T14", "one-cell direction reads a second coarse cell", F,
+ ("T13", "periodic direction extrapolates instead of reading the periodic image", K,
+  "a.imin = -N;", "a.imin = 0;"),
+ ("T14", "one-cell direction reads a second coarse cell", K,
   "a.step = 0;", "a.step = 1;"),
- ("T15", "x weights swapped on the upper y row", F,
+ ("T15", "x weights swapped on the upper y row", K,
   "+ ty * ((one - tx) * q(I, J1, k) + tx * q(I1, J1, k));",
   "+ ty * (tx * q(I, J1, k) + (one - tx) * q(I1, J1, k));"),
  ("T16", "w interpolated with the nodal x axis", F,

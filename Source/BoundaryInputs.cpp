@@ -62,7 +62,7 @@ BoundaryInputs read_boundary_inputs ()
                           "theta_profile_z", "theta_profile", "zhi_theta_grad", "rayleigh_zdamp",
                           "rayleigh_dampcoef", "rayleigh_fields", "rayleigh_height", "sponge_width", "sponge_strength",
                           "outflow_transport", "xlo_wall_velocity", "xhi_wall_velocity", "ylo_wall_velocity", "yhi_wall_velocity",
-                          "zlo_wall_velocity", "zhi_wall_velocity"};
+                          "zlo_wall_velocity", "zhi_wall_velocity", "nest_parent"};
     std::vector<std::string> errs;
     for (const char* key : keys) {
         if (!pp.contains(key)) { continue; }
@@ -147,6 +147,9 @@ BoundaryInputs read_boundary_inputs ()
     }
     pp.query("sponge_width", in.sponge_width);
     pp.query("sponge_strength", in.sponge_strength);
+    if (pp.query("nest_parent", in.nest_parent) && in.nest_parent.empty()) {
+        amrex::Abort("gust: bc.nest_parent: the parent checkpoint's directory must not be empty");
+    }
     return in;
 }
 

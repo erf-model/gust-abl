@@ -111,7 +111,7 @@ Quick reference
      -
    * - ``init.first_guess``
      - ``none``
-     - Initial profile: ``none``, ``profile`` or ``column``
+     - Initial profile: ``none``, ``profile``, ``column`` or ``nest``
    * - ``init.projection``
      - ``1``
      - Mass-consistent adjustment on or off
@@ -229,6 +229,9 @@ Quick reference
    * - ``bc.surface_qnse_am``, ``_bm``, ``_ah``, ``_bh``
      - ``2.5``, ``0.2``, ``2.5``, ``0.2``
      - QNSE coefficients
+   * - ``bc.nest_parent``
+     - none
+     - Parent run's checkpoint for ``init.first_guess = nest``
    * - **Forest canopy** (`canopy`_)
      -
      -
@@ -671,7 +674,8 @@ A restart cannot be combined with ``init.*`` keys.
      - ``none`` (fluid at rest), ``profile`` (the inflow profile by height above the ground) or ``column`` (the
        steady single-column profile; needs a horizontal forcing and ``steady.stage = simplec`` or ``simplec_newton``, and
        with a canopy flat terrain and a canopy that is the same in every column; see :doc:`initial_conditions` for
-       the full list).
+       the full list) or ``nest`` (a parent run's checkpoint, ``bc.nest_parent``, interpolated at 2 2 1; not with
+       ``steady.sequencing = 1``; see :doc:`initial_conditions`).
    * - ``init.projection``
      - ``1``
      - 0 or 1: the mass-consistent adjustment. With 0, ``init.alpha_h`` and ``init.alpha_v`` are refused.
@@ -685,14 +689,14 @@ A restart cannot be combined with ``init.*`` keys.
        adjustment uses the ``gmres_fft`` back end.
    * - ``init.z_agl_min``
      - ``0``
-     - Finite, ≥ 0 (m). Lowest height above the ground at which the profile is evaluated.
+     - Finite, ≥ 0 (m). Lowest height above the ground at which the profile is evaluated. Not with ``nest``.
    * - ``init.k_decay_height``
      - ``0``
      - Finite, ≥ 0 (m). Height :math:`z_i` above which the initial :math:`k` decays; 0: no decay. Not with
-       ``column``.
+       ``column`` or ``nest``.
    * - ``init.obrien``
      - ``0``
-     - 0 or 1. The O'Brien correction of the vertical velocity before the adjustment.
+     - 0 or 1. The O'Brien correction of the vertical velocity before the adjustment. Not with ``nest``.
    * - ``init.column_tol``
      - ``1e-8``
      - Finite, > 0; ``column`` only. Convergence tolerance of the single-column solve: the largest relative change
@@ -885,6 +889,16 @@ types, the inflow profile and the sounding; the other keys act in the SIMPLEC st
    * - ``bc.surface_qnse_ah``, ``bc.surface_qnse_bh``
      - ``2.5``, ``0.2``
      - :math:`a_h, b_h` of :math:`\phi_h`, as :math:`a_m, b_m`. ``qnse`` only.
+   * - ``bc.nest_parent``
+     - none
+     - A checkpoint directory of the parent run, written by this version (checkpoint format 2, which holds the
+       z-levels); required with ``init.first_guess = nest`` and refused without it (no effect). The patch must refine
+       the parent by 2 2 1, lie on the parent's cell faces (to :math:`10^{-4}` of a parent cell), keep 2 parent cells
+       from every non-periodic face of the parent (it may reach a periodic face), span the full width of a direction in
+       which it is periodic (``mesh.prob_lo`` and ``mesh.prob_hi`` equal to the parent's there), and have the parent's
+       z-levels bit for bit (``mesh.n_cell`` z, ``mesh.prob_lo`` z, ``mesh.prob_hi`` z, ``mesh.dz0``,
+       ``mesh.stretch_ratio``, ``mesh.zlevels_file``). Any other placement, a directory without a checkpoint ``Header`` or a
+       format-1 checkpoint stops the run, naming this key (:doc:`initial_conditions`).
 
 The wall model and the inflow profile's equilibrium :math:`k` and :math:`\nu_t` use the turbulence model's
 ``turb.Cmu0`` and ``turb.kappa``, and the inflow profile its ``turb.max_geom_lscale``. Without the SIMPLEC stage

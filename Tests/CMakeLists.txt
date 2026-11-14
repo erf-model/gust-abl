@@ -66,6 +66,7 @@ add_executable(unit_tests
     Unit_Tests/test_Continuation.cpp
     Unit_Tests/test_NewtonPreconditioner.cpp
     Unit_Tests/test_Terrain.cpp
+    Unit_Tests/test_NestParent.cpp
     Unit_Tests/test_Transfer.cpp
     Unit_Tests/test_Sequencing.cpp
     Unit_Tests/test_Smoothness.cpp
@@ -161,6 +162,7 @@ set(POISSON_CASE        ${CMAKE_CURRENT_SOURCE_DIR}/Discretization/Poisson_Asker
 set(WALLDIST_CASE       ${CMAKE_CURRENT_SOURCE_DIR}/Discretization/Wall_Distance)
 set(INIT_CASE           ${CMAKE_CURRENT_SOURCE_DIR}/Initialization/Mass_Consistent_Askervein)
 set(BUMP_CASE           ${CMAKE_CURRENT_SOURCE_DIR}/Initialization/Bump_Speedup_Trend)
+set(NEST_CASE           ${CMAKE_CURRENT_SOURCE_DIR}/Initialization/Nest_Patch_Hill)
 set(COLUMN_CASE         ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Neutral_Column)
 set(FLAT_CASE           ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Neutral_ABL_Flat)
 set(THIN_CELL_CASE      ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Thin_Cell_Flat)
@@ -1430,6 +1432,52 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
                          ${BUMP_CASE}/Gold/init_bump_trend.json --
                   COMMAND $<TARGET_FILE:gust> ${BUMP_CASE}/inputs_init_bump
                           terrain.file=${BUMP_CASE}/terrain_bump_fwt.txt ${GUST_TEST_AMREX_FLAGS})
+    # The nested patch (NestParent.H, plan sub-phase 9.1): the parent's
+    # initial field over a round hill and its checkpoint (2 ranks), then the
+    # patch over parent cells 8 to 23 x 6 to 17 at 2 2 1 on 3 ranks (other
+    # layouts): theta and k equal the parent's bilinear interpolation per
+    # zeta-level to a relative 1e-12 (computed by check_nest.py from the
+    # plotfiles), and the correction leaves the divergence at the Poisson
+    # tolerance. Then the inputs refused around it.
+    set(NEST_DIR ${CMAKE_CURRENT_BINARY_DIR}/run/rt_nest_patch_hill)
+    add_test(NAME rt_nest_patch_hill_clean
+             COMMAND ${Python3_EXECUTABLE} -c
+                     "import shutil, os, sys; shutil.rmtree(sys.argv[1], ignore_errors=True); os.makedirs(sys.argv[1])"
+                     ${NEST_DIR})
+    set_tests_properties(rt_nest_patch_hill_clean PROPERTIES LABELS "regression;smoke" FIXTURES_SETUP nest_clean)
+    gust_add_test(NAME rt_nest_patch_hill_parent NP 2 LABELS "regression;smoke" RUN_DIR ${NEST_DIR}
+                  FIXTURES_REQUIRED nest_clean FIXTURES_SETUP nest_parent
+                  COMMAND $<TARGET_FILE:gust> ${NEST_CASE}/inputs_parent ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME rt_nest_patch_hill NP 3 LABELS "regression;smoke" RUN_DIR ${NEST_DIR}
+                  FIXTURES_REQUIRED nest_parent
+                  PREFIX ${Python3_EXECUTABLE} ${NEST_CASE}/check_nest.py nest_parent_plt00000 8 6 1e-10 --
+                  COMMAND $<TARGET_FILE:gust> ${NEST_CASE}/inputs_patch ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME abort_nest_placement NP 1 LABELS "regression;smoke" RUN_DIR ${NEST_DIR}
+                  FIXTURES_REQUIRED nest_parent
+                  PREFIX ${EXPECT_ABORT}
+                         "bc\\.nest_parent: mesh\\.prob_lo and mesh\\.prob_hi x must lie on the parent's cell faces"
+                         "bc\\.nest_parent: mesh\\.n_cell y = 20: the patch spans 12 parent cells, so it needs 24" --
+                  COMMAND $<TARGET_FILE:gust> ${NEST_CASE}/inputs_patch_misplaced ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME abort_nest_inputs NP 1 LABELS "regression;smoke" RUN_DIR ${NEST_DIR}
+                  FIXTURES_REQUIRED nest_parent
+                  PREFIX ${EXPECT_ABORT}
+                         "init\\.first_guess = nest is not supported with steady\\.sequencing = 1" --
+                  COMMAND $<TARGET_FILE:gust> ${NEST_CASE}/inputs_patch steady.stage=simplec steady.sequencing=1
+                          ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME abort_nest_init_keys NP 1 LABELS "regression;smoke" RUN_DIR ${NEST_DIR}
+                  FIXTURES_REQUIRED nest_parent
+                  PREFIX ${EXPECT_ABORT} "init\\.z_agl_min has no effect with init\\.first_guess = nest" --
+                  COMMAND $<TARGET_FILE:gust> ${NEST_CASE}/inputs_patch init.z_agl_min=2 ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME abort_nest_parent_missing NP 1 LABELS "regression;smoke"
+                  PREFIX ${EXPECT_ABORT} "init\\.first_guess = nest needs bc\\.nest_parent" --
+                  COMMAND $<TARGET_FILE:gust> ${SMOKE_CASE}/inputs_smoke init.first_guess=nest ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME abort_nest_parent_unused NP 1 LABELS "regression;smoke"
+                  PREFIX ${EXPECT_ABORT} "bc\\.nest_parent has no effect without init\\.first_guess = nest" --
+                  COMMAND $<TARGET_FILE:gust> ${NEST_CASE}/inputs_parent bc.nest_parent=x ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME abort_nest_parent_not_a_checkpoint NP 1 LABELS "regression;smoke"
+                  PREFIX ${EXPECT_ABORT} "bc\\.nest_parent = no_such_chk: no checkpoint Header there" --
+                  COMMAND $<TARGET_FILE:gust> ${SMOKE_CASE}/inputs_smoke init.first_guess=nest bc.nest_parent=no_such_chk
+                          ${GUST_TEST_AMREX_FLAGS})
     # The Tucker wall distance on ERF's Neutral_Hill_2D mesh: ERF's
     # wall-distance checks (Tests/Discretization/Wall_Distance/check_walldist.py), and the field against
     # Gold/walldist_hill2d_plt00000, at double-precision tolerances (double

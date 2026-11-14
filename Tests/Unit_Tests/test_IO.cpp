@@ -3,6 +3,7 @@
 #include "FileMagic.H"
 #include "StateIO.H"
 #include "State.H"
+#include "ZLevels.H"
 #include "TestHelpers.H"
 
 #include <AMReX_ParallelDescriptor.H>
@@ -12,9 +13,11 @@
 
 #include <gtest/gtest.h>
 
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+#include <stdexcept>
 
 namespace {
 
@@ -281,6 +284,84 @@ TEST (IO, CheckpointWithTheOldMagicRestarts)
     for (int n = 0; n < static_cast<int>(sf.size()); ++n) {
         EXPECT_EQ(count_bit_differences(*rf[n].mf, *sf[n].mf, 0), 0) << sf[n].name;
     }
+}
+
+// Format version 2 keeps the reference z-levels in the Header, bit for bit
+// (hex floats), for a nest's check of its parent (NestParent.H); a count
+// that does not match mesh.n_cell z aborts naming the key the caller gives.
+TEST (IO, CheckpointHeaderKeepsTheZLevels)
+{
+    auto mesh = test_mesh();
+    mesh.dz0 = amrex::Real(100.0 / 7.0);   // stretched: levels that are not short decimals
+    const auto geom = gust::make_geometry(mesh);
+    const auto zl = gust::make_zlevels(mesh, geom);
+    const auto ba = gust::make_box_array(mesh);
+    const amrex::DistributionMapping dm(ba);
+    gust::State s;
+    s.define(ba, dm);
+    fill_state(s);
+    const ScopedDir dir{gust::write_checkpoint("ut_io_chkzl", s, mesh, &zl)};
+    const gust::CheckpointHeader h = gust::read_checkpoint_header(dir.name, "io.restart");
+    EXPECT_EQ(h.version, gust::kCheckpointFormatVersion);
+    EXPECT_EQ(h.version, 2);
+    EXPECT_EQ(h.step, 7);
+    EXPECT_EQ(h.n_cell, mesh.n_cell);
+    ASSERT_EQ(h.zlevels.size(), zl.size());
+    for (std::size_t k = 0; k < zl.size(); ++k) {
+        EXPECT_EQ(std::memcmp(&h.zlevels[k], &zl[k], sizeof(amrex::Real)), 0) << "z-level " << k;
+    }
+    EXPECT_EQ(h.ba, ba);
+
+    // One z-level fewer in the Header.
+    bool rewritten = false;
+    if (amrex::ParallelDescriptor::IOProcessor()) {
+        std::ifstream in(dir.name + "/Header");
+        std::ostringstream os;
+        std::string line;
+        while (std::getline(in, line)) {
+            if (line.rfind("zlevels ", 0) == 0) {
+                std::istringstream ls(line);
+                std::string key;
+                int n = 0;
+                ls >> key >> n;
+                std::ostringstream nl;
+                nl << "zlevels " << n - 1;
+                std::string z;
+                for (int k = 0; k < n - 1 && (ls >> z); ++k) { nl << " " << z; }
+                line = nl.str();
+                rewritten = true;
+            }
+            os << line << "\n";
+        }
+        in.close();
+        std::ofstream(dir.name + "/Header") << os.str();
+    }
+    amrex::ParallelDescriptor::ReduceBoolOr(rewritten);
+    ASSERT_TRUE(rewritten);
+    std::string msg;
+    try { (void)gust::read_checkpoint_header(dir.name, "bc.nest_parent"); } catch (const std::runtime_error& e) { msg = e.what(); }
+    EXPECT_NE(msg.find("bc.nest_parent"), std::string::npos) << msg;
+
+    // No zlevels line at all: the message names the caller's key, not the
+    // token found in its place.
+    bool dropped = false;
+    if (amrex::ParallelDescriptor::IOProcessor()) {
+        std::ifstream in(dir.name + "/Header");
+        std::ostringstream os;
+        std::string line;
+        while (std::getline(in, line)) {
+            if (line.rfind("zlevels ", 0) == 0) { dropped = true; continue; }
+            os << line << "\n";
+        }
+        in.close();
+        std::ofstream(dir.name + "/Header") << os.str();
+    }
+    amrex::ParallelDescriptor::ReduceBoolOr(dropped);
+    ASSERT_TRUE(dropped);
+    msg.clear();
+    try { (void)gust::read_checkpoint_header(dir.name, "bc.nest_parent"); } catch (const std::runtime_error& e) { msg = e.what(); }
+    EXPECT_NE(msg.find("gust: bc.nest_parent = "), std::string::npos) << msg;
+    EXPECT_NE(msg.find("expected 'zlevels'"), std::string::npos) << msg;
 }
 
 // The readers take "gust-<kind>" and the older "ablsteady-<kind>" of the

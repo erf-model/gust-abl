@@ -1,0 +1,43 @@
+# The nested patch (rt_nest_patch_hill): parent cells 8 to 23 in x and 6 to 17
+# in y at refinement 2 2 1, so 32 x 24 cells of 25 m from (400, 300) m to
+# (1200, 900) m, with the parent's 16 layers. The hill is centred in both
+# domains, so the patch sees the same hill on its finer cells. The first guess
+# is the parent's checkpoint interpolated at 2 2 1 (init.first_guess = nest),
+# then the mass-consistent correction. Until the patch takes its faces from the
+# parent (plan sub-phase 9.2) its open faces use the inflow profile: xlo and
+# ylo inflow, xhi and yhi outflow.
+mesh.n_cell        = 32 24 16
+mesh.prob_lo       = 400. 300. 0.
+mesh.prob_hi       = 1200. 900. 800.
+mesh.is_periodic   = 0 0 0
+mesh.max_grid_size = 10 9
+mesh.dz0           = 10.
+
+terrain.type            = agnesi
+terrain.hill_shape      = round
+terrain.hill_height     = 60.
+terrain.hill_half_width = 250.
+terrain.smoothing       = 0
+
+bc.xlo = inflow
+bc.xhi = outflow
+bc.ylo = inflow
+bc.yhi = outflow
+bc.zlo = surface_layer
+bc.zhi = slip_wall
+bc.inflow_profile   = power_law
+bc.inflow_speed     = 10.
+bc.inflow_zref      = 10.
+bc.inflow_alpha     = 0.14
+bc.inflow_direction = 20.
+bc.theta_profile_z  = 0. 800.
+bc.theta_profile    = 300. 305.
+bc.nest_parent      = nest_parent_chk00000
+
+init.first_guess = nest
+
+solver.poisson_reltol   = 1.e-10
+solver.poisson_max_iter = 200
+
+io.plot_file = nest_patch_plt
+io.chk_file  = nest_patch_chk
