@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Wind speed 10 m above the ground on the Askervein lines.
 
-    askervein_lines.py sample PLOTFILE --terrain TERRAIN --lines LINES [--height H] [--out CSV]
+    askervein_lines.py sample PLOTFILE --terrain TERRAIN --lines LINES [--height H] [--out CSV] [--mean]
     askervein_lines.py compare TEST.csv REFERENCE.csv [--rel_tol 0.05] [--lines A AA]
                        [--lee_d D --lee_rel_tol T]
-    askervein_lines.py check PLOTFILE REFERENCE.csv --terrain TERRAIN --lines LINES --out CSV [compare options]
+    askervein_lines.py check PLOTFILE REFERENCE.csv --terrain TERRAIN --lines LINES --out CSV [--mean]
+                       [compare options]
 
 sample: the horizontal speed sqrt(u^2 + v^2) at H (default 10 m) above the
 ground at each mast of LINES (columns line, d, x, y, zg: Tests/Real_Terrain/
@@ -19,6 +20,11 @@ codes); the ground under a column is TERRAIN, ERF's structured terrain file,
 bilinear at the column centre (within 1.4 m of the mesh's own ground on the
 ERF grid). Then bilinear in x and y between the four columns. Double and float
 plotfiles are read (the FAB's own size and byte order). Writes "line,d,x,y,speed" rows; prints them.
+
+With --mean (sample and check) the running time means u_mean, v_mean of an
+unsteady GUST run (unsteady.average_start) are read in place of u, v; the CSV's
+first line says so. An ERF plotfile, a plotfile without the means (a steady
+run) and one written before the averaging began (means of zero) are refused.
 
 A PLOTFILE that does not exist is taken as a prefix: the plotfile of that
 prefix with the highest step is read (prefix00213, not prefix_level1_00213).
@@ -43,6 +49,7 @@ sys.path.insert(0, os.path.join(HERE, "..", "extern_erf"))
 import erf_plotfile  # noqa: E402  (ERF's reader, extern_erf/)
 
 NAMES = {"gust": ("u", "v", "z"), "erf": ("x_velocity", "y_velocity", "z_phys")}
+MEAN_NAMES = ("u_mean", "v_mean", "z")   # an unsteady GUST run with unsteady.average_start
 
 
 def read_terrain(path):
@@ -100,7 +107,9 @@ def resolve(plotfile):
 class Columns:
     """Cell columns of a single-level plotfile, read box by box on demand."""
 
-    def __init__(self, plotfile):
+    def __init__(self, plotfile, mean=False, fields=None):
+        """mean: read GUST's running time means (u_mean, v_mean of an unsteady run) in place of u, v.
+        fields: two GUST field names read in place of u, v (for example ("u_var", "v_var"))."""
         plotfile = resolve(plotfile)
         self.path = plotfile
         if os.path.isdir(os.path.join(plotfile, "average")):
@@ -108,10 +117,20 @@ class Columns:
         self.hdr = erf_plotfile._read_header(plotfile)
         names = self.hdr["names"]
         kind = "gust" if all(n in names for n in NAMES["gust"]) else "erf"
-        for n in NAMES[kind]:
+        want = NAMES[kind]
+        if mean:
+            if kind != "gust":
+                sys.exit(f"{plotfile}: --mean reads GUST's u_mean and v_mean; this is not a GUST plotfile")
+            want = MEAN_NAMES
+        if fields is not None:
+            if kind != "gust" or mean or len(fields) != 2:
+                sys.exit(f"{plotfile}: fields takes two fields of a GUST plotfile, without mean")
+            want = (fields[0], fields[1], "z")
+        self.mean = mean
+        for n in want:
             if n not in names:
                 sys.exit(f"{plotfile}: no field {n} (have {', '.join(names)})")
-        self.comps = [names.index(n) for n in NAMES[kind]]
+        self.comps = [names.index(n) for n in want]
         self.kind = kind
         if self.hdr["finest"] != 0:
             sys.exit(f"{plotfile}: {self.hdr['finest'] + 1} levels; only single-level plotfiles are read")
@@ -181,13 +200,17 @@ def read_rows(path):
 
 def cmd_sample(a):
     terrain = read_terrain(a.terrain)
-    cols = Columns(a.plotfile)
+    cols = Columns(a.plotfile, mean=a.mean)
     rows = []
     for r in read_rows(a.lines):
         x, y = float(r["x"]), float(r["y"])
         rows.append((r["line"], int(r["d"]), x, y, speed_at(cols, terrain, x, y, a.height, a.z0)))
+    if a.mean and rows and all(r[4] == 0 for r in rows):
+        sys.exit(f"{cols.path}: u_mean and v_mean are zero at every mast: the plotfile was written before "
+                 "unsteady.average_start")
     lines = [f"# {a.height:g} m above the ground; {os.path.basename(cols.path.rstrip('/'))} "
-             f"({cols.kind}, t = {cols.hdr['time']:g})", "line,d,x,y,speed"]
+             f"({cols.kind}, t = {cols.hdr['time']:g}{', time mean u_mean, v_mean' if a.mean else ''})",
+             "line,d,x,y,speed"]
     lines += ["%s,%d,%.2f,%.2f,%.6f" % r for r in rows]
     print("\n".join(lines))
     if a.out:
@@ -240,6 +263,7 @@ def main():
     s.add_argument("--height", type=float, default=10.0)
     s.add_argument("--z0", type=float, default=0.03, help="roughness of the log law below the first cell centre (m)")
     s.add_argument("--out")
+    s.add_argument("--mean", action="store_true", help="read the running time means u_mean, v_mean of an unsteady run")
     c = sub.add_parser("compare")
     c.add_argument("test")
     c.add_argument("reference")
@@ -259,10 +283,11 @@ def main():
     k.add_argument("--compare_lines", dest="lines_cmp", nargs="+", default=["A", "AA"])
     k.add_argument("--lee_d", type=float)
     k.add_argument("--lee_rel_tol", type=float)
+    k.add_argument("--mean", action="store_true", help="read the running time means u_mean, v_mean of an unsteady run")
     a = ap.parse_args()
     if a.cmd == "check":
         b = argparse.Namespace(cmd="sample", plotfile=a.plotfile, terrain=a.terrain, lines=a.lines_file, height=a.height,
-                               z0=a.z0, out=a.out)
+                               z0=a.z0, out=a.out, mean=a.mean)
         c = argparse.Namespace(test=a.out, reference=a.reference, rel_tol=a.rel_tol, lines=a.lines_cmp,
                                lee_d=a.lee_d, lee_rel_tol=a.lee_rel_tol)
         a, checks = b, c

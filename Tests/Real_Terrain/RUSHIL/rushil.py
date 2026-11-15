@@ -14,14 +14,16 @@ which gives maximum slopes 0.492, 0.295 and 0.185 (Manning et al.'s Table 2.1: 0
         x = XC), inflow.txt (z u v theta k from AC5-05_Flatrefcase.dat; k = 0.75 (u'^2 + w'^2), v'^2 taken as the
         mean of u'^2 and w'^2) and stations_h3.csv, stations_h5.csv, stations_h8.csv (x from the summit, z above
         the surface, U, all at full scale).
-    rushil.py compare PLOTFILE --hill 3|5|8 --outdir OUTDIR [--label NAME] [--out CSV]
+    rushil.py compare PLOTFILE --hill 3|5|8 --outdir OUTDIR [--label NAME] [--out CSV] [--mean]
         The reversed-flow extent at Z = 0.1 H above the ground (in units of a, from the summit), the speed-up
         U / U_in(0.8 H) on the planes Z = 0.1 H ... 0.6 H (Manning et al.'s Figs. 4.3, 4.4), and U at every
         station point with its rms against the tunnel.
-    rushil.py plot PLOTFILE --hill 3|5|8 --outdir OUTDIR [--manning CSV] --out PNG
+    rushil.py plot PLOTFILE --hill 3|5|8 --outdir OUTDIR [--manning CSV] --out PNG [--mean]
         Top: speed-up on the planes Z = 0.1 H ... 0.6 H. Bottom: U profiles at the tunnel stations. With --manning
         (a digitized file of Manning et al.'s Figs. 4.3-4.6, Hills 3 and 5) the Meteodyn WT curves and their tunnel
         points are added.
+    With --mean, compare and plot read the running time means u_mean, v_mean of an unsteady run
+    (unsteady.average_start) in place of u, v; a plotfile written before the averaging began is refused.
 """
 import argparse
 import csv
@@ -146,10 +148,20 @@ def u_at(us, zrel, zt, z0=0.157):
     return us[-1]
 
 
+def open_columns(a):
+    """The plotfile's columns: u, v, or with --mean the running time means u_mean, v_mean."""
+    cols = al.Columns(a.plotfile, mean=a.mean)
+    us, _ = column(cols, 200.0)
+    if a.mean and all(u == 0 for u in us):
+        sys.exit(f"{a.plotfile}: u_mean is zero in the inflow column: the plotfile was written before "
+                 "unsteady.average_start")
+    return cols
+
+
 def compare(a):
     hl = HILLS[a.hill] * H
     g = ground_fn(hl)
-    cols = al.Columns(a.plotfile)
+    cols = open_columns(a)
     us, zs = column(cols, 200.0)                       # the inflow column, flat ground
     uref = u_at(us, zs, 0.8 * H)
     h = cols.hdr
@@ -183,7 +195,7 @@ def compare(a):
         rows.append((x / hl, zr / H, um, mm))
     rms = math.sqrt(sum(e * e for e in err) / len(err))
     ref = REF[a.hill]
-    msg = f"{a.label or a.plotfile} (Hill {a.hill}): reversed flow at 0.1 H: " + (f"{sep:.2f}a to {rea:.2f}a" if rev else "none")
+    msg = f"{a.label or a.plotfile} (Hill {a.hill}{', time mean' if a.mean else ''}): reversed flow at 0.1 H: " + (f"{sep:.2f}a to {rea:.2f}a" if rev else "none")
     if ref["tunnel"]:
         msg += f" (tunnel {ref['tunnel'][0]}a-{ref['tunnel'][1]}a, Meteodyn WT {ref['mwt'][0]}a-{ref['mwt'][1]}a)"
     print(msg + f"; U rms vs tunnel {rms:.3f} m/s over {len(err)} points ({skipped} beyond the domain); U_ref(0.8H) {uref:.3f} m/s")
@@ -215,7 +227,7 @@ def plot(a):
     import matplotlib.pyplot as plt
     hl = HILLS[a.hill] * H
     g = ground_fn(hl)
-    cols = al.Columns(a.plotfile)
+    cols = open_columns(a)
     us, zs = column(cols, 200.0)
     uref = u_at(us, zs, 0.8 * H)
     figs = {3: ("fig4_3", "fig4_5"), 5: ("fig4_4", "fig4_6")}.get(a.hill)
@@ -305,12 +317,14 @@ def main():
     c.add_argument("--outdir", required=True)
     c.add_argument("--label")
     c.add_argument("--out")
+    c.add_argument("--mean", action="store_true", help="read the running time means u_mean, v_mean of an unsteady run")
     q = sub.add_parser("plot")
     q.add_argument("plotfile")
     q.add_argument("--hill", type=int, choices=HILLS, required=True)
     q.add_argument("--outdir", required=True)
     q.add_argument("--manning", help="digitized Manning et al. (2010) curves (figure,panel,series,x,y); not distributed")
     q.add_argument("--out", required=True)
+    q.add_argument("--mean", action="store_true", help="read the running time means u_mean, v_mean of an unsteady run")
     a = ap.parse_args()
     {"prepare": prepare, "compare": compare, "plot": plot}[a.cmd](a)
 

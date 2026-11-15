@@ -9,7 +9,7 @@ attached.
 | File | Role |
 |---|---|
 | `inputs_rushil` | One deck for the three hills (`terrain.file = hill3.xyz`, `hill5.xyz` or `hill8.xyz`, summit at x = 4680 m): 936 × 8 × 64 cells over ±40 H, 10 m horizontally, a 1 m first layer, slip ceiling at 1603 m, z0 = 0.157 m, the tunnel's flat-floor profile as inflow. |
-| `rushil.py` | `prepare` (the three terrain files, the inflow table and the station files from the ERCOFTAC data), `compare` (reversed-flow extent at 0.1 H, U rms against the tunnel), `plot` (speed-up planes and station profiles; with `--manning`, Meteodyn WT curves from a user-supplied digitized file). |
+| `rushil.py` | `prepare` (the three terrain files, the inflow table and the station files from the ERCOFTAC data), `compare` (reversed-flow extent at 0.1 H, U rms against the tunnel), `plot` (speed-up planes and station profiles; with `--manning`, Meteodyn WT curves from a user-supplied digitized file). With `--mean`, `compare` and `plot` read the running time means `u_mean`, `v_mean` of an unsteady run (`../URANS_Averages/README.md`). |
 
 The deck carries the recommended GUST - CFD setting (`../WindNinja2019/README.md`) with
 `convection.hybrid_height = 292` m. `turb.max_geom_lscale = 100` m: with the default 30 m cap the near-ground
@@ -49,7 +49,8 @@ With the recommended setting (8 ranks, Apple M2 Pro):
 | 5 | none | — | 0.21 m/s | 241, 32 s |
 | 8 | none | attached | 0.20 m/s | 229, 32 s |
 
-With the default closure Hill 3 separates from 0.64a to 1.27a and Hill 5 does not reach the steady verdict. The
+With the default closure Hill 3 separates from 0.64a to 1.27a. Hill 5 reaches the steady verdict after 248
+iterations and stays attached (U rms 0.23 m/s; `../URANS_Averages/README.md`). The
 reversed flow on Hill 3 reaches about 0.2 H above the ground, against about 0.4 H in the tunnel.
 
 ## CTest

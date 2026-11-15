@@ -1803,6 +1803,22 @@ Current tests
        2-rank checkpoint of step 5 continues at 300 s with steps 6 to 10 and the same inner counts, and its final
        plotfile and probe file are byte for byte the straight run's, as is its final checkpoint except the driver
        history's wall-clock columns. About 16 s. Label ``regression``; MPI builds.
+   * - ``rt_urans_mean_option``
+     - RT-6.4a.1 (sub-phase 6.4a, beyond the plan), with ``rt_urans_mean_option_clean`` and
+       ``rt_urans_mean_option_run``: the time-mean option of the column reader (``tools/askervein_lines.py``,
+       ``Columns(mean=True)``; ``--mean`` of its ``sample`` and ``check`` and of ``rushil.py compare`` and ``plot``),
+       which reads ``u_mean``, ``v_mean`` in place of ``u``, ``v``. Five steps of 60 s of the unsteady 2-D hill with
+       two cells in y, on 2 ranks, with ``unsteady.average_start = 0`` and a plotfile every step. Checks
+       (``Tests/Real_Terrain/URANS_Averages/check_mean_option.py``): in three columns the mean read with the option
+       equals the arithmetic mean of the five steps' fields within 1e-10 of the largest \|u\| (measured 1.8e-15 m/s),
+       and differs from the last step by more than 1e-3 of it (measured 0.207 m/s of 8.03 m/s);
+       ``sample --mean`` at two masts gives the speed of those mean columns (4e-7 m/s) and differs from plain
+       ``sample`` (0.084 m/s); ``check --mean`` passes against those speeds and plain ``check`` fails;
+       ``rushil.py compare --mean`` prints the reference speed of the mean columns (4.049 m/s; 4.001 m/s without).
+       Mutants that fail: the option ignored in the reader (``u``, ``v`` read); ``u_mean`` read for ``v_mean``;
+       ``mean`` not passed on in ``sample``, in ``check``, in ``rushil.py compare``. ``rushil.py plot --mean`` is
+       not run (it needs matplotlib). The Hill 5 and Askervein comparisons of :ref:`urans-time-mean` are not
+       CTests. Label ``regression;smoke``; double only.
    * - ``rt_unsteady_hill2d_from_steady``
      - The unsteady deck restarted from the 5-iteration checkpoint of ``rt_steady_hill2d_restart_first``: two steps
        of 60 s to 120 s, the restart and the summary line matched. Label ``regression;smoke``; MPI builds.

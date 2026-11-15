@@ -274,7 +274,7 @@ only. On the benchmarks (``Tests/Real_Terrain/WindNinja2019``, ``IshiharaZhou``,
      - 0.64a–1.27a; 0.50 m/s
      - 0.58a–1.45a; 0.48 m/s
    * - RUSHIL Hill 5 / Hill 8
-     - not steady / attached, 0.23 m/s
+     - attached, 0.23 m/s / attached, 0.23 m/s
      - attached, 0.21 m/s / attached, 0.20 m/s
    * - Askervein, all masts (RMSE)
      - 1.24 m/s
