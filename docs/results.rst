@@ -205,6 +205,80 @@ Cost compared with ERF
 *Finding.* GUST reaches a converged steady state in a fraction of the time ERF needs for a run that is not yet
 steady.
 
+.. _urans-time-mean:
+
+Time mean of the unsteady run against the steady run
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+*Setup.* Sub-phase 6.4a (beyond the plan). The same deck run twice: to the steady verdict, and with
+``steady.stage = unsteady`` to 4800 s with the running means over 2400–4800 s. The unsteady run starts from the
+deck's first guess, not from the steady field, without grid sequencing; a step stops two orders below its first
+residual or at ``steady.residual_tol``, whichever comes first. The cases, the commands and the data credits are in
+``Tests/Real_Terrain/URANS_Averages/README.md``. RUSHIL Hill 5 (936 × 8 × 64 cells, 1920 steps of 2.5 s) runs with
+the default closure (``turb.realizability = 0``, ``turb.nut_relax = 1``, no blending; the deck's
+``turb.max_geom_lscale = 100`` kept) and with a setting whose steady run stops at its iteration limit
+(``turb.realizability = 0.33``, ``turb.nut_relax = 0.5``, no blending; limit 4000). Askervein runs with ERF's
+setup (300 × 300 × 18 cells, 1200 steps of 4 s; :ref:`askervein-erf-mesh`). Costs are iterations on 8 ranks; wall
+times were not measured, and the cost of one inner iteration was not compared with that of one steady iteration.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 22 16 20 21 21
+
+   * - Case
+     - Steady run
+     - Unsteady run
+     - Last step against the steady field
+     - Time mean against the steady field
+   * - Hill 5, default closure
+     - steady, 248 it.
+     - 5354 inner it. (2.79 per step)
+     - at most 1.7e-4 m/s (0.004 % of 3.93 m/s)
+     - at most 8.1e-3 m/s (0.21 %); RMS 1.7e-3 m/s
+   * - Hill 5, stalled setting
+     - not steady at 4000 it.
+     - 5438 inner it. (2.83 per step)
+     - at most 1.3e-3 m/s (0.03 %)
+     - at most 1.1e-2 m/s (0.28 %); RMS 2.1e-3 m/s
+   * - Askervein, ERF's setup
+     - steady, 135 it.
+     - 2248 inner it. (1.87 per step)
+     - at most 9.8e-4 m/s (0.004 % of 22.3 m/s)
+     - at most 9.8e-4 m/s (0.004 %); RMS 6.6e-5 m/s
+
+The steady counts are those of the finest level; the sequenced Hill 5 runs add 42 + 8 and 45 + 9 iterations on
+their two coarser levels.
+
+Against the wind tunnel, the Hill 5 time mean and the steady field have the same error (U rms 0.225 m/s with the
+default closure, 0.214 m/s with the stalled setting), and neither shows reversed flow at 0.1 H. Against ERF's
+unsteady RANS on the Askervein lines A and AA, the time mean and the steady field give the same speeds to three
+decimals: within 4.31 % at the 26 masts up to 300 m past the hilltop, and 6.86 to 9.85 % slower at the four lee
+masts. The 5 % target of the test RT-6.4.4 is missed in the lee by both; the time average does not change that
+difference.
+
+On Hill 5 the time mean is further from the steady field than the last step is, because the averaging window
+still holds the end of the start-up: 2400 s is one flow-through time at the domain top and 0.6 of one at 57 m
+above the ground, where the largest difference is. The standard deviation of u over the window grows from zero
+upstream to 0.009 m/s (default closure) and 0.013 m/s (stalled setting) in the column next to the outflow; it is
+this decaying start-up, not an oscillation. On Askervein every step from 840 s on is one iteration and the
+standard deviation is at most 1e-11 m/s.
+
+With the stalled Hill 5 setting the steady run's residuals repeat with a period of 30 iterations from about
+iteration 330 (the k residual between 5.1e-5 and 8.0e-5; ``steady.residual_tol`` is 5e-5), while the unsteady run
+brings every residual below the tolerance from about 4300 s.
+
+*Finding.* In the three runs the unsteady run reaches the steady field (to 0.03 % of the largest speed or closer)
+at 17 to 22 times the iterations of the steady run that reaches its verdict; the ratio depends on the stop time.
+A steady run that stops at its iteration limit is not by itself a sign of an unsteady flow: with the stalled
+Hill 5 setting the stall is a cycle of the iteration, and the unsteady run settles on the field the steady run
+stopped on. The variance fields of the unsteady run (``u_var``, ``v_var``, ``w_var``) help to tell the cases
+apart: a variance that falls when the averaging window is moved later marks a start-up, one that stays marks an
+unsteady flow. *Limit.* BDF1 with these steps (Δt·U/Δx about 1 on Hill 5) damps an oscillation of period 195 s (a
+Strouhal number of 0.2 on the hill height) by 22 % per period and shorter periods more, so a weakly unstable mode
+could be suppressed; no run with a smaller step was made. The laminar cylinder at Re = 100 is the case here where
+the flow itself is unsteady: the steady run reaches no verdict in 6000 iterations and the unsteady run sheds
+(``Tests/Canonical_RANS/Cylinder_Laminar/README.md``; the Re = 100 runs are not CTests).
+
 Solver settings
 ---------------
 

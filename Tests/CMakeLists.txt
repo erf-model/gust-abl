@@ -1875,6 +1875,28 @@ gust_add_test(NAME abort_unsteady_restart_probes NP 2 LABELS "regression;smoke" 
               COMMAND $<TARGET_FILE:gust> ${UNSTEADY_DECK} io.restart=chk00096 unsteady.stop_time=600 unsteady.dt=60
                       unsteady.probes_file=${UNSTEADY_PROBES_DIR}/probes_restart_hill2d.txt
                       io.write_checkpoint=0 ${GUST_TEST_AMREX_FLAGS})
+# The time-mean option of the plotfile column reader (askervein_lines.py
+# sample --mean, rushil.py compare --mean; sub-phase 6.4a, beyond the plan):
+# five steps of 60 s with a plotfile each and the averages from t = 0, so the
+# last plotfile's u_mean, v_mean are the mean of the five fields. The run
+# directory is emptied first: a plotfile of an earlier run would enter the mean.
+# The clean step also writes the deck with two cells in y (inputs_two_in_y): the
+# mast sampler interpolates between four columns.
+if(GUST_PRECISION STREQUAL "DOUBLE")
+    set(URANS_MEAN_DIR ${CMAKE_CURRENT_BINARY_DIR}/run/rt_urans_mean_option)
+    add_test(NAME rt_urans_mean_option_clean
+             COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/Real_Terrain/URANS_Averages/check_mean_option.py
+                --prepare ${URANS_MEAN_DIR} ${UNSTEADY_DECK})
+    set_tests_properties(rt_urans_mean_option_clean PROPERTIES LABELS "regression;smoke" FIXTURES_SETUP urans_mean_clean)
+    gust_add_test(NAME rt_urans_mean_option_run NP 2 LABELS "regression;smoke" RUN_DIR ${URANS_MEAN_DIR}
+                  FIXTURES_REQUIRED urans_mean_clean FIXTURES_SETUP urans_mean_run
+                  COMMAND $<TARGET_FILE:gust> inputs_two_in_y unsteady.stop_time=300 unsteady.dt=60 unsteady.average_start=0
+                          unsteady.plot_interval=1 init.first_guess=profile io.write_checkpoint=0 ${GUST_TEST_AMREX_FLAGS})
+    add_test(NAME rt_urans_mean_option
+             COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/Real_Terrain/URANS_Averages/check_mean_option.py
+                ${URANS_MEAN_DIR} unsteady_hill2d_plt)
+    set_tests_properties(rt_urans_mean_option PROPERTIES LABELS "regression;smoke" FIXTURES_REQUIRED urans_mean_run)
+endif()
 # An unsteady run restarted from the steady run's checkpoint: two steps of 60 s
 # from its state, the driver history continued (TimeDriver.H).
 gust_add_test(NAME rt_unsteady_hill2d_from_steady NP 2 LABELS "regression;smoke" RUN_DIR ${SHR_DIR}/unsteady

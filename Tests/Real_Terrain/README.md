@@ -14,5 +14,6 @@ Askervein hill run to steady on ERF's grid (`extern_erf/askervein.txt`). The fol
 | `WindNinja2019` | (comparison case) | Askervein, Bolund cases 1, 3, 4 and Big Southern Butte against the observations and WindNinja curves of Wagenbrenner et al. (2019); GUST - Fast and GUST - CFD. |
 | `IshiharaZhou` | (comparison case) | The steep 2-D ridge of Ishihara and Zhou (2025), smooth and rough, against the wind tunnel. |
 | `RUSHIL` | (comparison case) | The RUSHIL 2-D hills (a/H = 3, 5, 8) against the wind tunnel (ERCOFTAC AC5-05). |
+| `URANS_Averages` | `rt_urans_mean_option` | The time mean of the unsteady run against the steady run of the same deck: RUSHIL Hill 5 and Askervein with ERF's setup (comparison cases); the CTest checks the `--mean` option of the readers. |
 
 The first three use `Supporting_Files/expect_abort.py --success "gust: steady after"` to require the verdict.
