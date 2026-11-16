@@ -1550,6 +1550,20 @@ Current tests
        half-widths 400 to 1000 m, the relaxation zone, a chain of three nests from 100 m, and the 600 m patch in four
        boxes on 1, 2 and 4 ranks. Targets T1 to T5 of
        the README are the verdict (:doc:`boundary_conditions`, *Where to put the nest faces*).
+   * - ``rt_nest_shapes_cube`` (fixtures ``rt_nest_shapes_clean``, ``_cube_parent``, ``_cube_reference``, ``_cube_d70``)
+     - A one-way patch around a building against a uniform fine run (``Tests/Canonical_RANS/Nest_Shapes``;
+       sub-phase 9.4, beyond the plan; RT-9.4.2): the 30 × 30 × 20 m block of ``Building_Cube`` in 480 m × 240 m,
+       periodic in y. The whole domain runs to steady on 10 m cells (the parent) and on 5 m cells (the reference),
+       and a 5 m patch of half-width 70 m with four ``nest`` faces (walls 55 m from them) from the parent, each in four
+       boxes on two ranks. ``nest_shapes.py compare``: the RMS of the velocity-vector difference between patch and
+       reference around the cube (x in [100, 160] m, y in [90, 150] m, below 40 m) is at most 2 % of the speed scale
+       5.298 m/s (measured 1.394 %) and at most a quarter of the parent's (18.431 %). Mutant: the patch's buildings
+       placed one cell off in x (``Source/Buildings.cpp``) fails it (10.823 %).
+   * - ``rt_nest_shapes_study`` (``nightly``; fixture ``rt_nest_shapes_study_clean``)
+     - The study of the case README on four ranks for the hill, the escarpment, the cube and the plate: the
+       reference, the parent and patches at three distances from each shape, and the middle distance in four boxes
+       on 1, 2 and 4 ranks for the hill and the cube (RT-9.4.1, RT-9.4.3, PT-9.4.1). Targets T1 to T4 of the README
+       are the verdict. The ridge, which misses T1 and T2 (README, *Expected Results*), is not run.
    * - ``rt_askervein_nest_study`` (``nightly``; fixture ``rt_askervein_nest_clean``)
      - One-way nesting on Askervein (``Tests/Real_Terrain/Askervein_Nest``) on four ranks: the 40 m parent, the 20 m
        reference and 20 m patches of half-width 1000, 1400 and 2000 m around the hilltop. The 10 m speeds at the 30
@@ -1595,9 +1609,14 @@ Current tests
    * - ``abort_nest_faces_no_parent``, ``_no_guess``, ``_sequencing``, ``_widths``, ``_blend_width``, ``_keys_unused``, ``_blend_unused``, ``_buildings``, ``_damping``
      - A ``nest`` face without ``bc.nest_parent``, without the parent's first guess or a restart, or with
        ``steady.sequencing = 1``; ``bc.nest_relax_width`` of half the patch or ``bc.nest_relax_factor`` = 0;
-       ``terrain.nest_blend_width`` of half the patch; the three keys without a ``nest`` face; buildings
-       (``buildings.type = immersed_forcing``); and a Rayleigh layer on u, v and k with no ``inflow`` face: each
-       stops the run, naming the key.
+       ``terrain.nest_blend_width`` of half the patch; the three keys without a ``nest`` face; a building tile
+       (``building_near_face.txt``, x in [425, 450] m) within the 50 m gap of the face ``bc.xlo`` (UT-9.4.2 run end
+       to end; the message names the tile, its top, the gap and the face); and a Rayleigh layer on u, v and k with no
+       ``inflow`` face: each stops the run, naming the key.
+   * - ``rt_nest_faces_building_inside`` (fixture ``rt_nest_faces_hill_parent``)
+     - The hill patch with a 75 m × 75 m × 20 m block clear of its nest faces (``building_inside.txt``) runs five iterations
+       on two ranks in nine boxes and writes its checkpoint; the log must report solid cells (9 solid, 9 partial and 33 wall cells; solid volume 112 500 m³) (sub-phase 9.4, beyond the plan; before, buildings with a
+       ``nest`` face stopped the run).
    * - ``rt_bc_neutral_flat``, ``rt_bc_neutral_flat_matches``
      - ``boundary_fluxes`` on ERF's Neutral_ABL_Flat mesh (8 × 8 × 64, 1000 m) with a fixed log-law state
        (u* = 0.35 m/s, z₀ = 0.1 m, 15°), the surface layer on the ground and a slip top: u* recovered at every ground
@@ -3026,6 +3045,16 @@ GoogleTest suite
        the same step, and the patch's place in the parent; not with the parent's path or a second read of the same
        parent. A checkpoint is accepted with its own record and refused, naming ``io.restart``, with another, with
        none where it has one, and with one where it has none.
+   * - ``NestBuildings.PatchHasTheWholeDomainsFractionsAndWalls`` (UT-9.4.1)
+     - An L-shaped block with two tops and a lifted deck on sloping ground: a patch (16 × 17 cells in boxes of 5 × 6)
+       builds the solid fractions, the three face fractions and the wall cells bit for bit as the whole domain (32 ×
+       32 cells in boxes of 16) on the same cells, with more than 100 solid and 50 wall cells in the patch.
+   * - ``NestBuildings.TileOnTheGapEdgeIsClearAndOneCellInsideIsNamed``, ``NestBuildings.EachFaceAndCorner``, ``NestBuildings.ZoneAndBlendWidenTheGap``, ``NestBuildings.OnlyNestFacesAndTilesAlongThePatch``, ``NestBuildings.MessagesAreCappedWithACount`` (UT-9.4.2)
+     - A building tile within :math:`2\Delta x + \max(N\Delta x, W)` of a nest face is named with its extents and
+       the face; a tile whose edge is on the gap's inner edge is clear, one cell further in is not. Each of the four
+       faces and a corner tile (named twice); ``bc.nest_relax_width`` and ``terrain.nest_blend_width`` widen the gap, the larger of the two counting;
+       faces that are not ``nest``, tiles beside a non-periodic patch and tiles with no height do not count, and a
+       periodic direction counts every tile along the face; a cap on the messages (eight in a run), then a count of the rest.
    * - ``IO.SameDirectoryAsksTheFileSystem``
      - Audit A10 (P3): ``./``, trailing and doubled separators, an absolute path, ``..`` and a symbolic link all
        name the restart directory; another directory, and one that does not exist yet, do not.

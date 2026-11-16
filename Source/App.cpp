@@ -16,6 +16,7 @@
 #include "Forcing.H"
 #include "StateIO.H"
 #include "Initializer.H"
+#include "NestBuildings.H"
 #include "NestFaces.H"
 #include "NestParent.H"
 #include "Inputs.H"
@@ -284,9 +285,6 @@ void run ()
     const bool nest_guess = iopt.first_guess == InitOptions::FirstGuess::nest;
     const bool nest_face = has_nest_face(bin);
     for (auto& e : check_nest_run(bin, in, nest_guess, solve && seq.enabled)) { err.push_back(std::move(e)); }
-    if (nest_face && buildings_opt.active()) {
-        err.emplace_back("buildings.type: buildings are not supported with a nest face (bc.xlo, bc.xhi, bc.ylo or bc.yhi = nest) yet");
-    }
     for (const auto& e : check_column_guess(iopt, sopt, fopt, bin, surf, surface_layer)) { err.push_back(e); }
     if (amrex::ParmParse("io").contains("column_guess_file") && iopt.first_guess != InitOptions::FirstGuess::column) {
         err.emplace_back("io.column_guess_file has no effect without init.first_guess = column");
@@ -316,6 +314,16 @@ void run ()
     }
 
     const amrex::Geometry geom = make_geometry(in.mesh);
+    // Buildings in a nested patch keep clear of its nest faces, the relaxation zone and the ground blend (NestBuildings.H).
+    if (nest_face && buildings_opt.active()) {
+        const auto near = check_nest_buildings(read_building_map(buildings_opt.file, buildings_opt.format), buildings_opt.file,
+                                               bin, geom, in.terrain.nest_blend_width);
+        if (!near.empty()) {
+            std::string all = "gust: invalid inputs:";
+            for (const auto& e : near) { all += "\n  " + e; }
+            amrex::Abort(all);
+        }
+    }
     // With a grid hierarchy, boxes every level coarsens exactly.
     const amrex::BoxArray ba = hierarchy_box_array(in.mesh);
     // Grid sequencing runs the coarse levels on a fresh start only.

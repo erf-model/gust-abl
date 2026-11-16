@@ -4,7 +4,7 @@
     nest_shapes.py files   SHAPE
     nest_shapes.py run     SHAPE NAME DX         -- COMMAND [ARGS ...]
     nest_shapes.py nest    SHAPE NAME PARENT D   -- COMMAND [ARGS ...]
-    nest_shapes.py compare SHAPE PATCH REFERENCE [PARENT]
+    nest_shapes.py compare SHAPE PATCH REFERENCE [PARENT] [--rms-roi X] [--ratio R]
     nest_shapes.py study   [--shapes a,b,...] [--ranks a,b,...] -- MPIEXEC ... GUST [-- ARGS ...]
 
 SHAPE is ridge, hill, escarpment (terrain, inputs_terrain_*), cube or plate
@@ -29,7 +29,9 @@ compare: PATCH against the whole-domain run REFERENCE on the same cells. For
 the regions below it prints the RMS and the largest difference of the
 velocity vector as a fraction of the shape's U_ref, and those of k as a
 fraction of U_ref^2; with PARENT, the same for the parent against the
-reference averaged over each parent cell.
+reference averaged over each parent cell. --rms-roi: a limit on the patch's
+ROI velocity RMS (a fraction of U_ref); --ratio R (needs PARENT): the patch's
+ROI RMS must be at most R times the parent's. The exit code is the verdict.
 
 Regions (cell centres; layers by the reference's corner column, over flat
 ground):
@@ -58,6 +60,7 @@ sys.dont_write_bytecode = True
 import erf_plotfile  # noqa: E402
 
 FIELDS = ["u", "v", "w", "tke", "z"]
+RANK_TOL = 1e-8   # T3: the largest velocity difference between rank counts, as a fraction of U_ref
 KAPPA_REF = 0.4   # the speed scale (u* / 0.4) ln(h / z0); the solver's kappa is 0.41
 
 
@@ -136,7 +139,8 @@ SHAPES = {
     "cube": dict(kind="building", lx=480.0, ly=240.0, z=["mesh.n_cell_z=24"], top=120.0, pdx=10.0,
                  xc=130.0, yc=120.0, two_d=False, ds=(40.0, 70.0, 100.0),
                  args=["buildings.file=cube_nest.txt", "buildings.format=erf", "bc.surface_z0=0.1",
-                       "buildings.z0=0.1", "turb.max_geom_lscale=40.", "convection.hybrid_height=50."],
+                       "buildings.z0=0.1", "turb.max_geom_lscale=40.", "convection.hybrid_height=50.",
+                       "steady.cfl_max=8", "steady.max_iterations=4000"],
                  domain_args=["bc.inflow_z0=0.1"],
                  uref=u_ref(20.0, 0.1), ztop=40.0,
                  roi=lambda x, y: 100.0 <= x <= 160.0 and 90.0 <= y <= 150.0,
@@ -145,7 +149,8 @@ SHAPES = {
                   xc=22.0, yc=2.0, two_d=True, ds=(4.0, 8.0, 12.0),
                   args=["buildings.file=plate_nest.txt", "buildings.format=xyz", "bc.surface_z0=0.01",
                         "buildings.z0=0.01", "turb.max_geom_lscale=40.", "convection.hybrid_height=2.75",
-                        "mesh.zlevels_file=plate_zlevels.txt"],
+                        "mesh.zlevels_file=plate_zlevels.txt", "steady.cfl_max=4", "steady.max_iterations=20000",
+                        "steady.confidence=0.95"],
                   domain_args=["bc.inflow_z0=0.01"],
                   uref=u_ref(1.1, 0.01), ztop=3.0,
                   roi=lambda x, y: 19.0 <= x <= 25.0,
@@ -352,16 +357,43 @@ def show(shape, label, nm):
 
 
 def compare(args):
-    if len(args) not in (3, 4) or args[0] not in SHAPES:
+    names, rms_roi, ratio = [], None, None
+    it = iter(args)
+    try:
+        for a in it:
+            if a == "--rms-roi":
+                rms_roi = float(next(it))
+            elif a == "--ratio":
+                ratio = float(next(it))
+            else:
+                names.append(a)
+    except (StopIteration, ValueError):
+        names = []
+    if len(names) not in (3, 4) or names[0] not in SHAPES or (ratio is not None and len(names) != 4):
         print(__doc__)
         return 2
-    shape = args[0]
-    patch, ref = Run(args[1]), Run(args[2])
-    show(shape, f"{patch.name} vs {ref.name}", norms(shape, patch, ref, patch, 1))
-    if len(args) == 4:
-        parent = Run(args[3])
-        show(shape, f"{parent.name} vs {ref.name}", norms(shape, parent, ref, patch, 2))
-    return 0
+    shape = names[0]
+    patch, ref = Run(names[1]), Run(names[2])
+    mine = norms(shape, patch, ref, patch, 1)
+    show(shape, f"{patch.name} vs {ref.name}", mine)
+    bad = []
+    roi = mine["roi"]
+    if roi is None:
+        bad.append("the patch has no cell in the ROI")
+    elif rms_roi is not None and not roi[0] <= rms_roi:
+        bad.append(f"ROI: velocity RMS {roi[0]:.4e} of U_ref is above {rms_roi:g}")
+    if len(names) == 4:
+        parent = Run(names[3])
+        theirs = norms(shape, parent, ref, patch, 2)
+        show(shape, f"{parent.name} vs {ref.name}", theirs)
+        if ratio is not None and not (roi is not None and theirs["roi"] is not None
+                                      and roi[0] <= ratio * theirs["roi"][0]):
+            bad.append(f"ROI: the patch's velocity RMS is above {ratio:g} x its parent's")
+    for b in bad:
+        print("nest_shapes: FAIL: " + b)
+    if not bad:
+        print("nest_shapes: PASS")
+    return 1 if bad else 0
 
 
 def study(shapes, ranks, solver):
@@ -440,10 +472,12 @@ def study(shapes, ranks, solver):
                            f"{shape}_par", its, it_ref)
                 vals.append(h)
             if len(vals) == 3:
-                judge("T3", max(vals) - min(vals) <= 0.1 * min(vals),
-                      f"{shape}: ROI RMS on 1, 2 and 4 ranks {', '.join(f'{100 * v:.4f}' for v in vals)} %")
-                gap = norms(shape, Run(f"{shape}_np4"), Run(f"{shape}_np1"), Run(f"{shape}_np1"), 1)["patch"]
-                print(f"nest_shapes: {shape}_np4 vs {shape}_np1: largest velocity difference {gap[1]:.3e} of U_ref")
+                # The same four boxes on every rank count: the fields differ by round-off only.
+                gaps = [norms(shape, Run(f"{shape}_np{np}"), Run(f"{shape}_np1"), Run(f"{shape}_np1"), 1)["patch"][1]
+                        for np in (2, 4)]
+                judge("T3", max(gaps) <= RANK_TOL,
+                      f"{shape}: largest velocity difference from 1 rank {gaps[0]:.3e} (2 ranks), {gaps[1]:.3e} "
+                      f"(4 ranks) of U_ref, limit {RANK_TOL:g}; ROI RMS {', '.join(f'{100 * v:.4f}' for v in vals)} %")
     if not rows:
         fail("no patch was run")
     with open("nest_shapes.csv", "w") as f:

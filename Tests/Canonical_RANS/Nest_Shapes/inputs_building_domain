@@ -6,8 +6,8 @@
 # need them) to the steady verdict, with the recommended closure setting of
 # docs/turbulence_model.rst. nest_shapes.py gives the domain (mesh.prob_hi,
 # mesh.n_cell and the layers), the roughness, the building file,
-# turb.max_geom_lscale, convection.hybrid_height (2.5 building heights) and the
-# output names on the command line.
+# turb.max_geom_lscale, convection.hybrid_height (2.5 building heights), the
+# CFL cap, the iteration limit and the output names on the command line.
 mesh.prob_lo       = 0. 0. 0.
 mesh.is_periodic   = 0 1 0
 
@@ -36,5 +36,3 @@ init.first_guess = profile
 steady.stage          = simplec
 steady.sweep          = zjacobi
 steady.zline_sweeps   = 3
-steady.cfl_max        = 8
-steady.max_iterations = 4000

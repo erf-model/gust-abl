@@ -26,5 +26,3 @@ init.first_guess = nest
 steady.stage          = simplec
 steady.sweep          = zjacobi
 steady.zline_sweeps   = 3
-steady.cfl_max        = 8
-steady.max_iterations = 4000

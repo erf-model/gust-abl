@@ -390,6 +390,3 @@ class NestChecker(Checker):
             if c.positive("bc.sponge_width"):
                 self.error("bc.sponge_width", "GUST stops: bc.sponge_width > 0 is not supported with a nest face and no "
                                               "inflow face.", "Remove the sponge.")
-        if c.buildings:
-            self.error("buildings.type", "GUST stops: buildings are not supported with a nest face yet.",
-                       "Run the buildings on a patch without nest faces.")

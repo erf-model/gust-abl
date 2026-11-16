@@ -416,6 +416,30 @@ zone, the blend moves the patch towards the parent (table above); use it when th
 (the warning on the net flux), not otherwise. With a terrain mapping that smooths the levels (``terrain.smoothing`` 1 or 2) the node heights above the
 ground can still differ from the parent's at the face, because the smoothing sees each mesh's own ground.
 
+**Buildings in a patch** (``buildings.type``, sub-phase 9.4). The patch builds its buildings from ``buildings.file`` on
+its own cells, as a run of the whole domain on the same cells would: the same solid fractions, fixed faces and wall
+cells (unit test ``NestBuildings.PatchHasTheWholeDomainsFractionsAndWalls``). The parent's values on the nest faces
+know nothing of the buildings, so every building tile (a point of the height map with a height above 0 and the
+rectangle it owns, :doc:`buildings`) must keep clear of the nest faces by
+
+.. math::
+
+   g_d = 2\,\Delta x_d + \max\left(N\,\Delta x_d,\; W\right)
+
+for the faces normal to :math:`d`, with :math:`\Delta x_d` the patch's cell size, :math:`N` = ``bc.nest_relax_width``
+and :math:`W` = ``terrain.nest_blend_width``. The zone and the blend hold the patch to the
+parent's field and ground, which have no building; the two cells beyond them keep a building's wall cells and their
+reference cells out of both, and away from the face's fixed row and the two ghost layers the parent fills. A tile within :math:`g_d` of a nest face stops the
+run, naming the tile's x and y extents, its top, the gap and the face (up to eight tiles, then a count). A tile edge on
+the gap's inner edge is clear. Along a face, a tile beside the patch in a non-periodic direction does not count. The
+check uses the tiles, so it does not depend on the box layout or the rank count. Buildings need z-line sweeps
+(``steady.sweep = zjacobi``), as in a whole-domain run.
+
+The gap is a minimum for the solver, not for accuracy. Around a 30 m cube (``Tests/Canonical_RANS/Nest_Shapes``) the
+patch came within 0.5 % of the uniform fine run near the cube only with the nest faces 85 m (2.8 cube widths) from its
+walls; see *Where to put the nest faces* below. For a patch around buildings, keep the faces about three building
+widths from the walls.
+
 **Restart.** The checkpoint holds a record of the nest settings: the types of the four lateral faces, the parent's
 step and cells, a digest of the parent's content (its ``Header`` and the headers of its field and height files, which
 hold every box's minimum and maximum), the patch's place in the parent, the zone's width and factor and the blend
@@ -518,10 +542,44 @@ lines A and AA lie within 870 m of the hilltop in x and in y) the 10 m speeds at
 blend, where the patch's ground differs from the reference's by up to 0.05 m; without it the RMS is 0.077 %. All
 numbers are from macOS arm64, double precision, four ranks.
 
+Around five canonical shapes (``Tests/Canonical_RANS/Nest_Shapes``; sub-phase 9.4, beyond the plan) a patch at 2 2 1
+was compared with the uniform fine run at three distances :math:`D` from the shape's centre to the nest faces
+(velocity RMS over the shape, % of the shape's speed scale; the parent in brackets):
+
+.. list-table::
+   :header-rows: 1
+
+   * - Shape
+     - :math:`D`
+     - Patch
+   * - 30 × 30 × 20 m cube (Building_Cube), 5 m cells
+     - 40, 70, **100 m**
+     - 4.60, 1.39, **0.45 %** (18.4 %)
+   * - round Agnesi hill, h = a = 150 m, 25 m cells
+     - 300, 600, **900 m**
+     - 0.57, 0.13, **0.04 %** (3.4 %)
+   * - tanh escarpment, 100 m high, 25 m cells
+     - 300, 600, **900 m**
+     - 0.019, 0.005, **0.004 %** (0.53 %)
+   * - plate 4 m long, 1 m above the ground, 0.5 m cells
+     - 4, 8, 12 m
+     - 0.49, 0.18, 0.08 % (2.5 %)
+   * - 2-D Agnesi ridge, h = a = 150 m (slope 33°), 25 m cells
+     - 300, 600, 900 m
+     - 5.65, 8.14, 8.61 % (8.50 %)
+
+The patches took about as many iterations as the uniform fine run, and on 1, 2 and 4 ranks (four boxes) the fields
+agree to 2.3e-10 of the speed scale or better. Behind the ridge the flow separates, and the steady problem on these
+cells has more than one converged solution: on the same domain, with the same inflow and outflow faces and cells, a
+run from the log-law profile ends its reversed flow near the ground at x = 2312.5 m, like the uniform run, and a run
+from the parent's field (``init.first_guess = nest``) at 2187.5 m, like the patches (8.56 % against 0.18 %). A patch
+always starts from its parent's field, so where the steady state is not unique it can settle on another one than the
+fine run. The README of the case gives the runs.
+
 What these comparisons do not cover: the reference is the same solver with the same closure, so they measure the
 nesting error, not accuracy; neutral flow, refinement 2 2 1 with the same layers in every run, one wind direction per
-case; the flow over the hill is attached (no recirculation reaches a nest face); the patches are centred squares away
-from the domain's own boundaries; the zone was tried with factor 1 at one patch size.
+case; the patches are centred on the shape and away from the domain's own boundaries; the zone was tried with factor
+1 at one patch size.
 
 **Limits.**
 
@@ -533,7 +591,9 @@ from the domain's own boundaries; the zone was tried with factor 1 at one patch 
 - The Rayleigh layer and the side sponge relax :math:`u, v` and :math:`k` towards the ``bc.inflow_*`` profile, not the
   parent's field. With a nest face and no ``inflow`` face the Rayleigh layer may damp :math:`w` and :math:`\theta`
   only (``bc.rayleigh_fields = w`` or ``w theta``) and the sponge is refused.
-- Buildings (``buildings.type``) are refused with a nest face.
+- Buildings in a patch must keep clear of its nest faces (above); a building cut by a nest face is not supported.
+- A patch starts from its parent's field. Where the steady problem has more than one solution (separated flow behind
+  a steep ridge, above), the patch can settle on another one than a uniform fine run from a profile.
 - A canopy (``canopy.type``) on the patch: the parent's values on the nest faces feel the drag only if the parent run
   had the same canopy. This is not checked, and the warning for canopy cells beside an ``inflow`` face does not count
   nest faces. Give the parent the patch's canopy, or keep the forest a few cells inside the nest faces.
