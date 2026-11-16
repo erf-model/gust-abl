@@ -14,12 +14,68 @@ ERROR:
   keys with buildings.wall_form = drag; buildings.theta_mode = fixed without
   buildings.theta_surface; buildings.limiter_zone without the wall k or
   turb.realizability; the Newton stage, the lusgs sweep, a mesh hierarchy,
-  solver.poisson_backend = mlmg and a nest face with buildings;
+  solver.poisson_backend = mlmg; a building tile with h > 0 within
+  2 cells + max(bc.nest_relax_width cells, terrain.nest_blend_width) of a
+  nest face (Source/NestBuildings.cpp check_nest_buildings; reported on
+  that face's key);
   buildings.force_file without a stage.
 
 The files themselves are checked by `files`.
 """
+import os
+
 from ..checker import Checker, register
+
+NEST_BUILDING_CELLS = 2     # Source/NestBuildings.H, kNestBuildingCells
+
+
+def _tile_edges(x):
+    """Source/Buildings.cpp tile_edges: halfway between the points, the end tiles as far outward as inward."""
+    e = [0.0] * (len(x) + 1)
+    for i in range(1, len(x)):
+        e[i] = 0.5 * (x[i - 1] + x[i])
+    e[0] = x[0] - (e[1] - x[0])
+    e[-1] = x[-1] + (x[-1] - e[-2])
+    return e
+
+
+def read_building_tiles(path, fmt):
+    """(x edges, y edges, h[i][j]) of a buildings.file (Source/Buildings.cpp parse_map / parse_xyz), or None when
+    the file is not in that format (GUST then stops with its own message)."""
+    try:
+        with open(path, "r", encoding="utf-8-sig", errors="replace") as fh:
+            text = fh.read()
+        if fmt == "xyz":
+            pts = []
+            for line in text.splitlines():
+                v = [float(t) for t in line.split("#", 1)[0].replace(",", " ").split()]
+                if v:
+                    if len(v) not in (3, 4):
+                        return None
+                    pts.append(v)
+            xs = sorted(set(p[0] for p in pts))
+            ys = sorted(set(p[1] for p in pts))
+            if len(xs) < 2 or len(ys) < 2 or len(pts) != len(xs) * len(ys):
+                return None
+            ix = {x: i for i, x in enumerate(xs)}
+            iy = {y: j for j, y in enumerate(ys)}
+            h = [[0.0] * len(ys) for _ in xs]
+            for p in pts:
+                h[ix[p[0]]][iy[p[1]]] = p[2]
+        elif fmt == "erf":
+            tok = [float(t) for t in text.split()]
+            if len(tok) < 2 or tok[0] != int(tok[0]) or tok[1] != int(tok[1]) or tok[0] < 2 or tok[1] < 2:
+                return None
+            nx, ny = int(tok[0]), int(tok[1])
+            if len(tok) != 2 + nx + ny + nx * ny:
+                return None
+            xs, ys, flat = tok[2:2 + nx], tok[2 + nx:2 + nx + ny], tok[2 + nx + ny:]
+            h = [flat[i * ny:(i + 1) * ny] for i in range(nx)]
+        else:
+            return None
+    except (OSError, ValueError, OverflowError):
+        return None
+    return _tile_edges(xs), _tile_edges(ys), h
 
 
 @register
@@ -133,10 +189,56 @@ class BuildingsChecker(Checker):
             elif not c.solve:
                 self.no_effect("buildings.force_file", "without steady.stage = simplec")
         if c.reads_bc and c.nest_faces:
-            self.error("buildings.type", "GUST stops: buildings are not supported with a nest face (bc.%s = nest)."
-                       % c.nest_faces[0], "Run the buildings on a mesh without nest faces.")
+            self._nest_gap()
         if c.solve:
             self._solver(mode)
+
+    def _nest_gap(self):
+        """A building tile within the gap of a nest face (Source/NestBuildings.cpp, check_nest_buildings)."""
+        c = self.ctx
+        if not (c.prob_lo and c.prob_hi and c.dx and c.dy):
+            return
+        path, _ = c.find_file(c.s("buildings.file"))
+        if path is None or os.path.isdir(path):
+            return                                  # reported by `files`
+        tiles = read_building_tiles(path, c.s("buildings.format") or "erf")
+        if tiles is None:
+            return                                  # GUST reports the format when it reads the file
+        xe, ye, h = tiles
+        n_relax = c.i("bc.nest_relax_width") or 0
+        blend = c.r("terrain.nest_blend_width") or 0.0
+        periodic = c.periodic or [0, 0, 0]
+        for f in c.nest_faces:
+            d = 0 if f[0] == "x" else 1
+            o = 1 - d
+            cell = c.dx if d == 0 else c.dy
+            ocell = c.dy if d == 0 else c.dx
+            gap = NEST_BUILDING_CELLS * cell + max(n_relax * cell, blend)
+            lo, hi = c.prob_lo[d], c.prob_hi[d]
+            olo, ohi = c.prob_lo[o], c.prob_hi[o]
+            tol, otol = 1e-9 * cell, 1e-9 * ocell
+            e, eo = (xe, ye) if d == 0 else (ye, xe)
+            near = []
+            for i in range(len(xe) - 1):
+                for j in range(len(ye) - 1):
+                    top = h[i][j]
+                    if not top > 0:
+                        continue
+                    a, b = (i, j) if d == 0 else (j, i)
+                    e0, e1, f0, f1 = e[a], e[a + 1], eo[b], eo[b + 1]
+                    if not periodic[o] and (f1 <= olo + otol or f0 >= ohi - otol):
+                        continue
+                    if (f.endswith("lo") and e1 > lo + tol and e0 < lo + gap - tol) or \
+                            (f.endswith("hi") and e0 < hi - tol and e1 > hi - gap + tol):
+                        near.append((xe[i], xe[i + 1], ye[j], ye[j + 1], top))
+            if near:
+                x0, x1, y0, y1, top = near[0]
+                more = " (and %d more tiles)" % (len(near) - 1) if len(near) > 1 else ""
+                self.error("bc." + f, "GUST stops: buildings.file = %s: the building tile x in [%g, %g] m, y in [%g, %g] m "
+                                      "(top %g m) lies within %g m of the nest face bc.%s%s (%d cells beyond the larger of "
+                                      "bc.nest_relax_width = %d cells and terrain.nest_blend_width = %g m)."
+                           % (c.s("buildings.file"), x0, x1, y0, y1, top, gap, f, more, NEST_BUILDING_CELLS,
+                              n_relax, blend), "Move the face or the building.")
 
     def _solver(self, mode):
         c = self.ctx

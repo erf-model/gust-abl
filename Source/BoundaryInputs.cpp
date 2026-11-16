@@ -62,7 +62,7 @@ BoundaryInputs read_boundary_inputs ()
                           "theta_profile_z", "theta_profile", "zhi_theta_grad", "rayleigh_zdamp",
                           "rayleigh_dampcoef", "rayleigh_fields", "rayleigh_height", "sponge_width", "sponge_strength",
                           "outflow_transport", "xlo_wall_velocity", "xhi_wall_velocity", "ylo_wall_velocity", "yhi_wall_velocity",
-                          "zlo_wall_velocity", "zhi_wall_velocity", "nest_parent", "nest_relax_width", "nest_relax_factor"};
+                          "zlo_wall_velocity", "zhi_wall_velocity", "nest_parent", "nest_relax_width", "nest_relax_factor", "nest_ratio"};
     std::vector<std::string> errs;
     for (const char* key : keys) {
         if (!pp.contains(key)) { continue; }
@@ -152,6 +152,7 @@ BoundaryInputs read_boundary_inputs ()
     }
     pp.query("nest_relax_width", in.nest_relax_width);
     pp.query("nest_relax_factor", in.nest_relax_factor);
+    pp.query("nest_ratio", in.nest_ratio);
     return in;
 }
 

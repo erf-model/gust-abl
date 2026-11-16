@@ -1,0 +1,25 @@
+# A patch around a terrain shape of inputs_terrain_domain (tracker row PR-76,
+# beyond plan rev. 6): nest faces at xlo and xhi, the parent's field as the
+# first guess, the same layers and closure setting. nest_shapes.py gives the
+# shape, the place and cells (mesh.prob_lo, mesh.prob_hi, mesh.n_cell), the y
+# faces (nest, or periodic where the patch spans a periodic parent), the parent
+# (bc.nest_parent), the boxes and the output names on the command line.
+mesh.dz0           = 10.
+
+terrain.smoothing  = 0
+
+bc.xlo = nest
+bc.xhi = nest
+bc.zlo = surface_layer
+bc.zhi = slip_wall
+bc.surface_z0 = 0.1
+
+turb.realizability   = 0.309
+turb.nut_relax       = 0.5
+turb.max_geom_lscale = 100.
+convection.hybrid_sigma_max = 0.1
+
+init.first_guess = nest
+
+steady.stage          = simplec
+steady.max_iterations = 4000

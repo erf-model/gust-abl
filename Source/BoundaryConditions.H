@@ -153,6 +153,9 @@ struct BoundaryInputs
     //! multiple of the parent's inward speed over the zone's width.
     int nest_relax_width{0};
     amrex::Real nest_relax_factor{1};
+    //! bc.nest_ratio: the patch's refinement of the parent in x and y
+    //! (NestParent.H; 2, 4, 8 or 16; z: 1). Checked by check_nest_run.
+    int nest_ratio{2};
 };
 
 //! Whether a lateral face is a nest face.

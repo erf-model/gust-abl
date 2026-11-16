@@ -1,0 +1,11 @@
+# A block 25 m (one patch cell) inside the nest face bc.xlo of inputs_hill_patch: refused (gap 2 cells, 50 m).
+# x y height (m), buildings.format = xyz: one 25 m x 25 m x 20 m block in the middle tile
+412.5 587.5 0.0
+412.5 612.5 0.0
+412.5 637.5 0.0
+437.5 587.5 0.0
+437.5 612.5 20.0
+437.5 637.5 0.0
+462.5 587.5 0.0
+462.5 612.5 0.0
+462.5 637.5 0.0

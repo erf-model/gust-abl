@@ -129,6 +129,11 @@ M = [
   "if (m_flux.applied && m_flux.inflow > 0 && large) {", "if (m_flux.inflow > 0 && large) {"),
  ("F52", "the content digest from the Header alone (not the fields' files)", "Source/NestParent.cpp",
   'for (const char* f : {"u", "v", "w", "theta", "tke", "z_phys_nd"}) {', "for (const char* f : std::vector<const char*>{}) {"),
+ # bc.nest_ratio (beyond the plan)
+ ("F53", "bc.nest_ratio not range-checked in the run's checks", F,
+  "    if (!valid_nest_ratio(bin.nest_ratio)) {", "    if (false) {"),
+ ("F54", "bc.nest_ratio without a parent accepted", F,
+  "    } else if (bin.nest_parent.empty()\n", "    } else if (false\n"),
 ]
 
 # Equivalent mutants found while writing the tests, not in the table:
