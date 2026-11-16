@@ -44,6 +44,7 @@
 #include <stdexcept>
 #include <string>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -354,7 +355,9 @@ TEST (NestParent, PlacementFollowsTheRatio)
     }
     // The ratio-2 patch at ratio 4, and the ratio-4 patch at ratio 2 or 8.
     const gust::MeshInputs good2 = patch_inputs(pin).mesh;
-    for (const auto& [m, r] : {std::pair<gust::MeshInputs, int>{good2, 4}, {good4, 2}, {good4, 8}}) {
+    // A named vector: nvcc cannot deduce a braced list of pairs in a range-for.
+    const std::vector<std::pair<gust::MeshInputs, int>> wrong_ratio{{good2, 4}, {good4, 2}, {good4, 8}};
+    for (const auto& [m, r] : wrong_ratio) {
         const auto err = placement(h, m, nullptr, r);
         ASSERT_EQ(err.size(), 2U) << "ratio " << r;   // x and y
         for (const auto& e : err) {
