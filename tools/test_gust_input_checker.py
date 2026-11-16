@@ -271,7 +271,16 @@ def gust_run(test):
 def named_keys(pattern):
     """The GUST keys a regex of expect_abort.py names."""
     text = pattern.replace("\\.", ".")
-    return [m for m in re.findall(r"[a-z]+\.[A-Za-z0-9_]+", text) if m.split(".")[0] in OWNED]
+    keys = []
+    for m in re.findall(r"[a-z]+\.[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)?", text):
+        parts = m.split(".")
+        if parts[0] == "nest" and len(parts) == 2 and parts[1] != "names":
+            keys += [m + ".lo", m + ".hi"]          # "nest.a must lie ...": the nest's corners
+        elif parts[0] == "nest":
+            keys.append(m)
+        elif parts[0] in OWNED:
+            keys.append(".".join(parts[:2]))
+    return keys
 
 
 # ---------------------------------------------------------------------------
@@ -287,6 +296,11 @@ OTHER_KEY = {
     "abort_abl_capped_no_sink",               # reported on bc.rayleigh_fields / bc.theta_profile
     "abort_stage_no_guess",                   # reported on init.first_guess
     "abort_sequencing_overlap",               # reported on steady.line_overlap
+}
+# Decks that GUST stops on the outcome of the run, not on an input: the checker has nothing to report.
+RUN_OUTCOME = {
+    "abort_nests_outer_not_steady",           # the outer domain stops at steady.max_iterations = 3
+    "abort_nests_nest_not_steady",            # the hill nest stops at steady.max_iterations = 90
 }
 MIN_STARTING = 90     # decks of the CTests that must start and that the sweep can resolve (98 in November 2026)
 MIN_ABORTING = 95     # decks that must stop and whose message names a key (105 in November 2026)
@@ -363,7 +377,7 @@ class CTestDecks(unittest.TestCase):
         count = 0
         for name, deck, overrides, patterns, aborts in self.decks:
             keys = set(k for p in patterns if not p.startswith("!") for k in named_keys(p))
-            if not aborts or not keys:
+            if not aborts or not keys or name in RUN_OUTCOME:
                 continue
             count += 1
             with self.subTest(test=name):

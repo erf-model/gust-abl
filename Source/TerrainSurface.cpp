@@ -338,8 +338,9 @@ void fill_terrain_surface (amrex::MultiFab& z_phys_nd, const amrex::Geometry& ge
         // in the same operation order.
         const amrex::Real hm = t.hill_height;
         const amrex::Real L = t.hill_half_width;
-        const amrex::Real xcen = amrex::Real(0.5) * (plo[0] + phi[0]);
-        const amrex::Real ycen = amrex::Real(0.5) * (plo[1] + phi[1]);
+        // The domain's centre, or the parent's for a nested patch (TerrainInputs::hill_centre).
+        const amrex::Real xcen = std::isnan(t.hill_centre[0]) ? amrex::Real(0.5) * (plo[0] + phi[0]) : t.hill_centre[0];
+        const amrex::Real ycen = std::isnan(t.hill_centre[1]) ? amrex::Real(0.5) * (plo[1] + phi[1]) : t.hill_centre[1];
         const int dir = (t.hill_shape == "ridge_x") ? 0 : (t.hill_shape == "ridge_y") ? 1 : 2;
         // A ghost node takes the hill at the node it stands for: its periodic
         // image in a periodic direction, the nearest domain node otherwise

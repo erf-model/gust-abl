@@ -5,6 +5,8 @@
 #include <AMReX_IntVect.H>
 #include <AMReX_REAL.H>
 
+#include <array>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -15,7 +17,7 @@ namespace gust {
 inline const std::vector<std::string>& owned_namespaces ()
 {
     static const std::vector<std::string> ns{
-        "mesh", "terrain", "init", "turb", "bc", "steady", "solver", "io", "forcing", "convection", "simplec", "canopy", "buildings", "abl", "unsteady"};
+        "mesh", "terrain", "init", "turb", "bc", "steady", "solver", "io", "forcing", "convection", "simplec", "canopy", "buildings", "abl", "unsteady", "nest"};
     return ns;
 }
 
@@ -74,6 +76,11 @@ struct TerrainInputs
     //! agnesi: h = hill_height / (1 + (r / hill_half_width)^2), centred in the domain.
     amrex::Real hill_height{0};
     amrex::Real hill_half_width{0};
+    //! agnesi: the hill's centre (x, y, m) when it is not this domain's centre. Not an input: a nested patch
+    //! (bc.nest_parent, nest.names) sets it to its parent's domain centre, so the hill stays where the parent
+    //! has it. NaN: the centre of this domain.
+    std::array<amrex::Real, 2> hill_centre{std::numeric_limits<amrex::Real>::quiet_NaN(),
+                                           std::numeric_limits<amrex::Real>::quiet_NaN()};
     //! agnesi: ridge_x (varies in x), ridge_y, or round (radial).
     std::string hill_shape{"ridge_x"};
     //! xyz: nearest points used and the weight power (FastWindTerrain's defaults).

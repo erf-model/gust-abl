@@ -277,6 +277,43 @@ CASES = [
     # --- pressure ---------------------------------------------------------------------------------------
     ("pressure_thin_cells", "hill", "mesh.dz0 = 1\n", ["A * pressure"], []),
     ("pressure_usual_cells", "hill", "", [], ["A * pressure", "W * pressure"]),
+    # --- nests (nest.*) ----------------------------------------------------------------------------------
+    ("nests_ok", "inflow", "nest.names = a b\nnest.a.lo = 400 300\nnest.a.hi = 1200 900\n"
+     "nest.b.lo = 1200 0\nnest.b.hi = 1400 1600\n", ["I nest.a.lo nests"], ["E *"]),
+    ("nests_misaligned", "inflow", "nest.names = a\nnest.a.lo = 450 300\nnest.a.hi = 1200 900\n",
+     ["E nest.a.lo nests"], []),
+    ("nests_margin", "inflow", "nest.names = a\nnest.a.lo = 100 300\nnest.a.hi = 1200 900\n",
+     ["E nest.a.lo nests"], []),
+    ("nests_hi_not_above", "inflow", "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 400 900\n",
+     ["E nest.a.hi nests"], []),
+    ("nests_overlap", "inflow", "nest.names = a b\nnest.a.lo = 400 300\nnest.a.hi = 1200 900\n"
+     "nest.b.lo = 1100 300\nnest.b.hi = 1400 600\n", ["E nest.b.lo nests"], ["E nest.a.lo"]),
+    ("nests_missing_corner", "inflow", "nest.names = a\nnest.a.lo = 400 300\n", ["E nest.a.hi nests"], []),
+    ("nests_not_named", "inflow", "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 1200 900\n"
+     "nest.c.lo = 400 300\n", ["E nest.c.lo nests"], ["E nest.a.lo"]),
+    ("nests_bad_name", "inflow", "nest.names = 9x\n", ["E nest.names nests"], []),
+    ("nests_name_twice", "inflow", "nest.names = a a\nnest.a.lo = 400 300\nnest.a.hi = 1200 900\n",
+     ["E nest.names nests"], []),
+    ("nests_unknown_key", "inflow", "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 1200 900\nnest.a.ratio = 3\n",
+     ["E nest.a.ratio keys"], []),
+    ("nests_three_values", "inflow", "nest.names = a\nnest.a.lo = 400 300 0\nnest.a.hi = 1200 900\n",
+     ["E nest.a.lo values"], []),
+    ("nests_no_stage", "guess", "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 1200 900\n",
+     ["E nest.names nests"], []),
+    ("nests_no_checkpoint", "inflow", "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 1200 900\n"
+     "io.write_checkpoint = 0\n", ["E io.write_checkpoint nests"], []),
+    ("nests_whole_domain", "solve", "nest.names = a\nnest.a.lo = 0 0\nnest.a.hi = 1600 1600\n",
+     ["E nest.a.lo nests"], []),
+    ("nests_narrow_box", "inflow", "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 500 900\nsteady.sweep = lusgs\n"
+     "steady.line_ghosts = zero\nsteady.line_overlap = 4\n", ["E steady.line_overlap nests"], []),
+    ("nests_wide_box", "inflow", "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 600 900\nsteady.sweep = lusgs\n"
+     "steady.line_ghosts = zero\nsteady.line_overlap = 4\n", [], ["E steady.line_overlap"]),
+    ("nests_hill_stf", "hill", "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 1200 900\nsteady.stage = simplec\n",
+     ["E terrain.smoothing nests"], []),
+    ("nests_hill_btf", "hill", "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 1200 900\nsteady.stage = simplec\n"
+     "terrain.smoothing = 0\n", [], ["E terrain.smoothing"]),
+    ("nests_periodic_strip", "solve", "nest.names = a\nnest.a.lo = 0 0\nnest.a.hi = 1600 1500\n",
+     ["I nest.a.lo nests"], ["E *"]),
     # --- canopy and buildings ---------------------------------------------------------------------------
     ("canopy_key_without_type", "solve", "canopy.height = 15\n", ["E canopy.height canopy"], []),
     ("buildings_need_zjacobi", "solve", "buildings.type = immersed_forcing\nbuildings.file = b.txt\n",

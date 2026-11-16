@@ -21,6 +21,7 @@ import math
 
 from ..checker import Checker, register
 from ..deck import Unparsed, to_int, to_real
+from ..reference import template
 
 FACE_TYPES = "periodic,inflow,outflow,slip_wall,no_slip_wall,surface_layer,geostrophic,nest"
 
@@ -256,6 +257,9 @@ io.turb_plot_file str 1
 io.iteration_log table,full 1
 io.column_guess_file str 1
 io.restart str 1
+nest.names str 1+
+nest.<name>.lo real 2
+nest.<name>.hi real 2
 """
 
 _OPS = ((">=", lambda x, a: x >= a), ("<=", lambda x, a: x <= a), (">", lambda x, a: x > a),
@@ -346,7 +350,7 @@ class ValuesChecker(Checker):
             if not self.deck.has(key):
                 self.error(key, "GUST stops: %s is required." % key, "Add %s (three values: x, y, z)." % key)
         for key in self.deck.keys():
-            row = SPEC.get(key)
+            row = SPEC.get(template(key))
             if row is None:
                 continue
             vals = self.deck.values(key)

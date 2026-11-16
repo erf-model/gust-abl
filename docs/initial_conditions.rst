@@ -314,6 +314,82 @@ use the ``bc.inflow_*`` profile and the sounding, not the parent's field. ``init
 ``nest``. Grid
 sequencing (``steady.sequencing = 1``) is refused with ``nest``: the patch starts on its own mesh from the parent.
 
+Nests in one run
+----------------
+
+A deck can name nests: finer meshes that run in the same process after the outer domain. Each nest gives its name and
+its two horizontal corners only (:doc:`inputs`, ``nest``):
+
+.. code-block:: text
+
+   nest.names   = hill edge
+   nest.hill.lo = 400 300      # x y (m)
+   nest.hill.hi = 1200 900
+   nest.edge.lo = 1200 300
+   nest.edge.hi = 1500 600
+
+The outer domain runs to its end and writes its checkpoint. Then each nest runs in turn, in the order of
+``nest.names``, as a patch of that checkpoint. A nest has no deck of its own. It takes the outer deck and replaces
+what a patch must have (``Source/Nests.H``):
+
+- the mesh: its corners in x and y, twice the outer cells there (refinement 2 2 1), the outer z-levels and
+  ``mesh.max_grid_size``, one grid level; periodic only in a periodic outer direction that the nest spans whole;
+- the faces: ``bc.xlo``, ``bc.xhi``, ``bc.ylo`` and ``bc.yhi = nest`` (``periodic`` where the nest is periodic), with
+  ``bc.nest_parent`` the outer run's last checkpoint; the ground and the top as the outer domain's; no side sponge; the
+  outer deck's Rayleigh layer without u, v and k (on those it would relax towards the inflow profile, not the outer
+  field), so with the default ``bc.rayleigh_fields`` a layer on w and theta; no relaxation zone;
+- the start: ``init.first_guess = nest``; the outer deck's ``init.projection``, ``init.alpha_h`` and ``init.alpha_v``
+  also apply to each nest's correction, while its other ``init.*`` keys and ``io.column_guess_file`` set up the outer
+  first guess only; no grid sequencing; no ``steady.probes_file`` and no ``io.restart``;
+- the outputs: ``io.plot_file``, ``io.chk_file`` and ``io.turb_plot_file`` with ``_<name>`` appended, for example
+  ``plt_hill00096``.
+
+The rest is the outer domain's. The terrain is the outer deck's, and a ``terrain.type = agnesi`` hill stays at the
+outer domain's centre, so the nest's ground equals the outer ground on the nodes they share. The terrain mapping must
+then give the same heights above the ground too: ``terrain.smoothing = 0`` (BTF) and ``2`` (Sullivan) set each node's
+height from its own ground and z-level, but STF (``1``, the default) smooths each level over the mesh's whole ground,
+so with nests over terrain other than ``flat`` it is refused. ERF also uses only BTF on its refined levels. The forcing is the outer
+run's final forcing: ``forcing.ug``, ``forcing.vg``, the horizontal ``forcing.pressure_gradient`` and
+``bc.surface_heat_flux`` after any adjustment made by a column first guess.
+
+If the outer domain does not reach steady (``steady.max_iterations``, ``steady.residual_tol``,
+``steady.residual_drop_orders``), GUST stops after the outer run and no nest runs; the message names the outer domain's
+last checkpoint. If a nest does not reach steady, the other nests still run; then GUST stops with an error that names
+each such nest and its last checkpoint.
+
+The placement rules are those of a patch above: corners on the outer cell faces, at least 2 outer cells inside each
+non-periodic outer face. A corner within 1e-4 cells of an outer face is moved onto it. Nests may touch but not
+overlap, and a nest may not cover the whole outer domain in x and y (it would have no nest face). Every nest's inputs,
+its box layout (for example ``steady.line_overlap`` against its narrowest box) and its boundary inputs are checked
+before the outer domain starts, so a fault in a nest stops the run before any work is done.
+
+With nests the outer deck needs ``steady.stage = simplec`` or ``simplec_newton`` and ``io.write_checkpoint = 1``.
+Buildings and ``simplec.theta = frozen`` are refused.
+
+A nest's result is that of the same patch run on its own: ``Tests/Canonical_RANS/Nests_One_Process`` compares the two
+bit for bit, and the outer domain with and without nests. It also checks that each nest's ground equals the outer
+ground on their shared nodes, and that the nest's u, averaged to the outer cells, stays close to the outer u.
+
+Limits of this one-way form:
+
+- The nests do not feed back into the outer domain: each nest takes the outer field on its faces, and the outer field
+  does not change.
+- Two nests that touch each take the outer values on their shared face, but each corrects its own net flux, so their
+  normal velocities there differ.
+- The outer Rayleigh layer damps u and v (relaxing towards the inflow profile); a nest's damps w and theta only. Near
+  the top the nest's u and v may therefore differ from the outer domain's.
+- A nest's convergence is measured against its own first residuals, not the outer domain's. A nest starts close to
+  its steady state, so ``steady.residual_drop_orders`` may take longer to reach than ``steady.residual_tol``.
+- The Rayleigh layer relaxes the nest's theta towards the deck's profile, as the outer domain's does.
+- The check of each nest before the outer run uses the deck's forcing; the nest itself runs with the outer run's final
+  forcing (they differ only after a column first guess adjusts it).
+- A nest cannot be restarted within the run. To continue one, run it as a patch on its own (a deck like
+  ``Tests/Canonical_RANS/Nests_One_Process/inputs_nest``) with ``io.restart``.
+- A nest is not checked against the outer sponge or the outflow face beyond the 2-cell margin; a nest placed in the
+  sponge takes a damped field on its faces.
+- ``terrain.nest_blend_width`` is not used by the nests (their ground already equals the outer ground on their
+  faces); nor are ``steady.probes_file`` and ``io.restart``.
+
 Mass-consistent adjustment
 --------------------------
 

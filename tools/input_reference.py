@@ -16,14 +16,17 @@ comment.
 What the check compares:
 
 * The detailed tables. Every data row must name at least one key (a
-  ``<face>`` placeholder stands for xlo, xhi, ylo, yhi, zlo and zhi); a key
+  ``<face>`` placeholder stands for xlo, xhi, ylo, yhi, zlo and zhi; a
+  ``<name>.`` segment, as in ``nest.<name>.lo``, for a name the deck lists,
+  and stays as written); a key
   may appear once; a line inside a table that is not a row, a cell or a
   continuation is an error.
 * The quick-reference table: every key in it is a key of the detailed tables,
   with the same default where both give a single literal.
 * The sources (Source/, recursively). A key is read when a reader names it:
   ``ParmParse v("ns")`` (or ``{"ns"}``) and then ``v.query("key")``, ``v.get*``,
-  ``v.contains``, ``v.count*`` on that variable; a temporary
+  ``v.contains``, ``v.count*`` on that variable (a ``ParmParse v("ns." + name)``
+  reads the namespace ``ns.<name>``); a temporary
   ``ParmParse("ns").query("key")``; a quoted word in a key array
   (``const char* kFooKeys[] = {...}`` or ``keys[]``) or a loop list (``for
   (const char* k : {...})``), in the namespace the loop's body names
@@ -45,7 +48,7 @@ import textwrap
 
 WIDTH = 116
 PLACEHOLDERS = {"face": ["xlo", "xhi", "ylo", "yhi", "zlo", "zhi"]}
-KEY = r"[a-z_]+\.[A-Za-z0-9_<>]+"
+KEY = r"[a-z_]+\.(?:<name>\.)?[A-Za-z0-9_<>]+"
 
 HEADER = """\
 # GUST master input reference (all inputs, with defaults, ranges and meaning).
@@ -126,7 +129,8 @@ def plain(text, refs):
 
 
 def expand(key):
-    m = re.search(r"<([a-z]+)>", key)
+    # <name> is a name the deck lists (nest.names): the key stays as written.
+    m = re.search(r"<((?!name>)[a-z]+)>", key)
     if not m:
         return [key]
     if m.group(1) not in PLACEHOLDERS:
@@ -305,6 +309,10 @@ def source_keys(root, spaces):
         keys.update(lit.findall(s))
         defs = [(m.start(), m.group(1), m.group(2))
                 for m in re.finditer(r'ParmParse\s+(\w+)\s*[({]\s*"([a-z_]+)"\s*[)}]', s)]
+        # A namespace per listed name: ParmParse v("ns." + name).
+        defs += [(m.start(), m.group(1), m.group(2) + ".<name>")
+                 for m in re.finditer(r'ParmParse\s+(\w+)\s*[({]\s*"([a-z_]+)\."\s*\+\s*\w+\s*[)}]', s)]
+        defs.sort()
         for m in re.finditer(r'ParmParse\s*\(\s*"([a-z_]+)"\s*\)\s*\.\s*%s\s*\(\s*"(\w+)"' % READER, s):
             keys.add(m.group(1) + "." + m.group(2))
         for m in re.finditer(r'\b(\w+)\s*\.\s*%s\s*\(\s*"(\w+)"' % READER, s):

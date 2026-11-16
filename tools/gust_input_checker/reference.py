@@ -15,6 +15,7 @@ are. Its layout:
     # bc.inflow_ustar = 0.4    # m/s
     #     ...
 
+A key of each nest is listed once, as nest.<name>.lo (template).
 Several key lines may share one indented text block. A note of ``required``
 means the key has no default; ``none`` (or a dash) that it is off or empty
 unless given.
@@ -23,7 +24,7 @@ import os
 import re
 import sys
 
-_KEY = re.compile(r"^# ([A-Za-z_][A-Za-z0-9_]*\.[A-Za-z0-9_]+) =(.*)$")
+_KEY = re.compile(r"^# ([A-Za-z_][A-Za-z0-9_]*\.(?:<name>\.)?[A-Za-z0-9_]+) =(.*)$")
 _BANNER = re.compile(r"^# =+$")
 
 
@@ -59,18 +60,27 @@ class Reference:
         self.sections = []
 
     def has(self, key):
-        return key in self.keys
+        return template(key) in self.keys
 
     def default(self, key):
         """The default as a list of tokens ([] when the key has none or is unknown)."""
-        ref = self.keys.get(key)
+        ref = self.keys.get(template(key))
         return ref.default.split() if ref is not None else []
 
     def namespace_keys(self, namespace):
         return [k for k in self.keys if k.startswith(namespace + ".")]
 
     def text(self, key):
+        key = template(key)
         return self.keys[key].text if key in self.keys else ""
+
+
+def template(key):
+    """The reference's name of a key: nest.<name>.lo for nest.hill.lo (a key of each nest); others unchanged."""
+    parts = key.split(".")
+    if len(parts) == 3 and parts[0] == "nest":
+        return "nest.<name>." + parts[2]
+    return key
 
 
 def default_reference_path():

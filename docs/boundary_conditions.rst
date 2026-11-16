@@ -339,8 +339,11 @@ every build. The log reports the net as a fraction of the flux entering, and :ma
 
 The correction changes the parent's flow on the faces by :math:`\delta`. The log prints a warning when the net is
 above 1e-3 of the flux entering. The usual cause is a patch ground that differs from the parent's on the nest faces:
-with the same hill 100 m off the patch's centre the net was 2.4e-2 of the flux entering (:math:`\delta` = 5.7e-2 m/s),
-and 3.0e-5 with ``terrain.nest_blend_width = 250``.
+with the hill 100 m off the parent's (a patch then placed an Agnesi hill at its own centre; it is now at the
+parent's) the net was 2.4e-2 of the flux entering (:math:`\delta` = 5.7e-2 m/s), and 3.0e-5 with
+``terrain.nest_blend_width = 250``. The centre is the parent's domain centre, so a patch of a patch places the hill
+at the centre of its own parent, which is itself a patch: in such a chain keep every patch centred on the outermost
+domain, or use ``terrain.type = xyz``.
 
 **Relaxation zone** (``bc.nest_relax_width``, off by default). In the :math:`N` cells inside each nest face, where the
 parent's flow enters, :math:`u, v, w, \theta` and :math:`k` are relaxed towards the parent's field
@@ -413,8 +416,9 @@ bilinearly at the node: the parent's ground on the face, the patch's own from :m
 slope between. The log reports the largest change of the ground. The blend adds a slope of up to
 :math:`1.5\,|h - h_\mathrm{parent}| / W` to the ground, so a narrow width over a large difference steepens it. Like the
 zone, the blend moves the patch towards the parent (table above); use it when the grounds differ on the faces
-(the warning on the net flux), not otherwise. With a terrain mapping that smooths the levels (``terrain.smoothing`` 1 or 2) the node heights above the
-ground can still differ from the parent's at the face, because the smoothing sees each mesh's own ground.
+(the warning on the net flux), not otherwise. With STF (``terrain.smoothing = 1``) the node heights above the
+ground can still differ from the parent's at the face, because the smoothing sees each mesh's own ground; BTF and
+Sullivan set each node from its own ground.
 
 **Restart.** The checkpoint holds a record of the nest settings: the types of the four lateral faces, the parent's
 step and cells, a digest of the parent's content (its ``Header`` and the headers of its field and height files, which

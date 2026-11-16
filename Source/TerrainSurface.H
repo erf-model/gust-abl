@@ -72,7 +72,8 @@ double erf_bilinear (const TerrainGrid& g, double x, double y);
 //! in ERF). For file terrain a periodic direction wraps: node n is node 0 and
 //! ghosts are periodic images, so the seam is one height. The Witch of Agnesi
 //! is centred and symmetric, so its seam nodes agree already. flat: 0; agnesi: ERF's WoA hill with hmax = terrain.hill_height,
-//! L = terrain.hill_half_width, centred in the domain; xyz: IDW; erf_grid:
+//! L = terrain.hill_half_width, centred in the domain (a nested patch: in its
+//! parent's domain, TerrainInputs::hill_centre); xyz: IDW; erf_grid:
 //! ERF's bilinear interpolation, at x + 1e-3 m and y + 1e-3 m as ERF queries.
 void fill_terrain_surface (amrex::MultiFab& z_phys_nd, const amrex::Geometry& geom,
                            const TerrainInputs& t);

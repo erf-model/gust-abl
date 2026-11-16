@@ -20,7 +20,7 @@ from .reference import load_reference
 FACES = ("xlo", "xhi", "ylo", "yhi", "zlo", "zhi")
 LATERAL = FACES[:4]
 OWNED = ("mesh", "terrain", "init", "turb", "bc", "steady", "solver", "io", "forcing", "convection", "simplec",
-         "canopy", "buildings", "abl", "unsteady")
+         "canopy", "buildings", "abl", "unsteady", "nest")
 AMREX = ("amrex", "fab", "fabarray", "vismf", "tiny_profiler", "DistributionMapping", "device", "hypre")
 SURFACE_KEYS = ("surface_z0", "surface_z0_file", "surface_zref", "surface_stability", "surface_heat_flux",
                 "surface_wall_k", "surface_denominator_floor", "surface_stable_functions", "surface_qnse_am",

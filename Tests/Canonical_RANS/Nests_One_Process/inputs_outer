@@ -1,0 +1,39 @@
+# The outer domain of the nests run in one process (rt_nests_one_process):
+# the hill parent of Nest_Faces (a 60 m round Witch of Agnesi hill,
+# half-width 250 m, in the middle; 32 x 24 x 16 cells of 50 m over
+# 1600 m x 1200 m x 800 m, first layer 10 m; periodic in y; a log-law inflow,
+# u* = 0.4 m/s, z0 = 0.1 m, from 20 degrees at xlo, outflow at xhi) with a
+# Rayleigh layer on every field above 400 m, which each nest keeps on w and
+# theta only. The nests are given on the command line (README.md), so that
+# the same deck runs the outer domain alone.
+mesh.n_cell        = 32 24 16
+mesh.prob_lo       = 0. 0. 0.
+mesh.prob_hi       = 1600. 1200. 800.
+mesh.is_periodic   = 0 1 0
+mesh.max_grid_size = 16 12
+mesh.dz0           = 10.
+
+terrain.type            = agnesi
+terrain.hill_shape      = round
+terrain.hill_height     = 60.
+terrain.hill_half_width = 250.
+terrain.smoothing       = 0
+
+bc.xlo = inflow
+bc.xhi = outflow
+bc.zlo = surface_layer
+bc.zhi = slip_wall
+bc.surface_z0 = 0.1
+bc.inflow_profile   = log_law
+bc.inflow_ustar     = 0.4
+bc.inflow_z0        = 0.1
+bc.inflow_direction = 20.
+bc.rayleigh_zdamp    = 400.
+bc.rayleigh_dampcoef = 0.2
+
+init.first_guess = profile
+
+steady.stage          = simplec
+
+io.plot_file = outer_plt
+io.chk_file  = outer_chk
