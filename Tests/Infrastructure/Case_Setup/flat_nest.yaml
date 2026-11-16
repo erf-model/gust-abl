@@ -1,0 +1,25 @@
+# A nested patch at half the cell size inside a flat run; the patch starts from
+# the parent's checkpoint. check_case_setup.py: 8 m/s at 10 m from 240 degrees
+# in the parent and in the patch.
+case:
+  name: flat_nest
+domain:
+  half_width: 800.
+  top: 500.
+mesh:
+  cell_size: 100.
+  layers: 16
+  first_layer: 4.
+wind:
+  speed: 8.
+  height: 10.
+  direction: 240.
+  drive: couette
+surface:
+  roughness: 0.03
+solver:
+  max_iterations: 400
+nests:
+  - name: centre
+    center: [0., 0.]
+    half_width: 300.

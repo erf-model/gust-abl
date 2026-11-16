@@ -12,4 +12,5 @@ archives and the Kestrel scripts.
 | `Abl_Setup` | The named set-ups `abl.drive` and `abl.theta`: a named run equals the written-out deck; contradictions stop. |
 | `Building_Field` | The building geometry from a height map: column volumes, wall mask, restart and refusals. |
 | `Reference_Archive` | `gust_refavg` end to end on copies of the smoke plotfile. |
+| `Case_Setup` | YAML case descriptions written by `tools/make_gust_case.py`, run through `run.sh` and checked against closed forms. |
 | `Kestrel_Dryrun` | A dry run of the Kestrel submit and archive scripts with stub `module`/`sbatch`/`srun`. |

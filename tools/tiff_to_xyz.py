@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""A single-band GeoTIFF (float32/float64, uncompressed or LZW, strips, no
-predictor) as a GUST terrain.type = xyz file, without GDAL: one
-"x y z" line per pixel centre (every STRIDE-th pixel), in the TIFF's own
-frame (ModelTiepoint + PixelScale), z shifted by -ZSHIFT. Pixels at or below
--1e30 (no data) are skipped.
+"""A single-band GeoTIFF (integer or float samples of 8 to 64 bits, by the
+SampleFormat tag; uncompressed or LZW, strips, no predictor) as a GUST
+terrain.type = xyz file, without GDAL: one "x y z" line per pixel centre
+(every STRIDE-th pixel), in the TIFF's own frame (ModelTiepoint +
+PixelScale; PixelIsPoint tie points shifted to the pixel corner),
+z shifted by -ZSHIFT. Pixels equal to the GDAL_NODATA tag's
+value, or at or below -1e30, are no data and skipped.
 
 Usage: tiff_to_xyz.py IN.tif OUT.xyz [STRIDE] [ZSHIFT]
 """
@@ -45,12 +47,13 @@ def lzw_decode(data):
 
 
 def read_tiff(path):
-    f = open(path, "rb").read()
+    with open(path, "rb") as handle:
+        f = handle.read()
     assert f[:2] == b"II", "little-endian TIFF only"
     off = struct.unpack("<I", f[4:8])[0]
     n = struct.unpack("<H", f[off:off + 2])[0]
-    size = {3: 2, 4: 4, 12: 8}
-    fmt = {3: "H", 4: "I", 12: "d"}
+    size = {1: 1, 2: 1, 3: 2, 4: 4, 8: 2, 9: 4, 11: 4, 12: 8}
+    fmt = {1: "B", 2: "s", 3: "H", 4: "I", 8: "h", 9: "i", 11: "f", 12: "d"}
     tags = {}
     for i in range(n):
         tag, typ, cnt, val = struct.unpack("<HHII", f[off + 2 + 12 * i:off + 14 + 12 * i])
@@ -58,18 +61,30 @@ def read_tiff(path):
             continue
         nb = size[typ] * cnt
         raw = f[val:val + nb] if nb > 4 else f[off + 10 + 12 * i:off + 10 + 12 * i + nb]
-        tags[tag] = struct.unpack("<" + fmt[typ] * cnt, raw)
+        if typ == 2:      # ASCII, e.g. GDAL_NODATA
+            tags[tag] = raw.split(b"\0")[0].decode("ascii", "replace").strip()
+        else:
+            tags[tag] = struct.unpack("<" + fmt[typ] * cnt, raw)
     nx, ny, bps = tags[256][0], tags[257][0], tags[258][0]
     comp, pred = tags[259][0], tags.get(317, (1,))[0]
-    assert comp in (1, 5) and pred == 1 and bps in (32, 64), (comp, pred, bps)
+    sample = tags.get(339, (1,))[0]      # SampleFormat: 1 unsigned, 2 signed, 3 float (TIFF 6.0 default 1)
+    dtype = {(1, 8): "u1", (1, 16): "<u2", (1, 32): "<u4", (2, 8): "i1", (2, 16): "<i2", (2, 32): "<i4",
+             (3, 32): "<f4", (3, 64): "<f8"}.get((sample, bps))
+    assert comp in (1, 5) and pred == 1 and dtype is not None, (comp, pred, sample, bps)
     rows = []
     for o, c in zip(tags[273], tags[279]):
         chunk = f[o:o + c]
         rows.append(lzw_decode(chunk) if comp == 5 else chunk)
-    a = np.frombuffer(b"".join(rows), dtype="<f8" if bps == 64 else "<f4")[:nx * ny].reshape(ny, nx)
+    a = np.frombuffer(b"".join(rows), dtype=dtype)[:nx * ny].reshape(ny, nx).astype(float)
+    if 42113 in tags:     # GDAL_NODATA
+        a[a == float(tags[42113])] = np.nan
     sx, sy = tags[33550][0], tags[33550][1]
     tie = tags[33922]
     x0, y0 = tie[3] - tie[0] * sx, tie[4] + tie[1] * sy  # the corner of pixel (0, 0)
+    keys = tags.get(34735, ())          # GeoKeyDirectory: GTRasterTypeGeoKey (1025) = 2 is PixelIsPoint, where
+    for k in range(4, len(keys) - 3, 4):  # the tie point is the pixel's centre (shifted to its corner, as GDAL does)
+        if keys[k] == 1025 and keys[k + 1] == 0 and keys[k + 3] == 2:
+            x0, y0 = x0 - 0.5 * sx, y0 + 0.5 * sy
     return a, x0, y0, sx, sy
 
 
@@ -88,7 +103,7 @@ def main(argv):
             y = y0 - (j + 0.5) * sy
             for i in range(0, nx, stride):
                 z = a[j, i]
-                if z > -1e30:
+                if z > -1e30:     # False for NaN (no data) too
                     out.write(f"{x0 + (i + 0.5) * sx:.3f} {y:.3f} {z - zshift:.3f}\n")
                     n += 1
     good = a[a > -1e30]

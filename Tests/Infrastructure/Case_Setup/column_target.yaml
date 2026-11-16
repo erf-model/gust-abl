@@ -1,0 +1,23 @@
+# A geostrophic wind found by GUST's 1-D column so that the wind at 10 m is
+# 8 m/s from 240 degrees; the 3-D run takes that wind (run.sh reads it from
+# column/log.txt). check_case_setup.py: the column's table and the 3-D run.
+case:
+  name: column_target
+domain:
+  half_width: 800.
+  top: 2000.
+mesh:
+  cell_size: 100.
+  layers: 32
+  first_layer: 4.
+wind:
+  speed: 8.
+  height: 10.
+  direction: 240.
+  drive: geostrophic_column
+atmosphere:
+  latitude: 45.          # degrees north: the Coriolis parameter
+surface:
+  roughness: 0.03
+solver:
+  max_iterations: 400

@@ -54,7 +54,7 @@ Where to start
 
 - **New users:** build the code (:doc:`building`), then work through the tutorials, starting with
   :doc:`tutorial_column`.
-- **Setting up your own case:** :doc:`howto` and the :doc:`inputs`.
+- **Setting up your own case:** :doc:`case_setup` (from a YAML file), :doc:`howto` and the :doc:`inputs`.
 - **The model and the numerics:** the Mathematical model and Numerical method sections below.
 - **Accuracy and speed:** :doc:`results` and :doc:`scaling`.
 
@@ -83,6 +83,7 @@ Contents
    :caption: How-to guides and reference
 
    howto
+   case_setup
    inputs
 
 .. toctree::
