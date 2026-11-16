@@ -675,4 +675,6 @@ TEST(NewtonSmoothness, FrozenCanopyCapNeedsTheSameAlpha)
     sm.write_checkpoint(dir, &ca);
     gust::Closure none2(gust::ClosureOptions{});
     EXPECT_EQ(message(none2), "");
+    amrex::ParallelDescriptor::Barrier();
+    if (amrex::ParallelDescriptor::IOProcessor()) { amrex::FileSystem::RemoveAll(dir); }
 }
