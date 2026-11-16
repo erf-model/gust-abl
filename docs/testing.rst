@@ -226,9 +226,9 @@ signal in that test (SIGILL on macOS arm64), so the tests after it did not run.
      - ``ProlongationAndProjectionIsDivergenceFree``
 
 The one-line mutants of the nested patch's parent reader (``Source/NestParent.cpp``, ``Source/StateIO.cpp`` and the
-periodic axis in ``Source/Transfer_K.H``), each run against ``NestParent.*`` and ``IO.CheckpointHeader*`` on two ranks
-with the unit-test flags by ``tools/nest_mutants.py`` (macOS arm64, AppleClang), and N20 by hand against
-``rt_nest_patch_hill``. All 20 are killed. Three earlier
+periodic axis in ``Source/Transfer_K.H``; N26 and N28 in ``Source/NestFaces.cpp``), each run against ``NestParent.*`` and
+``IO.CheckpointHeader*`` on two ranks with the unit-test flags by ``tools/nest_mutants.py`` (macOS arm64, AppleClang),
+and N20 by hand against ``rt_nest_patch_hill``. All 28 are killed (N21 to N28 came with ``bc.nest_ratio``). Three earlier
 candidates were equivalent and were replaced: a z shift of the image box (every box spans the column), ``w`` through
 the cell-centred stencil (it is cell-centred in x and y) and reading the parent's ghost cells (the 2-cell margin keeps
 them out of reach).
@@ -275,10 +275,10 @@ them out of reach).
      - ``PeriodicSeamUsesThePeriodicNeighbours`` (crash)
    * - N12
      - Margin of one parent cell
-     - ``EachPlacementFaultIsRefusedNamingTheKey``
+     - ``EachPlacementFaultIsRefusedNamingTheKey``, ``PlacementFollowsTheRatio``
    * - N13
      - Ratio not checked
-     - ``EachPlacementFaultIsRefusedNamingTheKey``
+     - ``EachPlacementFaultIsRefusedNamingTheKey``, ``PlacementFollowsTheRatio``
    * - N14
      - z-levels not compared
      - ``EachPlacementFaultIsRefusedNamingTheKey``
@@ -300,11 +300,38 @@ them out of reach).
    * - N20 (by hand)
      - No ``zero_ground_flux`` after the interpolation (``Source/App.cpp``)
      - ``rt_nest_patch_hill`` (ground :math:`|\Omega|` 0.80 m/s)
+   * - N21
+     - The axes built at ratio 2 whatever ``bc.nest_ratio``
+     - ``BilinearFieldIsReproducedAtRatio4``, ``BilinearFieldIsReproducedAtRatios8And16``,
+       ``ValuesDoNotDependOnLayoutOrRanksAtRatio4``
+   * - N22
+     - The parent images coarsened by 2 whatever ``bc.nest_ratio``
+     - ``BilinearFieldIsReproducedAtRatio4`` (crash)
+   * - N23
+     - The placement checked at ratio 2 whatever ``bc.nest_ratio``
+     - the three of N21, ``PeriodicSeamUsesThePeriodicNeighbours``, ``PlacementFollowsTheRatio``,
+       ``RestartRecordHoldsTheRatio``
+   * - N24
+     - Any even ratio up to 16 accepted (6, 10, 12)
+     - ``InvalidRatioAbortsNamingTheKey``, ``PlacementFollowsTheRatio``
+   * - N25
+     - Ratios above 16 accepted
+     - ``PlacementFollowsTheRatio``
+   * - N26
+     - The ratio left out of the nest faces' restart record (``Source/NestFaces.cpp``)
+     - ``RestartRecordHoldsTheRatio``
+   * - N27
+     - ``NestParent`` built for another ratio than the one given
+     - the three of N21, ``PeriodicSeamUsesThePeriodicNeighbours``, ``RestartRecordHoldsTheRatio``
+   * - N28
+     - A ratio line in the restart record at ratio 2 too (``Source/NestFaces.cpp``)
+     - ``RestartRecordHoldsTheRatio``
 
 The one-line mutants of the nest faces (``Source/NestFaces.cpp`` and its hooks in ``Source/BoundaryConditions.cpp``,
 ``Source/BoundaryDamping.cpp`` and ``Source/BoundaryInputs.cpp``; F52 in ``Source/NestParent.cpp``), each run against ``NestFaces.*`` on two ranks with
 the unit-test flags by ``tools/nest_faces_mutants.py`` (macOS arm64, AppleClang), and F40 by hand against
-``rt_nest_faces_hill_np1``. All 51 are killed (F41 to F52 came with the review's changes; there is no F45: the
+``rt_nest_faces_hill_np1``. All 53 are killed (F41 to F52 came with the review's changes, F53 and F54 with
+``bc.nest_ratio``; there is no F45: the
 restart record without the parent's step is equivalent, as the content digest covers the ``Header``, which holds the
 step). F21 and F36 survived the first run; the hooks' comparison in
 ``DiagonalIsTheSourcesDerivative`` and the pinned record text in ``RestartRecordIsCheckedAgainstTheInputs`` were added
@@ -472,6 +499,12 @@ for them. One candidate was equivalent and is not in the table: a zone that star
    * - F52
      - The content digest from the ``Header`` alone, not the fields' files (``Source/NestParent.cpp``)
      - ``RestartRecordIsCheckedAgainstTheInputs``
+   * - F53
+     - ``bc.nest_ratio`` not range-checked in the run's checks
+     - ``InputFaultsAreRefusedNamingTheKey``
+   * - F54
+     - ``bc.nest_ratio`` without a parent accepted
+     - ``InputFaultsAreRefusedNamingTheKey``
 
 The one-line mutants of the canopy's drag field (``Source/Canopy.cpp``, ``Source/Canopy_K.H``), each run against
 ``Canopy.*`` on two ranks with the unit-test flags by ``tools/canopy_mutants.py`` (macOS arm64, AppleClang). All 18 are
@@ -1559,6 +1592,13 @@ Current tests
        reference around the cube (x in [100, 160] m, y in [90, 150] m, below 40 m) is at most 2 % of the speed scale
        5.298 m/s (measured 1.394 %) and at most a quarter of the parent's (18.431 %). Mutant: the patch's buildings
        placed one cell off in x (``Source/Buildings.cpp``) fails it (10.823 %).
+   * - ``rt_nest_shapes_cube_ratio4``, ``rt_nest_shapes_cube_chain2``, ``rt_nest_shapes_cube_ratio4_vs_chain``, ``rt_nest_shapes_cube_ratio4_ranks1``, ``rt_nest_shapes_cube_ratio4_ranks4`` (fixtures ``_cube_parent20``, ``_cube_r4``, ``_cube_r4_np1``, ``_cube_r4_np4``, ``_cube_c10``, ``_cube_chain``)
+     - ``bc.nest_ratio`` (beyond the plan). The same cube from a 20 m parent: a 5 m patch at ratio 4 (half-widths
+       70 m by 60 m) and a chain of two ratio-2 patches (10 m at 90 m by 100 m, then 5 m at 70 m by 60 m), against
+       the 5 m reference. ROI velocity RMS: ratio 4 at most 5 % (measured 3.969 %) and 0.15 of the parent's
+       (42.03 %); chain at most 3.5 % (2.598 %) and 0.1 of the parent's; ratio 4 against the chain at most 2 %
+       (1.399 %). The ratio-4 patch on 1 and 4 ranks matches its 2-rank run to 1e-8 of the speed scale on every
+       patch cell (measured 0). Four boxes per run.
    * - ``rt_nest_shapes_study`` (``nightly``; fixture ``rt_nest_shapes_study_clean``)
      - The study of the case README on four ranks for the hill, the escarpment, the cube and the plate: the
        reference, the parent and patches at three distances from each shape, and the middle distance in four boxes
@@ -3004,7 +3044,19 @@ GoogleTest suite
        ranks by the ``unit_np*`` tests.
    * - ``NestParent.PeriodicSeamUsesThePeriodicNeighbours`` (beyond the plan)
      - A patch reaching a periodic parent's face (its ghost cells cross the seam) and a periodic patch spanning the
-       parent read the periodic neighbours: both match a host interpolation that wraps the index.
+       parent read the periodic neighbours: both match a host interpolation that wraps the index. Run at ratios 2,
+       4, 8 and 16.
+   * - ``NestParent.BilinearFieldIsReproducedAtRatio4``, ``NestParent.BilinearFieldIsReproducedAtRatios8And16`` (beyond the plan)
+     - The bilinear test of UT-9.1.1 with ``bc.nest_ratio`` = 4 (flat ground and the hill), 8 and 16: every patch
+       point, ghosts included, matches the closed form (relative 1e-11).
+   * - ``NestParent.PlacementFollowsTheRatio``, ``NestParent.InvalidRatioAbortsNamingTheKey`` (beyond the plan)
+     - A patch with r times the parent's cells is accepted at r = 2, 4, 8 and 16, and at ratio 16 with the 2-cell
+       margin to the parent's high faces (1 cell is refused); the ratio-2 patch at ratio 4 and the ratio-4 patch at 2
+       and 8 are refused naming ``bc.nest_parent`` and the ratio; ratios −2, 0, 1, 3, 6, 10, 12, 32 and 64 are refused,
+       naming ``bc.nest_ratio``.
+   * - ``NestParent.ValuesDoNotDependOnLayoutOrRanksAtRatio4``, ``NestParent.RestartRecordHoldsTheRatio`` (beyond the plan)
+     - UT-9.1.3 at ratio 4. The nest faces' restart record differs between ratio 4 and ratio 2, and at ratio 2 it
+       equals the digest of the record's text as written before ``bc.nest_ratio`` (so older checkpoints restart).
    * - ``NestFaces.NetFluxIsZeroAfterTheCorrection`` (UT-9.2.1)
      - A patch over a hill with four nest faces and a parent field whose net flux is above 1e-3 of the flux entering:
        the reported net, flux entering and δ equal sums made on the host from ``Mesh::flux_area``; after the

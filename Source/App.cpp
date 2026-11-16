@@ -426,7 +426,8 @@ void run ()
     std::string nest_hash;
     if (nest_guess || nest_face) {
         const amrex::Real blend = in.terrain.nest_blend_width;
-        parent = std::make_unique<NestParent>(bin.nest_parent, in.mesh, make_zlevels(in.mesh, geom), ba, dm, blend > 0);
+        parent = std::make_unique<NestParent>(bin.nest_parent, in.mesh, make_zlevels(in.mesh, geom), ba, dm, blend > 0,
+                                              bin.nest_ratio);
         amrex::Print() << parent->summary();
         if (blend > 0) { ground_edit = [&, blend] (amrex::MultiFab& z) { blend_nest_ground(*parent, bin, blend, geom, z); }; }
         if (nest_face) { nest_hash = NestFaces::hash_inputs(*parent, bin, blend); }
@@ -542,7 +543,7 @@ void run ()
             }
         }
         if (iopt.first_guess == InitOptions::FirstGuess::nest) {
-            // The nested patch: the parent at 2 2 1, then the initializer's correction.
+            // The nested patch: the parent at bc.nest_ratio (r r 1), then the initializer's correction.
             parent->interpolate(state);
             // The nest faces' normal velocities after the net flux is removed (NestFaces.H).
             if (nest_faces) { for (int d = 0; d < 2; ++d) { nest_faces->fill(state, d, false); } }

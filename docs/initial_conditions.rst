@@ -35,7 +35,7 @@ Options
      - The steady solution of a single vertical column, computed first (below).
      - Terrain cases with Coriolis forcing.
    * - ``nest``
-     - A parent run's checkpoint (``bc.nest_parent``) interpolated onto a patch that refines it 2 2 1 (below).
+     - A parent run's checkpoint (``bc.nest_parent``) interpolated onto a patch that refines it r r 1, r = ``bc.nest_ratio`` (below).
      - A finer patch inside a coarser run.
 
 ``init.projection`` (default 1) switches the mass-consistent adjustment on or off. With 0, the solver's own pressure
@@ -266,7 +266,8 @@ With ``init.first_guess = nest`` the run is a *patch*: a finer mesh inside a coa
 is the parent's checkpoint (``bc.nest_parent``) interpolated onto the patch, then the mass-consistent adjustment
 below. The code is in ``Source/NestParent``.
 
-**Placement.** The patch refines the parent by 2 in x and y and keeps the parent's z-levels (refinement 2 2 1):
+**Placement.** The patch refines the parent by :math:`r` = ``bc.nest_ratio`` (2, the default, 4, 8 or 16) in x and y
+and keeps the parent's z-levels (refinement :math:`r\,r\,1`):
 
 - each patch cell edge lies on a parent cell face, to :math:`10^{-4}` of a parent cell;
 - the patch's z inputs (``mesh.n_cell`` z, ``mesh.prob_lo`` z, ``mesh.prob_hi`` z, ``mesh.dz0``,
@@ -286,11 +287,14 @@ corner) and a parent offset :math:`o` (the parent cell under the patch's first c
 
 .. math::
 
-   X = \frac{i + 1/2}{2} - \frac12 + o \quad\text{(cell centres)}, \qquad
-   X = \frac{i}{2} + o \quad\text{(faces and nodes)},
+   X = \frac{i + 1/2}{r} - \frac12 + o \quad\text{(cell centres)}, \qquad
+   X = \frac{i}{r} + o \quad\text{(faces and nodes)},
 
 and the value is :math:`(1 - t)\,q_I + t\,q_{I+1}` with :math:`I = \lfloor X \rfloor`, :math:`t = X - I`, in each
-horizontal direction. ``u`` uses the face axis in x and the centre axis in y; ``v`` the reverse; ``w``,
+horizontal direction (at a face on a parent face the code takes :math:`I - 1` with :math:`t = 1`; the value is the
+same). :math:`t` is a multiple of :math:`1/(2r)`; with :math:`r` a power of two, :math:`t` and :math:`1 - t` are exact
+in binary and the weights are mirror-symmetric, so the values are reproducible bit for bit.
+``u`` uses the face axis in x and the centre axis in y; ``v`` the reverse; ``w``,
 :math:`\theta`, :math:`k` and :math:`p` the centre axes. A linear field is reproduced exactly. The parent's cells
 are read on the patch's own box layout, so the result does not depend on the number of ranks.
 

@@ -63,7 +63,7 @@ namespace gust {
 struct InitOptions
 {
     //! nest: the parent run of a nested patch (bc.nest_parent, NestParent.H),
-    //! interpolated at 2 2 1, then the correction below.
+    //! interpolated at r r 1 (bc.nest_ratio), then the correction below.
     enum class FirstGuess { none, profile, column, nest };
     //! init.column_stability: how the column's surface sets theta (ColumnGuess.H): a Monin-Obukhov length
     //! (mol, the default; init.column_mol = 0 is neutral, theta held at the sounding), the surface heat

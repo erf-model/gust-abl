@@ -3,8 +3,8 @@
 
     nest_shapes.py files   SHAPE
     nest_shapes.py run     SHAPE NAME DX         -- COMMAND [ARGS ...]
-    nest_shapes.py nest    SHAPE NAME PARENT D   -- COMMAND [ARGS ...]
-    nest_shapes.py compare SHAPE PATCH REFERENCE [PARENT] [--rms-roi X] [--ratio R]
+    nest_shapes.py nest    SHAPE NAME PARENT D [--nest-ratio R] -- COMMAND [ARGS ...]
+    nest_shapes.py compare SHAPE PATCH REFERENCE [PARENT] [--rms-roi X] [--ratio R] [--max-patch X]
     nest_shapes.py study   [--shapes a,b,...] [--ranks a,b,...] -- MPIEXEC ... GUST [-- ARGS ...]
 
 SHAPE is ridge, hill, escarpment (terrain, inputs_terrain_*), cube or plate
@@ -17,9 +17,12 @@ plate z-levels) into the working directory. run and nest write them too.
 run: the whole domain on DX m cells to the steady verdict; the last plotfile
 and checkpoint are copied to NAME_plt_final and NAME_chk_final.
 
-nest: a patch at 2 2 1 of the finished run PARENT, its nest faces D m from
+nest: a patch at R R 1 (default 2 2 1) of the finished run PARENT, its nest faces D m from
 the shape's centre (a square of half-width D, or across the whole periodic
 width where the shape is 2-D), to the steady verdict; outputs as for run.
+D may be DX,DY (a rectangle of half-widths DX and DY). PARENT may itself be a
+patch (a chain of nests). --nest-ratio R: refinement R R 1 (bc.nest_ratio =
+R; 2, 4, 8 or 16), the patch's cells 1/R of the parent's.
 
 COMMAND is the solver with its deck, e.g. mpiexec -n 2 gust
 inputs_terrain_nest; the shape's inputs, the mesh, the parent and the output
@@ -31,7 +34,11 @@ velocity vector as a fraction of the shape's U_ref, and those of k as a
 fraction of U_ref^2; with PARENT, the same for the parent against the
 reference averaged over each parent cell. --rms-roi: a limit on the patch's
 ROI velocity RMS (a fraction of U_ref); --ratio R (needs PARENT): the patch's
-ROI RMS must be at most R times the parent's. The exit code is the verdict.
+ROI RMS must be at most R times the parent's; --max-patch X: a limit on the
+largest velocity difference over the whole patch (a fraction of U_ref). The
+cells of PATCH are those of REFERENCE (a patch is compared with a patch on
+the same cells too: REFERENCE need only cover PATCH); PARENT's are a whole
+number of REFERENCE's. The exit code is the verdict.
 
 Regions (cell centres; layers by the reference's corner column, over flat
 ground):
@@ -229,24 +236,39 @@ def geometry(name):
     return hdr["dx"][0], hdr["prob_lo"][0], hdr["prob_lo"][1], nx, ny
 
 
-def run_nest(shape, name, parent, d, cmd, extra=()):
+def half_widths(text):
+    """D or DX,DY (m) -> (DX, DY)."""
+    try:
+        v = [float(t) for t in text.split(",")]
+    except ValueError:
+        v = []
+    if len(v) not in (1, 2) or not all(x > 0.0 for x in v):
+        fail(f"D = {text!r}: one or two half-widths > 0 (m)")
+    return (v[0], v[-1])
+
+
+def run_nest(shape, name, parent, d, cmd, extra=(), ratio=2):
+    """d: the half-width, or (DX, DY)."""
     s = SHAPES[shape]
     write_files(shape)
     nz, top = vertical(s)
     pdx, px0, py0, pnx, pny = geometry(parent)
-    dx = 0.5 * pdx
-    xlo, xhi = s["xc"] - d, s["xc"] + d
+    dx = pdx / ratio
+    dx_, dy_ = d if isinstance(d, tuple) else (d, d)
+    xlo, xhi = s["xc"] - dx_, s["xc"] + dx_
     if s["two_d"]:
         ylo, yhi = py0, py0 + pny * pdx
         faces = ["mesh.is_periodic=0 1 0"]
     else:
-        ylo, yhi = s["yc"] - d, s["yc"] + d
+        ylo, yhi = s["yc"] - dy_, s["yc"] + dy_
         faces = ["mesh.is_periodic=0 0 0", "bc.ylo=nest", "bc.yhi=nest"]
     for v, p0 in ((xlo, px0), (ylo, py0)):
         if abs((v - p0) / pdx - round((v - p0) / pdx)) > 1e-9:
             fail(f"a patch at D = {d} m does not lie on the {pdx} m cells of {parent}")
     if xlo < px0 or ylo < py0 or xhi > px0 + pnx * pdx or yhi > py0 + pny * pdx:
         fail(f"a patch at D = {d} m does not fit in {parent}")
+    if ratio != 2:   # the default adds no key: the ratio-2 commands stay as they were
+        extra = list(extra) + [f"bc.nest_ratio={ratio}"]
     extra = list(extra) + boxes(list(cmd) + list(extra), 48)
     return finish(name, cmd + s["args"] + faces
                   + [f"mesh.n_cell={cells(xhi - xlo, dx)} {cells(yhi - ylo, dx)} {nz}",
@@ -310,8 +332,16 @@ def offset(a, ref, ratio):
     return int(round(ox)), int(round(oy))
 
 
+def cell_ratio(a, ref):
+    """The whole number of ref's cells in one of a's (in x and y)."""
+    r = a.dx / ref.dx
+    if abs(r - round(r)) > 1e-9 * r or round(r) < 1:
+        fail(f"the cells of {a.name} ({a.dx} m) are not a whole number of {ref.name}'s ({ref.dx} m)")
+    return int(round(r))
+
+
 def norms(shape, run, ref, patch, ratio):
-    """run (the patch, ratio 1, or its parent, ratio 2) against ref, in the regions of patch."""
+    """run (the patch, ratio 1, or its parent, ratio r) against ref, in the regions of patch."""
     s = SHAPES[shape]
     ox, oy = offset(run, ref, ratio)
     low = low_layers(s, ref)
@@ -357,12 +387,14 @@ def show(shape, label, nm):
 
 
 def compare(args):
-    names, rms_roi, ratio = [], None, None
+    names, rms_roi, ratio, max_patch = [], None, None, None
     it = iter(args)
     try:
         for a in it:
             if a == "--rms-roi":
                 rms_roi = float(next(it))
+            elif a == "--max-patch":
+                max_patch = float(next(it))
             elif a == "--ratio":
                 ratio = float(next(it))
             else:
@@ -382,9 +414,11 @@ def compare(args):
         bad.append("the patch has no cell in the ROI")
     elif rms_roi is not None and not roi[0] <= rms_roi:
         bad.append(f"ROI: velocity RMS {roi[0]:.4e} of U_ref is above {rms_roi:g}")
+    if max_patch is not None and not mine["patch"][1] <= max_patch:
+        bad.append(f"patch: largest velocity difference {mine['patch'][1]:.4e} of U_ref is above {max_patch:g}")
     if len(names) == 4:
         parent = Run(names[3])
-        theirs = norms(shape, parent, ref, patch, 2)
+        theirs = norms(shape, parent, ref, patch, cell_ratio(parent, ref))
         show(shape, f"{parent.name} vs {ref.name}", theirs)
         if ratio is not None and not (roi is not None and theirs["roi"] is not None
                                       and roi[0] <= ratio * theirs["roi"][0]):
@@ -521,8 +555,16 @@ def main(argv):
         return 2
     if args[0] == "run" and len(args) == 4 and args[1] in SHAPES:
         run_domain(args[1], args[2], float(args[3]), cmd)
-    elif args[0] == "nest" and len(args) == 5 and args[1] in SHAPES:
-        run_nest(args[1], args[2], args[3], float(args[4]), cmd)
+    elif args[0] == "nest" and len(args) in (5, 7) and args[1] in SHAPES:
+        ratio = 2
+        if len(args) == 7:
+            if args[5] != "--nest-ratio" or not args[6].isdigit():
+                print(__doc__)
+                return 2
+            ratio = int(args[6])
+            if ratio not in (2, 4, 8, 16):
+                fail(f"--nest-ratio {ratio}: 2, 4, 8 or 16")
+        run_nest(args[1], args[2], args[3], half_widths(args[4]), cmd, ratio=ratio)
     elif args[0] == "study":
         shapes, ranks = list(SHAPES), []
         it = iter(args[1:])

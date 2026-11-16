@@ -3,7 +3,7 @@
 ## Purpose
 One-way nested patches around five canonical shapes, against a uniform fine run of the whole domain (tracker row
 PR-76; sub-phase 9.4 in the repository's numbering, 7.4 in the tracker's; beyond plan rev. 6). Each patch is at
-refinement 2 2 1 of a coarse parent run, with the same z-levels, and its `nest` faces lie at a distance D from the shape's centre. The reference is the whole domain on the
+refinement 2 2 1 (4 4 1 in the ratio runs below) of a coarse parent run, with the same z-levels, and its `nest` faces lie at a distance D from the shape's centre. The reference is the whole domain on the
 patch's cells. Three terrain shapes test patches over steep ground (the ridge's lee separates); a cube and a raised plate
 test buildings inside a patch (`buildings.type` with `nest` faces, allowed since this PR when every building keeps
 clear of the faces, `docs/boundary_conditions.rst`). `Tests/Canonical_RANS/Nest_Validation` is the same study on a
@@ -162,12 +162,38 @@ in place of the nest face at x = 3100 m left the patch's numbers unchanged (8.55
 the parent gives 8.44 % and the patches of D = 900 and 1500 m 5.20 and 5.27 %. At D ≤ 900 m the face at the
 downwind end lies in or next to the parent's reversed flow, so the faces play a part there as well.
 
+**Refinement ratio (`bc.nest_ratio`, beyond the plan).** The cube from a 20 m parent, to 5 m cells in one step
+(ratio 4) or in two (ratio 2 to 10 m, then ratio 2 to 5 m). D takes two half-widths, `DX,DY`, because the cube's
+centre (130, 120) m does not lie on a 20 m face in y. ROI velocity RMS against the 5 m reference, four boxes on two
+ranks:
+
+| Run | Cells | Iterations | ROI | Largest on the face cells |
+|---|---|---|---|---|
+| 20 m parent | 24 x 12 x 24 | -- | 42.03 % | 31.1 % |
+| 5 m patch, ratio 4, D = 70,60 m | 28 x 24 x 24 | 106 | 3.969 % | 32.4 % |
+| 10 m patch, ratio 2, D = 90,100 m | 18 x 20 x 24 | 153 | 19.20 % | 14.6 % |
+| 5 m patch, ratio 2 from the 10 m patch, D = 70,60 m | 28 x 24 x 24 | 108 | **2.598 %** | 15.5 % |
+
+The ratio-4 patch and the chain differ by 1.399 %. The ratio-4 patch on 1, 2 and 4 ranks gives the same field
+(largest difference 0 of U_ref). Commands:
+```bash
+python3 nest_shapes.py run cube cube_par20 20 -- mpiexec -n 2 <build>/gust inputs_building_domain "mesh.max_grid_size=12 6"
+python3 nest_shapes.py nest cube cube_r4 cube_par20 70,60 --nest-ratio 4 -- mpiexec -n 2 <build>/gust inputs_building_nest "mesh.max_grid_size=14 12"
+python3 nest_shapes.py nest cube cube_c10 cube_par20 90,100 -- mpiexec -n 2 <build>/gust inputs_building_nest "mesh.max_grid_size=9 10"
+python3 nest_shapes.py nest cube cube_chain cube_c10 70,60 -- mpiexec -n 2 <build>/gust inputs_building_nest "mesh.max_grid_size=14 12"
+python3 nest_shapes.py compare cube cube_r4 cube_ref cube_par20
+```
+
 ## CTest
 `rt_nest_shapes_cube` (smoke) runs the parent, the reference and the D = 70 m patch of the cube on two ranks, four
 boxes each, and passes when the patch is within 2 % of U_ref of the reference around the cube (RMS; measured
 1.394 %) and at most a quarter of the parent's difference (18.431 %); fixtures `rt_nest_shapes_clean`,
-`rt_nest_shapes_cube_parent`, `_cube_reference` and `_cube_d70`. `rt_nest_shapes_study` (nightly; fixture
-`rt_nest_shapes_study_clean`) runs the study for the hill, the escarpment, the cube and the plate on four ranks, with
+`rt_nest_shapes_cube_parent`, `_cube_reference` and `_cube_d70`. The ratio runs above are smoke tests too:
+`rt_nest_shapes_cube_ratio4` (ROI at most 5 % and 0.15 of the parent's), `rt_nest_shapes_cube_chain2` (at most 3.5 %
+and 0.1 of the parent's), `rt_nest_shapes_cube_ratio4_vs_chain` (at most 2 %) and `rt_nest_shapes_cube_ratio4_ranks1`
+and `_ranks4` (the ratio-4 patch on 1 and 4 ranks within 1e-8 of U_ref of its 2-rank run on every patch cell);
+fixtures `_cube_parent20`, `_cube_r4`, `_cube_r4_np1`, `_cube_r4_np4`, `_cube_c10` and `_cube_chain`.
+`rt_nest_shapes_study` (nightly; fixture `rt_nest_shapes_study_clean`) runs the study for the hill, the escarpment, the cube and the plate on four ranks, with
 `--ranks hill,cube`; the ridge is left out because it misses T1 and T2. The buildings in a patch are also tested by
 `rt_nest_faces_building_inside` and `abort_nest_faces_buildings` (`Tests/Canonical_RANS/Nest_Faces`) and by the
 unit tests `NestBuildings.*`.
