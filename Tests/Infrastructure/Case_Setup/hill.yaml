@@ -1,0 +1,24 @@
+# A Gaussian hill from an ESRI ASCII grid in a projected frame (written by
+# check_case_setup.py as hill.asc). The domain centre is given in the grid's
+# frame and the hill is off the centre, so a flipped or shifted grid shows.
+# check_case_setup.py: GUST's ground against the hill's formula.
+case:
+  name: hill
+domain:
+  center: [601600., 4101600.]
+  half_width: 1200.
+  top: 1500.
+terrain:
+  file: hill.asc
+mesh:
+  cell_size: 50.
+  layers: 16
+  first_layer: 4.
+wind:
+  speed: 8.
+  height: 10.
+  direction: 270.
+surface:
+  roughness: 0.03
+solver:
+  max_iterations: 1

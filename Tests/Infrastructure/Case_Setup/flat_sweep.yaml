@@ -1,0 +1,20 @@
+# Two wind directions over flat ground, moving lid (wind.drive = couette).
+# check_case_setup.py: 8 m/s at 10 m from 240 and from 0 degrees.
+case:
+  name: flat_sweep
+domain:
+  half_width: 800.       # m from the centre to each face
+  top: 500.              # m
+mesh:
+  cell_size: 100.        # m
+  layers: 16
+  first_layer: 4.        # m
+wind:
+  speed: 8.              # m/s at wind.height
+  height: 10.            # m
+  directions: [240., 0.] # degrees the wind comes from, clockwise from north
+  drive: couette
+surface:
+  roughness: 0.03        # m
+solver:
+  max_iterations: 400
