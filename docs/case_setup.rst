@@ -4,7 +4,7 @@ Case set-up from a YAML file
 ``tools/make_gust_case.py`` writes a GUST case folder from a short YAML case description: the deck (or decks), the
 terrain and roughness files GUST reads, a run script and a summary. It then checks every deck it wrote with the deck
 checker, ``tools/check_gust_inputs.py``, which can also be run on any deck by hand. The workflow follows the YAML
-case set-up of `amrTerrain <https://github.com/hgopalan/amrTerrain>`__ (written for AMR-Wind), with GUST's own
+case set-up of amrTerrain (a private case set-up tool written for AMR-Wind), with GUST's own
 inputs, cleaner key names and the capabilities GUST has that amrTerrain does not set up (named drives, a column
 first guess, nested patches, canopy and buildings).
 
