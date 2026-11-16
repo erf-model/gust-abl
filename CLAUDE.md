@@ -85,7 +85,9 @@ and every finding is resolved.
 - `make -C docs html` builds without warnings (`-W`) before pushing.
 - `codespell`, no trailing whitespace, `git diff --check` clean (`extern_erf/` and `Tests/**/Gold/` are exempt in
   `.gitattributes`: they stay byte-identical to their source).
-- Never commit `docs/notes/`, plotfiles or checkpoints.
+- Never commit `docs/notes/`, plotfiles or checkpoints. Stage files by name (`git add <path>`), not
+  `git add -A` or `git add .`, and check `git status` first: unit tests leave `ut_*` scratch output in the
+  working directory (ignored in `.gitignore`, but a test may use another name).
 
 ## Build
 
