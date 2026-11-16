@@ -187,6 +187,8 @@ class UnsteadyChecker(Checker):
                        "Give the file, or remove the key.")
         for k in UNSTEADY_REFUSED:
             self.no_effect("steady." + k, "with steady.stage = unsteady (the run stops at unsteady.stop_time)")
+        self.no_effect("steady.probes_file", "with steady.stage = unsteady (unsteady.probes_file names the probes "
+                                             "of an unsteady run)", "Use unsteady.probes_file.")
         if c.flag("steady.sequencing"):
             self.error("steady.sequencing", "GUST stops: steady.sequencing = 1 is not supported with steady.stage = "
                                             "unsteady.", "Remove steady.sequencing.")
