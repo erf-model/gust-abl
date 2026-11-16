@@ -198,6 +198,7 @@ void apply_nest_boundary_inputs (const std::string& parent_chk, const amrex::Arr
     bin.rayleigh_fields[4] = false;
     bin.nest_relax_width = 0;
     bin.nest_relax_factor = 1;
+    bin.nest_ratio = kNestRatio;   // nests refine the outer cells 2 2 1 (nest_mesh)
     bin.given.clear();
 }
 

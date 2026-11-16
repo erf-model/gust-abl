@@ -361,6 +361,13 @@ class NestChecker(Checker):
                                % (_g(blend), "xy"[d], _g(0.5 * c.extent[d])), "Use a narrower blend.")
         if not c.reads_bc:
             return
+        ratio = c.i("bc.nest_ratio")
+        # GUST checks the range first, then the parent.
+        if ratio is not None and ratio not in (2, 4, 8, 16):
+            self.error("bc.nest_ratio", "GUST stops: bc.nest_ratio = %d: must be 2, 4, 8 or 16 (the patch's "
+                                        "refinement of the parent in x and y)." % ratio, "Use 2, 4, 8 or 16.")
+        elif not parent:
+            self.no_effect("bc.nest_ratio", "without bc.nest_parent")
         width = c.i("bc.nest_relax_width")
         if not faces:
             self.no_effect("bc.nest_relax_width", "without a nest face")
@@ -390,6 +397,3 @@ class NestChecker(Checker):
             if c.positive("bc.sponge_width"):
                 self.error("bc.sponge_width", "GUST stops: bc.sponge_width > 0 is not supported with a nest face and no "
                                               "inflow face.", "Remove the sponge.")
-        if c.buildings:
-            self.error("buildings.type", "GUST stops: buildings are not supported with a nest face yet.",
-                       "Run the buildings on a patch without nest faces.")

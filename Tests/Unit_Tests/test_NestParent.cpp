@@ -10,6 +10,10 @@
 //   UT-9.1.3  the patch values do not depend on the parent's or the patch's
 //             box layout or rank map (bit for bit), on 1, 2 and 4 ranks (the
 //             unit_np* tests)
+//   beyond the plan (bc.nest_ratio): UT-9.1.1 and the periodic seam at
+//             ratios 4, 8 and 16; the placement rules at ratio 4 and the
+//             refused ratios (6 among them); UT-9.1.3 at ratio 4; the nest
+//             faces' restart record changes with the ratio
 //   beyond the plan: across a periodic seam of the parent (a patch that
 //             touches the seam, and a periodic patch spanning the parent) the
 //             values are the bilinear interpolation of the parent's discrete
@@ -19,7 +23,9 @@
 // shows up.
 #include "Inputs.H"
 #include "Mesh.H"
+#include "NestFaces.H"
 #include "NestParent.H"
+#include "Sha256.H"
 #include "State.H"
 #include "StateIO.H"
 #include "ZLevels.H"
@@ -38,6 +44,7 @@
 #include <stdexcept>
 #include <string>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -107,13 +114,14 @@ gust::Inputs parent_inputs (bool hill, int mgs = 7)
     return in;
 }
 
-// The patch over parent cells 3 to 15 in x and 2 to 12 in y: 24 x 20 cells
-// of 50 m, the parent's z-levels, boxes of at most 9 x 7 (uneven). Its own
+// The patch over parent cells 3 to 15 in x and 2 to 12 in y: 12r x 10r cells
+// of 100/r m (ratio r; 24 x 20 cells of 50 m at r = 2), the parent's
+// z-levels, boxes of at most 9 x 7 (uneven, not a multiple of r). Its own
 // hill (centred in the patch) when hill: the node heights are the patch's.
-gust::Inputs patch_inputs (const gust::Inputs& parent, int mgs = 9)
+gust::Inputs patch_inputs (const gust::Inputs& parent, int mgs = 9, int r = 2)
 {
     gust::Inputs in = parent;
-    in.mesh.n_cell = amrex::IntVect(24, 20, 8);
+    in.mesh.n_cell = amrex::IntVect(12 * r, 10 * r, 8);
     in.mesh.prob_lo = {-700, 700, 0};
     in.mesh.prob_hi = {500, 1700, 800};
     in.mesh.max_grid_size = {mgs, mgs - 2};
@@ -203,15 +211,15 @@ Check check_patch (gust::State& q, const std::function<double(const amrex::Multi
 }
 
 // The parent read for the patch, then interpolated into it (starting at kBig).
-void nest (const std::string& dir, NestRun& patch)
+void nest (const std::string& dir, NestRun& patch, int r = 2)
 {
     for (auto [mf, c] : fields6(patch.q)) { mf->setVal(amrex::Real(kBig)); }
-    const gust::NestParent parent(dir, patch.in.mesh, patch.mesh.zlevels(), patch.ba, patch.dm);
+    const gust::NestParent parent(dir, patch.in.mesh, patch.mesh.zlevels(), patch.ba, patch.dm, false, r);
     parent.interpolate(patch.q);
 }
 
-// UT-9.1.1 on the given ground.
-void bilinear_is_reproduced (bool hill, const std::string& prefix)
+// UT-9.1.1 on the given ground at ratio r.
+void bilinear_is_reproduced (bool hill, const std::string& prefix, int r = 2)
 {
     NestRun p;
     p.in = parent_inputs(hill);
@@ -220,19 +228,28 @@ void bilinear_is_reproduced (bool hill, const std::string& prefix)
         return bilinear(xpos(p.geom, mf, i, 0), xpos(p.geom, mf, j, 1), k, c);
     })};
     NestRun f;
-    f.in = patch_inputs(p.in);
+    f.in = patch_inputs(p.in, 9, r);
     f.make();
-    nest(dir.name, f);
-    const Check r = check_patch(f.q, [&] (const amrex::MultiFab& mf, int c, int i, int j, int k) {
+    nest(dir.name, f, r);
+    const Check chk = check_patch(f.q, [&] (const amrex::MultiFab& mf, int c, int i, int j, int k) {
         return bilinear(xpos(f.geom, mf, i, 0), xpos(f.geom, mf, j, 1), k, c);
     });
-    EXPECT_GT(r.points, 0);
-    EXPECT_LT(r.err, kTol) << (hill ? "hill" : "flat");
-    EXPECT_EQ(r.zghost_bad, 0) << (hill ? "hill" : "flat");
+    EXPECT_GT(chk.points, 6L * 12 * r * 10 * r * 8) << "ratio " << r;
+    EXPECT_LT(chk.err, kTol) << (hill ? "hill" : "flat") << ", ratio " << r;
+    EXPECT_EQ(chk.zghost_bad, 0) << (hill ? "hill" : "flat") << ", ratio " << r;
 }
 
 TEST (NestParent, BilinearFieldIsReproducedOnFlatGround) { bilinear_is_reproduced(false, "ut_nest_flat"); }
 TEST (NestParent, BilinearFieldIsReproducedOnAHill) { bilinear_is_reproduced(true, "ut_nest_hill"); }
+// Beyond the plan (bc.nest_ratio): the same at ratios 4, 8 and 16.
+TEST (NestParent, BilinearFieldIsReproducedAtRatio4) {
+    bilinear_is_reproduced(false, "ut_nest_flat_r4", 4);
+    bilinear_is_reproduced(true, "ut_nest_hill_r4", 4);
+}
+TEST (NestParent, BilinearFieldIsReproducedAtRatios8And16) {
+    bilinear_is_reproduced(true, "ut_nest_hill_r8", 8);
+    bilinear_is_reproduced(false, "ut_nest_flat_r16", 16);
+}
 
 // The Header of the parent as check_nest_placement sees it.
 gust::CheckpointHeader header_of (const gust::Inputs& in, int version = 2)
@@ -247,9 +264,10 @@ gust::CheckpointHeader header_of (const gust::Inputs& in, int version = 2)
     return h;
 }
 
-std::vector<std::string> placement (const gust::CheckpointHeader& h, const gust::MeshInputs& m, amrex::IntVect* off = nullptr)
+std::vector<std::string> placement (const gust::CheckpointHeader& h, const gust::MeshInputs& m, amrex::IntVect* off = nullptr,
+                                    int r = 2)
 {
-    return gust::check_nest_placement(h, m, gust::make_zlevels(m, gust::make_geometry(m)), off);
+    return gust::check_nest_placement(h, m, gust::make_zlevels(m, gust::make_geometry(m)), r, off);
 }
 
 // UT-9.1.2: one fault at a time; each is refused, every message names the key.
@@ -305,6 +323,67 @@ TEST (NestParent, EachPlacementFaultIsRefusedNamingTheKey)
     EXPECT_TRUE(placement(hp, span).empty());
     edge.is_periodic[0] = 1;
     EXPECT_FALSE(placement(hp, edge).empty()) << "a periodic patch narrower than the parent";
+}
+
+// Beyond the plan: the placement rules at bc.nest_ratio = 4, and the ratios
+// that are refused (each message names bc.nest_ratio).
+TEST (NestParent, PlacementFollowsTheRatio)
+{
+    const gust::Inputs pin = parent_inputs(false);
+    const gust::CheckpointHeader h = header_of(pin);
+    const gust::MeshInputs good4 = patch_inputs(pin, 9, 4).mesh;   // 48 x 40 cells of 25 m
+    amrex::IntVect off(-1);
+    EXPECT_TRUE(placement(h, good4, &off, 4).empty());
+    EXPECT_EQ(off, amrex::IntVect(3, 2, 0));
+    for (const int r : {2, 8, 16}) {
+        EXPECT_TRUE(placement(h, patch_inputs(pin, 9, r).mesh, nullptr, r).empty()) << "ratio " << r;
+    }
+    // At ratio 16, against the parent's high faces: 2 parent cells (the margin) are accepted, 1 is refused.
+    for (const int gap : {2, 1}) {
+        gust::MeshInputs m = patch_inputs(pin, 9, 16).mesh;   // parent cells 3..14 x 2..11 of 20 x 16
+        const amrex::Real sx = (20 - gap - 15) * 100.0, sy = (16 - gap - 12) * 100.0;
+        m.prob_lo[0] += sx; m.prob_hi[0] += sx;
+        m.prob_lo[1] += sy; m.prob_hi[1] += sy;
+        amrex::IntVect o(-1);
+        const auto err = placement(h, m, &o, 16);
+        if (gap == 2) {
+            EXPECT_TRUE(err.empty()) << (err.empty() ? "" : err[0]);
+            EXPECT_EQ(o, amrex::IntVect(6, 4, 0));
+        } else {
+            EXPECT_FALSE(err.empty());
+        }
+    }
+    // The ratio-2 patch at ratio 4, and the ratio-4 patch at ratio 2 or 8.
+    const gust::MeshInputs good2 = patch_inputs(pin).mesh;
+    // A named vector: nvcc cannot deduce a braced list of pairs in a range-for.
+    const std::vector<std::pair<gust::MeshInputs, int>> wrong_ratio{{good2, 4}, {good4, 2}, {good4, 8}};
+    for (const auto& [m, r] : wrong_ratio) {
+        const auto err = placement(h, m, nullptr, r);
+        ASSERT_EQ(err.size(), 2U) << "ratio " << r;   // x and y
+        for (const auto& e : err) {
+            EXPECT_EQ(e.rfind("bc.nest_parent: mesh.n_cell ", 0), 0U) << e;
+            EXPECT_NE(e.find("(bc.nest_ratio = " + std::to_string(r) + ": refinement " + std::to_string(r) + " "
+                             + std::to_string(r) + " 1)"), std::string::npos) << e;
+        }
+    }
+    // Faces off the parent's cell faces by a patch cell (25 m) at ratio 4.
+    gust::MeshInputs shifted = good4;
+    shifted.prob_lo[0] += 25;
+    shifted.prob_hi[0] += 25;
+    EXPECT_FALSE(placement(h, shifted, nullptr, 4).empty());
+    // Only 2, 4, 8 and 16.
+    for (const int r : {2, 4, 8, 16}) { EXPECT_TRUE(gust::valid_nest_ratio(r)) << r; }
+    for (const int r : {-2, 0, 1, 3, 6, 10, 12, 32, 64}) {
+        EXPECT_FALSE(gust::valid_nest_ratio(r)) << r;
+        gust::MeshInputs m = good2;   // r >= 1: the cells that ratio would need
+        if (r >= 1) {
+            m.n_cell[0] = 12 * r;
+            m.n_cell[1] = 10 * r;
+        }
+        const auto err = placement(h, m, nullptr, r);
+        ASSERT_EQ(err.size(), 1U) << r;
+        EXPECT_EQ(err[0], "bc.nest_ratio = " + std::to_string(r) + ": must be 2, 4, 8 or 16");
+    }
 }
 
 // The message of the runtime_error fn throws (amrex.throw_exception = 1).
@@ -404,7 +483,8 @@ double wavy (double x, double y, int k, int c)
 
 // UT-9.1.3: the parent's and the patch's layouts and rank maps change; the
 // patch values are the same bit for bit.
-TEST (NestParent, ValuesDoNotDependOnLayoutOrRanks)
+// Beyond the plan: the same at bc.nest_ratio = 4.
+void values_do_not_depend_on_layout (int r)
 {
     struct Layout { int parent_mgs; int patch_mgs; bool reverse; };
     const Layout layouts[] = {{7, 9, false}, {64, 64, false}, {5, 6, true}, {11, 4, true}};
@@ -418,9 +498,9 @@ TEST (NestParent, ValuesDoNotDependOnLayoutOrRanks)
             return wavy(xpos(p.geom, mf, i, 0), xpos(p.geom, mf, j, 1), k, c);
         })};
         NestRun f;
-        f.in = patch_inputs(p.in, L.patch_mgs);
+        f.in = patch_inputs(p.in, L.patch_mgs, r);
         f.make(!L.reverse);
-        nest(dir.name, f);
+        nest(dir.name, f, r);
         std::vector<std::vector<double>> got;
         for (auto [mf, c] : fields6(f.q)) { got.push_back(gather_valid(*mf)); }
         if (n == 0) {
@@ -429,11 +509,72 @@ TEST (NestParent, ValuesDoNotDependOnLayoutOrRanks)
             for (std::size_t c = 0; c < got.size(); ++c) {
                 long ndiff = 0;
                 for (std::size_t m = 0; m < got[c].size(); ++m) { ndiff += (got[c][m] != ref[c][m]) ? 1 : 0; }
-                EXPECT_EQ(ndiff, 0) << "layout " << n << ", field " << c;
+                EXPECT_EQ(ndiff, 0) << "ratio " << r << ", layout " << n << ", field " << c;
             }
         }
         ++n;
     }
+}
+
+TEST (NestParent, ValuesDoNotDependOnLayoutOrRanks) { values_do_not_depend_on_layout(2); }
+TEST (NestParent, ValuesDoNotDependOnLayoutOrRanksAtRatio4) { values_do_not_depend_on_layout(4); }
+
+// Beyond the plan: the nest faces' restart record (NestFaces::hash_inputs)
+// of a ratio-4 patch differs from that of a ratio-2 patch over the same
+// parent cells (same parent, offset and settings); a ratio-2 parent's record
+// is unchanged by the bc.nest_ratio key (default 2 adds nothing).
+TEST (NestParent, RestartRecordHoldsTheRatio)
+{
+    NestRun p;
+    p.in = parent_inputs(false);
+    p.make();
+    const ScopedDir dir{write_parent(p, "ut_nest_hash", [] (const amrex::MultiFab&, int c, int i, int j, int k) {
+        return 1.0 + c + 0.01 * i - 0.02 * j + 0.03 * k;
+    })};
+    gust::BoundaryInputs b;
+    b.nest_parent = dir.name;
+    for (int n = 0; n < 4; ++n) { b.face[amrex::Orientation(n / 2, n % 2 == 0 ? amrex::Orientation::low : amrex::Orientation::high)] = gust::FaceType::nest; }
+    std::string h[2];
+    std::string old_text;
+    for (const int r : {2, 4}) {
+        NestRun f;
+        f.in = patch_inputs(p.in, 9, r);
+        f.make();
+        const gust::NestParent parent(dir.name, f.in.mesh, f.mesh.zlevels(), f.ba, f.dm, false, r);
+        EXPECT_EQ(parent.ratio(), r);
+        EXPECT_EQ(parent.offset(), amrex::IntVect(3, 2, 0));
+        h[r / 4] = gust::NestFaces::hash_inputs(parent, b, 0);
+        if (r == 2) {
+            // The record's text as written before bc.nest_ratio (no ratio line).
+            const amrex::IntVect pc = parent.parent_cells();
+            old_text = "faces xlo=nest xhi=nest ylo=nest yhi=nest\nparent step " + std::to_string(parent.parent_step())
+                       + " " + std::to_string(pc[0]) + " " + std::to_string(pc[1]) + " " + std::to_string(pc[2])
+                       + "\nparent content " + parent.content_digest() + "\noffset 3 2\nblend "
+                       + gust::hexfloat_canonical(0.0) + "\nrelax " + std::to_string(b.nest_relax_width) + " "
+                       + gust::hexfloat_canonical(static_cast<double>(b.nest_relax_factor)) + "\n";
+        }
+    }
+    EXPECT_EQ(h[0].size(), 64U);
+    // At ratio 2 the record is the one written before bc.nest_ratio, so older checkpoints restart.
+    EXPECT_EQ(h[0], gust::sha256_hex(old_text));
+    EXPECT_NE(h[0], h[1]);
+}
+
+// Beyond the plan: NestParent refuses a ratio that is not 2, 4, 8 or 16,
+// naming bc.nest_ratio.
+TEST (NestParent, InvalidRatioAbortsNamingTheKey)
+{
+    NestRun p;
+    p.in = parent_inputs(false);
+    p.make();
+    const ScopedDir dir{write_parent(p, "ut_nest_badr", [] (const amrex::MultiFab&, int c, int i, int j, int k) {
+        return 1.0 + c + 0.01 * i - 0.02 * j + 0.03 * k;
+    })};
+    NestRun f;
+    f.in = patch_inputs(p.in, 9, 6);
+    f.make();
+    const std::string m = abort_message([&] { nest(dir.name, f, 6); });
+    EXPECT_NE(m.find("bc.nest_ratio = 6: must be 2, 4, 8 or 16"), std::string::npos) << m;
 }
 
 // Beyond the plan: across a periodic seam of the parent in x. The expected
@@ -454,22 +595,24 @@ TEST (NestParent, PeriodicSeamUsesThePeriodicNeighbours)
         return g(wrap(i), j, k, c);
     })};
     // Patch 1: parent cells 0 to 10 in x, not periodic (its ghosts cross the
-    // seam); patch 2: periodic, spanning the parent.
+    // seam); patch 2: periodic, spanning the parent. At ratio r = 2, and
+    // beyond the plan at 4, 8 and 16 (bc.nest_ratio).
+    for (const int r : {2, 4, 8, 16})
     for (int span = 0; span < 2; ++span) {
         NestRun f;
-        f.in = patch_inputs(p.in);
+        f.in = patch_inputs(p.in, 9, r);
         f.in.mesh.prob_lo[0] = -1000;
         f.in.mesh.prob_hi[0] = (span != 0) ? 1000 : 0;
-        f.in.mesh.n_cell[0] = (span != 0) ? 40 : 20;
+        f.in.mesh.n_cell[0] = (span != 0) ? 20 * r : 10 * r;
         f.in.mesh.is_periodic[0] = span;
         f.make();
-        nest(dir.name, f);
+        nest(dir.name, f, r);
         const int oy = 2;   // the patch's y offset in parent cells
-        const Check r = check_patch(f.q, [&] (const amrex::MultiFab& mf, int c, int i, int j, int k) {
+        const Check chk = check_patch(f.q, [&] (const amrex::MultiFab& mf, int c, int i, int j, int k) {
             // The parent's (fractional) index of patch point (i, j): nodal
-            // i / 2, cell-centred (i + 1/2) / 2 - 1/2, plus the offset.
+            // i / r, cell-centred (i + 1/2) / r - 1/2, plus the offset.
             auto pos = [&] (int ii, int d, int o) {
-                return mf.ixType().nodeCentered(d) ? 0.5 * ii + o : 0.5 * (ii + 0.5) - 0.5 + o;
+                return mf.ixType().nodeCentered(d) ? double(ii) / r + o : (ii + 0.5) / r - 0.5 + o;
             };
             const double X = pos(i, 0, 0), Y = pos(j, 1, oy);
             const int I = static_cast<int>(std::floor(X)), J = static_cast<int>(std::floor(Y));
@@ -477,8 +620,8 @@ TEST (NestParent, PeriodicSeamUsesThePeriodicNeighbours)
             return (1 - tx) * (1 - ty) * g(wrap(I), J, k, c) + tx * (1 - ty) * g(wrap(I + 1), J, k, c)
                  + (1 - tx) * ty * g(wrap(I), J + 1, k, c) + tx * ty * g(wrap(I + 1), J + 1, k, c);
         });
-        EXPECT_LT(r.err, kTol) << "span " << span;
-        EXPECT_EQ(r.zghost_bad, 0) << "span " << span;
+        EXPECT_LT(chk.err, kTol) << "ratio " << r << ", span " << span;
+        EXPECT_EQ(chk.zghost_bad, 0) << "ratio " << r << ", span " << span;
     }
 }
 

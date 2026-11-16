@@ -16,6 +16,7 @@
 #include "Forcing.H"
 #include "StateIO.H"
 #include "Initializer.H"
+#include "NestBuildings.H"
 #include "NestFaces.H"
 #include "NestParent.H"
 #include "Nests.H"
@@ -309,9 +310,6 @@ std::string run_domain (const DomainRole& role)
     const bool nest_guess = iopt.first_guess == InitOptions::FirstGuess::nest;
     const bool nest_face = has_nest_face(bin);
     for (auto& e : check_nest_run(bin, in, nest_guess, solve && seq.enabled)) { err.push_back(std::move(e)); }
-    if (nest_face && buildings_opt.active()) {
-        err.emplace_back("buildings.type: buildings are not supported with a nest face (bc.xlo, bc.xhi, bc.ylo or bc.yhi = nest) yet");
-    }
     for (const auto& e : check_column_guess(iopt, sopt, fopt, bin, surf, surface_layer)) { err.push_back(e); }
     if (nest == nullptr && amrex::ParmParse("io").contains("column_guess_file") && iopt.first_guess != InitOptions::FirstGuess::column) {
         err.emplace_back("io.column_guess_file has no effect without init.first_guess = column");
@@ -368,6 +366,16 @@ std::string run_domain (const DomainRole& role)
     // The checks that need the geometry and the layout (nothing is allocated): a nest's check-only pass runs them
     // too, so that a nest stops the run before the outer domain starts.
     const amrex::Geometry geom = make_geometry(in.mesh);
+    // Buildings in a nested patch keep clear of its nest faces, the relaxation zone and the ground blend (NestBuildings.H).
+    if (nest_face && buildings_opt.active()) {
+        const auto near = check_nest_buildings(read_building_map(buildings_opt.file, buildings_opt.format), buildings_opt.file,
+                                               bin, geom, in.terrain.nest_blend_width);
+        if (!near.empty()) {
+            std::string all = "gust: invalid inputs:";
+            for (const auto& e : near) { all += "\n  " + e; }
+            amrex::Abort(all);
+        }
+    }
     // With a grid hierarchy, boxes every level coarsens exactly.
     const amrex::BoxArray ba = hierarchy_box_array(in.mesh);
     // Grid sequencing runs the coarse levels on a fresh start only.
@@ -483,7 +491,8 @@ std::string run_domain (const DomainRole& role)
     std::string nest_hash;
     if (nest_guess || nest_face) {
         const amrex::Real blend = in.terrain.nest_blend_width;
-        parent = std::make_unique<NestParent>(bin.nest_parent, in.mesh, make_zlevels(in.mesh, geom), ba, dm, blend > 0);
+        parent = std::make_unique<NestParent>(bin.nest_parent, in.mesh, make_zlevels(in.mesh, geom), ba, dm, blend > 0,
+                                              bin.nest_ratio);
         amrex::Print() << parent->summary();
         // The hill where the parent has it, not in the middle of the patch.
         if (in.terrain.type == "agnesi") { in.terrain.hill_centre = parent->domain_centre(); }
@@ -601,7 +610,7 @@ std::string run_domain (const DomainRole& role)
             }
         }
         if (iopt.first_guess == InitOptions::FirstGuess::nest) {
-            // The nested patch: the parent at 2 2 1, then the initializer's correction.
+            // The nested patch: the parent at bc.nest_ratio (r r 1), then the initializer's correction.
             parent->interpolate(state);
             // The nest faces' normal velocities after the net flux is removed (NestFaces.H).
             if (nest_faces) { for (int d = 0; d < 2; ++d) { nest_faces->fill(state, d, false); } }

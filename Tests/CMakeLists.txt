@@ -66,6 +66,7 @@ add_executable(unit_tests
     Unit_Tests/test_Continuation.cpp
     Unit_Tests/test_NewtonPreconditioner.cpp
     Unit_Tests/test_Terrain.cpp
+    Unit_Tests/test_NestBuildings.cpp
     Unit_Tests/test_NestFaces.cpp
     Unit_Tests/test_NestParent.cpp
     Unit_Tests/test_Nests.cpp
@@ -168,6 +169,7 @@ set(BUMP_CASE           ${CMAKE_CURRENT_SOURCE_DIR}/Initialization/Bump_Speedup_
 set(NEST_CASE           ${CMAKE_CURRENT_SOURCE_DIR}/Initialization/Nest_Patch_Hill)
 set(NEST_FACES_CASE     ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Nest_Faces)
 set(NEST_VALID_CASE     ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Nest_Validation)
+set(NEST_SHAPES_CASE    ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Nest_Shapes)
 set(ASKERVEIN_NEST_CASE ${CMAKE_CURRENT_SOURCE_DIR}/Real_Terrain/Askervein_Nest)
 set(COLUMN_CASE         ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Neutral_Column)
 set(FLAT_CASE           ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Neutral_ABL_Flat)
@@ -1608,13 +1610,24 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
                   PREFIX ${EXPECT_ABORT} "${NESTF_CHANGED}" --
                   COMMAND ${NESTF_RESTART} ${NESTF_CHAIN} bc.nest_parent=pair_b_chk00030 io.restart=hill_restart_chk00010
                           steady.max_iterations=20 ${GUST_TEST_AMREX_FLAGS})
-    # What a patch with nest faces does not take: buildings, and a damping layer towards the inflow profile.
+    # Buildings in a patch (NestBuildings.H): a block one cell inside a nest face is refused, naming the tile and
+    # the face; one on the hill's crest runs (z-line sweeps, as buildings need).
     gust_add_test(NAME abort_nest_faces_buildings NP 1 LABELS "regression;smoke" RUN_DIR ${NESTF_DIR}
                   FIXTURES_REQUIRED nest_faces_hill_parent
-                  PREFIX ${EXPECT_ABORT} "buildings\\.type: buildings are not supported with a nest face" --
+                  PREFIX ${EXPECT_ABORT} "the building tile x in \\[425, 450\\] m, y in \\[600, 625\\] m \\(top 20 m\\) lies within 50 m of the nest face bc\\.xlo" --
                   COMMAND ${NESTF_RESTART} bc.nest_parent=hill_parent_chk_final init.first_guess=nest
-                          steady.max_iterations=5 buildings.type=immersed_forcing
-                          buildings.file=${BUILDINGS_CASE}/building_map.txt ${GUST_TEST_AMREX_FLAGS})
+                          steady.max_iterations=5 steady.sweep=zjacobi buildings.type=immersed_forcing buildings.format=xyz
+                          buildings.file=${NEST_FACES_CASE}/building_near_face.txt ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME rt_nest_faces_building_inside NP 2 LABELS "regression;smoke" RUN_DIR ${NESTF_DIR}
+                  FIXTURES_REQUIRED nest_faces_hill_parent
+                  COMMAND $<TARGET_FILE:gust> ${NEST_FACES_CASE}/inputs_hill_patch_restart "mesh.max_grid_size=13 9"
+                          bc.nest_parent=hill_parent_chk_final init.first_guess=nest
+                          steady.max_iterations=5 steady.sweep=zjacobi buildings.type=immersed_forcing buildings.format=xyz
+                          buildings.file=${NEST_FACES_CASE}/building_inside.txt io.plot_file=building_inside_plt
+                          io.chk_file=building_inside_chk ${GUST_TEST_AMREX_FLAGS})
+    set_tests_properties(rt_nest_faces_building_inside PROPERTIES
+                         PASS_REGULAR_EXPRESSION "[1-9][0-9]* solid and [0-9]+ partial cells.*gust: wrote building_inside_chk00005")
+    # What a patch with nest faces does not take: a damping layer towards the inflow profile.
     gust_add_test(NAME abort_nest_faces_damping NP 1 LABELS "regression;smoke" RUN_DIR ${NESTF_DIR}
                   FIXTURES_REQUIRED nest_faces_hill_parent
                   PREFIX ${EXPECT_ABORT} "bc\\.rayleigh_fields: with a nest face and no inflow face the Rayleigh layer may damp w and theta only" --
@@ -1779,6 +1792,112 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
                   PREFIX ${NESTV} study --
                   COMMAND $<TARGET_FILE:gust> -- ${GUST_TEST_AMREX_FLAGS})
     set_tests_properties(rt_nest_validation_study PROPERTIES TIMEOUT 7200)
+    # One-way patches around canonical shapes (Nest_Shapes, sub-phase 9.4,
+    # beyond the plan): the smoke set runs the cube of Building_Cube in a
+    # patch. The whole domain on 10 m cells (the parent) and on 5 m cells
+    # (the reference), and a 5 m patch of half-width 70 m with four nest
+    # faces, the walls 55 m from them. The patch must be within 2 % of U_ref
+    # of the reference around the cube (RMS; measured 1.394 %) and at most a
+    # quarter of the parent's difference (measured 18.43 %). Each run has
+    # four boxes on two ranks. The nightly study is the README's for the
+    # hill, the escarpment, the cube and the plate, with the hill and the
+    # cube on 1, 2 and 4 ranks; the ridge is left out (it misses T1 and T2,
+    # README).
+    set(NESTS_DIR ${CMAKE_CURRENT_BINARY_DIR}/run/rt_nest_shapes)
+    set(NESTS ${Python3_EXECUTABLE} ${NEST_SHAPES_CASE}/nest_shapes.py)
+    add_test(NAME rt_nest_shapes_clean
+             COMMAND ${Python3_EXECUTABLE} -c
+                     "import os, shutil, sys; [ (shutil.rmtree(d, ignore_errors=True), os.makedirs(d)) for d in sys.argv[1:] ]"
+                     ${NESTS_DIR})
+    set_tests_properties(rt_nest_shapes_clean PROPERTIES LABELS "regression;smoke"
+                         FIXTURES_SETUP nest_shapes_clean)
+    add_test(NAME rt_nest_shapes_study_clean
+             COMMAND ${Python3_EXECUTABLE} -c
+                     "import os, shutil, sys; [ (shutil.rmtree(d, ignore_errors=True), os.makedirs(d)) for d in sys.argv[1:] ]"
+                     ${NESTS_DIR}_study)
+    set_tests_properties(rt_nest_shapes_study_clean PROPERTIES LABELS "nightly"
+                         FIXTURES_SETUP nest_shapes_study_clean)
+    gust_add_test(NAME rt_nest_shapes_cube_parent NP 2 LABELS "regression;smoke" RUN_DIR ${NESTS_DIR}
+                  FIXTURES_REQUIRED nest_shapes_clean FIXTURES_SETUP nest_shapes_cube_parent
+                  PREFIX ${NESTS} run cube cube_par 10 --
+                  COMMAND $<TARGET_FILE:gust> ${NEST_SHAPES_CASE}/inputs_building_domain "mesh.max_grid_size=24 12"
+                          ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME rt_nest_shapes_cube_reference NP 2 LABELS "regression;smoke" RUN_DIR ${NESTS_DIR}
+                  FIXTURES_REQUIRED nest_shapes_clean FIXTURES_SETUP nest_shapes_cube_reference
+                  PREFIX ${NESTS} run cube cube_ref 5 --
+                  COMMAND $<TARGET_FILE:gust> ${NEST_SHAPES_CASE}/inputs_building_domain "mesh.max_grid_size=48 24"
+                          ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME rt_nest_shapes_cube_d70 NP 2 LABELS "regression;smoke" RUN_DIR ${NESTS_DIR}
+                  FIXTURES_REQUIRED nest_shapes_cube_parent FIXTURES_SETUP nest_shapes_cube_d70
+                  PREFIX ${NESTS} nest cube cube_d70 cube_par 70 --
+                  COMMAND $<TARGET_FILE:gust> ${NEST_SHAPES_CASE}/inputs_building_nest "mesh.max_grid_size=14"
+                          ${GUST_TEST_AMREX_FLAGS})
+    add_test(NAME rt_nest_shapes_cube
+             COMMAND ${NESTS} compare cube cube_d70 cube_ref cube_par --rms-roi 2e-2 --ratio 0.25
+             WORKING_DIRECTORY ${NESTS_DIR})
+    set_tests_properties(rt_nest_shapes_cube PROPERTIES LABELS "regression;smoke"
+                         FIXTURES_REQUIRED "nest_shapes_cube_reference;nest_shapes_cube_d70")
+    # bc.nest_ratio (beyond the plan): the same cube from a 20 m parent. A
+    # 5 m patch at ratio 4 (half-widths 70 m by 60 m) and a chain of two
+    # ratio-2 patches (20 m -> 10 m with half-widths 90 m by 100 m -> 5 m on
+    # the same 70 m by 60 m) against the 5 m reference. Measured ROI RMS:
+    # ratio 4 3.969 %, chain 2.598 %, parent 42.03 %; ratio 4 vs chain
+    # 1.399 %. The ratio-4 patch on 1 and 4 ranks must match its 2-rank run
+    # to 1e-8 of U_ref (the study's rank limit). Each run has four boxes.
+    gust_add_test(NAME rt_nest_shapes_cube_parent20 NP 2 LABELS "regression;smoke" RUN_DIR ${NESTS_DIR}
+                  FIXTURES_REQUIRED nest_shapes_clean FIXTURES_SETUP nest_shapes_cube_parent20
+                  PREFIX ${NESTS} run cube cube_par20 20 --
+                  COMMAND $<TARGET_FILE:gust> ${NEST_SHAPES_CASE}/inputs_building_domain "mesh.max_grid_size=12 6"
+                          ${GUST_TEST_AMREX_FLAGS})
+    foreach(np 1 2 4)
+        if(np EQUAL 2)
+            set(_r4 cube_r4)
+        else()
+            set(_r4 cube_r4_np${np})
+        endif()
+        gust_add_test(NAME rt_nest_shapes_${_r4} NP ${np} LABELS "regression;smoke" RUN_DIR ${NESTS_DIR}
+                      FIXTURES_REQUIRED nest_shapes_cube_parent20 FIXTURES_SETUP nest_shapes_${_r4}
+                      PREFIX ${NESTS} nest cube ${_r4} cube_par20 70,60 --nest-ratio 4 --
+                      COMMAND $<TARGET_FILE:gust> ${NEST_SHAPES_CASE}/inputs_building_nest "mesh.max_grid_size=14 12"
+                              ${GUST_TEST_AMREX_FLAGS})
+    endforeach()
+    gust_add_test(NAME rt_nest_shapes_cube_c10 NP 2 LABELS "regression;smoke" RUN_DIR ${NESTS_DIR}
+                  FIXTURES_REQUIRED nest_shapes_cube_parent20 FIXTURES_SETUP nest_shapes_cube_c10
+                  PREFIX ${NESTS} nest cube cube_c10 cube_par20 90,100 --
+                  COMMAND $<TARGET_FILE:gust> ${NEST_SHAPES_CASE}/inputs_building_nest "mesh.max_grid_size=9 10"
+                          ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME rt_nest_shapes_cube_chain NP 2 LABELS "regression;smoke" RUN_DIR ${NESTS_DIR}
+                  FIXTURES_REQUIRED nest_shapes_cube_c10 FIXTURES_SETUP nest_shapes_cube_chain
+                  PREFIX ${NESTS} nest cube cube_chain cube_c10 70,60 --
+                  COMMAND $<TARGET_FILE:gust> ${NEST_SHAPES_CASE}/inputs_building_nest "mesh.max_grid_size=14 12"
+                          ${GUST_TEST_AMREX_FLAGS})
+    add_test(NAME rt_nest_shapes_cube_ratio4
+             COMMAND ${NESTS} compare cube cube_r4 cube_ref cube_par20 --rms-roi 5e-2 --ratio 0.15
+             WORKING_DIRECTORY ${NESTS_DIR})
+    set_tests_properties(rt_nest_shapes_cube_ratio4 PROPERTIES LABELS "regression;smoke"
+                         FIXTURES_REQUIRED "nest_shapes_cube_reference;nest_shapes_cube_r4")
+    add_test(NAME rt_nest_shapes_cube_chain2
+             COMMAND ${NESTS} compare cube cube_chain cube_ref cube_par20 --rms-roi 3.5e-2 --ratio 0.1
+             WORKING_DIRECTORY ${NESTS_DIR})
+    set_tests_properties(rt_nest_shapes_cube_chain2 PROPERTIES LABELS "regression;smoke"
+                         FIXTURES_REQUIRED "nest_shapes_cube_reference;nest_shapes_cube_chain")
+    add_test(NAME rt_nest_shapes_cube_ratio4_vs_chain
+             COMMAND ${NESTS} compare cube cube_r4 cube_chain --rms-roi 2e-2
+             WORKING_DIRECTORY ${NESTS_DIR})
+    set_tests_properties(rt_nest_shapes_cube_ratio4_vs_chain PROPERTIES LABELS "regression;smoke"
+                         FIXTURES_REQUIRED "nest_shapes_cube_r4;nest_shapes_cube_chain")
+    foreach(np 1 4)
+        add_test(NAME rt_nest_shapes_cube_ratio4_ranks${np}
+                 COMMAND ${NESTS} compare cube cube_r4_np${np} cube_r4 --max-patch 1e-8
+                 WORKING_DIRECTORY ${NESTS_DIR})
+        set_tests_properties(rt_nest_shapes_cube_ratio4_ranks${np} PROPERTIES LABELS "regression;smoke"
+                             FIXTURES_REQUIRED "nest_shapes_cube_r4;nest_shapes_cube_r4_np${np}")
+    endforeach()
+    gust_add_test(NAME rt_nest_shapes_study NP 4 LABELS "nightly" RUN_DIR ${NESTS_DIR}_study
+                  FIXTURES_REQUIRED nest_shapes_study_clean
+                  PREFIX ${NESTS} study --shapes hill,escarpment,cube,plate --ranks hill,cube --
+                  COMMAND $<TARGET_FILE:gust> -- ${GUST_TEST_AMREX_FLAGS})
+    set_tests_properties(rt_nest_shapes_study PROPERTIES TIMEOUT 14400)
     # The Tucker wall distance on ERF's Neutral_Hill_2D mesh: ERF's
     # wall-distance checks (Tests/Discretization/Wall_Distance/check_walldist.py), and the field against
     # Gold/walldist_hill2d_plt00000, at double-precision tolerances (double

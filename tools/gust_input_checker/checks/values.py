@@ -116,6 +116,7 @@ bc.surface_qnse_bh real 1
 bc.nest_parent str 1
 bc.nest_relax_width int 1 >=0
 bc.nest_relax_factor real 1 >0
+bc.nest_ratio int 1
 canopy.type none,patches,map 1
 canopy.file str 1
 canopy.height_file str 1

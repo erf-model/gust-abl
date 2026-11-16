@@ -1,0 +1,34 @@
+# The whole domain of the one-way patches around terrain shapes (tracker row
+# PR-76, beyond plan rev. 6): 3200 m long, 800 m high, first layer 10 m (16
+# layers), a log-law inflow (u* = 0.4 m/s, z0 = 0.1 m) along x at xlo, outflow
+# at xhi, the surface layer below and a slip top, the SIMPLEC stage to the
+# steady verdict, with the recommended closure setting of
+# docs/turbulence_model.rst; periodic in y. nest_shapes.py gives the shape
+# (terrain.*), the size (mesh.prob_hi, mesh.n_cell),
+# convection.hybrid_height (2.5 shape heights) and the output names on the
+# command line.
+mesh.prob_lo       = 0. 0. 0.
+mesh.is_periodic   = 0 1 0
+mesh.dz0           = 10.
+
+terrain.smoothing  = 0
+
+bc.xlo = inflow
+bc.xhi = outflow
+bc.zlo = surface_layer
+bc.zhi = slip_wall
+bc.surface_z0 = 0.1
+bc.inflow_profile   = log_law
+bc.inflow_ustar     = 0.4
+bc.inflow_z0        = 0.1
+bc.inflow_direction = 0.
+
+turb.realizability   = 0.309
+turb.nut_relax       = 0.5
+turb.max_geom_lscale = 100.
+convection.hybrid_sigma_max = 0.1
+
+init.first_guess = profile
+
+steady.stage          = simplec
+steady.max_iterations = 4000

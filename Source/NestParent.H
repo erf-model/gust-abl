@@ -8,18 +8,22 @@
 // the face velocities, theta, k and p'.
 //
 // Placement (every rule aborts naming bc.nest_parent):
-//  * refinement 2 2 1: the patch's cells are half the parent's in x and y,
-//    and its faces lie on parent cell faces, so each parent cell holds
-//    2 x 2 patch cells, aligned (to 1e-4 of a parent cell, which covers
-//    round-off in single precision with coordinates of order 1e6 m);
+//  * refinement r r 1 (bc.nest_ratio = r: 2, the default, 4, 8 or 16): the
+//    patch's cells are 1/r of the parent's in x and y, and its faces lie on
+//    parent cell faces, so each parent cell holds r x r patch cells, aligned
+//    (to 1e-4 of a parent cell, which covers round-off in single precision
+//    with coordinates of order 1e6 m). r is a power of two, so the
+//    interpolation weights (multiples of 1/(2r)) are exact in binary and
+//    mirror-symmetric;
 //  * the same z-levels: n_cell z, prob_lo z, prob_hi z and the reference
 //    z-levels (ZLevels.H; in the checkpoint Header since format version 2)
-//    equal bit for bit. A ratio of 8 is a chain of three nests, each run
-//    the parent of the next; no level refines in z, so nothing is
-//    interpolated between z-levels;
+//    equal bit for bit. No level refines in z, so nothing is interpolated
+//    between z-levels. A chain of nests (each run the parent of the next)
+//    gives the same overall ratio in steps;
 //  * inside the parent: in a non-periodic direction of the parent at least
 //    kNestMargin parent cells from its domain faces, so every patch point,
-//    its two ghost layers included, lies between parent cell centres and
+//    its two ghost layers included (within one parent cell for any r >= 2),
+//    lies between parent cell centres and
 //    is interpolated, never extrapolated (k and theta stay within the
 //    parent's range); in a periodic direction anywhere inside the domain
 //    (the parent's periodic images give the neighbours), and a periodic
@@ -57,8 +61,13 @@
 
 namespace gust {
 
-//! The refinement of a nest in x and y (z: 1).
+//! The default refinement of a nest in x and y (bc.nest_ratio; z: 1).
 inline constexpr int kNestRatio = 2;
+//! The largest bc.nest_ratio.
+inline constexpr int kNestRatioMax = 16;
+
+//! Whether r is an accepted bc.nest_ratio: 2, 4, 8 or 16.
+inline bool valid_nest_ratio (int r) { return r >= 2 && r <= kNestRatioMax && (r & (r - 1)) == 0; }
 //! Parent cells between the patch and a non-periodic parent face.
 inline constexpr int kNestMargin = 2;
 //! Ghost cells of the parent images: the parent cells around the patch's
@@ -66,12 +75,13 @@ inline constexpr int kNestMargin = 2;
 inline constexpr int kNestImageGhost = 2;
 
 //! The problems with placing the patch (mesh inputs patch, reference z-levels
-//! patch_zlevels) in the parent whose checkpoint Header is h (empty: none);
-//! each message starts with "bc.nest_parent". offset, when given and there is
+//! patch_zlevels) in the parent whose checkpoint Header is h at refinement
+//! ratio r r 1 (a valid_nest_ratio; empty: none); each message starts with
+//! "bc.nest_parent". offset, when given and there is
 //! no problem, receives the parent cells between the parent's low corner and
 //! the patch's in x and y (z: 0).
 std::vector<std::string> check_nest_placement (const CheckpointHeader& h, const MeshInputs& patch,
-                                               const amrex::Vector<amrex::Real>& patch_zlevels,
+                                               const amrex::Vector<amrex::Real>& patch_zlevels, int ratio,
                                                amrex::IntVect* offset = nullptr);
 
 class NestParent
@@ -83,8 +93,11 @@ public:
     //! not a GUST checkpoint of format version 2 or later, or the placement
     //! breaks a rule above.
     //! with_ground: read the parent's node heights too (interpolate_ground).
+    //! ratio: the refinement in x and y (bc.nest_ratio); aborts naming
+    //! bc.nest_ratio unless valid_nest_ratio.
     NestParent (const std::string& dir, const MeshInputs& patch, const amrex::Vector<amrex::Real>& patch_zlevels,
-                const amrex::BoxArray& patch_ba, const amrex::DistributionMapping& patch_dm, bool with_ground = false);
+                const amrex::BoxArray& patch_ba, const amrex::DistributionMapping& patch_dm, bool with_ground = false,
+                int ratio = kNestRatio);
 
     //! Set u, v, w, p', theta and k of patch (defined on the layout given to
     //! the constructor) from the parent: at the valid points and the
@@ -107,6 +120,7 @@ public:
     [[nodiscard]] const std::string& dir () const { return m_dir; }
     [[nodiscard]] const amrex::IntVect& offset () const { return m_offset; }
     [[nodiscard]] int parent_step () const { return m_step; }
+    [[nodiscard]] int ratio () const { return m_ratio; }
     //! SHA-256 of the checkpoint's Header and of the headers of its u, v, w,
     //! theta, tke and z_phys_nd files (text; they hold every box's minimum
     //! and maximum): two parents with other fields or another ground differ,
@@ -122,6 +136,7 @@ public:
 private:
     std::string m_dir;
     int m_step{0};
+    int m_ratio{kNestRatio};
     std::string m_digest;
     amrex::IntVect m_offset{0, 0, 0};
     amrex::IntVect m_parent_cells{0, 0, 0};
