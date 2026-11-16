@@ -3,8 +3,8 @@
 
 namespace gust {
 
-//! Read and check the inputs, build the mesh and state (fresh or from
-//! io.restart), and write the plotfile and checkpoint.
+//! Run the deck (Run.cpp): the domain, then each nest of nest.names from its
+//! final checkpoint (Domain.H, Nests.H).
 void run ();
 
 } // namespace gust

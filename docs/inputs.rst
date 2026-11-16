@@ -642,7 +642,7 @@ Quick reference
      - The point file (``x y z`` per line) or ERF's structured terrain file.
    * - ``terrain.smoothing``
      - ``1``
-     - 0 (BTF), 1 (STF) or 2 (Sullivan).
+     - 0 (BTF), 1 (STF) or 2 (Sullivan). 1 is refused with ``nest.names`` over terrain other than ``flat``.
    * - ``terrain.gamma_m``
      - ``0.5``
      - > 0 and < 1; STF only. Smallest layer thickness as a fraction of the flat layer.
@@ -651,7 +651,8 @@ Quick reference
      - Finite, > 0 (m).
    * - ``terrain.hill_half_width``
      - required for ``agnesi``
-     - Finite, > 0 (m). Distance from the crest at which the hill is half as high.
+     - Finite, > 0 (m). Distance from the crest at which the hill is half as high. The hill is centred on the
+       domain; in a patch (``bc.nest_parent``) and a nest, on the parent's domain.
    * - ``terrain.hill_shape``
      - ``ridge_x``
      - ``ridge_x`` (a ridge along y, varying in x), ``ridge_y`` or ``round``; ``agnesi`` only.
@@ -1661,6 +1662,42 @@ otherwise.
      - none
      - Checkpoint directory to restart from (:doc:`running`). A run that would write a checkpoint into this
        directory (``io.chk_file`` and the step give the same directory, however the paths are spelled) stops.
+
+``nest``
+--------
+
+Nests: finer meshes inside the domain, run in the same process after the outer domain (:doc:`initial_conditions`).
+A nest has no deck of its own: it takes every other key from the outer deck. Its derived settings are refinement
+2 2 1, the outer z-levels and ``mesh.max_grid_size``, one grid level, the four lateral faces ``nest`` with the outer
+run's final checkpoint as ``bc.nest_parent`` (``periodic`` across a periodic outer direction the nest spans whole),
+``init.first_guess = nest`` (of the other ``init.*`` keys only ``init.projection``, ``init.alpha_h`` and ``init.alpha_v`` apply), no grid sequencing, no sponge, the outer
+Rayleigh layer without u, v and k, no ``steady.probes_file``, and ``io.plot_file``, ``io.chk_file`` and
+``io.turb_plot_file`` with ``_<name>`` appended. An Agnesi hill stays at the outer domain's centre, and the forcing is
+the outer run's final forcing.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 26 12 62
+
+   * - Input
+     - Default
+     - Range and meaning
+   * - ``nest.names``
+     - none
+     - Names of the nests, each once: a letter, then letters, digits or ``_``; not ``names``. With nests the outer
+       deck needs ``steady.stage = simplec`` or ``simplec_newton`` and ``io.write_checkpoint = 1``; buildings and
+       ``simplec.theta = frozen`` are refused, and so is ``terrain.smoothing = 1`` over terrain other than ``flat``.
+       The nests run only if the outer domain reaches steady; GUST stops with an error after the nests if one did
+       not.
+   * - ``nest.<name>.lo``
+     - required
+     - Two finite values ``x y`` (m): the nest's low corner, on the outer cell faces, at least 2 outer cells inside
+       each non-periodic outer face (within 1e-4 cells; moved onto the face). Nests may touch, not overlap; a nest
+       may not cover the whole outer domain in x and y.
+   * - ``nest.<name>.hi``
+     - required
+     - Two finite values ``x y`` (m): the high corner, above ``nest.<name>.lo``, on the outer cell faces, at least
+       2 outer cells inside each non-periodic outer face.
 
 ``refavg`` (reference-averaging tool)
 -------------------------------------

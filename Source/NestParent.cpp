@@ -172,6 +172,7 @@ NestParent::NestParent (const std::string& dir, const MeshInputs& patch, const a
     }
     m_step = h.step;
     m_parent_cells = h.n_cell;
+    for (int d = 0; d < 2; ++d) { m_domain_centre[d] = amrex::Real(0.5) * (h.prob_lo[d] + h.prob_hi[d]); }
     {
         // The digest of the parent's content (NestParent.H), read by the I/O rank.
         if (amrex::ParallelDescriptor::IOProcessor()) {

@@ -1,4 +1,4 @@
-#include "App.H"
+#include "Domain.H"
 
 #include "AblSetup.H"
 #include "BoundaryConditions.H"
@@ -19,6 +19,7 @@
 #include "NestBuildings.H"
 #include "NestFaces.H"
 #include "NestParent.H"
+#include "Nests.H"
 #include "Inputs.H"
 #include "Mesh.H"
 #include "MeshHierarchy.H"
@@ -39,6 +40,7 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <functional>
 #include <cstdio>
 #include <memory>
 #include <limits>
@@ -57,8 +59,11 @@ std::string fmt (double x)
 
 } // namespace
 
-void run ()
+std::string run_domain (const DomainRole& role)
 {
+    // A nest takes the outer deck and replaces what Nests.H derives.
+    const NestSpec* const nest = role.nest;
+    std::string final_chk;
     // The inputs: mesh, terrain, io; with the initializer (init.first_guess =
     // profile) or the SIMPLEC stage (steady.stage = simplec) the boundary
     // conditions (bc.*) and the Poisson controls (solver.poisson_*); with the
@@ -73,11 +78,24 @@ void run ()
         amrex::Abort(all);
     }
     apply_abl_setup_defaults(abl);
-    const Inputs in = parse_inputs();
+    Inputs in = parse_inputs();
+    if (nest != nullptr) { apply_nest_inputs(*nest, in); }
     auto err = validate(in);
-    const InitOptions iopt = read_init_options();
-    const SteadyOptions sopt = read_steady_options();
-    const SequencingOptions seq = read_sequencing_options();
+    InitOptions iopt = read_init_options();
+    SteadyOptions sopt = read_steady_options();
+    SequencingOptions seq = read_sequencing_options();
+    if (nest != nullptr) {
+        // From its parent on level 0; the probes are the outer domain's.
+        // The outer deck's init.* keys set up the outer domain's first guess: a nest's
+        // field comes from the outer domain, so they are not checked again here
+        // (init.projection, alpha_h and alpha_v still apply, value-checked as before).
+        iopt.first_guess = InitOptions::FirstGuess::nest;
+        iopt.given.clear();
+        iopt.obrien = false;   // the parent gives w: no O'Brien pass (nor its log line)
+        seq.enabled = false;
+        seq.given.clear();
+        sopt.probes_file.clear();
+    }
     const bool initialize = (iopt.first_guess != InitOptions::FirstGuess::none);
     const bool solve = (sopt.stage != StageKind::none);
     const bool newton = (sopt.stage == StageKind::simplec_newton);
@@ -96,6 +114,7 @@ void run ()
     bool surface_layer = false;
     if (initialize || solve) {
         bin = read_boundary_inputs();
+        if (nest != nullptr) { apply_nest_boundary_inputs(role.parent_chk, in.mesh.is_periodic, bin); }
         // The first guess uses the profile on any geometry; a restart keeps
         // the deck of the run it continues, inflow keys included.
         // A nest's first guess is its parent's field, not the profile.
@@ -110,6 +129,8 @@ void run ()
         copt = read_closure_options();
         use_closure_constants(bin, surf, copt.Cmu0, copt.kappa, copt.max_geom_lscale);
         fopt = read_forcing_options();
+        // A nest: the forcing and the surface flux the outer run used (OuterOutcome).
+        if (role.from_outer != nullptr) { take_outer_forcing(*role.from_outer, fopt, surf); }
         cin = read_convection_options();
         if (cin.hybrid.active() && newton) {
             err.emplace_back("convection.hybrid_sigma_max is not supported with steady.stage = simplec_newton");
@@ -290,11 +311,12 @@ void run ()
     const bool nest_face = has_nest_face(bin);
     for (auto& e : check_nest_run(bin, in, nest_guess, solve && seq.enabled)) { err.push_back(std::move(e)); }
     for (const auto& e : check_column_guess(iopt, sopt, fopt, bin, surf, surface_layer)) { err.push_back(e); }
-    if (amrex::ParmParse("io").contains("column_guess_file") && iopt.first_guess != InitOptions::FirstGuess::column) {
+    if (nest == nullptr && amrex::ParmParse("io").contains("column_guess_file") && iopt.first_guess != InitOptions::FirstGuess::column) {
         err.emplace_back("io.column_guess_file has no effect without init.first_guess = column");
     }
     for (const auto& e : check_stable_functions(iopt, surf, surface_layer)) { err.push_back(e); }
-    {
+    // A nest: the outer domain's check covers the deck's set-up.
+    if (nest == nullptr) {
         AblSetupFacts facts;
         facts.bc = bin;
         facts.forcing = fopt;
@@ -311,12 +333,38 @@ void run ()
         facts.canopy_heat = canopy_opt.active() && canopy_opt.heat.on();
         for (auto& e : check_abl_setup(abl, facts)) { err.push_back(std::move(e)); }
     }
+    if (role.nests != nullptr) {
+        for (const auto& e : role.nests->errors) { err.push_back(e); }
+        for (auto& e : check_nests(*role.nests, in.mesh)) { err.push_back(std::move(e)); }
+        if (!solve || unsteady) {
+            err.emplace_back("nest.names needs steady.stage = simplec or simplec_newton (each nest starts from the outer "
+                             "domain's steady state)");
+        }
+        if (in.terrain.smoothing == 1 && in.terrain.type != "flat") {
+            err.emplace_back("nest.names is not supported with terrain.smoothing = 1 over terrain (STF smooths the levels over each "
+                             "mesh's own ground, so a nest's heights above the ground differ from the outer domain's at "
+                             "its faces): use terrain.smoothing = 0 or 2");
+        }
+        if (in.io.write_checkpoint != 1) {
+            err.emplace_back("nest.names needs io.write_checkpoint = 1 (each nest starts from the outer domain's checkpoint)");
+        }
+        if (buildings_opt.active()) { err.emplace_back("nest.names is not supported with buildings.type yet"); }
+        if (simplec.theta_frozen) {
+            err.emplace_back("nest.names is not supported with simplec.theta = frozen (it needs grid sequencing, which a "
+                             "nest does not run)");
+        }
+    }
+    const std::string invalid = nest != nullptr ? "gust: invalid inputs for nest." + nest->name + " (the outer deck with "
+                                                  "the nest's derived settings, Nests.H):"
+                                                : std::string("gust: invalid inputs:");
     if (!err.empty()) {
-        std::string all = "gust: invalid inputs:";
+        std::string all = invalid;
         for (const auto& e : err) { all += "\n  " + e; }
         amrex::Abort(all);
     }
 
+    // The checks that need the geometry and the layout (nothing is allocated): a nest's check-only pass runs them
+    // too, so that a nest stops the run before the outer domain starts.
     const amrex::Geometry geom = make_geometry(in.mesh);
     // Buildings in a nested patch keep clear of its nest faces, the relaxation zone and the ground blend (NestBuildings.H).
     if (nest_face && buildings_opt.active()) {
@@ -333,7 +381,7 @@ void run ()
     // Grid sequencing runs the coarse levels on a fresh start only.
     const bool sequencing = solve && seq.enabled && in.io.restart.empty();
     if (simplec.theta_frozen && !(sequencing && in.mesh.hierarchy_levels > 1)) {
-        amrex::Abort("gust: invalid inputs:\n  simplec.theta = frozen needs grid sequencing (steady.sequencing = 1, "
+        amrex::Abort(invalid + "\n  simplec.theta = frozen needs grid sequencing (steady.sequencing = 1, "
                      "mesh.hierarchy_levels > 1): the frozen theta is set from the inflow profile on the sequenced levels");
     }
     if (solve && sopt.sweep == SweepKind::lusgs) {
@@ -345,8 +393,21 @@ void run ()
             lay = check_line_overlap_layout(amrex::BoxArray(ba).coarsen(amrex::IntVect(AMREX_D_DECL(r, r, 1))), sopt.line_overlap);
             if (!lay.empty()) { lay += " (on grid hierarchy level " + std::to_string(l) + ", steady.sequencing = 1)"; }
         }
-        if (!lay.empty()) { amrex::Abort("gust: invalid inputs:\n  " + lay); }
+        if (!lay.empty()) { amrex::Abort(invalid + "\n  " + lay); }
     }
+    if (role.check_only && (initialize || solve)) {
+        // The boundary checks BoundaryConditions runs once the mesh is built, on the z-levels it will have.
+        // A nest's pass has the deck's forcing; its run takes the outer run's (OuterOutcome), which these
+        // checks do not test (they test the faces and the Coriolis flags, not the forcing values).
+        const auto berr = check_boundary_inputs(bin, geom, fopt.coriolis, make_zlevels(in.mesh, geom).back());
+        if (!berr.empty()) {
+            std::string all = invalid;
+            for (const auto& e : berr) { all += "\n  " + e; }
+            amrex::Abort(all);
+        }
+    }
+    if (role.after_checks) { role.after_checks(); }
+    if (role.check_only) { return final_chk; }
     const amrex::DistributionMapping dm(ba);
 
     if (abl.active()) {
@@ -433,6 +494,8 @@ void run ()
         parent = std::make_unique<NestParent>(bin.nest_parent, in.mesh, make_zlevels(in.mesh, geom), ba, dm, blend > 0,
                                               bin.nest_ratio);
         amrex::Print() << parent->summary();
+        // The hill where the parent has it, not in the middle of the patch.
+        if (in.terrain.type == "agnesi") { in.terrain.hill_centre = parent->domain_centre(); }
         if (blend > 0) { ground_edit = [&, blend] (amrex::MultiFab& z) { blend_nest_ground(*parent, bin, blend, geom, z); }; }
         if (nest_face) { nest_hash = NestFaces::hash_inputs(*parent, bin, blend); }
     }
@@ -628,6 +691,8 @@ void run ()
 
     if (solve) {
         // The run's models on level 0 (Sequencing.H: LevelSolver).
+        // After a column guess's adjustments: the values the nests take.
+        if (role.outcome != nullptr) { keep_outer_forcing(fopt, surf, *role.outcome); }
         RunSetup setup;
         setup.bin = bin;
         setup.popt = popt;
@@ -783,6 +848,7 @@ void run ()
                 averages->write_checkpoint(name);
             }
             amrex::Print() << "gust: wrote " << name << "\n";
+            final_chk = name;
         };
         // A plotfile of the state, with the averages in an unsteady run, at the time t.
         auto write_full_plotfile = [&] (amrex::Real t) {
@@ -954,7 +1020,8 @@ void run ()
             amrex::Print() << "gust: wrote " << name << "\n";
         }
         if (v.status == SteadyStatus::Diverged) { amrex::Abort("gust: the run diverged" + reasons); }
-        return;
+        if (role.outcome != nullptr) { role.outcome->steady = (v.status == SteadyStatus::Steady); }
+        return final_chk;
     }
 
     // No stage: the run writes its state and stops.
@@ -969,7 +1036,9 @@ void run ()
         buildings.write_checkpoint(name);
         NestFaces::write_checkpoint(name, nest_hash);
         amrex::Print() << "gust: wrote " << name << "\n";
+        final_chk = name;
     }
+    return final_chk;
 }
 
 } // namespace gust

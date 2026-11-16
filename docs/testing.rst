@@ -506,6 +506,84 @@ for them. One candidate was equivalent and is not in the table: a zone that star
      - ``bc.nest_ratio`` without a parent accepted
      - ``InputFaultsAreRefusedNamingTheKey``
 
+The one-line mutants of the nest inputs (``Source/Nests.cpp``), each run against ``Nests.*`` on two ranks with the
+unit-test flags by ``tools/nests_mutants.py`` (macOS arm64, AppleClang). All 20 are killed.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 6 50 44
+
+   * - Mutant
+     - Change
+     - Failing tests
+   * - NS1
+     - ``names`` accepted as a nest name
+     - ``ReadErrorsNameTheKey``
+   * - NS2
+     - A corner given twice not refused
+     - ``ReadErrorsNameTheKey``
+   * - NS3
+     - A margin of 1 outer cell
+     - ``MarginOfTwoOuterCells``
+   * - NS4
+     - Nests that touch taken as overlapping
+     - ``NestsMayTouchNotOverlap``
+   * - NS5
+     - A corner up to a whole outer cell off the faces accepted
+     - ``PlacementOnTheOuterCellFaces``
+   * - NS6
+     - A nest of zero width accepted
+     - ``PlacementOnTheOuterCellFaces``
+   * - NS7
+     - The nest at the outer cell size (no refinement)
+     - ``MeshIsTwiceTheOuterCellsInXY``, ``InputsFromTheOuterDeck``
+   * - NS8
+     - The nest periodic where the outer domain is, whatever it spans
+     - ``MeshIsTwiceTheOuterCellsInXY``
+   * - NS9
+     - The outer grid hierarchy kept
+     - ``MeshIsTwiceTheOuterCellsInXY``
+   * - NS10
+     - The outer ``io.restart`` kept
+     - ``InputsFromTheOuterDeck``
+   * - NS11
+     - The Rayleigh layer kept on k
+     - ``BoundaryInputsFromTheOuterDeck``
+   * - NS12
+     - The outer relaxation zone kept
+     - ``BoundaryInputsFromTheOuterDeck``
+   * - NS13
+     - A corner near an outer face kept as given (not moved onto it)
+     - ``MeshIsTwiceTheOuterCellsInXY``
+   * - NS14
+     - A nest over the whole outer domain accepted
+     - ``MarginOfTwoOuterCells``
+   * - NS15
+     - Nest faces where the nest is periodic
+     - ``BoundaryInputsFromTheOuterDeck``
+   * - NS16
+     - The Agnesi hill at the domain centre whatever ``hill_centre`` says (``Source/TerrainSurface.cpp``)
+     - ``AgnesiHillStaysAtTheOuterCentre``
+   * - NS17
+     - A nest on the outer high face not given that face exactly
+     - ``MeshIsTwiceTheOuterCellsInXY``
+   * - NS18
+     - The outer forcing taken when the outer run kept none
+     - ``OuterForcingReachesNest``
+   * - NS19
+     - The outer surface heat flux not taken
+     - ``OuterForcingReachesNest``
+   * - NS20
+     - The outer y pressure gradient not kept
+     - ``OuterForcingReachesNest``
+
+Two mutants of the run, by hand against ``rt_nests_one_process``: ``hill_centre`` not set from the parent
+(``Source/App.cpp``) moves the ``edge`` nest's ground 50.3 m off the outer ground; the nest u compared with the outer
+cell one step over in x gives 0.561 m/s against the 0.12 m/s bound. Both fail the test. By hand against their deck
+tests: the nest's ``init.*`` record kept fails ``rt_nests_outer_init_keys``; the STF refusal off fails
+``abort_nests_stf``; the nest steady verdict ignored fails ``abort_nests_nest_not_steady``; the checker's STF mirror
+off fails case ``nests_hill_stf`` of its self-test.
+
 The one-line mutants of the canopy's drag field (``Source/Canopy.cpp``, ``Source/Canopy_K.H``), each run against
 ``Canopy.*`` on two ranks with the unit-test flags by ``tools/canopy_mutants.py`` (macOS arm64, AppleClang). All 18 are
 killed.
@@ -1657,6 +1735,34 @@ Current tests
      - The hill patch with a 75 m × 75 m × 20 m block clear of its nest faces (``building_inside.txt``) runs five iterations
        on two ranks in nine boxes and writes its checkpoint; the log must report solid cells (9 solid, 9 partial and 33 wall cells; solid volume 112 500 m³) (sub-phase 9.4, beyond the plan; before, buildings with a
        ``nest`` face stopped the run).
+   * - ``rt_nests_one_process``
+     - Nests in one run (``Tests/Canonical_RANS/Nests_One_Process``; PR-69): the hill parent of ``Nest_Faces`` with a
+       Rayleigh layer on every field above 400 m, and two touching nests given by ``nest.names`` and their corners
+       only (32 × 24 × 16 and 12 × 12 × 16 cells of 25 m), on two ranks. ``check_nests_one_process.py``: the outer
+       domain's final plotfile equals that of the same deck without nests, and each nest's that of its own deck with
+       the derived settings (``inputs_nest``) from the outer run's last checkpoint, by ``fcompare`` with zero
+       tolerance; the log names each nest after the outer run with its corners and that checkpoint; the steady verdict
+       three times. Each nest's ground equals the outer ground on their shared nodes to 1e-6 m (the ``edge`` nest
+       fails this if the hill is centred on the nest), and the nest's u averaged to the outer cells is within a pinned
+       bound of the outer u. The Rayleigh layer checks that a nest keeps it on w and theta only.
+   * - ``abort_nests_misaligned``, ``_margin``, ``_overlap``, ``_missing_corner``, ``_unknown_key``, ``_no_checkpoint``,
+       ``_stage``, ``_frozen``, ``_layout_before_outer``
+     - A nest corner off the 50 m outer cell faces, 1 outer cell from ``xlo``, two nests sharing outer cells, a missing
+       ``nest.<name>.hi``, an unknown ``nest.<name>.*`` key, ``io.write_checkpoint = 0``, ``steady.stage = none``,
+       ``simplec.theta = frozen``, and a nest whose narrowest box is narrower than ``steady.line_overlap``: each stops
+       the run before the outer domain starts, naming the key.
+   * - ``abort_nests_outer_not_steady``
+     - The outer domain stopped at ``steady.max_iterations = 3``: GUST stops after the outer run, names its last
+       checkpoint, and runs no nest.
+   * - ``abort_nests_nest_not_steady``
+     - At ``steady.max_iterations = 90`` the outer domain (84 iterations) and the ``edge`` nest (73) reach steady and
+       the ``hill`` nest (96) does not: both nests run, then GUST stops naming ``nest.hill`` and its last checkpoint.
+   * - ``abort_nests_stf``
+     - ``Steep_Ridge_Thin_Cell`` (an Agnesi ridge, ``terrain.smoothing`` at its default 1) with a nest: stops before
+       the run, naming ``terrain.smoothing``.
+   * - ``rt_nests_outer_init_keys``
+     - The ``rt_nests_one_process`` deck with one nest and ``init.z_agl_min = 5``, a key of the outer profile first
+       guess: the nest runs (it does not check the outer deck's ``init.*`` keys).
    * - ``rt_bc_neutral_flat``, ``rt_bc_neutral_flat_matches``
      - ``boundary_fluxes`` on ERF's Neutral_ABL_Flat mesh (8 × 8 × 64, 1000 m) with a fixed log-law state
        (u* = 0.35 m/s, z₀ = 0.1 m, 15°), the surface layer on the ground and a slip top: u* recovered at every ground

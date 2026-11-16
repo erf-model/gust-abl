@@ -127,6 +127,9 @@ public:
     //! whatever the patch's layout or ranks.
     [[nodiscard]] const std::string& content_digest () const { return m_digest; }
     [[nodiscard]] const amrex::IntVect& parent_cells () const { return m_parent_cells; }
+    //! The centre (x, y, m) of the parent's domain, 0.5 (prob_lo + prob_hi) as the parent's terrain.agnesi takes
+    //! it (TerrainInputs::hill_centre).
+    [[nodiscard]] const std::array<amrex::Real, 2>& domain_centre () const { return m_domain_centre; }
     //! One line for the log: the parent, its step and cells, the patch's place in it.
     [[nodiscard]] std::string summary () const;
 
@@ -137,6 +140,7 @@ private:
     std::string m_digest;
     amrex::IntVect m_offset{0, 0, 0};
     amrex::IntVect m_parent_cells{0, 0, 0};
+    std::array<amrex::Real, 2> m_domain_centre{0, 0};
     amrex::IntVect m_patch_cells{0, 0, 0};
     amrex::BoxArray m_patch_ba;
     // The parent's values under the patch's boxes (parent indices).

@@ -1,0 +1,30 @@
+# One nest of inputs_outer written out as a deck of its own, with the
+# settings a nest derives from the outer deck (Source/Nests.H): refinement
+# 2 2 1, the outer z-levels and box size, the four lateral faces nest, the
+# Rayleigh layer on w and theta only, init.first_guess = nest. The mesh
+# extent (mesh.n_cell, mesh.prob_lo, mesh.prob_hi), bc.nest_parent and the
+# output names are given on the command line by check_nests_one_process.py.
+mesh.is_periodic   = 0 0 0
+mesh.max_grid_size = 16 12
+mesh.dz0           = 10.
+
+terrain.type            = agnesi
+terrain.hill_shape      = round
+terrain.hill_height     = 60.
+terrain.hill_half_width = 250.
+terrain.smoothing       = 0
+
+bc.xlo = nest
+bc.xhi = nest
+bc.ylo = nest
+bc.yhi = nest
+bc.zlo = surface_layer
+bc.zhi = slip_wall
+bc.surface_z0 = 0.1
+bc.rayleigh_zdamp    = 400.
+bc.rayleigh_dampcoef = 0.2
+bc.rayleigh_fields   = w theta
+
+init.first_guess = nest
+
+steady.stage          = simplec

@@ -150,7 +150,7 @@ void Mesh::build_from_ground (const Inputs& in, const amrex::Geometry& geom, amr
     if (!(q.min_thickness_ratio > 0) || !(q.min_nodal_thickness_ratio > 0)) {
         amrex::Abort("gust: the terrain-following mesh has inverted or empty cells (min layer thickness "
                      "ratio " + std::to_string(q.min_nodal_thickness_ratio) + "); raise mesh.prob_hi z or "
-                     "use terrain.smoothing = 1 (STF)");
+                     "use terrain.smoothing = 1 (STF; not with nest.names)");
     }
 }
 

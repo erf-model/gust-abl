@@ -69,6 +69,7 @@ add_executable(unit_tests
     Unit_Tests/test_NestBuildings.cpp
     Unit_Tests/test_NestFaces.cpp
     Unit_Tests/test_NestParent.cpp
+    Unit_Tests/test_Nests.cpp
     Unit_Tests/test_Transfer.cpp
     Unit_Tests/test_Sequencing.cpp
     Unit_Tests/test_Smoothness.cpp
@@ -1669,6 +1670,71 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
     gust_add_test(NAME abort_nest_faces_blend_unused NP 1 LABELS "regression;smoke"
                   PREFIX ${EXPECT_ABORT} "terrain\\.nest_blend_width has no effect without a nest face" --
                   COMMAND $<TARGET_FILE:gust> ${NEST_FACES_CASE}/inputs_hill_parent terrain.nest_blend_width=50
+                          ${GUST_TEST_AMREX_FLAGS})
+    # Nests in one process (Nests_One_Process, PR-69): the hill parent of
+    # Nest_Faces with two touching nests given as nest.names and corners only.
+    # The outer domain must be bit for bit that of the run without nests, and
+    # each nest bit for bit that of its own deck with the derived settings
+    # (inputs_nest) started from the outer run's final checkpoint.
+    set(NESTS_CASE ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Nests_One_Process)
+    set(NESTS_OUTER $<TARGET_FILE:gust> ${NESTS_CASE}/inputs_outer)
+    gust_add_test(NAME rt_nests_one_process NP 2 LABELS "regression;smoke"
+                  PREFIX ${Python3_EXECUTABLE} ${NESTS_CASE}/check_nests_one_process.py ${FCOMPARE} --
+                  COMMAND ${NESTS_OUTER} ${GUST_TEST_AMREX_FLAGS})
+    # The nest inputs' faults stop the run before the outer domain starts, naming the key.
+    set(NESTS_A nest.names=a "nest.a.lo=400 300" "nest.a.hi=1200 900")
+    gust_add_test(NAME abort_nests_misaligned NP 1 LABELS "regression;smoke"
+                  PREFIX ${EXPECT_ABORT} "nest\\.a\\.lo and nest\\.a\\.hi x must lie on the outer cell faces" --
+                  COMMAND ${NESTS_OUTER} nest.names=a "nest.a.lo=410 300" "nest.a.hi=1200 900" ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME abort_nests_margin NP 1 LABELS "regression;smoke"
+                  PREFIX ${EXPECT_ABORT} "nest\\.a must lie at least 2 outer cells inside the outer x faces" --
+                  COMMAND ${NESTS_OUTER} nest.names=a "nest.a.lo=50 300" "nest.a.hi=1200 900" ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME abort_nests_overlap NP 1 LABELS "regression;smoke"
+                  PREFIX ${EXPECT_ABORT} "nest\\.b overlaps nest\\.a" --
+                  COMMAND ${NESTS_OUTER} "nest.names=a b" "nest.a.lo=400 300" "nest.a.hi=1200 900"
+                          "nest.b.lo=1100 300" "nest.b.hi=1400 600" ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME abort_nests_missing_corner NP 1 LABELS "regression;smoke"
+                  PREFIX ${EXPECT_ABORT} "nest\\.a\\.hi is missing" --
+                  COMMAND ${NESTS_OUTER} nest.names=a "nest.a.lo=400 300" ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME abort_nests_unknown_key NP 1 LABELS "regression;smoke"
+                  PREFIX ${EXPECT_ABORT} "unknown input 'nest\\.a\\.ratio'" --
+                  COMMAND ${NESTS_OUTER} ${NESTS_A} nest.a.ratio=3 ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME abort_nests_no_checkpoint NP 1 LABELS "regression;smoke"
+                  PREFIX ${EXPECT_ABORT} "nest\\.names needs io\\.write_checkpoint = 1" --
+                  COMMAND ${NESTS_OUTER} ${NESTS_A} io.write_checkpoint=0 ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME abort_nests_stage NP 1 LABELS "regression;smoke"
+                  PREFIX ${EXPECT_ABORT} "nest\\.names needs steady\\.stage = simplec or simplec_newton" --
+                  COMMAND $<TARGET_FILE:gust> ${CMAKE_CURRENT_SOURCE_DIR}/Discretization/Boundary_Fluxes/inputs_bc_neutral_flat
+                          nest.names=a "nest.a.lo=640 640" "nest.a.hi=1280 1280" ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME abort_nests_frozen NP 1 LABELS "regression;smoke"
+                  PREFIX ${EXPECT_ABORT} "nest\\.names is not supported with simplec\\.theta = frozen" --
+                  COMMAND ${NESTS_OUTER} ${NESTS_A} simplec.theta=frozen ${GUST_TEST_AMREX_FLAGS})
+    # STF (terrain.smoothing = 1, the default) over a hill: a nest's heights above the ground would differ from the
+    # outer domain's at its faces.
+    gust_add_test(NAME abort_nests_stf NP 1 LABELS "regression;smoke"
+                  PREFIX ${EXPECT_ABORT} "nest\\.names is not supported with terrain\\.smoothing = 1" --
+                  COMMAND $<TARGET_FILE:gust> ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Steep_Ridge_Thin_Cell/inputs_steep_ridge_thin_cell
+                          nest.names=a "nest.a.lo=312.5 0" "nest.a.hi=1187.5 187.5" ${GUST_TEST_AMREX_FLAGS})
+    # A nest's layout fault (2 nest cells across, under steady.line_overlap = 4) stops the run before the outer
+    # domain starts: had the outer domain run, its one iteration would end in the not-steady stop instead.
+    gust_add_test(NAME abort_nests_layout_before_outer NP 1 LABELS "regression;smoke"
+                  PREFIX ${EXPECT_ABORT} "steady\\.line_overlap = 4: must be <= the narrowest box's width in x and y \\(2 cells" --
+                  COMMAND ${NESTS_OUTER} nest.names=a "nest.a.lo=400 300" "nest.a.hi=450 900" steady.sweep=lusgs
+                          steady.line_overlap=4 steady.line_ghosts=zero steady.max_iterations=1 ${GUST_TEST_AMREX_FLAGS})
+    # The outer domain stops at steady.max_iterations: no nest runs from a field that is not steady.
+    gust_add_test(NAME abort_nests_outer_not_steady NP 1 LABELS "regression;smoke"
+                  PREFIX ${EXPECT_ABORT} "nest\\.names: the outer domain did not reach steady" --
+                  COMMAND ${NESTS_OUTER} ${NESTS_A} steady.max_iterations=3 ${GUST_TEST_AMREX_FLAGS})
+    # Every nest runs, then the run stops if one did not reach steady: at 90 iterations the outer domain (84) and
+    # the edge nest (73) are steady, the hill nest (96) is not.
+    gust_add_test(NAME abort_nests_nest_not_steady NP 1 LABELS "regression;smoke"
+                  PREFIX ${EXPECT_ABORT} "nest\\.hill \\(last checkpoint outer_chk_hill00090\\)"
+                         "gust: nest\\.edge: 1200 300 to 1500 600" "!nest\\.edge \\(last checkpoint" --
+                  COMMAND ${NESTS_OUTER} "nest.names=hill edge" "nest.hill.lo=400 300" "nest.hill.hi=1200 900"
+                          "nest.edge.lo=1200 300" "nest.edge.hi=1500 600" steady.max_iterations=90 ${GUST_TEST_AMREX_FLAGS})
+    # The outer deck's init.* keys set up the outer first guess only: a nest runs with init.z_agl_min given.
+    gust_add_test(NAME rt_nests_outer_init_keys NP 1 LABELS "regression;smoke"
+                  COMMAND ${NESTS_OUTER} ${NESTS_A} init.z_agl_min=5
                           ${GUST_TEST_AMREX_FLAGS})
     # One-way nesting against a uniform fine run (Nest_Validation, sub-phase
     # 9.3, beyond the plan): a 150 m hill in 3200 m x 2400 m. The smoke set

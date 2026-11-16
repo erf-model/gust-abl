@@ -6,8 +6,8 @@
 # (bc.nest_parent), the boxes (mesh.max_grid_size, 48 unless the command gives
 # it) and, for the zone comparison, bc.nest_relax_width on the command line,
 # and names the outputs. The hill of terrain.type = agnesi is
-# centred in the domain, so a patch centred on (1600, 1200) m has the parent's
-# hill.
+# centred on the parent's domain, (1600, 1200) m, so every patch has the
+# parent's hill.
 mesh.is_periodic   = 0 0 0
 mesh.dz0           = 10.
 

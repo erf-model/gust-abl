@@ -2,6 +2,7 @@
 # same compiled code.
 set(GUST_SOURCES
     Inputs.cpp
+    Nests.cpp
     AblSetup.cpp
     State.cpp
     StateIO.cpp
@@ -63,6 +64,7 @@ set(GUST_SOURCES
     NewtonStage.cpp
     TurbulenceOutput.cpp
     App.cpp
+    Run.cpp
     # Copied from ERF (extern_erf/EXTRACTED.md)
     ${PROJECT_SOURCE_DIR}/extern_erf/ERF_TerrainMetrics.cpp
     ${PROJECT_SOURCE_DIR}/extern_erf/ERF_ChopGrids.cpp
