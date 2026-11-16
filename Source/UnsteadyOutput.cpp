@@ -152,10 +152,14 @@ std::pair<int, amrex::Real> nearest_cell (const amrex::MultiFab& z_phys_nd, cons
     return {k, hc};
 }
 
-void probe_error (const std::string& file, const std::string& what)
+void probe_error (ProbeAxis axis, const std::string& file, const std::string& what)
 {
-    amrex::Abort("gust: unsteady.probes_file = " + file + ": " + what);
+    amrex::Abort(std::string("gust: ") + probes_key(axis) + " = " + file + ": " + what);
 }
+
+// The log's prefix and the first column's name and unit for an axis.
+const char* axis_run (ProbeAxis axis) { return axis == ProbeAxis::time ? "unsteady" : "steady"; }
+const char* axis_column (ProbeAxis axis) { return axis == ProbeAxis::time ? "t" : "iteration"; }
 
 } // namespace
 
@@ -233,14 +237,20 @@ void RunningAverages::read_checkpoint (const std::string& dir, double weight)
 // ---------------------------------------------------------------------------------------------
 // Probes
 
-std::vector<Probe> parse_probes (const std::string& text, const std::string& file, std::vector<std::string>& err)
+const char* probes_key (ProbeAxis axis)
 {
+    return axis == ProbeAxis::time ? "unsteady.probes_file" : "steady.probes_file";
+}
+
+std::vector<Probe> parse_probes (const std::string& text, const std::string& file, std::vector<std::string>& err, ProbeAxis axis)
+{
+    const std::string key = probes_key(axis);
     std::vector<Probe> out;
     std::istringstream is(text);
     std::string line;
     int lineno = 0;
     auto bad = [&] (const std::string& what) {
-        err.emplace_back("unsteady.probes_file = " + file + ", line " + std::to_string(lineno) + ": " + what);
+        err.emplace_back(key + " = " + file + ", line " + std::to_string(lineno) + ": " + what);
     };
     while (std::getline(is, line)) {
         ++lineno;
@@ -275,13 +285,13 @@ std::vector<Probe> parse_probes (const std::string& text, const std::string& fil
         p.h = static_cast<amrex::Real>(v[2]);
         out.push_back(p);
     }
-    if (out.empty() && err.empty()) { err.emplace_back("unsteady.probes_file = " + file + ": no probe (\"x y h\" lines)"); }
+    if (out.empty() && err.empty()) { err.emplace_back(key + " = " + file + ": no probe (\"x y h\" lines)"); }
     return out;
 }
 
 Probes::Probes (std::vector<Probe> probes, const amrex::MultiFab& z_phys_nd, const amrex::Geometry& geom,
-                const std::string& probes_file)
-    : m_probes(std::move(probes))
+                const std::string& probes_file, ProbeAxis axis)
+    : m_probes(std::move(probes)), m_axis(axis)
 {
     const amrex::Box dom = geom.Domain();
     // The column scans take the ground from the box that holds the column's lowest cell: every box
@@ -290,7 +300,7 @@ Probes::Probes (std::vector<Probe> probes, const amrex::MultiFab& z_phys_nd, con
     for (int b = 0; b < nba.size(); ++b) {
         const amrex::Box cb = amrex::enclosedCells(nba[b]);
         if (cb.smallEnd(2) != dom.smallEnd(2) || cb.bigEnd(2) != dom.bigEnd(2)) {
-            amrex::Abort("gust: unsteady.probes_file: every box must span the whole column (mesh.max_grid_size is horizontal)");
+            amrex::Abort(std::string("gust: ") + probes_key(m_axis) + ": every box must span the whole column (mesh.max_grid_size is horizontal)");
         }
     }
     for (std::size_t n = 0; n < m_probes.size(); ++n) {
@@ -303,7 +313,7 @@ Probes::Probes (std::vector<Probe> probes, const amrex::MultiFab& z_phys_nd, con
             const amrex::Real lo = geom.ProbLo(d);
             const amrex::Real hi = geom.ProbHi(d);
             if (xy[d] < lo || xy[d] > hi) {
-                probe_error(probes_file, which + ": " + (d == 0 ? "x" : "y") + " is outside the domain [" + exact(double(lo)) + ", "
+                probe_error(m_axis, probes_file, which + ": " + (d == 0 ? "x" : "y") + " is outside the domain [" + exact(double(lo)) + ", "
                                          + exact(double(hi)) + "]");
             }
             // A point on the high face takes the last cell.
@@ -312,16 +322,35 @@ Probes::Probes (std::vector<Probe> probes, const amrex::MultiFab& z_phys_nd, con
         const amrex::Box col(amrex::IntVect(ij[0], ij[1], dom.smallEnd(2)), amrex::IntVect(ij[0], ij[1], dom.bigEnd(2)));
         const ColumnFacts f = column_facts(z_phys_nd, col, p.h);
         if (p.h > f.top - f.ground) {
-            probe_error(probes_file, which + ": h is above the column's top (" + exact(double(f.top - f.ground))
+            probe_error(m_axis, probes_file, which + ": h is above the column's top (" + exact(double(f.top - f.ground))
                                      + " m above the ground)");
         }
         const auto [k, hc] = nearest_cell(z_phys_nd, col, p.h, f.dmin);
         if (k == std::numeric_limits<int>::max()) {
-            probe_error(probes_file, which + ": no cell of the column is nearest (are the node heights finite?)");
+            probe_error(m_axis, probes_file, which + ": no cell of the column is nearest (are the node heights finite?)");
         }
         p.cell = amrex::IntVect(ij[0], ij[1], k);
         p.h_cell = hc;
     }
+}
+
+std::unique_ptr<Probes> Probes::read (const std::string& probes_file, const amrex::MultiFab& z_phys_nd, const amrex::Geometry& geom,
+                                      ProbeAxis axis)
+{
+    int exists = 0;
+    if (amrex::ParallelDescriptor::IOProcessor()) { exists = std::filesystem::exists(probes_file) ? 1 : 0; }
+    amrex::ParallelDescriptor::Bcast(&exists, 1, amrex::ParallelDescriptor::IOProcessorNumber());
+    if (exists == 0) { probe_error(axis, probes_file, "no such file"); }
+    amrex::Vector<char> text;
+    amrex::ParallelDescriptor::ReadAndBcastFile(probes_file, text);
+    std::vector<std::string> perr;
+    std::vector<Probe> list = parse_probes(std::string(text.dataPtr()), probes_file, perr, axis);
+    if (!perr.empty()) {
+        std::string all = "gust: invalid inputs:";
+        for (const auto& e : perr) { all += "\n  " + e; }
+        amrex::Abort(all);
+    }
+    return std::make_unique<Probes>(std::move(list), z_phys_nd, geom, probes_file, axis);
 }
 
 std::vector<amrex::Real> Probes::sample (const State& q) const
@@ -364,7 +393,7 @@ std::vector<amrex::Real> Probes::sample (const State& q) const
 std::string Probes::header () const
 {
     std::string h = "# GUST probes: x y h (m, h above the ground) -> the cell (i j k) and its centre's height above the ground (m)\n";
-    std::string cols = "t";
+    std::string cols = axis_column(m_axis);
     for (std::size_t n = 0; n < m_probes.size(); ++n) {
         const Probe& p = m_probes[n];
         h += "# probe " + std::to_string(n + 1) + ": " + exact(double(p.x)) + " " + exact(double(p.y)) + " " + exact(double(p.h))
@@ -389,9 +418,10 @@ bool Probes::open_io (const std::string& out, const std::string& probes_file, do
     std::string kept;
     const bool exists = std::filesystem::exists(out);
     if (keep_until >= 0 && !exists) {
-        amrex::Print() << "gust: unsteady: no probe file " << out << " to continue; a new one starts at the checkpoint's time\n";
+        amrex::Print() << "gust: " << axis_run(m_axis) << ": no probe file " << out << " to continue; a new one starts at the checkpoint's "
+                       << (m_axis == ProbeAxis::time ? "time" : "iteration") << "\n";
     } else if (keep_until < 0 && exists) {
-        amrex::Print() << "gust: unsteady: replaces the probe file " << out << "\n";
+        amrex::Print() << "gust: " << axis_run(m_axis) << ": replaces the probe file " << out << "\n";
     }
     if (keep_until >= 0 && exists) {
         std::ifstream is(out);
@@ -403,7 +433,7 @@ bool Probes::open_io (const std::string& out, const std::string& probes_file, do
             if (line.empty() || line[0] != '#') { break; }
         }
         if (old_head != head) {
-            probe_error(probes_file, "the restart's probe file " + out + " was written for other probes (its header differs); "
+            probe_error(m_axis, probes_file, "the restart's probe file " + out + " was written for other probes (its header differs); "
                                      "move it away or give the probes of the run it continues");
         }
         // The rows up to the checkpoint's time; those after it are the interrupted run's and are run again.
@@ -418,14 +448,22 @@ bool Probes::open_io (const std::string& out, const std::string& probes_file, do
         }
         // The header shows the probes, not the run: the last kept row's time lets a user see that
         // the file is the checkpoint's run (its row at the checkpoint's time).
-        amrex::Print() << "gust: unsteady: keeps the probe rows of " << out << " up to t = " << exact(last_kept)
-                       << " s (the checkpoint is at " << exact(keep_until) << " s)\n";
+        const char* unit = m_axis == ProbeAxis::time ? " s" : "";
+        amrex::Print() << "gust: " << axis_run(m_axis) << ": keeps the probe rows of " << out << " up to " << axis_column(m_axis) << " = "
+                       << exact(last_kept) << unit << " (the checkpoint is at " << exact(keep_until) << unit << ")\n";
     }
-    std::ofstream os(out, std::ios::trunc);
-    if (!os.good()) { amrex::FileOpenFailed(out); }
-    os << head << kept;
-    os.flush();
-    if (!os.good()) { amrex::Abort("gust: could not write " + out); }
+    // Written beside the file and renamed over it, so a job stopped here leaves the old rows.
+    const std::string tmp = out + ".tmp";
+    {
+        std::ofstream os(tmp, std::ios::trunc);
+        if (!os.good()) { amrex::FileOpenFailed(tmp); }
+        os << head << kept;
+        os.flush();
+        if (!os.good()) { amrex::Abort("gust: could not write " + tmp); }
+    }
+    std::error_code ec;
+    std::filesystem::rename(tmp, out, ec);
+    if (ec) { amrex::Abort("gust: could not rename " + tmp + " to " + out + ": " + ec.message()); }
     return keep_until >= 0 && exists;
 }
 
@@ -508,9 +546,9 @@ bool read_unsteady_record (const std::string& dir, UnsteadyRecord& r)
     return true;
 }
 
-std::string probes_output_file (const std::string& plot_file)
+std::string probes_output_file (const std::string& plot_file, ProbeAxis axis)
 {
-    return plot_file + "_probes.csv";
+    return plot_file + (axis == ProbeAxis::time ? "_probes.csv" : "_steady_probes.csv");
 }
 
 } // namespace gust

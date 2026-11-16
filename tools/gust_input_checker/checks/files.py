@@ -12,7 +12,8 @@ ERROR:
   "cannot be read"), mesh.zlevels_file (ZLevels.cpp), bc.inflow_file
   (InflowProfile.cpp), bc.surface_z0_file (SurfaceLayer.cpp), canopy.file,
   canopy.height_file, canopy.lai_file, canopy.cd_file (Canopy.cpp),
-  buildings.file (Buildings.cpp), unsteady.probes_file (UnsteadyOutput.cpp);
+  buildings.file (Buildings.cpp), unsteady.probes_file and steady.probes_file
+  (UnsteadyOutput.cpp);
   io.restart and bc.nest_parent, checkpoint directories with a ``Header``
   (StateIO.cpp, read_checkpoint_header);
 - bc.inflow_file (InflowProfile.cpp, parse_inflow_table): rows of 4 or 5
@@ -20,8 +21,9 @@ ERROR:
   increase, theta > 0, k >= 0, at least two rows;
 - mesh.zlevels_file (ZLevels.cpp): mesh.n_cell z + 1 numbers, the first 0,
   increasing;
-- unsteady.probes_file (UnsteadyOutput.cpp, parse_probes): rows of three
-  numbers "x y h" with h > 0, at least one probe.
+- unsteady.probes_file and steady.probes_file (UnsteadyOutput.cpp,
+  parse_probes): rows of three numbers "x y h" with h > 0, at least one
+  probe; steady.probes_file must not be empty (Driver.cpp).
 
 The ``output`` check: ERROR for io.turb_plot_file without a stage,
 io.iteration_log with the unsteady stage and io.column_guess_file without
@@ -135,7 +137,14 @@ class FilesChecker(Checker):
         if c.unsteady:
             path = self._file("unsteady.probes_file")
             if path:
-                self._probes(path)
+                self._probes(path, "unsteady.probes_file")
+        elif c.solve:
+            if self.given("steady.probes_file") and not c.s("steady.probes_file"):
+                self.error("steady.probes_file", "GUST stops: steady.probes_file must name a file.",
+                           "Give the file, or remove the key.")
+            path = self._file("steady.probes_file")
+            if path:
+                self._probes(path, "steady.probes_file")
         self._checkpoint("io.restart")
         if c.reads_bc:
             self._checkpoint("bc.nest_parent")
@@ -208,7 +217,7 @@ class FilesChecker(Checker):
         elif any(b <= a for a, b in zip(z, z[1:])):
             self._format("mesh.zlevels_file", "the heights do not increase strictly", advice)
 
-    def _probes(self, path):
+    def _probes(self, path, key):
         probes = 0
         advice = "The file holds one 'x y h' line per probe, h the height above the ground (m)."
         try:
@@ -222,27 +231,27 @@ class FilesChecker(Checker):
                 continue
             vals = [_number(t) for t in toks]
             if len(toks) != 3:
-                self._format("unsteady.probes_file", "line %d: expected three numbers 'x y h', found %d fields"
+                self._format(key, "line %d: expected three numbers 'x y h', found %d fields"
                              % (lineno, len(toks)), advice)
                 return
             if None in vals:
-                self._format("unsteady.probes_file", "line %d: '%s' is not a number" % (lineno, toks[vals.index(None)]),
+                self._format(key, "line %d: '%s' is not a number" % (lineno, toks[vals.index(None)]),
                              advice)
                 return
             if not vals[2] > 0:
-                self._format("unsteady.probes_file", "line %d: h = %s: the height above the ground must be > 0"
+                self._format(key, "line %d: h = %s: the height above the ground must be > 0"
                              % (lineno, toks[2]), advice)
                 return
             probes += 1
             lo, hi = self.ctx.prob_lo, self.ctx.prob_hi
             for d, axis in enumerate("xy"):
                 if lo and hi and (vals[d] < lo[d] or vals[d] > hi[d]):
-                    self._format("unsteady.probes_file", "probe %d (line %d): %s = %s is outside the domain [%.6g, %.6g]"
+                    self._format(key, "probe %d (line %d): %s = %s is outside the domain [%.6g, %.6g]"
                                  % (probes, lineno, axis, toks[d], lo[d], hi[d]),
                                  "Give probes inside mesh.prob_lo and mesh.prob_hi.")
                     return
         if probes == 0:
-            self._format("unsteady.probes_file", "no probe ('x y h' lines)", advice)
+            self._format(key, "no probe ('x y h' lines)", advice)
 
 
 @register

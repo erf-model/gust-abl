@@ -1763,6 +1763,27 @@ Current tests
        without the cap takes 2881 iterations (3983 before the Rayleigh layer ended at the mesh's top level, when it
        was not steady at 3500 either). Measured to 6 orders before that change: cap off 14154, margin 2 4142, and the
        steady states agree to 3e-8 m/s.
+   * - ``rt_rampart_ground_step``
+     - The ground step of the mesh report on a 2-D rampart (``Tests/Canonical_RANS/Rampart_2D``, beyond the plan):
+       a tanh cliff 900 m high on 200 m cells, 80 × 2 × 60, with line LU-SGS, CFL cap 16 and ``simplec.w_vnn_cap = 16``. Three runs: the 750 m wide
+       cliff under 2 m first layers and the 170 m wide one under 8 m to the verdict, the 170 m wide one under 2 m
+       for one iteration. The reported ground step (62.85, 63.86 and 255.45 first layers) and aspect ratio (109.9
+       and 27.5) within 0.1 % of their closed forms; the warning above 64 on the last run only; the gentle cliff
+       steady within 400 iterations (260), the steep one within 4000 (2570) and more than four times the gentle
+       count. About 30 s on two ranks; label ``regression``.
+   * - ``rt_terrain_shapes_settle``
+     - The residual verdict against the wind at 2560 points on analytic 3-D terrain
+       (``Tests/Canonical_RANS/Terrain_Shapes_3D``, beyond the plan): a round butte 760 m high on 200 m cells,
+       80 × 64 × 40, 8 m first layers, with line LU-SGS, CFL cap 16 and ``simplec.w_vnn_cap = 16`` and ``steady.probes_file``. The 32° butte reaches
+       the verdict within 250 iterations (136) with no ground-step warning. The 65° butte prints the warning (94)
+       and has no verdict at 200 iterations, while every point stays within 0.5 m/s of the mean of rows 151 to
+       200 from iteration 40 at the latest (26) and within 0.25 m/s from iteration 100 (59), and no point moves
+       more than 0.2 m/s between iterations 100 and 200 (0.087). The gentle butte's points are within 0.25 m/s of
+       its last row from iteration 40 (29). The first guess is more than 1 m/s from row 200 somewhere, and the gentle butte's first probe
+       ends within 0.02 m/s of the inflow log law at its cell centre (9.466 m/s at 72.65 m). Mutant:
+       ``steady.cfl_max = 2`` gives 48 and 53 and fails both limits
+       of 40. One to two minutes on two ranks; label ``regression``. The matrix of fourteen shapes on 100 m cells
+       is run by hand (the case's README).
    * - ``rt_aspect_ratio_hill``
      - Thin first cells on a 2-D Agnesi ridge (``Tests/Canonical_RANS/Aspect_Ratio_Hill_2D``: 100 m high, 250 m
        half-width, dx = 100 m, the recommended setting of the realizability sensor): ``aspect_ratio_sweep.py --check``
@@ -1819,6 +1840,22 @@ Current tests
        ``mean`` not passed on in ``sample``, in ``check``, in ``rushil.py compare``. ``rushil.py plot --mean`` is
        not run (it needs matplotlib). The Hill 5 and Askervein comparisons of :ref:`urans-time-mean` are not
        CTests. Label ``regression;smoke``; double only.
+   * - ``rt_steady_hill2d_probes``, ``abort_steady_probes_with_unsteady``, ``abort_steady_probes_missing``,
+       ``abort_steady_probes_empty``
+     - RT-6.4b.1 (sub-phase 6.4b, beyond the plan): ``steady.probes_file`` on the steady 2-D hill with the four
+       probes of the unsteady hill (``check_steady_probes.py``, 2 ranks). Ten iterations: the file is
+       ``<io.plot_file>_steady_probes.csv`` with the column line ``iteration, p1_u, …`` and the rows 0 to 10; row 0
+       is the first guess (v = 0 and θ = 300 K exactly) and row 1 is not; row 10 is the final plotfile at the
+       probes' cells (1e-12); every row differs from the one before. Five iterations and a restart to ten: the log
+       keeps the rows up to iteration 5, the file continues byte for byte, has every iteration once, and rows 6 to
+       10 are the straight run's (1e-9). The three refusals: the key with ``steady.stage = unsteady``, a missing
+       file named with ``steady.probes_file``, and an empty name. Unit test ``UnsteadyOutput.ParseProbes`` and the
+       probe file test pin the key in the messages, the two file names and the two column lines, and that a restart
+       on the iteration axis drops the rows after the checkpoint and leaves no temporary file. The CTest is
+       registered in double precision only (θ leaves 300 K by less than single precision resolves). Mutants that fail: the row
+       numbered by the iterations of this run instead of the run's count; the restart not keeping the file; the
+       column line ``t``; no row before the first iteration; the unsteady file's name; no row per iteration.
+       Label ``regression;smoke``.
    * - ``rt_unsteady_hill2d_from_steady``
      - The unsteady deck restarted from the 5-iteration checkpoint of ``rt_steady_hill2d_restart_first``: two steps
        of 60 s to 120 s, the restart and the summary line matched. Label ``regression;smoke``; MPI builds.
@@ -2057,13 +2094,14 @@ GoogleTest suite
        and the lower index wins, for k = 2 to 8 and both point orders. The squared distance is each square rounded,
        then added, so no build can fuse it; with ``dx * dx + dy * dy`` contracted to an fma the 64 tied queries here
        picked by the last bit, and a build that contracts differently picked the other point (0.23 m on Askervein).
-   * - ``Mesh.IdwBucketsEqualBruteForce``, ``Mesh.TerrainAtMapCoordinates``, ``Mesh.FileTerrainSeamIsPeriodic``, ``Mesh.GroundLayerIsTheGivenSurface``, ``Mesh.TerrainThatFillsTheDomainIsRefused``, ``Mesh.QualitySlopeOfDiagonalRidge``, ``Mesh.RestartWithOtherTerrainIsRefused``, ``Mesh.QualityReportFlagsSteepTerrain``
+   * - ``Mesh.IdwBucketsEqualBruteForce``, ``Mesh.TerrainAtMapCoordinates``, ``Mesh.FileTerrainSeamIsPeriodic``, ``Mesh.GroundLayerIsTheGivenSurface``, ``Mesh.TerrainThatFillsTheDomainIsRefused``, ``Mesh.QualitySlopeOfDiagonalRidge``, ``Mesh.RestartWithOtherTerrainIsRefused``, ``Mesh.QualityReportFlagsSteepTerrain``, ``Mesh.QualityGroundStepOfRamp``, ``Mesh.QualityReportWarnsOnAbruptGround``
      - The IDW bucket search picks the brute-force neighbours; results agree to 1e-13 (random
        cloud with far queries, a regular grid with exact distance ties, a tie across a bucket edge, a transect
        queried from a 2-D domain, one point); UTM-sized coordinates are read and interpolated in double; file terrain on a periodic domain has one
        seam height; every mapping keeps the ground layer as given; ground at the top and inverted cells stop the
        run; the slope of a diagonal ridge is reported in full; a restart with changed terrain is refused; the report
-       of a steep ridge carries both warnings.
+       of a steep ridge carries both warnings; the ground step of a ramp in x and in y is the closed form, counted
+       in the thinner of the two first layers, and the report warns above 64 first layers and not below.
    * - ``ConvectionMMS.UnlimitedMusclIsSecondOrder``, ``ConvectionMMS.LimitedMusclOrder``, ``ConvectionMMS.UpwindIsFirstOrder``
      - Convection on a manufactured flow over a 120 m cosine hill (BTF, geometric layers, 16 × 12 × 8 to 64 × 48 × 32
        cells), ghost nodes continuing the layers: the unlimited MUSCL reconstruction (van Albada slope with

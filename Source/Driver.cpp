@@ -25,7 +25,7 @@ const char* const kKeys[] = {"residual_tol", "residual_drop_orders", "residual_r
                              "switch_window", "switch_residual", "switch_back_growth", "zline_sweeps", "sweep", "line_ghosts", "line_overlap",
                              "line_order", "line_alternate", "machine", "nodes", "stage",
                              "newton_preconditioner", "switch_monitor_tol", "newton_fallback_failures",
-                             "newton_cfl_max", "confidence", "confidence_height"};
+                             "newton_cfl_max", "confidence", "confidence_height", "probes_file"};
 
 // 2: the reference hold; 3: the residual scale height; 4: the residual norm
 // definition (versions 1 to 3 still read)
@@ -64,6 +64,9 @@ std::vector<std::string> check_steady_options (const SteadyOptions& opt)
         }
     };
     if (opt.max_iterations < 1) { err.emplace_back("steady.max_iterations must be >= 1"); }
+    if (std::find(opt.given.begin(), opt.given.end(), "probes_file") != opt.given.end() && opt.probes_file.empty()) {
+        err.emplace_back("steady.probes_file must name a file");
+    }
     bad(opt.confidence, "confidence", "0 (off) or finite, > 0 and <= 1",
         [&] { return opt.confidence == 0 || (opt.confidence > 0 && opt.confidence <= 1); });
     bad(opt.confidence_height, "confidence_height", "0 (anywhere) or finite and > 0 (m)",
@@ -181,6 +184,7 @@ SteadyOptions read_steady_options ()
     pp.query("newton_cfl_max", opt.newton_cfl_max);
     pp.query("confidence", opt.confidence);
     pp.query("confidence_height", opt.confidence_height);
+    pp.query("probes_file", opt.probes_file);
     pp.query("nodes", opt.nodes);
     pp.query("zline_sweeps", opt.zline_sweeps);
     std::string sweep;

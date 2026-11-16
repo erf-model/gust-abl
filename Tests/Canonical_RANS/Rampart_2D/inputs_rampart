@@ -1,0 +1,52 @@
+# A 2-D rampart: a tanh cliff 900 m high on 200 m cells (README.md has the case). 80 x 2 x 60 cells over
+# 16 km x 400 m, y periodic, the layers from mesh.dz0 by a fixed ratio to a top at 10 km. The wind climbs the cliff:
+# a log law over the sea (u* = 0.3031 m/s, z0 = 0.0002 m) on xlo, outflow on the plateau; a no-slip lid
+# moving at the log-law speed of the top (13.107 m/s); Rayleigh damping of w above 8 km; neutral, no Coriolis.
+# The recommended closure setting and a steep-terrain solver setting (line LU-SGS, two sweeps, CFL cap 16, the w rows'
+# VNN cap 16).
+# Command line: terrain.file (rampart_steep.xyz or rampart_gentle.xyz, from make_terrain.py), mesh.dz0 and
+# mesh.stretch_ratio (2 and 1.111114, or 8 and 1.079941), steady.max_iterations.
+mesh.n_cell        = 80 2 60
+mesh.prob_lo       = 0. 0. 0.
+mesh.prob_hi       = 16000. 400. 10000.
+mesh.is_periodic   = 0 1 0
+mesh.max_grid_size = 40 2
+
+terrain.type      = xyz
+terrain.smoothing = 0
+
+bc.xlo = inflow
+bc.xhi = outflow
+bc.zlo = surface_layer
+bc.zhi = no_slip_wall
+bc.zhi_wall_velocity = 13.107 0. 0.
+bc.surface_z0       = 0.0002
+bc.inflow_profile   = log_law
+bc.inflow_ustar     = 0.3031
+bc.inflow_z0        = 0.0002
+bc.inflow_direction = 0.
+bc.theta_profile_z  = 0.
+bc.theta_profile    = 300.
+bc.rayleigh_zdamp    = 8000.
+bc.rayleigh_dampcoef = 0.2
+bc.rayleigh_fields   = w
+
+forcing.gravity  = 0.
+turb.tke_floor   = 1.e-6
+turb.realizability = 0.309
+turb.nut_relax     = 0.5
+convection.hybrid_sigma_max = 0.1
+convection.hybrid_height    = 7600.
+turb.max_geom_lscale = 1.e6
+simplec.w_vnn_cap = 16
+
+init.first_guess = profile
+
+steady.stage        = simplec
+steady.sweep        = lusgs
+steady.zline_sweeps = 2
+steady.cfl_max      = 16
+
+io.plot_file = rampart_plt
+io.write_plotfile   = 0
+io.write_checkpoint = 0

@@ -208,6 +208,7 @@ steady.line_alternate flag 1
 steady.sequencing flag 1
 steady.sequencing_drop_orders real 1 >0
 steady.sequencing_monitor_tol real 1 >=0&<1
+steady.probes_file str 1
 steady.sequencing_hold flag 1
 steady.sequencing_cfl_start cfl0,previous 1
 steady.machine local,kestrel-cpu,kestrel-gpu 1

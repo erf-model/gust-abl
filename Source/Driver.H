@@ -110,6 +110,7 @@ struct SteadyOptions
     int line_alternate{0};   //!< steady.line_alternate (0 | 1): odd sweeps j-reversed (LineSweeps.H); lusgs only
     Machine machine{Machine::Local};     //!< steady.machine (local | kestrel-cpu | kestrel-gpu): the AU rate
     int nodes{1};                        //!< steady.nodes (>= 1): for the AU
+    std::string probes_file;             //!< steady.probes_file: points "x y h" sampled after every iteration (UnsteadyOutput.H)
     std::vector<std::string> given;      //!< the steady.* keys given (for the application's has-no-effect checks)
 };
 

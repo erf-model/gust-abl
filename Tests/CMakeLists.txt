@@ -362,6 +362,20 @@ gust_add_test(NAME abort_unsteady_key_without_stage NP 1 LABELS "regression;smok
               PREFIX ${EXPECT_ABORT} "unsteady\\.dt has no effect without steady\\.stage = unsteady" --
               COMMAND $<TARGET_FILE:gust> ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Neutral_Hill_2D/inputs_steady_hill2d_restart
                       unsteady.dt=60 steady.max_iterations=1 init.first_guess=profile ${GUST_TEST_AMREX_FLAGS})
+# steady.probes_file (sub-phase 6.4b): the unsteady stage has its own key, and a missing file is named.
+gust_add_test(NAME abort_steady_probes_with_unsteady NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT} "steady\\.probes_file has no effect with steady\\.stage = unsteady" --
+              COMMAND $<TARGET_FILE:gust> ${UNSTEADY_DECK} unsteady.stop_time=600 unsteady.dt=60 io.write_checkpoint=0
+                      steady.probes_file=${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Unsteady_Hill_2D/probes_hill2d.txt
+                      init.first_guess=profile ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_steady_probes_missing NP 2 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT} "steady\\.probes_file = no_such_probes\\.txt: no such file" --
+              COMMAND $<TARGET_FILE:gust> ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Neutral_Hill_2D/inputs_steady_hill2d_restart
+                      steady.probes_file=no_such_probes.txt steady.max_iterations=1 init.first_guess=profile ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_steady_probes_empty NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT} "steady\\.probes_file must name a file" --
+              COMMAND $<TARGET_FILE:gust> ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Neutral_Hill_2D/inputs_steady_hill2d_restart
+                      "steady.probes_file=\"\"" steady.max_iterations=1 init.first_guess=profile ${GUST_TEST_AMREX_FLAGS})
 gust_add_test(NAME abort_buildings_theta_surface_missing NP 1 LABELS "regression;smoke"
               PREFIX ${EXPECT_ABORT} "buildings\\.theta_surface is required with buildings\\.theta_mode = fixed" --
               COMMAND $<TARGET_FILE:gust> ${BUILDINGS_CASE}/inputs_buildings buildings.file=${BUILDINGS_CASE}/building_map.txt
@@ -1848,6 +1862,14 @@ gust_add_test(NAME rt_steady_hill2d_restart_continued NP 2 LABELS "regression;sm
               FIXTURES_REQUIRED steady_hill2d_first FIXTURES_SETUP steady_hill2d_continued
               COMMAND $<TARGET_FILE:gust> ${HILL2D_CASE}/inputs_steady_hill2d_restart steady.max_iterations=10
                       io.restart=steady_hill2d_restart_chk00005 ${GUST_TEST_AMREX_FLAGS})
+# RT-6.4b.1: steady.probes_file, a row per iteration, and its restart (check_steady_probes.py).
+# Double precision: the check wants theta off its first guess of 300 K after one iteration.
+if(GUST_PRECISION STREQUAL "DOUBLE")
+    gust_add_test(NAME rt_steady_hill2d_probes NP 2 LABELS "regression;smoke"
+                  PREFIX ${Python3_EXECUTABLE} ${HILL2D_CASE}/check_steady_probes.py --
+                  COMMAND $<TARGET_FILE:gust> ${HILL2D_CASE}/inputs_steady_hill2d_restart ${GUST_TEST_AMREX_FLAGS})
+    set_tests_properties(rt_steady_hill2d_probes PROPERTIES ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
+endif()
 # An unsteady checkpoint (two steps of 60 s) and the refusals of a restart from
 # it: another averaging start, and a stop time not after the checkpoint's.
 set(UNSTEADY_CHK_DIR ${CMAKE_CURRENT_BINARY_DIR}/run/rt_unsteady_hill2d_chk)
@@ -2074,6 +2096,22 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
                   COMMAND $<TARGET_FILE:gust> ${STEEP_RIDGE_CASE}/inputs_steep_ridge_thin_cell simplec.w_vnn_cap=16
                           simplec.w_vnn_cap_slope_margin=0 steady.max_iterations=3500 ${GUST_TEST_AMREX_FLAGS})
     set_tests_properties(rt_steep_ridge_w_vnn_cap rt_steep_ridge_w_vnn_cap_margin_off PROPERTIES TIMEOUT 600)
+    # The ground step of the mesh report on a 2-D rampart (Canonical_RANS/Rampart_2D, check_rampart.py):
+    # the closed-form numbers, the warning above the tested 64, and the iterations of a gentle and a steep
+    # cliff at the same ground step.
+    gust_add_test(NAME rt_rampart_ground_step NP 2 LABELS "regression"
+                  PREFIX ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Rampart_2D/check_rampart.py --
+                  COMMAND $<TARGET_FILE:gust> ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Rampart_2D/inputs_rampart
+                          ${GUST_TEST_AMREX_FLAGS})
+    set_tests_properties(rt_rampart_ground_step PROPERTIES ENVIRONMENT PYTHONDONTWRITEBYTECODE=1 TIMEOUT 600)
+    # Analytic 3-D terrain shapes (Canonical_RANS/Terrain_Shapes_3D, check_terrain_shapes.py) on 200 m cells:
+    # a gentle butte reaches the steady verdict; a steep one has none at 200 iterations while its 2560 probes
+    # have stopped moving (within 0.25 m/s). The matrix on 100 m cells is run by hand (README).
+    gust_add_test(NAME rt_terrain_shapes_settle NP 2 LABELS "regression"
+                  PREFIX ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Terrain_Shapes_3D/check_terrain_shapes.py --
+                  COMMAND $<TARGET_FILE:gust> ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Terrain_Shapes_3D/inputs_terrain_shapes
+                          ${GUST_TEST_AMREX_FLAGS})
+    set_tests_properties(rt_terrain_shapes_settle PROPERTIES ENVIRONMENT PYTHONDONTWRITEBYTECODE=1 TIMEOUT 900)
     # Thin first cells on a 2-D hill (Canonical_RANS/Aspect_Ratio_Hill_2D): with the realizability
     # sensor, dx/dz1 = 10, 100 and 200 reach a relative residual of 1e-4 within 400 iterations
     # (173, 161 and 284 measured). The full sweep up to 5000 is run by hand (README).

@@ -41,6 +41,9 @@ environmental modeling. *Journal of Applied Meteorology* 43, 641–645.
 Liu, J., Chen, J. M., Black, T. A., Novak, M. D. (1996). E-ε modelling of turbulent air flow downwind of a model
 forest edge. *Boundary-Layer Meteorology* 77, 21–44.
 
+Mahrer, Y. (1984). An improved numerical approximation of the horizontal gradients in a terrain-following
+coordinate system. *Monthly Weather Review* 112, 918–922.
+
 Mason, P. J. (1988). The formation of areally-averaged roughness lengths. *Quarterly Journal of the Royal
 Meteorological Society* 114, 399–420.
 

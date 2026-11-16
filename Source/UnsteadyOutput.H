@@ -44,6 +44,7 @@
 #include <AMReX_MultiFab.H>
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -91,19 +92,32 @@ struct Probe
     amrex::Real h_cell{0};          //!< the cell centre's height above the ground [m]
 };
 
-//! Reads unsteady.probes_file's text: "x y h" per line, '#' comments, blank lines skipped.
-//! Errors (naming unsteady.probes_file and the line) go to err; no probe is an error.
-std::vector<Probe> parse_probes (const std::string& text, const std::string& file, std::vector<std::string>& err);
+//! What the rows of a probe file count: the physical time of an unsteady run
+//! (unsteady.probes_file, first column "t") or the iterations of a steady run
+//! (steady.probes_file, first column "iteration").
+enum class ProbeAxis { time, iteration };
+//! The input that names the probe file of an axis: "unsteady.probes_file" or "steady.probes_file".
+const char* probes_key (ProbeAxis axis);
+
+//! Reads the probe file's text: "x y h" per line, '#' comments, blank lines skipped.
+//! Errors (naming the axis' input and the line) go to err; no probe is an error.
+std::vector<Probe> parse_probes (const std::string& text, const std::string& file, std::vector<std::string>& err,
+                                 ProbeAxis axis = ProbeAxis::time);
 
 class Probes
 {
 public:
     //! Locates every probe on the mesh (collective): the cell centre height is the mean of the
     //! cell's eight node heights, as the plotfile's z. Aborts, naming probes_file
-    //! (unsteady.probes_file), on a point outside the domain in x or y, or a height above the
+    //! (the axis' input), on a point outside the domain in x or y, or a height above the
     //! column's top.
     Probes (std::vector<Probe> probes, const amrex::MultiFab& z_phys_nd, const amrex::Geometry& geom,
-            const std::string& probes_file);
+            const std::string& probes_file, ProbeAxis axis = ProbeAxis::time);
+
+    //! Reads and locates the probes of probes_file (collective; the I/O rank reads). Aborts,
+    //! naming the axis' input, on a missing file, a bad line or a point off the mesh.
+    static std::unique_ptr<Probes> read (const std::string& probes_file, const amrex::MultiFab& z_phys_nd,
+                                         const amrex::Geometry& geom, ProbeAxis axis);
 
     [[nodiscard]] const std::vector<Probe>& probes () const { return m_probes; }
 
@@ -114,18 +128,20 @@ public:
     [[nodiscard]] std::string header () const;
 
     //! Starts the output file out (the I/O rank writes; collective): a new file with the header;
-    //! or, with keep_until >= 0 (a restart from an unsteady checkpoint at that time), the
-    //! existing file kept up to the rows with t <= keep_until and appended to. Returns true when
+    //! or, with keep_until >= 0 (a restart from a checkpoint at that time, or at that iteration
+    //! count for ProbeAxis::iteration), the existing file kept up to the rows with first column
+    //! <= keep_until and appended to. Returns true when
     //! it kept an existing file, false when it started a new one (the caller writes the first
     //! row); prints a notice when a restart finds no file or a new run replaces one. Aborts,
-    //! naming unsteady.probes_file, when the existing file's header is not this one.
+    //! naming the axis' input, when the existing file's header is not this one.
     bool open (const std::string& out, const std::string& probes_file, double keep_until) const;
-    //! Appends one row (I/O rank writes; collective, as sample()).
+    //! Appends one row (I/O rank writes; collective, as sample()); t is the time or the iteration count.
     void write_row (const std::string& out, double t, const State& q) const;
 
 private:
     bool open_io (const std::string& out, const std::string& probes_file, double keep_until) const;
     std::vector<Probe> m_probes;
+    ProbeAxis m_axis{ProbeAxis::time};
 };
 
 //! What a checkpoint of an unsteady run records (besides the averages' fields).
@@ -146,8 +162,10 @@ void write_unsteady_record (const std::string& dir, const UnsteadyRecord& r);
 //! steady checkpoint. Aborts, naming io.restart, on a file that does not parse. Collective.
 bool read_unsteady_record (const std::string& dir, UnsteadyRecord& r);
 
-//! The probe output file of a run: <io.plot_file>_probes.csv.
-std::string probes_output_file (const std::string& plot_file);
+//! The probe output file of a run: <io.plot_file>_probes.csv (unsteady, rows in time) or
+//! <io.plot_file>_steady_probes.csv (steady, rows in iterations). Two names, so that an unsteady
+//! run started from a steady run in the same folder keeps the steady run's file.
+std::string probes_output_file (const std::string& plot_file, ProbeAxis axis = ProbeAxis::time);
 
 } // namespace gust
 
