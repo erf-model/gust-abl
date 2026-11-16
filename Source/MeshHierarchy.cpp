@@ -307,7 +307,13 @@ std::string MeshHierarchy::quality_report () const
         os << line;
         // Mesh::quality_report without its own first line.
         const std::string rep = mesh(l).quality_report();
-        os << rep.substr(rep.find('\n') + 1);
+        std::string body = rep.substr(rep.find('\n') + 1);
+        // The ground-step warning is level 0's: its tested value was measured
+        // on level-0 meshes, and a coarse level's wider cells step further by
+        // construction. The level's number stays in its lines.
+        const auto warn = body.find("WARNING: the ground steps");
+        if (warn != std::string::npos) { body.erase(warn, body.find('\n', warn) - warn + 1); }
+        os << body;
         // The hint only when this level is capped at more z-levels than level
         // 0: capping level 0 shares is level 0's (its own warning names it).
         const int capped = mesh(l).quality().stf_capped_levels;

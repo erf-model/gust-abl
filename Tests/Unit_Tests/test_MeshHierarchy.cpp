@@ -430,6 +430,32 @@ TEST (MeshHierarchy, GroundSmoothingPasses)
 }
 
 // ---------------------------------------------------------------------------
+// The ground-step warning is level 0's only. With first layers of 0.6 m the
+// hill's level 0 is below the tested value and a coarse level (cells twice and
+// four times as wide) is above it: that level's own report warns, and the
+// hierarchy's report keeps the level's number and leaves the warning out.
+TEST (MeshHierarchy, GroundStepWarningIsLevelZerosOnly)
+{
+    HCase c = hill3d(1);
+    c.in.mesh.dz0 = 0.6;
+    c.make();
+    const double tested = static_cast<double>(gust::kGroundStepTested);
+    EXPECT_LT(c.mesh.quality().max_ground_step_layers, tested);
+    EXPECT_EQ(c.mesh.quality_report().find("WARNING: the ground steps"), std::string::npos);
+    bool above = false;
+    for (int l = 1; l < c.h->num_levels(); ++l) {
+        if (c.h->mesh(l).quality().max_ground_step_layers > tested) {
+            above = true;
+            EXPECT_NE(c.h->mesh(l).quality_report().find("WARNING: the ground steps"), std::string::npos) << "level " << l;
+        }
+    }
+    EXPECT_TRUE(above) << "no coarse level is above the tested value: the test would be vacuous";
+    const std::string rep = c.h->quality_report();
+    EXPECT_NE(rep.find("max ground step / first layer thickness"), std::string::npos) << rep;
+    EXPECT_EQ(rep.find("WARNING: the ground steps"), std::string::npos) << rep;
+}
+
+// ---------------------------------------------------------------------------
 // Free-stream preservation on every level, for BTF, STF and
 // Sullivan: the metric divergence of a uniform wind (10, 5) m/s is below
 // 1e-12 of (|U| + |V|) / dx of the level.

@@ -327,6 +327,19 @@ TEST(UnsteadyOutput, ParseProbes)
     gust::parse_probes("# nothing\n", "f.txt", err);
     ASSERT_EQ(err.size(), 1U);
     EXPECT_NE(err[0].find("no probe"), std::string::npos);
+
+    // The steady run's probes (sub-phase 6.4b): the messages name its key, and its file has another name.
+    err.clear();
+    gust::parse_probes("1 2\n", "g.txt", err, gust::ProbeAxis::iteration);
+    ASSERT_EQ(err.size(), 1U);
+    EXPECT_EQ(err[0].rfind("steady.probes_file = g.txt, line 1:", 0), 0U) << err[0];
+    err.clear();
+    gust::parse_probes("", "g.txt", err, gust::ProbeAxis::iteration);
+    ASSERT_EQ(err.size(), 1U);
+    EXPECT_EQ(err[0].rfind("steady.probes_file = g.txt: no probe", 0), 0U) << err[0];
+    EXPECT_EQ(gust::probes_output_file("plt"), "plt_probes.csv");
+    EXPECT_EQ(gust::probes_output_file("plt", gust::ProbeAxis::time), "plt_probes.csv");
+    EXPECT_EQ(gust::probes_output_file("plt", gust::ProbeAxis::iteration), "plt_steady_probes.csv");
 }
 
 // UT-6.3.2: each probe takes its column's cell whose centre height above the
@@ -435,6 +448,28 @@ TEST(UnsteadyOutput, ProbeFileOnRestart)
         std::filesystem::remove(out);
     }
     EXPECT_TRUE(from_io(fresh));
+    // The column line names what the rows count: "t" (unsteady) or "iteration" (steady).
+    const gust::Probes by_iteration(list, c.z, c.geom, "f.txt", gust::ProbeAxis::iteration);
+    const std::string ht = probes.header(), hi = by_iteration.header();
+    EXPECT_NE(ht.find("\nt,p1_u,"), std::string::npos);
+    EXPECT_NE(hi.find("\niteration,p1_u,"), std::string::npos);
+    EXPECT_EQ(ht.substr(0, ht.rfind("\nt,")), hi.substr(0, hi.rfind("\niteration,")));
+    // The iteration axis on a restart: rows after the checkpoint's iteration are dropped, and the
+    // rewrite leaves no temporary file.
+    EXPECT_FALSE(by_iteration.open(out, "f.txt", -1.0));
+    for (int n = 0; n <= 3; ++n) {
+        set_state(q, double(n));
+        by_iteration.write_row(out, double(n), q);
+    }
+    EXPECT_TRUE(by_iteration.open(out, "f.txt", 1.0));
+    bool dropped = true;
+    if (io_rank()) {
+        const std::string now = slurp(out);
+        dropped = now.rfind(hi, 0) == 0 && std::count(now.begin(), now.end(), '\n') == std::count(hi.begin(), hi.end(), '\n') + 2
+                  && !std::filesystem::exists(out + ".tmp");
+        std::filesystem::remove(out);
+    }
+    EXPECT_TRUE(from_io(dropped));
 }
 
 // UT-6.3.3: a resumed TimeDriver numbers its steps on from the checkpoint's and,

@@ -788,6 +788,16 @@ mean of its 8 node heights less the mean of the 4 bottom nodes of the column. Th
 nearest :math:`h`, the lower on a tie; values are the cell's, not interpolated. The CSV's header lists each probe's
 point, cell and cell height; then one row ``t, p1_u, …, pN_tke`` at the start and one per step, printed to 17 digits.
 
+A steady run takes the same points with ``steady.probes_file`` and writes ``<io.plot_file>_steady_probes.csv``: one
+row ``iteration, p1_u, …, pN_tke`` for the state the iterations start from and one after every iteration of level 0.
+The two files have different names, so an unsteady run started from a steady run's checkpoint in the same folder
+keeps the steady run's file: the last steady row and the unsteady rows are then the two answers at the same cells.
+A steady history that still moves at a point after the residual has stopped falling shows where the steady run has
+not settled. ``tools/probe_settle.py`` reads the file and prints the iteration after which every probe stays within
+0.5 m/s and within 0.25 m/s of the end state (the mean of the last 100 rows, or of another run's). On the analytic
+shapes of ``Tests/Canonical_RANS/Terrain_Shapes_3D`` the probes settle several times sooner than the residual
+verdict comes: a 67° butte is within 0.25 m/s from iteration 280 and has no verdict at 5000.
+
 **Plotfiles and checkpoints.** Every ``unsteady.plot_interval`` and ``unsteady.checkpoint_interval`` physical steps,
 and at the end. A checkpoint adds a text record ``Unsteady`` (the time, the step count, the fixed :math:`\Delta t`,
 :math:`t_a`, :math:`W` and the time anchor below, as hexadecimal floats) and :math:`\bar x` and :math:`M_2` as MultiFabs. A run that

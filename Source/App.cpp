@@ -189,6 +189,10 @@ void run ()
                                  "unsteady.inner_drop_orders or unsteady.max_inner)");
             }
         }
+        if (!sopt.probes_file.empty()) {
+            err.emplace_back("steady.probes_file has no effect with steady.stage = unsteady (unsteady.probes_file names the "
+                             "probes of an unsteady run)");
+        }
         if (seq.enabled) {
             err.emplace_back("steady.sequencing = 1 is not supported with steady.stage = unsteady yet (the first step "
                              "starts from the first guess or the restart on level 0)");
@@ -752,7 +756,7 @@ void run ()
         // The unsteady run's outputs (UnsteadyOutput.H): averages, probes, and the record a checkpoint carries.
         std::unique_ptr<RunningAverages> averages;
         std::unique_ptr<Probes> probes;
-        const std::string probes_out = probes_output_file(in.io.plot_file);
+        const std::string probes_out = probes_output_file(in.io.plot_file, unsteady ? ProbeAxis::time : ProbeAxis::iteration);
         UnsteadyRecord urec;
         // A checkpoint with everything a restart reads: the state, the histories, the models' fields and,
         // in an unsteady run, its record and the averages.
@@ -810,20 +814,7 @@ void run ()
                 if (!loads->open(resumed ? urec.time : -1.0)) { loads->write_row(td.time_exact(), force_now()); }
             }
             if (!uopt.probes_file.empty()) {
-                int exists = 0;
-                if (amrex::ParallelDescriptor::IOProcessor()) { exists = std::filesystem::exists(uopt.probes_file) ? 1 : 0; }
-                amrex::ParallelDescriptor::Bcast(&exists, 1, amrex::ParallelDescriptor::IOProcessorNumber());
-                if (exists == 0) { amrex::Abort("gust: unsteady.probes_file = " + uopt.probes_file + ": no such file"); }
-                amrex::Vector<char> text;
-                amrex::ParallelDescriptor::ReadAndBcastFile(uopt.probes_file, text);
-                std::vector<std::string> perr;
-                std::vector<Probe> list = parse_probes(std::string(text.dataPtr()), uopt.probes_file, perr);
-                if (!perr.empty()) {
-                    std::string all = "gust: invalid inputs:";
-                    for (const auto& e : perr) { all += "\n  " + e; }
-                    amrex::Abort(all);
-                }
-                probes = std::make_unique<Probes>(std::move(list), state.z_phys_nd, geom, uopt.probes_file);
+                probes = Probes::read(uopt.probes_file, state.z_phys_nd, geom, ProbeAxis::time);
                 const bool kept = probes->open(probes_out, uopt.probes_file, resumed ? urec.time : -1.0);
                 // The first row is the state the run starts from (a restart that kept the file has the
                 // checkpoint's row).
@@ -873,10 +864,20 @@ void run ()
                            << (nsteps > 0 ? double(td.inner_iterations()) / nsteps : 0.0) << " per step), "
                            << td.unconverged_steps() << " steps stopped at unsteady.max_inner\n";
         }
+        if (!unsteady && solve && !sopt.probes_file.empty()) {
+            // steady.probes_file: a row per iteration of level 0, numbered by the run's iteration count
+            // (the history's, which a restart continues). The first row is the state the iterations
+            // start from; a restart that kept the file has the checkpoint's row.
+            probes = Probes::read(sopt.probes_file, state.z_phys_nd, geom, ProbeAxis::iteration);
+            const auto n0 = static_cast<double>(driver.history().records.size());
+            if (!probes->open(probes_out, sopt.probes_file, restart ? n0 : -1.0)) { probes->write_row(probes_out, n0, state); }
+            amrex::Print() << "gust: steady: " << probes->probes().size() << " probes to " << probes_out << ", a row per iteration\n";
+        }
         while (!unsteady && static_cast<int>(driver.history().records.size()) < sopt.max_iterations) {
             v = driver.step(state);
             ++done;
             ++state.step;
+            if (probes) { probes->write_row(probes_out, static_cast<double>(driver.history().records.size()), state); }
             const bool last = (v.status != SteadyStatus::NotSteady
                                || static_cast<int>(driver.history().records.size()) >= sopt.max_iterations);
             log.print(driver, simplec_stage, last, "", newton_stage);

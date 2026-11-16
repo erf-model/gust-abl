@@ -138,7 +138,29 @@ Every run prints a mesh-quality summary:
 - the smallest cell and layer thickness relative to flat ground;
 - the largest ground slope and coordinate-surface slope;
 - the largest cell aspect ratio;
+- the largest step of the ground between two neighbouring columns, in units of the thinner of their two first
+  layers;
 - the lowest first-cell centre and the largest displacement of the top nodes;
 - the number of STF levels limited by :math:`\gamma_m`.
+
+The ground step counts how many first layers the ground rises or falls from one node column to the next (in x or
+in y). Above 64 the report prints a warning. That value is the largest of the runs of
+``Tests/Canonical_RANS/Rampart_2D`` that reached the steady verdict within a few thousand iterations (a 900 m cliff
+with a 67° slope under 8 m first layers, 2570 iterations); the same cliff under 2 m layers (255) needed 15383
+iterations. The number marks a mesh outside the range of that case. It is not
+a limit and it does not predict the iteration count: at the same value a 31° cliff converges ten times faster than
+the 67° one, the 67° butte of ``Tests/Canonical_RANS/Terrain_Shapes_3D`` settles at its probes at 209, and the
+gentle ridge of ``Tests/Canonical_RANS/Aspect_Ratio_Hill_2D`` reaches the verdict with first layers of 0.05 m,
+which the report now also flags. Thicker
+first layers or finer horizontal cells lower it. The layer is the mesh's own first layer, not ``mesh.dz0``: BTF
+thins it by :math:`1 - h/z_{top}`, and STF (``terrain.smoothing = 1``) thins it further at a convex edge, down to
+about ``terrain.gamma_m`` times the BTF value. The 67° butte of ``Terrain_Shapes_3D`` under 8 m layers has 33 with
+BTF and 53 with STF (a first layer of 4 m at the crest's edge). The value of 64 comes from BTF runs.
+
+The ground step is the ratio of Mahrer's (1984) consistency condition for terrain-following coordinates (the
+ground should not change by more than a layer between neighbouring columns: a ratio of 1 at most). In the neutral
+runs made here a larger ratio is a discretisation error, not a failure: on the 31° cliff of ``Rampart_2D`` the wind
+at a ratio of 16 (200 m cells) is within 0.14 m/s of the wind at a ratio of 2 (25 m cells). A stratified run was
+not made.
 
 On restart, the node heights rebuilt from the inputs are checked against the checkpoint.

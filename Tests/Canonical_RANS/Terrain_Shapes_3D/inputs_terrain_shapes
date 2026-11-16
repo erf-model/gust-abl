@@ -1,0 +1,42 @@
+# Terrain_Shapes_3D: analytic 760 m terrain shapes under a neutral log-law wind, steady stage (README.md).
+# The recommended setting (turb.realizability = 0.309, turb.nut_relax = 0.5, the near-ground blend) and the
+# steep-terrain solver setting (line LU-SGS, two sweeps, simplec.w_vnn_cap = 16).
+# On the command line: terrain.file, mesh.dz0, mesh.stretch_ratio, steady.max_iterations, steady.cfl_max
+# (make_terrain.py prints the ratios; probes.txt is written by it next to the terrains).
+mesh.n_cell        = 160 128 40
+mesh.prob_lo       = 0. 0. 0.
+mesh.prob_hi       = 16000. 12800. 6000.
+mesh.is_periodic   = 0 1 0
+mesh.max_grid_size = 40
+terrain.type      = xyz
+terrain.smoothing = 1
+bc.xlo = inflow
+bc.xhi = outflow
+bc.zlo = surface_layer
+bc.zhi = no_slip_wall
+bc.zhi_wall_velocity = 12.728 0. 0.
+bc.surface_z0       = 0.0002
+bc.inflow_profile   = log_law
+bc.inflow_ustar     = 0.3031
+bc.inflow_z0        = 0.0002
+bc.inflow_direction = 0.
+bc.theta_profile_z  = 0.
+bc.theta_profile    = 300.
+bc.rayleigh_zdamp    = 4500.
+bc.rayleigh_dampcoef = 0.2
+bc.rayleigh_fields   = w
+forcing.gravity  = 0.
+turb.tke_floor   = 1.e-6
+turb.realizability = 0.309
+turb.nut_relax     = 0.5
+convection.hybrid_sigma_max = 0.1
+convection.hybrid_height    = 1900.
+turb.max_geom_lscale = 1.e6
+simplec.w_vnn_cap = 16
+init.first_guess = profile
+steady.stage        = simplec
+steady.sweep        = lusgs
+steady.zline_sweeps = 2
+steady.probes_file  = probes.txt
+io.plot_file = plt
+io.write_checkpoint = 1

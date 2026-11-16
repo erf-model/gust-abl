@@ -834,6 +834,82 @@ TEST (Mesh, QualitySlopeOfDiagonalRidge)
     EXPECT_NEAR(s.mesh.quality().max_ground_slope_deg, exact, 0.1) << "exact " << exact;
 }
 
+// A plane ground h = sx x + sy y, written straight into the k = 0 slab.
+void fill_ramp (amrex::MultiFab& z, const amrex::Geometry& geom, amrex::Real sx, amrex::Real sy)
+{
+    const auto dx = geom.CellSizeArray();
+    const int k0 = geom.Domain().smallEnd(2);
+    const int hx = geom.Domain().bigEnd(0) + 1;
+    const int hy = geom.Domain().bigEnd(1) + 1;
+    for (amrex::MFIter mfi(z); mfi.isValid(); ++mfi) {
+        amrex::Box bx = mfi.growntilebox();
+        bx.setSmall(2, k0);
+        bx.setBig(2, k0);
+        const auto a = z.array(mfi);
+        amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int) noexcept
+        {
+            const int ii = amrex::min(amrex::max(i, 0), hx);
+            const int jj = amrex::min(amrex::max(j, 0), hy);
+            a(i, j, k0) = sx * ii * dx[0] + sy * jj * dx[1];
+        });
+    }
+}
+
+// A BTF mesh over the ramp h = sx x + sy y: 24 x 20 x nz cells over 2400 x 2000 x 1200 m, in several boxes.
+MeshCase ramp (amrex::Real sx, amrex::Real sy, int nz)
+{
+    MeshCase s;
+    s.in.mesh.n_cell = amrex::IntVect(24, 20, nz);
+    s.in.mesh.prob_lo = {0, 0, 0};
+    s.in.mesh.prob_hi = {2400, 2000, 1200};
+    s.in.mesh.max_grid_size = {8, 8};
+    s.in.terrain.smoothing = 0;
+    s.make();
+    fill_ramp(s.z, s.geom, sx, sy);
+    s.mesh.build_from_ground(s.in, s.geom, s.z);
+    return s;
+}
+
+// The report's ground step is the ground's rise to the next column over the
+// thinner first layer of the two. On a BTF ramp the first layer at a node is
+// dz (1 - h / z_top), so the largest value is at the highest pair of nodes:
+// slope * dx / (dz (1 - h_max / z_top)). A ramp in y (dy = 100 m, 0.3: 600 m
+// at the far side, layers of 100 m thinned to 50 m) gives 30 / 50 = 0.6; a
+// ramp in x (0.3: 720 m, 40 m) gives 30 / 40 = 0.75; both below the warning.
+TEST (Mesh, QualityGroundStepOfRamp)
+{
+    MeshCase y = ramp(0, 0.3, 12);
+    EXPECT_NEAR(y.mesh.quality().max_ground_step_layers, 0.6, tol(1e-10, 1e-4));
+    MeshCase x = ramp(0.3, 0, 12);
+    EXPECT_NEAR(x.mesh.quality().max_ground_step_layers, 0.75, tol(1e-10, 1e-4));
+    const std::string rep = x.mesh.quality_report();
+    EXPECT_NE(rep.find("max ground step / first layer thickness    = "), std::string::npos) << rep;
+    if (std::is_same_v<amrex::Real, double>) {
+        EXPECT_NE(rep.find("max ground step / first layer thickness    = 7.500000000e-01"), std::string::npos) << rep;
+    }
+    EXPECT_EQ(rep.find("WARNING: the ground steps"), std::string::npos) << rep;
+}
+
+// Above kGroundStepTested the report warns and names the number. A ramp in x of
+// 0.48 (1152 m at the far side) under 120 layers of 10 m thinned to 0.4 m:
+// 48 / 0.4 = 120. With 0.4 (960 m, layers of 2 m): 40 / 2 = 20, no warning.
+TEST (Mesh, QualityReportWarnsOnAbruptGround)
+{
+    ASSERT_GT(120.0, static_cast<double>(gust::kGroundStepTested));
+    ASSERT_LT(20.0, static_cast<double>(gust::kGroundStepTested));
+    MeshCase steep = ramp(0.48, 0, 120);
+    EXPECT_NEAR(steep.mesh.quality().max_ground_step_layers, 120.0, tol(1e-7, 0.5));
+    const std::string rep = steep.mesh.quality_report();
+    EXPECT_NE(rep.find("WARNING: the ground steps by up to 1"), std::string::npos) << rep;
+    EXPECT_NE(rep.find(" first layers between neighbouring columns, above the tested 64"), std::string::npos) << rep;
+    if (std::is_same_v<amrex::Real, double>) {
+        EXPECT_NE(rep.find("WARNING: the ground steps by up to 120 first layers"), std::string::npos) << rep;
+    }
+    MeshCase mild = ramp(0.4, 0, 120);
+    EXPECT_NEAR(mild.mesh.quality().max_ground_step_layers, 20.0, tol(1e-8, 1e-2));
+    EXPECT_EQ(mild.mesh.quality_report().find("WARNING: the ground steps"), std::string::npos);
+}
+
 // A ground that reaches the top, and inverted cells, stop the run.
 TEST (Mesh, TerrainThatFillsTheDomainIsRefused)
 {

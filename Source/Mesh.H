@@ -14,6 +14,13 @@
 
 namespace gust {
 
+//! The largest MeshQuality::max_ground_step_layers of the cliff runs of
+//! Tests/Canonical_RANS/Rampart_2D that reached the steady verdict quickly
+//! (the steep rampart with 8 m first layers, 2570 iterations; the same rampart
+//! at 255 needed 15383): above it the report warns. It is the range of that
+//! case, not a limit: gentler ground converges at larger values.
+inline constexpr amrex::Real kGroundStepTested = 64;
+
 //! What the mesh-quality report says about a terrain-following mesh.
 struct MeshQuality
 {
@@ -36,6 +43,10 @@ struct MeshQuality
     amrex::Real max_surface_slope_deg{0};
     //! Largest horizontal-to-vertical cell size ratio, max(dx, dy) / thickness.
     amrex::Real max_aspect_ratio{0};
+    //! Largest step of the ground between two neighbouring node columns (in x
+    //! or in y), in units of the thinner of their two first layers: how many
+    //! first layers the ground rises or falls from one column to the next.
+    amrex::Real max_ground_step_layers{0};
     //! Lowest height of a first-layer cell centre above the ground (m).
     amrex::Real min_first_centre_height{0};
     //! STF only: levels at which the minimum layer thickness stopped the smoothing.

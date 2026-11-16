@@ -251,8 +251,9 @@ void Mesh::make_quality (const amrex::Geometry& geom, const amrex::MultiFab& z_p
     amrex::ReduceOps<amrex::ReduceOpMin, amrex::ReduceOpMax, amrex::ReduceOpMin> cell_ops;
     amrex::ReduceData<amrex::Real, amrex::Real, amrex::Real> cell_data(cell_ops);
     amrex::ReduceOps<amrex::ReduceOpMax, amrex::ReduceOpMax, amrex::ReduceOpMin, amrex::ReduceOpMax,
-                     amrex::ReduceOpMax> node_ops;
-    amrex::ReduceData<amrex::Real, amrex::Real, amrex::Real, amrex::Real, amrex::Real> node_data(node_ops);
+                     amrex::ReduceOpMax, amrex::ReduceOpMax> node_ops;
+    amrex::ReduceData<amrex::Real, amrex::Real, amrex::Real, amrex::Real, amrex::Real, amrex::Real>
+        node_data(node_ops);
     const amrex::Real ztop_level = m_zlevels[nz];
     const amrex::Real lowest = std::numeric_limits<amrex::Real>::lowest();
     const amrex::Real big = std::numeric_limits<amrex::Real>::max();
@@ -283,7 +284,7 @@ void Mesh::make_quality (const amrex::Geometry& geom, const amrex::MultiFab& z_p
         const int ihi = nbx.bigEnd(0);
         const int jhi = nbx.bigEnd(1);
         node_ops.eval(nbx, node_data, [=] AMREX_GPU_DEVICE (int i, int j, int k)
-            -> amrex::GpuTuple<amrex::Real, amrex::Real, amrex::Real, amrex::Real, amrex::Real>
+            -> amrex::GpuTuple<amrex::Real, amrex::Real, amrex::Real, amrex::Real, amrex::Real, amrex::Real>
         {
             amrex::Real s = 0;
             if (i < ihi && j < jhi) {
@@ -291,10 +292,28 @@ void Mesh::make_quality (const amrex::Geometry& geom, const amrex::MultiFab& z_p
                 const amrex::Real sy = (z(i, j + 1, k) - z(i, j, k)) / dx[1];
                 s = std::sqrt(sx * sx + sy * sy);
             }
+            // The ground's step to the next column in x and in y, over the
+            // thinner first layer of the two columns (ground nodes only). An
+            // empty or inverted first layer gives no step here (no 0/0 under
+            // an FPE trap): build() refuses that mesh after this report.
+            amrex::Real step = 0;
+            if (k == k0) {
+                const amrex::Real t0 = z(i, j, k + 1) - z(i, j, k);
+                if (i < ihi) {
+                    const amrex::Real t1 = z(i + 1, j, k + 1) - z(i + 1, j, k);
+                    const amrex::Real t = amrex::min(t0, t1);
+                    if (t > 0) { step = std::abs(z(i + 1, j, k) - z(i, j, k)) / t; }
+                }
+                if (j < jhi) {
+                    const amrex::Real t1 = z(i, j + 1, k + 1) - z(i, j + 1, k);
+                    const amrex::Real t = amrex::min(t0, t1);
+                    if (t > 0) { step = amrex::max(step, std::abs(z(i, j + 1, k) - z(i, j, k)) / t); }
+                }
+            }
             const bool top = (k == k0 + nz);
             const amrex::Real thick = top ? big : (z(i, j, k + 1) - z(i, j, k)) / dzl[k - k0];
             return {s, (k == k0) ? s : amrex::Real(0), thick, (k == k0) ? z(i, j, k) : lowest,
-                    top ? std::abs(z(i, j, k) - ztop_level) : amrex::Real(0)};
+                    top ? std::abs(z(i, j, k) - ztop_level) : amrex::Real(0), step};
         });
     }
     auto cv = cell_data.value();
@@ -307,6 +326,7 @@ void Mesh::make_quality (const amrex::Geometry& geom, const amrex::MultiFab& z_p
     amrex::Real min_nodal = amrex::get<2>(nv);
     amrex::Real max_height = amrex::get<3>(nv);
     amrex::Real max_top = amrex::get<4>(nv);
+    amrex::Real max_step = amrex::get<5>(nv);
     const auto comm = amrex::ParallelDescriptor::Communicator();
     amrex::ParallelAllReduce::Min(min_ratio, comm);
     amrex::ParallelAllReduce::Max(max_aspect, comm);
@@ -316,6 +336,7 @@ void Mesh::make_quality (const amrex::Geometry& geom, const amrex::MultiFab& z_p
     amrex::ParallelAllReduce::Min(min_nodal, comm);
     amrex::ParallelAllReduce::Max(max_height, comm);
     amrex::ParallelAllReduce::Max(max_top, comm);
+    amrex::ParallelAllReduce::Max(max_step, comm);
 
     m_quality.min_thickness_ratio = min_ratio;
     m_quality.min_nodal_thickness_ratio = min_nodal;
@@ -324,6 +345,7 @@ void Mesh::make_quality (const amrex::Geometry& geom, const amrex::MultiFab& z_p
     m_quality.top_level = ztop_level;
     m_quality.max_aspect_ratio = max_aspect;
     m_quality.min_first_centre_height = min_first;
+    m_quality.max_ground_step_layers = max_step;
     m_quality.max_surface_slope_deg = std::atan(max_slope) * kRadToDeg;
     m_quality.max_ground_slope_deg = std::atan(max_ground) * kRadToDeg;
     m_quality.nz = nz;
@@ -345,6 +367,7 @@ std::string Mesh::quality_report () const
     put("max ground slope (deg)", q.max_ground_slope_deg);
     put("max coordinate-surface slope (deg)", q.max_surface_slope_deg);
     put("max aspect ratio max(dx,dy) / thickness", q.max_aspect_ratio);
+    put("max ground step / first layer thickness", q.max_ground_step_layers);
     put("min first-cell centre above ground (m)", q.min_first_centre_height);
     put("max top-node displacement (m)", q.max_top_displacement);
     std::snprintf(line, sizeof(line), "  %-42s = %d of %d\n", "STF levels capped by terrain.gamma_m",
@@ -353,6 +376,12 @@ std::string Mesh::quality_report () const
     if (q.stf_capped_levels > 0) {
         os << "WARNING: the STF smoothing stopped early at " << q.stf_capped_levels
            << " levels (terrain.gamma_m); the terrain is steep for this vertical grid\n";
+    }
+    if (q.max_ground_step_layers > kGroundStepTested) {
+        os << "WARNING: the ground steps by up to " << q.max_ground_step_layers
+           << " first layers between neighbouring columns, above the tested " << kGroundStepTested
+           << " (Tests/Canonical_RANS/Rampart_2D): on a cliff this abrupt the steady iteration converged slowly; "
+           << "thicker first layers or finer horizontal cells lower the number (docs/terrain_coordinates.rst)\n";
     }
     if (q.max_top_displacement > amrex::Real(1.e-6) * q.top_level) {
         os << "WARNING: the terrain imprint reaches the top: top nodes are up to " << q.max_top_displacement

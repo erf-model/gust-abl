@@ -440,6 +440,9 @@ Quick reference
    * - ``steady.dtau_floor``
      - ``0.1``
      - Local step floor: a cell steps at most as the level's fastest cell does, 1/``dtau_floor`` times (0: off)
+   * - ``steady.probes_file``
+     - —
+     - File of probe points ``x y h`` (h above the ground); one CSV row per iteration
    * - ``steady.switch_window``, ``steady.switch_residual``, ``steady.switch_back_growth``
      - ``20``, ``1e-4``, ``10``
      - Stage-switching rules (``simplec_newton`` only)
@@ -1315,6 +1318,17 @@ writes them and stops; the other ``steady.*`` keys are then refused.
        rate, :math:`U_{\max} / \min(\Delta x, \Delta y)`, so a cell at rest steps at most ``1/dtau_floor`` times
        as the fastest cell does (:doc:`solution_algorithm`, local time step). 0 is the plain local step, the form
        before the floor (a cell at rest then steps ``cfl`` / 1e-12 s).
+   * - ``steady.probes_file``
+     - —
+     - A file of probe points, in the format of ``unsteady.probes_file`` (one ``x y h`` per line, m, :math:`h` > 0
+       the height above the ground; the same choice of cell and the same aborts). The values of
+       :math:`u, v, w, \theta, k` before the first iteration and after every iteration of level 0 go to
+       ``<io.plot_file>_steady_probes.csv``, whose first column is the run's iteration count; a restart keeps its
+       rows up to the checkpoint's iteration. The coarse levels of grid sequencing write no rows. A deck with the
+       blend (``convection.hybrid_sigma_max``) cannot restart, so it cannot continue its file either. A row holds five
+       numbers of 17 digits per probe (about 110 bytes), so 2500 probes over 1500 iterations make about 0.4 GB. Aborts with
+       ``steady.stage = unsteady`` (``unsteady.probes_file`` is that stage's key) and without a stage. The name
+       must not be empty.
    * - ``steady.switch_window``
      - ``20``
      - ≥ 1. Iterations below ``switch_residual`` before a switch to the next stage; no other switch within this many
