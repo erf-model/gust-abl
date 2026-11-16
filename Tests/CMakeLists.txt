@@ -1757,6 +1757,62 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
              WORKING_DIRECTORY ${NESTS_DIR})
     set_tests_properties(rt_nest_shapes_cube PROPERTIES LABELS "regression;smoke"
                          FIXTURES_REQUIRED "nest_shapes_cube_reference;nest_shapes_cube_d70")
+    # bc.nest_ratio (beyond the plan): the same cube from a 20 m parent. A
+    # 5 m patch at ratio 4 (half-widths 70 m by 60 m) and a chain of two
+    # ratio-2 patches (20 m -> 10 m with half-widths 90 m by 100 m -> 5 m on
+    # the same 70 m by 60 m) against the 5 m reference. Measured ROI RMS:
+    # ratio 4 3.969 %, chain 2.598 %, parent 42.03 %; ratio 4 vs chain
+    # 1.399 %. The ratio-4 patch on 1 and 4 ranks must match its 2-rank run
+    # to 1e-8 of U_ref (the study's rank limit). Each run has four boxes.
+    gust_add_test(NAME rt_nest_shapes_cube_parent20 NP 2 LABELS "regression;smoke" RUN_DIR ${NESTS_DIR}
+                  FIXTURES_REQUIRED nest_shapes_clean FIXTURES_SETUP nest_shapes_cube_parent20
+                  PREFIX ${NESTS} run cube cube_par20 20 --
+                  COMMAND $<TARGET_FILE:gust> ${NEST_SHAPES_CASE}/inputs_building_domain "mesh.max_grid_size=12 6"
+                          ${GUST_TEST_AMREX_FLAGS})
+    foreach(np 1 2 4)
+        if(np EQUAL 2)
+            set(_r4 cube_r4)
+        else()
+            set(_r4 cube_r4_np${np})
+        endif()
+        gust_add_test(NAME rt_nest_shapes_${_r4} NP ${np} LABELS "regression;smoke" RUN_DIR ${NESTS_DIR}
+                      FIXTURES_REQUIRED nest_shapes_cube_parent20 FIXTURES_SETUP nest_shapes_${_r4}
+                      PREFIX ${NESTS} nest cube ${_r4} cube_par20 70,60 --nest-ratio 4 --
+                      COMMAND $<TARGET_FILE:gust> ${NEST_SHAPES_CASE}/inputs_building_nest "mesh.max_grid_size=14 12"
+                              ${GUST_TEST_AMREX_FLAGS})
+    endforeach()
+    gust_add_test(NAME rt_nest_shapes_cube_c10 NP 2 LABELS "regression;smoke" RUN_DIR ${NESTS_DIR}
+                  FIXTURES_REQUIRED nest_shapes_cube_parent20 FIXTURES_SETUP nest_shapes_cube_c10
+                  PREFIX ${NESTS} nest cube cube_c10 cube_par20 90,100 --
+                  COMMAND $<TARGET_FILE:gust> ${NEST_SHAPES_CASE}/inputs_building_nest "mesh.max_grid_size=9 10"
+                          ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME rt_nest_shapes_cube_chain NP 2 LABELS "regression;smoke" RUN_DIR ${NESTS_DIR}
+                  FIXTURES_REQUIRED nest_shapes_cube_c10 FIXTURES_SETUP nest_shapes_cube_chain
+                  PREFIX ${NESTS} nest cube cube_chain cube_c10 70,60 --
+                  COMMAND $<TARGET_FILE:gust> ${NEST_SHAPES_CASE}/inputs_building_nest "mesh.max_grid_size=14 12"
+                          ${GUST_TEST_AMREX_FLAGS})
+    add_test(NAME rt_nest_shapes_cube_ratio4
+             COMMAND ${NESTS} compare cube cube_r4 cube_ref cube_par20 --rms-roi 5e-2 --ratio 0.15
+             WORKING_DIRECTORY ${NESTS_DIR})
+    set_tests_properties(rt_nest_shapes_cube_ratio4 PROPERTIES LABELS "regression;smoke"
+                         FIXTURES_REQUIRED "nest_shapes_cube_reference;nest_shapes_cube_r4")
+    add_test(NAME rt_nest_shapes_cube_chain2
+             COMMAND ${NESTS} compare cube cube_chain cube_ref cube_par20 --rms-roi 3.5e-2 --ratio 0.1
+             WORKING_DIRECTORY ${NESTS_DIR})
+    set_tests_properties(rt_nest_shapes_cube_chain2 PROPERTIES LABELS "regression;smoke"
+                         FIXTURES_REQUIRED "nest_shapes_cube_reference;nest_shapes_cube_chain")
+    add_test(NAME rt_nest_shapes_cube_ratio4_vs_chain
+             COMMAND ${NESTS} compare cube cube_r4 cube_chain --rms-roi 2e-2
+             WORKING_DIRECTORY ${NESTS_DIR})
+    set_tests_properties(rt_nest_shapes_cube_ratio4_vs_chain PROPERTIES LABELS "regression;smoke"
+                         FIXTURES_REQUIRED "nest_shapes_cube_r4;nest_shapes_cube_chain")
+    foreach(np 1 4)
+        add_test(NAME rt_nest_shapes_cube_ratio4_ranks${np}
+                 COMMAND ${NESTS} compare cube cube_r4_np${np} cube_r4 --max-patch 1e-8
+                 WORKING_DIRECTORY ${NESTS_DIR})
+        set_tests_properties(rt_nest_shapes_cube_ratio4_ranks${np} PROPERTIES LABELS "regression;smoke"
+                             FIXTURES_REQUIRED "nest_shapes_cube_r4;nest_shapes_cube_r4_np${np}")
+    endforeach()
     gust_add_test(NAME rt_nest_shapes_study NP 4 LABELS "nightly" RUN_DIR ${NESTS_DIR}_study
                   FIXTURES_REQUIRED nest_shapes_study_clean
                   PREFIX ${NESTS} study --shapes hill,escarpment,cube,plate --ranks hill,cube --

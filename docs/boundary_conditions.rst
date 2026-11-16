@@ -443,7 +443,10 @@ widths from the walls.
 **Restart.** The checkpoint holds a record of the nest settings: the types of the four lateral faces, the parent's
 step and cells, a digest of the parent's content (its ``Header`` and the headers of its field and height files, which
 hold every box's minimum and maximum), the patch's place in the parent, the zone's width and factor and the blend
-width. A restart with other settings, or with another parent, stops, naming ``io.restart``. The parent's path is not
+width, and the refinement ratio (``bc.nest_ratio``, recorded only when it is not 2, so checkpoints written before the
+key keep their record). A restart with other settings, or with another parent, stops, naming ``io.restart``. A
+restart with another ratio stops earlier: the patch's cells fit only one ratio, and the placement check names
+``bc.nest_parent``. The parent's path is not
 part of the record: the parent may be moved.
 
 **Where to put the nest faces** (measured; sub-phase 9.3, beyond the plan). A patch was compared with a uniform run of
@@ -576,10 +579,45 @@ from the parent's field (``init.first_guess = nest``) at 2187.5 m, like the patc
 always starts from its parent's field, so where the steady state is not unique it can settle on another one than the
 fine run. The README of the case gives the runs.
 
+**Refinement ratio.** ``bc.nest_ratio`` (2, 4, 8 or 16; default 2) sets the patch's refinement of the parent in x and
+y; z is not refined. With ratio :math:`r` the patch's cells are the parent's divided by :math:`r`, and its faces lie
+on the parent's cell faces. The interpolation weights are multiples of :math:`1/(2r)`; for a power of two they are
+exact in binary and mirror-symmetric. A field linear in x and y is reproduced to round-off (unit tests at 2, 4, 8 and
+16). Other ratios are refused. Instead of one large ratio, a patch can be the parent of a finer patch (a chain); each
+link is an ordinary one-way nest. Around the cube from a 20 m parent, against the 5 m uniform run (velocity RMS over
+the cube's region, % of the speed scale; four boxes, two ranks):
+
+.. list-table::
+   :header-rows: 1
+
+   * - Run
+     - Cells
+     - RMS
+   * - 20 m parent (whole domain)
+     - 6 912
+     - 42.0 %
+   * - 5 m patch, ratio 4, half-widths 70 m × 60 m
+     - 16 128
+     - 3.97 %
+   * - 10 m patch, ratio 2 (90 m × 100 m), then 5 m patch, ratio 2 (70 m × 60 m)
+     - 8 640 + 16 128
+     - **2.60 %**
+   * - 5 m uniform (reference)
+     - 110 592
+     - --
+
+The ratio-4 patch and the chain differ by 1.40 %. The chain's 10 m link gives the 5 m patch's faces a finer parent
+field, and the faces are where the two differ most. The largest difference from the reference in the 10 m ring of
+cells along the nest faces is 32 % for the ratio-4 patch, whose faces take the 20 m parent's values, and 15.5 % for
+the chain (31 % for the parent, in its 20 m ring). In this case (one shape, one patch size, ratio 4) the chain was
+closer to the reference, at the cost of one more run and 54 % more cells (8 640 + 16 128). A ratio-4 patch with a
+wider gap between its faces and the cube was not run. The ratio-4 patch on 1, 2 and 4 ranks gives the same field to
+:math:`10^{-8}` of the speed scale (CTests ``rt_nest_shapes_cube_ratio4*`` and ``rt_nest_shapes_cube_chain2``).
+
 What these comparisons do not cover: the reference is the same solver with the same closure, so they measure the
-nesting error, not accuracy; neutral flow, refinement 2 2 1 with the same layers in every run, one wind direction per
-case; the patches are centred on the shape and away from the domain's own boundaries; the zone was tried with factor
-1 at one patch size.
+nesting error, not accuracy; neutral flow, refinement 2 2 1 (4 4 1 for the cube above) with the same layers in every
+run, one wind direction per case; the patches are centred on the shape and away from the domain's own boundaries;
+the zone was tried with factor 1 at one patch size.
 
 **Limits.**
 

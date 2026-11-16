@@ -47,7 +47,7 @@ M = [
  ("N12", "margin of one parent cell", H,
   "kNestMargin = 2;", "kNestMargin = 1;"),
  ("N13", "ratio not checked", F,
-  "if (patch.n_cell[d] != kNestRatio * n) {", "if (false) {"),
+  "if (static_cast<long>(patch.n_cell[d]) != static_cast<long>(ratio) * n) {", "if (false) {"),
  ("N14", "z-levels not compared", F,
   "if (patch_zlevels[k] != h.zlevels[k]) {", "if (false) {"),
  ("N15", "alignment tolerance of half a cell", F,
@@ -63,6 +63,23 @@ M = [
  ("N19", "a missing Header key names the token read, not the caller's key", S,
   "header_error(key, dir, std::string(\"corrupt Header: expected '\") + want + \"'\");",
   "header_error(tok, dir, std::string(\"corrupt Header: expected '\") + want + \"'\");"),
+ # bc.nest_ratio (beyond the plan)
+ ("N21", "the axes built at ratio 2 whatever bc.nest_ratio", F,
+  "    const int r = m_ratio;", "    const int r = kNestRatio;"),
+ ("N22", "the parent images coarsened by 2 whatever bc.nest_ratio", F,
+  "const amrex::IntVect rv(m_ratio, m_ratio, 1);", "const amrex::IntVect rv(kNestRatio, kNestRatio, 1);"),
+ ("N23", "the placement checked at ratio 2 whatever bc.nest_ratio", F,
+  "!= static_cast<long>(ratio) * n) {", "!= static_cast<long>(kNestRatio) * n) {"),
+ ("N24", "any even ratio up to 16 accepted (6, 10, 12)", H,
+  "return r >= 2 && r <= kNestRatioMax && (r & (r - 1)) == 0;", "return r >= 2 && r <= kNestRatioMax && r % 2 == 0;"),
+ ("N25", "ratios above 16 accepted", H,
+  "return r >= 2 && r <= kNestRatioMax && (r & (r - 1)) == 0;", "return r >= 2 && (r & (r - 1)) == 0;"),
+ ("N26", "the ratio left out of the nest faces' restart record", "Source/NestFaces.cpp",
+  "if (parent.ratio() != kNestRatio) {", "if (false) {"),
+ ("N27", "NestParent built for another ratio than the one given", F,
+  ": m_dir(dir), m_ratio(ratio),", ": m_dir(dir), m_ratio(kNestRatio),"),
+ ("N28", "a ratio line in the restart record at ratio 2 too", "Source/NestFaces.cpp",
+  "if (parent.ratio() != kNestRatio) {", "if (true) {"),
 ]
 
 # The call of zero_ground_flux after the interpolation (Source/App.cpp) is a

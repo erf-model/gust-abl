@@ -242,6 +242,13 @@ std::vector<std::string> check_nest_run (const BoundaryInputs& bin, const Inputs
         err.emplace_back("bc.nest_parent has no effect without init.first_guess = nest or a nest face (bc.xlo, bc.xhi, "
                          "bc.ylo or bc.yhi = nest)");
     }
+    if (!valid_nest_ratio(bin.nest_ratio)) {
+        err.emplace_back("bc.nest_ratio = " + std::to_string(bin.nest_ratio) + ": must be 2, 4, 8 or 16 (the patch's "
+                         "refinement of the parent in x and y)");
+    } else if (bin.nest_parent.empty()
+               && std::find(bin.given.begin(), bin.given.end(), std::string("nest_ratio")) != bin.given.end()) {
+        err.emplace_back("bc.nest_ratio has no effect without bc.nest_parent");
+    }
     if (any && !first_guess_nest && in.io.restart.empty()) {
         err.emplace_back(first + " = nest needs init.first_guess = nest (the parent's field as the first guess) or io.restart");
     }
@@ -524,6 +531,8 @@ std::string NestFaces::hash_inputs (const NestParent& parent, const BoundaryInpu
     for (int d = 0; d < 3; ++d) { s += " " + std::to_string(parent.parent_cells()[d]); }
     s += "\nparent content " + parent.content_digest();
     s += "\noffset " + std::to_string(parent.offset()[0]) + " " + std::to_string(parent.offset()[1]);
+    // The default ratio adds nothing: checkpoints written before bc.nest_ratio keep their hash.
+    if (parent.ratio() != kNestRatio) { s += "\nratio " + std::to_string(parent.ratio()); }
     s += "\nblend " + hexfloat_canonical(static_cast<double>(blend_width));
     s += "\nrelax " + std::to_string(bin.nest_relax_width) + " " + hexfloat_canonical(static_cast<double>(bin.nest_relax_factor)) + "\n";
     return sha256_hex(s);

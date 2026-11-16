@@ -238,6 +238,9 @@ Quick reference
    * - ``bc.nest_relax_width``, ``bc.nest_relax_factor``
      - ``0``, ``1``
      - Relaxation zone inside ``nest`` faces: width (cells) and rate factor
+   * - ``bc.nest_ratio``
+     - ``2``
+     - Refinement of the parent in x and y: 2, 4, 8 or 16
    * - **Forest canopy** (`canopy`_)
      -
      -
@@ -685,7 +688,7 @@ A restart cannot be combined with ``init.*`` keys.
      - ``none`` (fluid at rest), ``profile`` (the inflow profile by height above the ground) or ``column`` (the
        steady single-column profile; needs a horizontal forcing and ``steady.stage = simplec`` or ``simplec_newton``, and
        with a canopy flat terrain and a canopy that is the same in every column; see :doc:`initial_conditions` for
-       the full list) or ``nest`` (a parent run's checkpoint, ``bc.nest_parent``, interpolated at 2 2 1; not with
+       the full list) or ``nest`` (a parent run's checkpoint, ``bc.nest_parent``, interpolated at r r 1, r = ``bc.nest_ratio``; not with
        ``steady.sequencing = 1``; see :doc:`initial_conditions`).
    * - ``init.projection``
      - ``1``
@@ -909,7 +912,7 @@ types, the inflow profile and the sounding; the other keys act in the SIMPLEC st
      - none
      - A checkpoint directory of the parent run, written by this version (checkpoint format 2, which holds the
        z-levels); required with ``init.first_guess = nest`` or a ``nest`` face and refused without both (no effect). The patch must refine
-       the parent by 2 2 1, lie on the parent's cell faces (to :math:`10^{-4}` of a parent cell), keep 2 parent cells
+       the parent by ``bc.nest_ratio`` in x and y and 1 in z, lie on the parent's cell faces (to :math:`10^{-4}` of a parent cell), keep 2 parent cells
        from every non-periodic face of the parent (it may reach a periodic face), span the full width of a direction in
        which it is periodic (``mesh.prob_lo`` and ``mesh.prob_hi`` equal to the parent's there), and have the parent's
        z-levels bit for bit (``mesh.n_cell`` z, ``mesh.prob_lo`` z, ``mesh.prob_hi`` z, ``mesh.dz0``,
@@ -926,6 +929,12 @@ types, the inflow profile and the sounding; the other keys act in the SIMPLEC st
      - Finite, > 0. Multiplies the zone's rate; with 1 the rate at the face is the parent's inward velocity over the
        zone's width. About :math:`e^{-f/2}` of a difference from the parent passes the zone (61 % with 1, 0.7 % with
        10). Refused without ``bc.nest_relax_width`` > 0.
+   * - ``bc.nest_ratio``
+     - ``2``
+     - 2, 4, 8 or 16 (any other value stops the run, naming this key). The patch's refinement of the parent in x and
+       y: its ``mesh.n_cell`` x and y are this many times the parent cells it spans, so its cells are the parent's
+       divided by it; z is not refined. Refused without ``bc.nest_parent`` (no effect). A larger ratio in one step
+       and a chain of ratio-2 patches give close results (:doc:`boundary_conditions`).
 
 The wall model and the inflow profile's equilibrium :math:`k` and :math:`\nu_t` use the turbulence model's
 ``turb.Cmu0`` and ``turb.kappa``, and the inflow profile its ``turb.max_geom_lscale``. Without the SIMPLEC stage

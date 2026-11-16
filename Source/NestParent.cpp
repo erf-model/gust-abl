@@ -50,10 +50,17 @@ void zero_gradient_z (amrex::MultiFab& mf)
 } // namespace
 
 std::vector<std::string> check_nest_placement (const CheckpointHeader& h, const MeshInputs& patch,
-                                               const amrex::Vector<amrex::Real>& patch_zlevels, amrex::IntVect* offset)
+                                               const amrex::Vector<amrex::Real>& patch_zlevels, int ratio,
+                                               amrex::IntVect* offset)
 {
     std::vector<std::string> err;
     const std::string pre = "bc.nest_parent: ";
+    if (!valid_nest_ratio(ratio)) {
+        err.push_back("bc.nest_ratio = " + std::to_string(ratio) + ": must be 2, 4, 8 or 16");
+        return err;
+    }
+    const std::string refinement = " (bc.nest_ratio = " + std::to_string(ratio) + ": refinement " + std::to_string(ratio) + " "
+                                 + std::to_string(ratio) + " 1)";
     if (h.version < 2 || h.zlevels.empty()) {
         err.push_back(pre + "the parent checkpoint (format version " + std::to_string(h.version)
                       + ") has no z-levels; write it again with this version (checkpoint format version 2 or later)");
@@ -82,7 +89,7 @@ std::vector<std::string> check_nest_placement (const CheckpointHeader& h, const 
     if (patch.is_periodic[2] != 0 || h.is_periodic[2] != 0) {
         err.push_back(pre + "z is never periodic");
     }
-    // x and y: ratio 2, aligned, inside.
+    // x and y: the ratio, aligned, inside.
     amrex::IntVect off(0);
     const char* xy = "xy";
     for (int d = 0; d < 2; ++d) {
@@ -109,10 +116,10 @@ std::vector<std::string> check_nest_placement (const CheckpointHeader& h, const 
             err.push_back(pre + "the patch is empty in " + ax);
             continue;
         }
-        if (patch.n_cell[d] != kNestRatio * n) {
+        if (static_cast<long>(patch.n_cell[d]) != static_cast<long>(ratio) * n) {
             err.push_back(pre + "mesh.n_cell " + ax + " = " + std::to_string(patch.n_cell[d]) + ": the patch spans "
-                          + std::to_string(n) + " parent cells, so it needs " + std::to_string(kNestRatio * n)
-                          + " (refinement 2 2 1)");
+                          + std::to_string(n) + " parent cells, so it needs " + std::to_string(static_cast<long>(ratio) * n)
+                          + refinement);
             continue;
         }
         const bool pper = h.is_periodic[d] != 0;
@@ -140,9 +147,13 @@ std::vector<std::string> check_nest_placement (const CheckpointHeader& h, const 
 }
 
 NestParent::NestParent (const std::string& dir, const MeshInputs& patch, const amrex::Vector<amrex::Real>& patch_zlevels,
-                        const amrex::BoxArray& patch_ba, const amrex::DistributionMapping& patch_dm, bool with_ground)
-    : m_dir(dir), m_patch_cells(patch.n_cell), m_patch_ba(patch_ba)
+                        const amrex::BoxArray& patch_ba, const amrex::DistributionMapping& patch_dm, bool with_ground,
+                        int ratio)
+    : m_dir(dir), m_ratio(ratio), m_patch_cells(patch.n_cell), m_patch_ba(patch_ba)
 {
+    if (!valid_nest_ratio(ratio)) {
+        amrex::Abort("gust: bc.nest_ratio = " + std::to_string(ratio) + ": must be 2, 4, 8 or 16");
+    }
     int has_header = 0;
     if (amrex::ParallelDescriptor::IOProcessor()) {
         std::error_code ec;
@@ -153,7 +164,7 @@ NestParent::NestParent (const std::string& dir, const MeshInputs& patch, const a
         amrex::Abort("gust: bc.nest_parent = " + dir + ": no checkpoint Header there");
     }
     const CheckpointHeader h = read_checkpoint_header(dir, "bc.nest_parent");
-    const auto err = check_nest_placement(h, patch, patch_zlevels, &m_offset);
+    const auto err = check_nest_placement(h, patch, patch_zlevels, m_ratio, &m_offset);
     if (!err.empty()) {
         std::string all = "gust: bc.nest_parent = " + dir + ":";
         for (const auto& e : err) { all += "\n  " + e; }
@@ -194,8 +205,8 @@ NestParent::NestParent (const std::string& dir, const MeshInputs& patch, const a
     const amrex::Box fdom(amrex::IntVect(0), patch.n_cell - 1);
 
     // The parent cells under each patch box, in the parent's index space.
-    const amrex::IntVect ratio(kNestRatio, kNestRatio, 1);
-    amrex::BoxArray img = amrex::coarsen(patch_ba, ratio);
+    const amrex::IntVect rv(m_ratio, m_ratio, 1);
+    amrex::BoxArray img = amrex::coarsen(patch_ba, rv);
     img.shift(amrex::IntVect(m_offset[0], m_offset[1], 0));
     const amrex::DistributionMapping pdm(h.ba);
 
@@ -226,7 +237,7 @@ NestParent::NestParent (const std::string& dir, const MeshInputs& patch, const a
         m_z.ParallelCopy(src, 0, 0, 1, amrex::IntVect(0), amrex::IntVect(kNestImageGhost, kNestImageGhost, 0), pgeom.periodicity());
     }
 
-    const int r = kNestRatio;
+    const int r = m_ratio;
     m_cx = transfer::make_axis(fdom.smallEnd(0), pdom, pgeom.isPeriodic(0), 0, r, false, m_offset[0]);
     m_cy = transfer::make_axis(fdom.smallEnd(1), pdom, pgeom.isPeriodic(1), 1, r, false, m_offset[1]);
     m_nx = transfer::make_axis(fdom.smallEnd(0), pdom, pgeom.isPeriodic(0), 0, r, true, m_offset[0]);
@@ -265,8 +276,9 @@ std::string NestParent::summary () const
     std::ostringstream os;
     os << "gust: nest: parent " << m_dir << " (step " << m_step << ", " << m_parent_cells[0] << " x " << m_parent_cells[1]
        << " x " << m_parent_cells[2] << " cells); the patch's " << m_patch_cells[0] << " x " << m_patch_cells[1]
-       << " cells cover parent cells " << m_offset[0] << " to " << m_offset[0] + m_patch_cells[0] / kNestRatio - 1 << " in x and "
-       << m_offset[1] << " to " << m_offset[1] + m_patch_cells[1] / kNestRatio - 1 << " in y, refinement 2 2 1\n";
+       << " cells cover parent cells " << m_offset[0] << " to " << m_offset[0] + m_patch_cells[0] / m_ratio - 1 << " in x and "
+       << m_offset[1] << " to " << m_offset[1] + m_patch_cells[1] / m_ratio - 1 << " in y, refinement " << m_ratio << " "
+       << m_ratio << " 1\n";
     return os.str();
 }
 

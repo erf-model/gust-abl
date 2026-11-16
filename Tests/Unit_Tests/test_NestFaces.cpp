@@ -897,6 +897,26 @@ TEST (NestFaces, InputFaultsAreRefusedNamingTheKey)
     yhi_only.face[4] = gust::FaceType::nest;
     yhi_only.nest_parent.clear();
     EXPECT_TRUE(has(run(yhi_only, in, true, false), "bc.yhi = nest needs bc.nest_parent"));
+    // bc.nest_ratio (beyond the plan): 2, 4, 8 or 16; with a parent only.
+    for (const int r : {4, 8, 16}) {
+        gust::BoundaryInputs br = good;
+        br.nest_ratio = r;
+        br.given.emplace_back("nest_ratio");
+        EXPECT_TRUE(run(br, in, true, false).empty()) << r;
+    }
+    for (const int r : {0, 1, 3, 6, 12, 32}) {
+        gust::BoundaryInputs br = good;
+        br.nest_ratio = r;
+        EXPECT_TRUE(has(run(br, in, true, false), "bc.nest_ratio = " + std::to_string(r) + ": must be 2, 4, 8 or 16")) << r;
+    }
+    {
+        gust::BoundaryInputs br = none;
+        br.nest_parent.clear();
+        br.given.emplace_back("nest_ratio");
+        EXPECT_TRUE(has(run(br, in, false, false), "bc.nest_ratio has no effect without bc.nest_parent"));
+        br.given.clear();
+        EXPECT_TRUE(run(br, in, false, false).empty());
+    }
 
     // terrain.nest_blend_width: the patch is 1200 m x 1000 m.
     auto blend = [&] (double W, const gust::BoundaryInputs& b, bool given = true) {
