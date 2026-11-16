@@ -21,6 +21,7 @@ unless given.
 """
 import os
 import re
+import sys
 
 _KEY = re.compile(r"^# ([A-Za-z_][A-Za-z0-9_]*\.[A-Za-z0-9_]+) =(.*)$")
 _BANNER = re.compile(r"^# =+$")
@@ -73,6 +74,10 @@ class Reference:
 
 
 def default_reference_path():
+    """Tests/inputs_reference of the repository, or the copy a frozen build carries (tools/gust_gui.spec)."""
+    bundle = getattr(sys, "_MEIPASS", None) if getattr(sys, "frozen", False) else None
+    if bundle is not None:
+        return os.path.join(bundle, "Tests", "inputs_reference")
     here = os.path.dirname(os.path.abspath(__file__))
     return os.path.normpath(os.path.join(here, "..", "..", "Tests", "inputs_reference"))
 

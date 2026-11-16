@@ -207,6 +207,19 @@ class Frame:
         return self.to_case(east, north)
 
 
+def geographic_reach(frame, margin):
+    """Half-widths (degrees of latitude, of longitude) of the box around ``frame.lat_lon`` that holds the domain
+    plus ``margin``: the farthest face from the centre, times sqrt(2) for the corners, with 10 % for the
+    projection's convergence and scale. The builder reads a geographic raster in this box; the terrain download
+    (dem.py) fetches it."""
+    lat0 = frame.lat_lon[0]
+    x_lo, x_hi = frame.x_lo - margin, frame.x_hi + margin
+    y_lo, y_hi = frame.y_lo - margin, frame.y_hi + margin
+    cx0, cy0 = frame.center[0] - frame.origin[0], frame.center[1] - frame.origin[1]
+    reach = 1.1 * max(cx0 - x_lo, x_hi - cx0, cy0 - y_lo, y_hi - cy0) * np.sqrt(2.0)
+    return reach / METERS_PER_DEGREE, reach / (METERS_PER_DEGREE * max(np.cos(np.radians(lat0)), 0.01))
+
+
 def raster_points(raster, frame, geographic, margin, key, stride_spacing=None):
     """The raster's points inside the domain plus ``margin``, in the case frame.
 
@@ -220,11 +233,7 @@ def raster_points(raster, frame, geographic, margin, key, stride_spacing=None):
         if frame.lat_lon is None:
             raise CaseError(geographic_message(key, raster.source))
         lat0, lon0 = frame.lat_lon
-        # the farthest face from the centre, with 10 % for the projection's convergence and scale
-        cx0, cy0 = frame.center[0] - frame.origin[0], frame.center[1] - frame.origin[1]
-        reach = 1.1 * max(cx0 - x_lo, x_hi - cx0, cy0 - y_lo, y_hi - cy0) * np.sqrt(2.0)
-        dlat = reach / METERS_PER_DEGREE
-        dlon = reach / (METERS_PER_DEGREE * max(np.cos(np.radians(lat0)), 0.01))
+        dlat, dlon = geographic_reach(frame, margin)
         ii = np.nonzero((raster.x >= lon0 - dlon) & (raster.x <= lon0 + dlon))[0]
         jj = np.nonzero((raster.y >= lat0 - dlat) & (raster.y <= lat0 + dlat))[0]
         native = min(dx * METERS_PER_DEGREE * np.cos(np.radians(lat0)), dy * METERS_PER_DEGREE)

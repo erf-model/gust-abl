@@ -41,6 +41,25 @@ mpirun -n 2 build-rel/gust Tests/Infrastructure/Smoke_Restart/inputs_smoke
 The [tutorials](https://erf-model.github.io/gust-abl/) walk through a single column, a flat boundary layer, a hill
 and Askervein Hill.
 
+## Case set-up tools
+
+Python scripts in [`tools/`](tools/) set up and check a case without editing decks by hand
+(`pip install numpy pyyaml`; the window also needs `PySide6 pyqtgraph`):
+
+| Script | What it does |
+|---|---|
+| `make_gust_case.py case.yaml` | writes a case folder (decks, terrain, `run.sh`) from one short YAML description |
+| `check_gust_inputs.py inputs` | checks a deck: unknown keys, ranges, settings that do not go together |
+| `fetch_terrain.py case.yaml` | downloads SRTM-based elevation tiles (AWS Terrain Tiles) for the case's domain |
+| `gust_gui.py [case.yaml]` | a window over the three: a form that starts with the basic settings (every key on request), a map of the domain and nests, the checker's findings, and a Run button that plots the residuals |
+
+```bash
+python3 tools/gust_gui.py Tests/Infrastructure/Case_Setup/flat_nest.yaml
+```
+
+The [case set-up page](https://erf-model.github.io/gust-abl/case_setup.html) describes the YAML keys, the window
+and the terrain data and its acknowledgements.
+
 ## Platforms
 
 | Platform | Status in CI |
