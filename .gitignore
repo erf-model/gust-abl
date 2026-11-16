@@ -77,3 +77,11 @@ docs/_build/
 !docs/Makefile
 __pycache__/
 column_guess.dat
+
+# Run output in the top-level folder. Unit tests write scratch files and
+# folders named ut_* in the working directory; runs write plt*/chk* folders.
+# Gold plotfiles live under Tests/ and are not affected (patterns are anchored).
+/ut_*
+/plt*/
+/chk*/
+/docs/notes/
