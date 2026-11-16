@@ -155,6 +155,7 @@ set(ABL_SETUP_CASE      ${CMAKE_CURRENT_SOURCE_DIR}/Infrastructure/Abl_Setup)
 set(CANOPY_CASE         ${CMAKE_CURRENT_SOURCE_DIR}/Infrastructure/Canopy_Field)
 set(REFAVG_CASE         ${CMAKE_CURRENT_SOURCE_DIR}/Infrastructure/Reference_Archive)
 set(KESTREL_CASE        ${CMAKE_CURRENT_SOURCE_DIR}/Infrastructure/Kestrel_Dryrun)
+set(CASE_SETUP_CASE     ${CMAKE_CURRENT_SOURCE_DIR}/Infrastructure/Case_Setup)
 set(MESH_CASE           ${CMAKE_CURRENT_SOURCE_DIR}/Discretization/Terrain_Mesh)
 set(HIERARCHY_CASE      ${CMAKE_CURRENT_SOURCE_DIR}/Discretization/Grid_Hierarchy)
 set(BC_CASE             ${CMAKE_CURRENT_SOURCE_DIR}/Discretization/Boundary_Fluxes)
@@ -2571,3 +2572,44 @@ add_test(NAME input_reference_selftest
          COMMAND ${Python3_EXECUTABLE} -m unittest -v test_input_reference
          WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/tools)
 set_tests_properties(input_reference_selftest PROPERTIES LABELS unit ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
+
+# --- The case set-up tool and the deck checker ----------------------------------
+# The deck checker (tools/check_gust_inputs.py) needs only the standard library.
+add_test(NAME gust_input_checker_selftest
+         COMMAND ${Python3_EXECUTABLE} -m unittest -v test_gust_input_checker
+         WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/tools)
+set_tests_properties(gust_input_checker_selftest PROPERTIES LABELS unit ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
+# The case set-up tool (tools/make_gust_case.py) reads YAML and terrain grids
+# with PyYAML and numpy; without them its tests are not registered (the
+# configure says so).
+execute_process(COMMAND ${Python3_EXECUTABLE} -c "import yaml, numpy"
+                RESULT_VARIABLE _gust_case_python OUTPUT_QUIET ERROR_QUIET)
+if(_gust_case_python EQUAL 0)
+    add_test(NAME gust_case_selftest
+             COMMAND ${Python3_EXECUTABLE} -m unittest -v test_gust_case
+             WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/tools)
+    set_tests_properties(gust_case_selftest PROPERTIES LABELS unit ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
+    # Cases written from YAML files and run through their run.sh (a bash
+    # script: not on Windows); Tests/Infrastructure/Case_Setup/README.md.
+    if(NOT WIN32)
+        set(_case_launch "")
+        if(GUST_MPI)
+            # one string for run.sh's MPI=: the preflags are CMake lists (GPU CI: --gpus-per-task=1;--gpu-bind=none)
+            string(JOIN " " _case_launch ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2 ${MPIEXEC_PREFLAGS}
+                   ${GUST_MPIEXEC_PREFLAGS})
+        endif()
+        foreach(case IN ITEMS flat_sweep flat_nest column_target hill)
+            set(_case_dir ${CMAKE_CURRENT_BINARY_DIR}/run/rt_case_setup_${case})
+            file(MAKE_DIRECTORY ${_case_dir})
+            add_test(NAME rt_case_setup_${case}
+                     COMMAND ${Python3_EXECUTABLE} ${CASE_SETUP_CASE}/check_case_setup.py ${case}
+                             --gust $<TARGET_FILE:gust> --mpi "${_case_launch}" -- ${GUST_TEST_AMREX_FLAGS}
+                     WORKING_DIRECTORY ${_case_dir})
+            set_tests_properties(rt_case_setup_${case} PROPERTIES LABELS "regression;smoke" PROCESSORS 2
+                                 ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
+        endforeach()
+    endif()
+else()
+    message(STATUS "GUST: PyYAML or numpy not found for ${Python3_EXECUTABLE}; "
+                   "gust_case_selftest and rt_case_setup_* are not registered")
+endif()
