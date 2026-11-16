@@ -20,6 +20,8 @@ reader (little-endian, one band, strips with no compression or LZW, integer or f
 pixel-is-point); with it, any GeoTIFF that rasterio reads. Latitude and longitude go to UTM through a built-in
 conversion (Karney's series, below 1 mm within a zone); pyproj is not needed. The deck checker needs only the
 standard library.
+The terrain download (``tools/fetch_terrain.py``) needs numpy and an internet connection. The case set-up window
+(``tools/gust_gui.py``) also needs PySide6 and pyqtgraph (``pip install PySide6 pyqtgraph numpy pyyaml``).
 
 A first case
 ------------
@@ -239,6 +241,113 @@ The ranges and defaults come from ``Tests/inputs_reference``, which is generated
 follows the readers. ``--made-by-run PATH`` names a file or checkpoint an earlier step of the run writes (the case
 tool passes the column table and the parent checkpoint this way). The checker reads the deck only; a deck it passes
 can still stop in GUST on something only the run knows, such as the terrain file's coverage at every node.
+
+Downloading terrain
+-------------------
+
+``tools/fetch_terrain.py`` downloads the elevation for a case's domain and its margin and writes it as an ESRI ASCII
+grid in longitude and latitude, which the builder reads without rasterio:
+
+.. code-block:: bash
+
+   python3 tools/fetch_terrain.py case.yaml                        # dem.asc beside case.yaml
+   python3 tools/fetch_terrain.py case.yaml --out terrain/dem.asc --sea-floor keep
+   python3 tools/fetch_terrain.py --box 57.15 57.23 -7.45 -7.30 --out askervein.asc
+
+The case file needs ``domain.center_lat_lon`` (the download box comes from it); then give the grid as
+``terrain.file``. The tiles are the SRTM-format ("skadi") set of the AWS Terrain Tiles: one 1° × 1° tile per file,
+1 arc-second (about 30 m) where SRTM covers the ground, heights in metres above the EGM96 geoid. No key or account
+is needed.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 75
+
+   * - Option
+     - Effect
+   * - ``--out PATH``
+     - The grid to write (``.asc``); default ``dem.asc`` beside the case file, or in the current folder with
+       ``--box``.
+   * - ``--sea-floor zero|keep``
+     - Over the sea the tiles hold the sea floor (below 0 m). ``zero`` (default) sets points below 0 m to 0 m;
+       ``keep`` leaves them, for land below sea level.
+   * - ``--cache DIR``
+     - Where the raw tiles are kept (default ``GUST_DEM_CACHE`` or ``~/.cache/gust/terrain_tiles``); a cached tile
+       is not fetched again.
+   * - ``--box S N W E``
+     - A box in degrees instead of a case file.
+
+A download of more than 16 tiles (4° × 4°) or one that crosses the antimeridian is refused, and so is a tile the
+server does not have (its address is named). Voids are written as the grid's no-data value, not filled; the
+download reports their number and the builder refuses a domain that holds one. Beside the grid,
+``<name>.sources.txt`` records the tiles, the date and the attribution below.
+
+The case set-up window
+----------------------
+
+``tools/gust_gui.py`` is a window over the builder and the checker:
+
+.. code-block:: bash
+
+   python3 tools/gust_gui.py                          # the starter case
+   python3 tools/gust_gui.py case.yaml                # a case file
+
+- **Basic mode.** The window opens with only the settings a case needs: the case name and folder, the centre in
+  latitude and longitude, the half-width and top, the elevation file, the cell size and layers, the wind speed,
+  height and direction, the roughness and the MPI ranks. Every other key keeps its default. **Show all settings**
+  (toolbar and View menu) shows every key. A key that a file gives, or that a check refuses, shows in the basic mode
+  too, so no value is hidden.
+- **Form.** One tab per section of the case description and one field per key, with plain labels in groups (the
+  domain's position on the Earth, its position in the terrain file's own coordinates, its size; the horizontal and
+  vertical mesh). The field's tooltip names its YAML key and gives its unit, range and help. An empty field is a key
+  not given; it shows in grey what to type (``number > 0``, ``easting, northing``, ``one of: auto, xyz``) and the
+  default, if any. Latitude and longitude have one box each. Lists are typed with commas (``0, 500, 1000``);
+  ``[0, 500, 1000]`` is read too. File and folder keys have a **Browse** button; a choice inside the case file's
+  folder is written relative to it. Nested patches are added and removed on the ``nests`` tab. Keys the form does
+  not know are kept when the file is saved.
+- **Open and Save** read and write the same YAML as ``make_gust_case.py``; a file read and saved again holds the same
+  values.
+- **Check** resolves the case without writing it. A refused key marks its field in red (the refusal is in its
+  tooltip) and the refusals fill the Findings table. The Map tab draws the terrain, the domain, the flat border and
+  the end of the border blend, the nests with their blend, and the wind direction (the first one, when there are
+  several), with the vertical layers beside it.
+- **Write case** saves the file, writes the case folder and fills the Findings table with the deck checker's
+  findings for every deck written.
+- **Download terrain** runs the download above and sets ``terrain.file``.
+- **Run** writes the case and runs gust step by step in ``run.sh``'s order (the column, the run, each patch from
+  the run's newest checkpoint). The log streams into the Run tab and into each step's ``log.txt``, and the residual
+  columns of the iteration table are plotted as they come (from the aligned table of ``io.iteration_log = table``,
+  the default; with ``full`` nothing is plotted). gust is ``run.executable``, a relative path taken from the case
+  folder; ``run.ranks`` above 1 uses ``run.mpi_launcher``. **Stop** asks the step to end and ends it after 5 s if
+  it has not; the steps after it do not run.
+
+On Windows, the window can be frozen into a folder with PyInstaller (``tools/gust_gui.spec``: one folder, no console
+window, rasterio left out):
+
+.. code-block:: bash
+
+   cd tools
+   pyinstaller --noconfirm gust_gui.spec              # dist/gust_gui/gust_gui.exe
+
+Put the CPU ``gust.exe`` in ``dist/gust_gui/`` beside ``gust_gui.exe``. When the case does not give
+``run.executable``, the frozen window runs that gust; when it does, it runs the one named and falls back to the one
+beside it. The frozen window reads GeoTIFF terrain with its built-in reader only.
+
+Data and acknowledgements
+-------------------------
+
+The terrain download uses the `Terrain Tiles <https://registry.opendata.aws/terrain-tiles/>`_ on the Registry of
+Open Data on AWS, made by Mapzen and maintained by the Tilezen project (`tilezen/joerd
+<https://github.com/tilezen/joerd>`_). We thank Mapzen, Tilezen and Amazon Web Services for making them free to use
+with the attribution below. The tiles merge several sources; their attribution, which a product made from them must
+carry, is listed in `joerd's attribution file <https://github.com/tilezen/joerd/blob/master/docs/attribution.md>`_.
+It includes SRTM (NASA and USGS), GMTED2010 (USGS), the 3D Elevation Program (USGS), ETOPO1 (NOAA), and national
+models of several countries. No tile is redistributed in this repository; the download fetches them to the user's
+cache.
+
+The download follows FastWindTerrain's ``cases/casegen.py`` (the same tiles, a cache of raw tiles and no partial
+file left behind) and the tile layout used by massconsistent_amr's ``terrain_reader_srtm.py`` and by amrTerrain.
+No code is copied from them.
 
 Case keys
 ---------

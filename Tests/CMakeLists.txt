@@ -2589,6 +2589,24 @@ if(_gust_case_python EQUAL 0)
              COMMAND ${Python3_EXECUTABLE} -m unittest -v test_gust_case
              WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/tools)
     set_tests_properties(gust_case_selftest PROPERTIES LABELS unit ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
+    # The terrain download (tools/fetch_terrain.py) on tiles made in the test: no network.
+    add_test(NAME gust_dem_selftest
+             COMMAND ${Python3_EXECUTABLE} -m unittest -v test_gust_dem
+             WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/tools)
+    set_tests_properties(gust_dem_selftest PROPERTIES LABELS unit ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
+    # The case set-up window (tools/gust_gui.py): its tests of the window itself skip without PySide6 and
+    # pyqtgraph (the rest runs); offscreen, so no display is needed.
+    add_test(NAME gust_window_selftest
+             COMMAND ${Python3_EXECUTABLE} -m unittest -v test_gust_window
+             WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/tools)
+    set_tests_properties(gust_window_selftest PROPERTIES LABELS unit
+                         ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1;QT_QPA_PLATFORM=offscreen")
+    execute_process(COMMAND ${Python3_EXECUTABLE} -c "import PySide6, pyqtgraph"
+                    RESULT_VARIABLE _gust_window_python OUTPUT_QUIET ERROR_QUIET)
+    if(NOT _gust_window_python EQUAL 0)
+        message(STATUS "GUST: PySide6 or pyqtgraph not found for ${Python3_EXECUTABLE}; gust_window_selftest "
+                       "runs without its window tests (pip install PySide6 pyqtgraph)")
+    endif()
     # Cases written from YAML files and run through their run.sh (a bash
     # script: not on Windows); Tests/Infrastructure/Case_Setup/README.md.
     if(NOT WIN32)

@@ -53,6 +53,10 @@ class Result:
         self.files = []        # other files written, relative to the case folder
         self.notes = []
         self.findings = []     # (deck path, formatted checker report)
+        self.reports = []      # (deck path, gust_input_checker Report) of every deck checked
+        self.runs = []         # the run script's steps: dir, label, column, wind_from_column, patches, chk
+        self.plan = None       # the resolved Plan (frame, cells, layers, patches)
+        self.terrain = None    # the prepared Terrain (points in the case frame), or None without terrain.file
         self.errors = 0
         self.warnings = 0
         self.summary = ""
@@ -531,6 +535,7 @@ def _check(path, overrides, result, rel):
     made = [COLUMN_TABLE] + [o.split("=", 1)[1] for o in overrides if o.startswith("bc.nest_parent=")]
     report = check_deck(path, overrides=tuple(overrides),
                         options=Options(cwd=os.path.dirname(os.path.abspath(path)), made_by_run=tuple(made)))
+    result.reports.append((rel, report))
     result.errors += report.count(Severity.ERROR)
     result.warnings += report.count(Severity.WARNING)
     if report.count(Severity.WARNING) or report.count(Severity.ERROR):
@@ -583,6 +588,8 @@ def build(case, given, base_dir, dry_run=False, overwrite=False, check=True):
                      "wind_from_column": plan.geostrophic and plan.geostrophic_wind is None,
                      "patches": [patch.name for patch in plan.patches], "chk": chk})
     result.notes = builder.notes
+    result.runs = runs
+    result.plan, result.terrain = plan, builder.terrain
     script = _run_script(case, plan, runs)
 
     if not dry_run:

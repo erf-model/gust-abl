@@ -263,8 +263,11 @@ SPEC = {
         "checkpoint": Key("flag", False, "Write checkpoints. Always on with nests: a patch reads its parent's."),
     },
     "run": {
-        "ranks": Key("integer", 1, "MPI ranks of the run script.", lo=1),
-        "executable": Key("string", "gust", "The GUST executable of the run script."),
+        "ranks": Key("integer", 1, "MPI ranks of the run script (run.sh uses run.mpi_launcher even for 1; the "
+                     "window runs gust alone).", lo=1),
+        "executable": Key("string", "gust", "The GUST executable: a name on PATH or a path. run.sh runs it from "
+                          "each step's folder (column/, nest_*/ are one deeper), so give an absolute path there; the "
+                          "case set-up window takes a relative path from the case file's folder."),
         "mpi_launcher": Key("string", "mpiexec -n {ranks}", "The MPI command; {ranks} is replaced."),
     },
     "nests": NestList({
