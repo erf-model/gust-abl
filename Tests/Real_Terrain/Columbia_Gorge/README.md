@@ -120,9 +120,9 @@ slightly further from the reference than one way. The footprint w is 0.045 at f 
 0.068). At f = 4 every region moves away from the reference (`docs/boundary_conditions.rst`, Two-way nests by
 relaxation).
 
-These numbers use the terrain of the PR-70 runs. On the terrain the current `prepare` writes (relief 906 m rather
-than 903 m), the one-way outer run does not reach steady with `turb.nut_relax = 0.5`; this is being followed up
-separately.
+These numbers use the terrain of the PR-70 runs (relief 903 m) without `turb.nut_relax_end`; they are not yet
+regenerated on the terrain and decks the current `prepare` writes (relief 906 m, `turb.nut_relax_end = 0.01`), on
+which the tables above are measured.
 
 ## CTest
 None: the three runs take about 15 minutes on 4 ranks of a laptop. The CTest of two-way nesting is `rt_nests_two_way`
