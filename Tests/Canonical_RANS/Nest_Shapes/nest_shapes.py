@@ -7,15 +7,18 @@
     nest_shapes.py compare SHAPE PATCH REFERENCE [PARENT] [--rms-roi X] [--ratio R] [--max-patch X]
     nest_shapes.py study   [--shapes a,b,...] [--ranks a,b,...] -- MPIEXEC ... GUST [-- ARGS ...]
 
-SHAPE is ridge, hill, escarpment (terrain, inputs_terrain_*), cube or plate
-(buildings, inputs_building_*); SHAPES below holds each one's domain, cells,
-parent cell size, distances and regions.
+SHAPE is ridge, hill, escarpment (terrain, inputs_terrain_*), cube, plate or
+solar (buildings, inputs_building_*); SHAPES below holds each one's domain,
+cells, parent cell size, distances and regions.
 
 files: write the shape's input files (escarpment terrain, building map,
-plate z-levels) into the working directory. run and nest write them too.
+plate and solar z-levels) into the working directory. run and nest write
+them too.
 
 run: the whole domain on DX m cells to the steady verdict; the last plotfile
-and checkpoint are copied to NAME_plt_final and NAME_chk_final.
+and checkpoint are copied to NAME_plt_final and NAME_chk_final. The solver's
+output goes to NAME.log as it runs; there is no time limit (steady.max_iterations
+ends a run that does not converge).
 
 nest: a patch at R R 1 (default 2 2 1) of the finished run PARENT, its nest faces D m from
 the shape's centre (a square of half-width D, or across the whole periodic
@@ -36,9 +39,9 @@ reference averaged over each parent cell. --rms-roi: a limit on the patch's
 ROI velocity RMS (a fraction of U_ref); --ratio R (needs PARENT): the patch's
 ROI RMS must be at most R times the parent's; --max-patch X: a limit on the
 largest velocity difference over the whole patch (a fraction of U_ref). The
-cells of PATCH are those of REFERENCE (a patch is compared with a patch on
-the same cells too: REFERENCE need only cover PATCH); PARENT's are a whole
-number of REFERENCE's. The exit code is the verdict.
+cells of PATCH and of PARENT are each a whole number of REFERENCE's (one for
+a patch on the reference's cells; REFERENCE need only cover PATCH, so a patch
+can be compared with a patch), and REFERENCE is averaged over each. The exit code is the verdict.
 
 Regions (cell centres; layers by the reference's corner column, over flat
 ground):
@@ -50,7 +53,12 @@ ground):
 study: for each shape the reference and parent runs and a patch at each
 distance; with --ranks, the middle distance again in four boxes on 1, 2 and 4
 ranks (the number after -n or -np of the launch command is replaced). The
-targets of the README are judged; the table is printed and written to
+solar farm is a chain: the 1 m parent, a 0.5 m middle patch at D = 64 m, and
+0.25 m patches of the middle one at each distance, judged against the middle
+patch; then, for the record, 0.25 m patches of the 1 m parent at ratio 4 at
+each distance. Without --shapes the study runs every shape but the solar farm,
+whose 0.25 m reference takes hours; name it with --shapes solar. The targets
+of the README are judged; the table is printed and written to
 nest_shapes.csv. The exit code is the verdict.
 """
 import glob
@@ -85,6 +93,29 @@ def plate_zlevels():
     return [round(v, 9) for v in z]   # the file holds these values, and prob_hi z is the last of them
 
 
+# Solar farm z-levels: 0.02 m layers to 3.2 m (twice the panel top), then each layer 1.1 times the last up to at
+# least 60 m. The panel (z 1.5 to 1.6 m) is five layers thick.
+def solar_zlevels():
+    z = [0.02 * k for k in range(161)]
+    dz = 0.02
+    while z[-1] < 60.0:
+        dz *= 1.1
+        z.append(z[-1] + dz)
+    return [round(v, 9) for v in z]
+
+
+# Solar farm: SOLAR_ROWS flat panels SOLAR_CHORD m long in x, at a pitch of SOLAR_PITCH m, the first centred at
+# SOLAR_X0 m; each panel spans z in [SOLAR_BOTTOM, SOLAR_TOP] m, across the periodic width (rows without ends).
+SOLAR_ROWS, SOLAR_CHORD, SOLAR_PITCH, SOLAR_X0 = 6, 4.0, 10.0, 55.0
+SOLAR_BOTTOM, SOLAR_TOP = 1.5, 1.6
+SOLAR_END = SOLAR_X0 + (SOLAR_ROWS - 1) * SOLAR_PITCH + 0.5 * SOLAR_CHORD   # the last row's trailing edge (107 m)
+
+
+def solar_panel(x):
+    """Whether the 2 m tile centred at x lies in a panel."""
+    return any(abs(x - (SOLAR_X0 + r * SOLAR_PITCH)) < 0.5 * SOLAR_CHORD for r in range(SOLAR_ROWS))
+
+
 ESC_H, ESC_L = 100.0, 100.0   # escarpment rise and tanh length (m)
 
 
@@ -113,6 +144,16 @@ def write_files(shape):
                     f.write(f"{x:g} {y:g} {h:g} {zs:g}\n")
         with open("plate_zlevels.txt", "w") as f:
             f.writelines(f"{z!r}\n" for z in plate_zlevels())
+    elif shape == "solar":
+        # xyz with zstart: points every 2 m own the tiles [x - 1, x + 1]; a panel is two tiles.
+        with open("solar_nest.txt", "w") as f:
+            for i in range(31):
+                x = 50.0 + 2.0 * i
+                h, zs = (SOLAR_TOP, SOLAR_BOTTOM) if solar_panel(x) else (0.0, 0.0)
+                for y in (0.5, 1.5):
+                    f.write(f"{x:g} {y:g} {h:g} {zs:g}\n")
+        with open("solar_zlevels.txt", "w") as f:
+            f.writelines(f"{z!r}\n" for z in solar_zlevels())
 
 
 def agnesi(shape_kind):
@@ -120,9 +161,12 @@ def agnesi(shape_kind):
             f"terrain.hill_shape={shape_kind}"]
 
 
-# Each shape: domain lx x ly (periodic in y), the vertical cells, the parent cell size (the reference and the patches
-# are on half of it), the centre and the distances D of the nest faces, the inputs given to every run, U_ref, the
-# regions and whether the accuracy targets apply.
+# Each shape: domain lx x ly (periodic in y), the vertical cells (n_cell_z, or a z-levels writer `zlevels`), the
+# parent cell size pdx, the centre and the distances D of the nest faces, the inputs given to every run, U_ref, the
+# regions and whether the accuracy targets apply. The reference and the patches are on pdx / 2**levels: levels = 1
+# (default) is one nest at 2 2 1; levels = 2 is a chain through a middle patch of half-width mid. direct = 2**levels
+# adds patches straight from the parent at that ratio (no target). manual = True leaves the shape out of a study
+# without --shapes.
 SHAPES = {
     "ridge": dict(kind="terrain", lx=3200.0, ly=200.0, z=["mesh.n_cell_z=16"], top=800.0, pdx=50.0,
                   xc=1600.0, yc=100.0, two_d=True, ds=(300.0, 600.0, 900.0),
@@ -152,7 +196,7 @@ SHAPES = {
                  uref=u_ref(20.0, 0.1), ztop=40.0,
                  roi=lambda x, y: 100.0 <= x <= 160.0 and 90.0 <= y <= 150.0,
                  lee=lambda x, y: 145.0 < x <= 165.0 and 105.0 <= y <= 135.0, targets=True),
-    "plate": dict(kind="building", lx=64.0, ly=4.0, z=["zlevels"], top=None, pdx=1.0,
+    "plate": dict(kind="building", lx=64.0, ly=4.0, z=["zlevels"], zlevels=plate_zlevels, top=None, pdx=1.0,
                   xc=22.0, yc=2.0, two_d=True, ds=(4.0, 8.0, 12.0),
                   args=["buildings.file=plate_nest.txt", "buildings.format=xyz", "bc.surface_z0=0.01",
                         "buildings.z0=0.01", "turb.max_geom_lscale=40.", "convection.hybrid_height=2.75",
@@ -162,6 +206,23 @@ SHAPES = {
                   uref=u_ref(1.1, 0.01), ztop=3.0,
                   roi=lambda x, y: 19.0 <= x <= 25.0,
                   lee=lambda x, y: 24.0 < x <= 28.0, targets=False),
+    # Six rows of flat panels on 0.02 m layers; D from the array's centre (80 m), the array 27 m either side.
+    # A chain of two nests: 1 m parent, 0.5 m middle patch (D = mid), 0.25 m patches (D = ds) of the middle one;
+    # direct=4: 0.25 m patches of the 1 m parent at ratio 4 too (for the record, no target). ly = 2 m gives the
+    # 1 m parent two cells across the periodic width, as many as the state's ghost cells. The pressure solve to
+    # 1e-6: at the default 1e-3 its error shows as jumps in the k residual through the ground's k rows, whose
+    # weight u*/d0 is about 35 1/s on the 0.02 m first layer (fields within 4e-8 of U_ref of the 1e-6 run; README).
+    "solar": dict(kind="building", lx=160.0, ly=2.0, z=["zlevels"], zlevels=solar_zlevels, top=None, pdx=1.0,
+                  xc=80.0, yc=1.0, two_d=True, ds=(32.0, 40.0, 48.0), levels=2, mid=64.0, direct=4,
+                  manual=True,
+                  args=["buildings.file=solar_nest.txt", "buildings.format=xyz", "bc.surface_z0=0.01",
+                        "buildings.z0=0.01", "turb.max_geom_lscale=40.", "convection.hybrid_height=4.",
+                        "mesh.zlevels_file=solar_zlevels.txt", "steady.cfl_max=4", "steady.max_iterations=20000",
+                        "steady.confidence=0.95", "simplec.pressure_reltol=1e-6"],
+                  domain_args=["bc.inflow_z0=0.01"],
+                  uref=u_ref(SOLAR_TOP, 0.01), ztop=3.2,
+                  roi=lambda x, y: SOLAR_X0 - 0.5 * SOLAR_CHORD <= x <= SOLAR_END,
+                  lee=lambda x, y: SOLAR_END < x <= SOLAR_END + 4.0, targets=True),
 }
 
 
@@ -169,12 +230,16 @@ def fail(msg):
     raise SystemExit("nest_shapes: " + msg)
 
 
-def run_solver(cmd):
-    proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=14400)
+def run_solver(cmd, log_name):
+    """Run cmd with its output written to log_name as it runs (a long run can be followed); return the output."""
+    with open(log_name, "w") as f:
+        proc = subprocess.run(cmd, stdout=f, stderr=subprocess.STDOUT)
+    with open(log_name) as f:
+        log = f.read()
     if proc.returncode != 0:
-        print(proc.stdout[-6000:])
-        fail(f"the run exited {proc.returncode}")
-    return proc.stdout
+        print(log[-6000:])
+        fail(f"the run exited {proc.returncode}; its output is in {log_name}")
+    return log
 
 
 def finish(name, cmd):
@@ -182,9 +247,7 @@ def finish(name, cmd):
     for d in (glob.glob(name + "_plt[0-9]*") + glob.glob(name + "_chk[0-9]*")
               + [name + "_plt_final", name + "_chk_final"]):
         shutil.rmtree(d, ignore_errors=True)   # nothing of an earlier run of this name is left to be read
-    log = run_solver(cmd + [f"io.plot_file={name}_plt", f"io.chk_file={name}_chk"])
-    with open(name + ".log", "w") as f:
-        f.write(log)
+    log = run_solver(cmd + [f"io.plot_file={name}_plt", f"io.chk_file={name}_chk"], name + ".log")
     m = re.search(r"^gust: steady after (\d+) iterations", log, re.M)
     if not m:
         print(log[-3000:])
@@ -215,7 +278,7 @@ def boxes(cmd, default):
 def vertical(s):
     """n_cell z and prob_hi z of the shape."""
     if s["z"] == ["zlevels"]:
-        z = plate_zlevels()
+        z = s["zlevels"]()
         return len(z) - 1, z[-1]
     return int(s["z"][0].split("=")[1]), s["top"]
 
@@ -406,7 +469,7 @@ def compare(args):
         return 2
     shape = names[0]
     patch, ref = Run(names[1]), Run(names[2])
-    mine = norms(shape, patch, ref, patch, 1)
+    mine = norms(shape, patch, ref, patch, cell_ratio(patch, ref))
     show(shape, f"{patch.name} vs {ref.name}", mine)
     bad = []
     roi = mine["roi"]
@@ -448,15 +511,26 @@ def study(shapes, ranks, solver):
 
     def row(shape, case, patch, ref, parent, its, its_ref):
         p, r, q = Run(patch), Run(ref), Run(parent)
-        mine, theirs = norms(shape, p, r, p, 1), norms(shape, q, r, p, 2)
+        mine, theirs = norms(shape, p, r, p, cell_ratio(p, r)), norms(shape, q, r, p, cell_ratio(q, r))
         show(shape, f"{patch} vs {ref}", mine)
         show(shape, f"{parent} vs {ref}", theirs)
+        if parent != f"{shape}_par":   # a chain: the whole-domain parent too, for the record
+            w = Run(f"{shape}_par")
+            show(shape, f"{shape}_par vs {ref}", norms(shape, w, r, p, cell_ratio(w, r)))
         rows.append((shape, case, patch, p.nx * p.ny * p.nz, its, its_ref, mine, theirs))
         return mine["roi"][0], theirs["roi"][0]
 
     for shape in shapes:
         s = SHAPES[shape]
-        fdx = 0.5 * s["pdx"]
+        levels = s.get("levels", 1)
+        if levels not in (1, 2):
+            fail(f"{shape}: levels = {levels}; the study runs one or two nests")
+        if s.get("direct") and s["direct"] != 2 ** levels:
+            fail(f"{shape}: direct = {s['direct']}; it must be 2**levels = {2 ** levels}, the reference's refinement")
+        if levels == 2 and not s["mid"] >= max(s["ds"]) + 2.0 * s["pdx"]:
+            fail(f"{shape}: mid = {s['mid']:g} m; it must be at least the largest D plus two parent cells")
+        fdx = s["pdx"] / 2 ** levels
+        parent = f"{shape}_par" if levels == 1 else f"{shape}_mid"
         try:
             it_ref = run_domain(shape, f"{shape}_ref", fdx, deck(shape, "domain"))
             it_par = run_domain(shape, f"{shape}_par", s["pdx"], deck(shape, "domain"))
@@ -465,17 +539,39 @@ def study(shapes, ranks, solver):
             judge("T4", False, f"{shape}: a whole-domain run did not reach the steady verdict")
             continue
         print(f"nest_shapes: {shape}: whole domain {fdx:g} m {it_ref} iterations, {s['pdx']:g} m {it_par}")
+        if levels == 2:
+            try:
+                it_mid = run_nest(shape, parent, f"{shape}_par", s["mid"], deck(shape, "nest"))
+            except SystemExit as err:
+                print(err)
+                judge("T4", False, f"{parent} did not reach the steady verdict")
+                continue
+            print(f"nest_shapes: {shape}: middle patch {0.5 * s['pdx']:g} m, D = {s['mid']:g} m, {it_mid} iterations")
+            row(shape, f"{shape}, middle patch, D = {s['mid']:g} m, from {shape}_par", parent, f"{shape}_ref",
+                f"{shape}_par", it_mid, it_ref)
         hs = []
         for d in s["ds"]:
             name = f"{shape}_d{d:g}"
             try:
-                its = run_nest(shape, name, f"{shape}_par", d, deck(shape, "nest"))
+                its = run_nest(shape, name, parent, d, deck(shape, "nest"))
             except SystemExit as err:
                 print(err)
                 judge("T4", False, f"{name} did not reach the steady verdict")
                 continue
-            h, ph = row(shape, f"{shape}, D = {d:g} m", name, f"{shape}_ref", f"{shape}_par", its, it_ref)
+            case = f"{shape}, D = {d:g} m" + ("" if levels == 1 else f", from {parent}")
+            h, ph = row(shape, case, name, f"{shape}_ref", parent, its, it_ref)
             hs.append((d, h, ph))
+        if s.get("direct"):   # the same patches straight from the whole-domain parent (no target)
+            for d in s["ds"]:
+                name = f"{shape}_r{s['direct']}_d{d:g}"
+                try:
+                    its = run_nest(shape, name, f"{shape}_par", d, deck(shape, "nest"), ratio=s["direct"])
+                except SystemExit as err:
+                    print(err)
+                    judge("T4", False, f"{name} did not reach the steady verdict")
+                    continue
+                row(shape, f"{shape}, D = {d:g} m, ratio {s['direct']} from {shape}_par", name, f"{shape}_ref",
+                    f"{shape}_par", its, it_ref)
         if s["targets"] and hs:
             d, h, ph = hs[-1]
             judge("T1", d == s["ds"][-1] and h <= 5e-3 and h <= 0.25 * ph,
@@ -497,13 +593,13 @@ def study(shapes, ranks, solver):
                 name = f"{shape}_np{np}"
                 mgs = f"mesh.max_grid_size={n_half} {ny_half}"
                 try:
-                    its = run_nest(shape, name, f"{shape}_par", d, cmd, [mgs])
+                    its = run_nest(shape, name, parent, d, cmd, [mgs])
                 except SystemExit as err:
                     print(err)
                     judge("T3", False, f"{name} did not reach the steady verdict")
                     continue
                 h, _ = row(shape, f"{shape}, D = {d:g} m, four boxes, {np} ranks", name, f"{shape}_ref",
-                           f"{shape}_par", its, it_ref)
+                           parent, its, it_ref)
                 vals.append(h)
             if len(vals) == 3:
                 # The same four boxes on every rank count: the fields differ by round-off only.
@@ -566,7 +662,7 @@ def main(argv):
                 fail(f"--nest-ratio {ratio}: 2, 4, 8 or 16")
         run_nest(args[1], args[2], args[3], half_widths(args[4]), cmd, ratio=ratio)
     elif args[0] == "study":
-        shapes, ranks = list(SHAPES), []
+        shapes, ranks = [k for k in SHAPES if not SHAPES[k].get("manual")], []
         it = iter(args[1:])
         for a in it:
             if a == "--shapes":
