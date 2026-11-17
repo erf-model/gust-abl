@@ -2412,7 +2412,7 @@ GoogleTest suite
      - Node heights shared by two boxes (or periodic images) are equal, for BTF, STF and Sullivan,
        periodic and not (under gcc each box's copy differed by up to 1e-13 m before ``Mesh`` synchronised them).
    * - ``Mesh.NodeHeightsDoNotDependOnTheLayout`` (tracker N-114)
-     - The same mesh in one box, 8 x 8 boxes and 12 x 4 boxes has the same node heights, bit for bit, at every node a
+     - The same mesh in one box and in boxes of at most 8 x 8 and 12 x 4 cells (``mesh.max_grid_size``) has the same node heights, bit for bit, at every node a
        box holds (every box's copy of a seam node, and the ghost nodes). BTF, STF and Sullivan, periodic and not.
        Under gcc-16 the BTF heights differed by up to 4.5e-13 m before the BTF formula was rearranged (each box's
        copy differed, and ``OverrideSync`` kept the owner's).
@@ -3304,7 +3304,7 @@ GoogleTest suite
        patch's ground.
    * - ``NestFaces.NestNodeHeightsDoNotDependOnTheLayout`` (tracker N-114)
      - A nest with a blended ground (``blend_nest_ground``) and a joint run's nest (``follow_parent_levels``), BTF and
-       Sullivan, in one box, 9 x 7 boxes and 6 x 10 boxes: the node heights are the same, bit for bit, at every node a
+       Sullivan, in one box and in boxes of at most 9 x 7 and 6 x 10 cells: the node heights are the same, bit for bit, at every node a
        box holds. Under gcc-16 the blended BTF nest failed it before the BTF formula was rearranged.
    * - ``NestFaces.JointNestLevelsFollowTheParentsAloft`` (beyond the plan)
      - A joint run's nest (``follow_parent_levels``), BTF and Sullivan: every node equals the parent's interpolated

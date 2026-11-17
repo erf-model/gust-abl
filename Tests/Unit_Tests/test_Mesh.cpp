@@ -195,7 +195,9 @@ std::pair<double, double> max_diff_grown (const amrex::MultiFab& a, const amrex:
         amrex::Gpu::streamSynchronize();
         amrex::LoopOnCpu(bx, [&] (int i, int j, int k) {
             const amrex::IntVect iv(i, j, k);
-            d = std::max(d, std::abs(static_cast<double>(ha(iv) - hb(iv))));
+            // A NaN on either side counts as a difference (std::max would drop it).
+            const double diff = std::abs(static_cast<double>(ha(iv) - hb(iv)));
+            d = std::max(d, diff == diff ? diff : std::numeric_limits<double>::infinity());
             m = std::max(m, std::abs(static_cast<double>(hb(iv))));
         });
     }

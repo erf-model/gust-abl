@@ -133,10 +133,12 @@ void Mesh::build_from_ground (const Inputs& in, const amrex::Geometry& geom, amr
     m_quality.stf_capped_levels = n_capped;
     if (levels_edit) { levels_edit(z_phys_nd, m_zlevels); }
     // A node shared by two boxes (or a periodic image) gets one value. Each
-    // box computes its own copy, and where a compiler contracts multiply-adds
-    // (gcc) the copies differ in the last bits (1e-13 m on a BTF hill); the
-    // operators read each box's copy, so the boxes that share a face would
-    // compute different values there. The ghost nodes are refilled to match.
+    // box computes its own copy; under gcc the BTF copies differed in the last
+    // bits (1e-13 m on a BTF hill) until the formula was rearranged (tracker
+    // N-114). The operators read each box's copy, so the boxes that share a
+    // face would compute different values there; the sync stays for the edits
+    // and mappings that might still leave two copies. The ghost nodes are
+    // refilled to match.
     z_phys_nd.OverrideSync(geom.periodicity());
     z_phys_nd.FillBoundary(geom.periodicity());
     fill_ghost_columns(z_phys_nd, geom);

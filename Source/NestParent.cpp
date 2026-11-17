@@ -293,11 +293,15 @@ namespace {
 AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
 void catmull_rom (amrex::Real t, amrex::Real* w) noexcept
 {
-    const amrex::Real t2 = t * t, t3 = t2 * t, h(0.5);
-    w[0] = h * (-t3 + amrex::Real(2) * t2 - t);
-    w[1] = h * (amrex::Real(3) * t3 - amrex::Real(5) * t2 + amrex::Real(2));
-    w[2] = h * (amrex::Real(-3) * t3 + amrex::Real(4) * t2 + t);
-    w[3] = h * (t3 - t2);
+    // Horner form: each sum takes at most one product, so a compiler that fuses
+    // multiply-adds (gcc) has one way to do it, and a vectorised loop and its
+    // scalar remainder agree (two products into one sum can be fused either
+    // way; tracker N-114).
+    const amrex::Real t2 = t * t, h(0.5);
+    w[0] = h * (((amrex::Real(2) - t) * t - amrex::Real(1)) * t);
+    w[1] = h * ((amrex::Real(3) * t - amrex::Real(5)) * t2 + amrex::Real(2));
+    w[2] = h * ((amrex::Real(4) - amrex::Real(3) * t) * t2 + t);
+    w[3] = h * ((t - amrex::Real(1)) * t2);
 }
 
 } // namespace

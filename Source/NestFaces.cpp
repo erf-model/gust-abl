@@ -398,7 +398,8 @@ void blend_nest_ground (const NestParent& parent, const BoundaryInputs& bin, amr
             amrex::Real t = 1;
             for (int n = 0; n < 4; ++n) { t = amrex::min(t, amrex::max(amrex::Real(0), dist[n]) * invW + other[n]); }
             const amrex::Real s = t * t * (amrex::Real(3) - amrex::Real(2) * t);
-            // (1 - s) h_parent + s h: the parent's exactly at s = 0, the patch's own at s = 1.
+            // (1 - s) h_parent + s h: the parent's exactly at s = 0, the patch's own at s = 1. (The form
+            // h_parent + s (h - h_parent) has one product only, but is not h exactly at s = 1.)
             const amrex::Real old = z(i, j, k);
             z(i, j, k) = (amrex::Real(1) - s) * h(ic, jc, k) + s * old;
             return {std::abs(z(i, j, k) - old)};

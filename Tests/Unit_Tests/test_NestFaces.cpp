@@ -1227,7 +1227,9 @@ TEST (NestFaces, NestNodeHeightsDoNotDependOnTheLayout)
                     amrex::Gpu::streamSynchronize();
                     amrex::LoopOnCpu(bx, [&] (int i, int j, int k) {
                         const amrex::IntVect iv(i, j, k);
-                        d = std::max(d, std::abs(static_cast<double>(a(iv) - r(iv))));
+                        // A NaN on either side counts as a difference (std::max would drop it).
+                        const double diff = std::abs(static_cast<double>(a(iv) - r(iv)));
+                        d = std::max(d, diff == diff ? diff : std::numeric_limits<double>::infinity());
                     });
                 }
                 amrex::ParallelAllReduce::Max(d, amrex::ParallelDescriptor::Communicator());
