@@ -41,6 +41,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <fstream>
 #include <functional>
@@ -1177,3 +1178,61 @@ TEST (NestFaces, RestartRecordIsCheckedAgainstTheInputs)
 }
 
 } // namespace
+
+// A nest's node heights do not depend on its layout: the nest with a blended ground (blend_nest_ground) and
+// the joint run's nest (follow_parent_levels), each cut into one box, 9 x 7 boxes and 6 x 10 boxes, have the
+// same heights, bit for bit, at every node a box holds (every box's copy of a seam node, and the ghost nodes).
+TEST (NestFaces, NestNodeHeightsDoNotDependOnTheLayout)
+{
+    for (const int smoothing : {0, 2}) {
+        NestRun p;
+        p.in = parent_inputs(true);
+        p.in.terrain.smoothing = smoothing;
+        p.make();
+        const ScopedDir dir{write_parent(p, "ut_nestfaces_layout")};
+        for (const bool joint : {false, true}) {
+            SCOPED_TRACE("terrain.smoothing = " + std::to_string(smoothing) + (joint ? ", joint levels" : ", blended ground"));
+            auto build = [&] (std::array<int, 2> mgs, NestRun& f) {
+                f.in = patch_inputs(p.in);
+                f.in.mesh.max_grid_size = {mgs[0], mgs[1]};
+                const amrex::Geometry g = gust::make_geometry(f.in.mesh);
+                const amrex::BoxArray ba = gust::make_box_array(f.in.mesh);
+                f.dm = amrex::DistributionMapping(ba);
+                const gust::NestParent parent(dir.name, f.in.mesh, gust::make_zlevels(f.in.mesh, g), ba, f.dm, true);
+                const gust::BoundaryInputs b = all_nest(dir.name);
+                if (joint) {
+                    f.make(false, nullptr, [&] (amrex::MultiFab& z, const amrex::Vector<amrex::Real>& lev) {
+                        gust::follow_parent_levels(parent, g, lev, z);
+                    });
+                } else {
+                    f.make(false, [&] (amrex::MultiFab& z) { gust::blend_nest_ground(parent, b, 200, g, z); });
+                }
+            };
+            NestRun one;
+            build({64, 64}, one);
+            ASSERT_EQ(one.ba.size(), 1);
+            for (const std::array<int, 2> mgs : {std::array<int, 2>{9, 7}, std::array<int, 2>{6, 10}}) {
+                NestRun f;
+                build(mgs, f);
+                ASSERT_GT(f.ba.size(), 1);
+                const amrex::IntVect ng = f.q.z_phys_nd.nGrowVect();
+                amrex::MultiFab ref(f.q.z_phys_nd.boxArray(), f.dm, 1, ng);
+                ref.ParallelCopy(one.q.z_phys_nd, 0, 0, 1, ng, ng);
+                double d = 0;
+                for (amrex::MFIter mfi(ref, false); mfi.isValid(); ++mfi) {
+                    const amrex::Box bx = mfi.fabbox();
+                    amrex::FArrayBox a(bx, 1, amrex::The_Pinned_Arena()), r(bx, 1, amrex::The_Pinned_Arena());
+                    a.copy<amrex::RunOn::Device>(f.q.z_phys_nd[mfi], bx, 0, bx, 0, 1);
+                    r.copy<amrex::RunOn::Device>(ref[mfi], bx, 0, bx, 0, 1);
+                    amrex::Gpu::streamSynchronize();
+                    amrex::LoopOnCpu(bx, [&] (int i, int j, int k) {
+                        const amrex::IntVect iv(i, j, k);
+                        d = std::max(d, std::abs(static_cast<double>(a(iv) - r(iv))));
+                    });
+                }
+                amrex::ParallelAllReduce::Max(d, amrex::ParallelDescriptor::Communicator());
+                EXPECT_EQ(d, 0.0) << "max_grid_size " << mgs[0] << " " << mgs[1];
+            }
+        }
+    }
+}

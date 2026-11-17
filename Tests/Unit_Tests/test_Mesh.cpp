@@ -183,6 +183,27 @@ std::pair<double, double> max_diff (const amrex::MultiFab& a, int ca, const amre
     return {d, m};
 }
 
+// Largest |a - b| over every point a box holds (ghosts included), and largest |b|.
+std::pair<double, double> max_diff_grown (const amrex::MultiFab& a, const amrex::MultiFab& b)
+{
+    double d = 0, m = 0;
+    for (amrex::MFIter mfi(a, false); mfi.isValid(); ++mfi) {
+        const amrex::Box bx = mfi.fabbox();
+        amrex::FArrayBox ha(bx, 1, amrex::The_Pinned_Arena()), hb(bx, 1, amrex::The_Pinned_Arena());
+        ha.copy<amrex::RunOn::Device>(a[mfi], bx, 0, bx, 0, 1);
+        hb.copy<amrex::RunOn::Device>(b[mfi], bx, 0, bx, 0, 1);
+        amrex::Gpu::streamSynchronize();
+        amrex::LoopOnCpu(bx, [&] (int i, int j, int k) {
+            const amrex::IntVect iv(i, j, k);
+            d = std::max(d, std::abs(static_cast<double>(ha(iv) - hb(iv))));
+            m = std::max(m, std::abs(static_cast<double>(hb(iv))));
+        });
+    }
+    amrex::ParallelAllReduce::Max(d, amrex::ParallelDescriptor::Communicator());
+    amrex::ParallelAllReduce::Max(m, amrex::ParallelDescriptor::Communicator());
+    return {d, m};
+}
+
 // Tolerances: the double-precision value, or a single-precision one.
 constexpr double tol (double dbl, double flt) { return std::is_same_v<amrex::Real, double> ? dbl : flt; }
 
@@ -1133,6 +1154,43 @@ TEST(Mesh, AgnesiGhostNodesWrapInPeriodicDirections)
                         EXPECT_EQ(z(i, j, 0), z(ic, jc, 0)) << shape << " " << i << " " << j;
                     }
                 });
+            }
+        }
+    }
+}
+
+// The node heights do not depend on the layout: the same mesh cut into one
+// box, 8 x 8 boxes and 12 x 4 boxes has the same heights, bit for bit, at
+// every node a box holds (every box's copy of a seam node, and the ghost
+// nodes). Each box computes its own copy of a
+// shared node and OverrideSync keeps one; with gcc's contracted multiply-adds
+// the copies could differ in the last bits, so the kept copy, and the mesh,
+// changed with mesh.max_grid_size. Every mapping, periodic and not.
+TEST (Mesh, NodeHeightsDoNotDependOnTheLayout)
+{
+    for (const int sm : {0, 1, 2}) {
+        for (const int per : {0, 1}) {
+            MeshCase one = hill3d(sm);
+            one.in.mesh.is_periodic = {per, per, 0};
+            one.in.mesh.max_grid_size = {64, 64};
+            one.make();
+            one.mesh.build(one.in, one.geom, one.z);
+            ASSERT_EQ(one.z.boxArray().size(), 1);
+            for (const std::array<int, 2> mgs : {std::array<int, 2>{8, 8}, std::array<int, 2>{12, 4}}) {
+                MeshCase s = hill3d(sm);
+                s.in.mesh.is_periodic = {per, per, 0};
+                s.in.mesh.max_grid_size = {mgs[0], mgs[1]};
+                s.make();
+                s.mesh.build(s.in, s.geom, s.z);
+                ASSERT_GT(s.z.boxArray().size(), 1);
+                // The one-box mesh (its ghost nodes too) onto this layout: every box's copy of a seam
+                // node, and every ghost node, is compared.
+                const amrex::IntVect ng = s.z.nGrowVect();
+                amrex::MultiFab ref(s.z.boxArray(), s.z.DistributionMap(), 1, ng);
+                ref.ParallelCopy(one.z, 0, 0, 1, ng, ng);
+                const auto [d, m] = max_diff_grown(s.z, ref);
+                EXPECT_EQ(d, 0.0) << "smoothing " << sm << " periodic " << per << " max_grid_size " << mgs[0] << " "
+                                  << mgs[1] << " (largest height " << m << " m)";
             }
         }
     }
