@@ -430,12 +430,22 @@ TEST(NestDefect, ThePressureLevelDoesNotReachTheSource)
 
 TEST(NestDefect, RestrictionDoesNotDependOnTheNestLayout)
 {
+    // The node heights from one single-box build, copied into both layouts. Each box computes its own copy of
+    // a shared node, and where a compiler contracts multiply-adds (gcc) the copies differ in the last bits;
+    // the box that owns the node (Mesh::build, OverrideSync) changes with the layout. This test is about the
+    // restriction, so both layouts start from the same nodes.
+    DefectCase ref{nest_inputs(parent_inputs(true), 24)};
+    ref.make();
+    ASSERT_EQ(ref.ba.size(), 1);
     std::vector<std::vector<double>> res;
     for (int layout = 0; layout < 2; ++layout) {
         DefectCase p{parent_inputs(true)};
         p.make();
         DefectCase n{nest_inputs(p.in, layout == 0 ? 8 : 24)};
         n.make(layout == 1);
+        const amrex::IntVect ng = n.q.z_phys_nd.nGrowVect();
+        n.q.z_phys_nd.ParallelCopy(ref.q.z_phys_nd, 0, 0, 1, ng, ng);
+        n.mesh.adopt(ref.mesh, n.geom, n.q.z_phys_nd);
         fill_parent(p);
         fill_nest(n, [&] (const amrex::MultiFab& m, int c, int i, int j, int k) {
             return field(pos(n.geom, m, i, 0), pos(n.geom, m, j, 1), k, c);
