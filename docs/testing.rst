@@ -1887,10 +1887,11 @@ Current tests
        Mutants: with AMReX's default rank order for a joint nest's boxes (which follows each rank's memory in use)
        the relax test fails (the nest's plotfile differs; the 3-rank defect test passes by chance); without the
        ghost fill after the faces' refresh both fail (the outer plotfile differs, by up to 3.5e-12 in theta).
-   * - ``abort_nests_joint_restart_names``, ``_iterations``, ``_version``
+   * - ``abort_nests_joint_restart_names``, ``_iterations``, ``_version``, ``_missing``
      - ``io.restart`` with a joint record (written by the configure step into ``joint_records/``) that names the nest
-       ``other`` for ``nest.names = a``; one of 5 exchanges with ``steady.max_iterations = 5``; one of version 2:
-       each stops the run before the outer domain starts, naming ``io.restart``.
+       ``other`` for ``nest.names = a``; one of 5 exchanges with ``steady.max_iterations = 5``; one of version 2; one
+       that names a nest checkpoint that is not there: each stops the run before the outer domain starts, naming
+       ``io.restart``.
    * - ``abort_nests_feedback_value``, ``_no_nests``, ``_newton``, ``_damping``, ``_odd_boxes``, ``_narrow``
      - ``nest.feedback = inject`` (the message lists none, defect and relax); ``defect`` without ``nest.names``; with ``steady.stage = simplec_newton``; with
        a Rayleigh layer on u, v and k; with ``mesh.max_grid_size = 15 12``, which splits the
@@ -3468,13 +3469,14 @@ GoogleTest suite
    * - ``NestRelax.FactorCheckNamesTheKey``
      - ``check_feedback_factor`` accepts 1 and 16 and refuses 0, −1, NaN and infinity, naming
        ``nest.feedback_factor``.
-   * - ``JointRecord.RoundTripIsExactOnEveryRank``, ``JointRecord.NoFileIsNotAJointCheckpoint``, ``JointRecord.MalformedRecordsAbort`` (tracker N-114, beyond the plan)
+   * - ``JointRecord.RoundTripIsExactOnEveryRank``, ``JointRecord.NoFileIsNotAJointCheckpoint``, ``JointRecord.MalformedRecordsAbort``, ``JointRecord.LineEndsAreNotPartOfThePath`` (tracker N-114, beyond the plan)
      - The joint record (``Source/JointRecord.cpp``) written by the I/O rank reads back on every rank with the
        feedback, the exchanges, the CFL floors bit for bit (1/3, 0.1 and 0) and each nest's checkpoint path (one with
        a space). A checkpoint without a record reads as none. Another version, feedback ``inject``, 0 exchanges, a
        negative or NaN floor, no nest line, a nest line without a checkpoint, text after a floor and a line that is
-       not ``nest`` each abort. Mutants: floors written as decimals fail the round trip; a floor with trailing text
-       accepted fails the last test.
+       not ``nest`` each abort. A record with ``\r\n`` line ends and trailing spaces after a path reads the paths
+       without them. Mutants: floors written as decimals fail the round trip; a floor with trailing text accepted
+       fails the malformed test; the path not trimmed fails the line-end test.
    * - ``NestBuildings.PatchHasTheWholeDomainsFractionsAndWalls`` (UT-9.4.1)
      - An L-shaped block with two tops and a lifted deck on sloping ground: a patch (16 × 17 cells in boxes of 5 × 6)
        builds the solid fractions, the three face fractions and the wall cells bit for bit as the whole domain (32 ×

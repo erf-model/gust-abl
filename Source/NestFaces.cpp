@@ -677,7 +677,8 @@ void NestFaces::check_restart (const std::string& dir, const std::string& hash)
     if (active && rec != hash) {
         amrex::Abort(where + "the checkpoint was written with other nest settings (the types of the lateral faces bc.xlo, "
                              "bc.xhi, bc.ylo, bc.yhi; the parent in bc.nest_parent: its step, cells, fields or ground, or the "
-                             "patch's place in it; bc.nest_relax_width, bc.nest_relax_factor or terrain.nest_blend_width); "
+                             "patch's place in it; bc.nest_relax_width, bc.nest_relax_factor or terrain.nest_blend_width; for a "
+                             "nest of nest.names, its nest.<name>.lo and hi); "
                              "restart with the inputs and the parent it was written with");
     }
 }

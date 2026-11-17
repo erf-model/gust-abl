@@ -801,18 +801,31 @@ iterations. The log says ``joint run: restarted after exchange N``.
 - ``nest.names`` must list the record's nests in the same order. Each nest's ``lo`` and ``hi`` must be the ones
   its checkpoint was written with (its node heights and nest-face record are checked against them).
 - The record names each nest's checkpoint as written, relative to the directory the run started in. Restart from
-  the same directory.
+  the same directory: a recorded checkpoint that is not there stops the run before anything runs, naming
+  ``io.restart`` and the missing paths.
+- ``convection.hybrid_sigma_max`` (the blend) is refused with ``io.restart``, as for any restart: the blend is not
+  in the checkpoint. A joint run with the blend therefore restarts without it, and its error message says so.
 - On the same number of ranks a restart continues the run bit for bit: the regression ``rt_nests_joint_restart``
   stops a run after 150 exchanges, restarts it, and compares the last plotfiles and checkpoints byte for byte. Two
   things make this hold. A joint nest's boxes go to the ranks in a fixed order (a space-filling curve in rank order),
   not to the ranks with the least memory in use, which depends on what the outer domain holds when the nest is
   built. And after each exchange the nest's ghost cells are filled again from its new faces, as the first step of a
-  restart fills them; the driver's local pseudo-time step reads them before the iteration does.
+  restart fills them; the driver's local pseudo-time step reads them before the iteration does. Both change a joint
+  run without a restart at round-off (the rank order changes the order of reductions; the second fill changes the
+  local step), and the extra fill costs one ghost fill per nest per exchange.
+- ``steady.max_iterations`` also caps each nest's one-way run. A nest whose one-way run stops there without reaching
+  steady joins the joint run as it is (the log notes it). A run stopped and restarted then repeats a straight run with
+  the larger value only when the stop point is above every one-way run's iterations.
 - ``nest.feedback`` may change at a restart (the log notes it). ``steady.max_iterations`` at or below the recorded
   exchanges, a record that names other nests, and a record that cannot be read stop the run, naming
   ``io.restart``.
 - A checkpoint without a record, such as the outer domain's when its one-way run did not reach steady, restarts that
-  one-way run; the nests then start from its last checkpoint, as in a first run.
+  one-way run; the nests then start from its last checkpoint, as in a first run. A joint checkpoint restarted with
+  ``nest.feedback = none`` does the same (the log notes it); the outer domain's history then already holds the joint
+  run's iterations.
+- The checkpoints of a joint run can start a one-way run (``init.first_guess``, a parent for ``bc.nest_parent``). A
+  joint nest's checkpoint does not restart as a stand-alone patch with ``bc.nest_parent``: its nest-face record
+  leaves out the parent's step and content, which change at every exchange, so the check against a parent fails.
 
 **Damping.** A nest damps only :math:`w` and :math:`\theta` (above). Over each footprint the joint run carries the
 nests' equations, so an outer Rayleigh term on :math:`u, v` or :math:`k` would act outside the footprints and not

@@ -16,7 +16,8 @@ check_nests, or of Source/App.cpp before the outer domain starts):
   Source/JointRecord.cpp, Source/Run.cpp): one that is not GUST_JOINT 1 or
   cannot be read (io.restart), other nests or another order than nest.names
   (nest.names), steady.max_iterations at or below its exchanges
-  (steady.max_iterations);
+  (steady.max_iterations), a nest checkpoint it names that is not in the
+  directory the run starts in (io.restart);
 - nest.<name>.lo or nest.<name>.hi missing for a name of nest.names;
   nest.<name>.* for a name not in nest.names (GUST does not read it);
 - a corner that is not finite, off the outer cell faces (1e-4 cells), hi not
@@ -47,6 +48,46 @@ MARGIN = 2      # NestParent.H, kNestMargin
 RATIO = 2       # NestParent.H, kNestRatio
 DEFECT_MARGIN = 2   # NestDefect.H, kDefectMargin
 MAX_ITERATIONS = 10000   # Driver.H, SteadyOptions::max_iterations
+
+
+def _floor(text):
+    """A finite floor >= 0 written as a hex float (Source/JointRecord.cpp parse_floor; strtod also reads decimals)."""
+    try:
+        v = float.fromhex(text) if "x" in text.lower() else float(text)
+    except ValueError:
+        return None
+    return v if math.isfinite(v) and v >= 0 else None
+
+
+def read_joint_record(text):
+    """(exchanges, [(name, chk), ...]) from a Joint file, or the reason it cannot be read, as Source/JointRecord.cpp
+    reads it: whitespace-separated head, then one nest per line, the checkpoint the rest of the line."""
+    lines = [ln for ln in text.split("\n") if ln.strip()]
+    head = " ".join(lines[:4]).split()
+    if head[:2] != ["GUST_JOINT", "1"]:
+        return "expected GUST_JOINT 1"
+    if len(head) < 4 or head[2] != "feedback" or head[3] not in ("defect", "relax"):
+        return "the feedback line"
+    try:
+        exchanges = int(head[5]) if len(head) >= 6 and head[4] == "exchanges" else 0
+    except ValueError:
+        exchanges = 0
+    if exchanges < 1:
+        return "the exchanges line"
+    if len(head) != 8 or head[6] != "outer" or _floor(head[7]) is None:
+        return "the outer line"
+    nests = []
+    for ln in lines[4:]:
+        parts = ln.split(None, 3)
+        if len(parts) < 3 or parts[0] != "nest" or _floor(parts[2]) is None:
+            return "a nest line"
+        chk = parts[3].rstrip(" \t\r") if len(parts) == 4 else ""
+        if not chk:
+            return "nest %s names no checkpoint" % parts[1]
+        nests.append((parts[1], chk))
+    if not nests:
+        return "no nest line"
+    return exchanges, nests
 _NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
 
 
@@ -161,20 +202,13 @@ class NestsChecker(Checker):
         if path is None or not os.path.isfile(os.path.join(path, "Joint")):
             return
         with open(os.path.join(path, "Joint")) as f:
-            lines = [ln.split() for ln in f.read().split("\n") if ln.strip()]
-        bad = "GUST stops: io.restart = %s: its Joint file cannot be read" % c.restart
-        if len(lines) < 4 or lines[0] != ["GUST_JOINT", "1"]:
-            self.error("io.restart", bad + " (expected GUST_JOINT 1).", "Restart from a checkpoint this GUST wrote.")
+            record = read_joint_record(f.read())
+        if isinstance(record, str):
+            self.error("io.restart", "GUST stops: io.restart = %s: its Joint file cannot be read (%s)."
+                       % (c.restart, record), "Restart from a checkpoint this GUST wrote.")
             return
-        try:
-            exchanges = int(lines[2][1]) if lines[2][0] == "exchanges" and len(lines[2]) == 2 else None
-        except ValueError:
-            exchanges = None
-        recorded = [ln[1] for ln in lines[4:] if ln[0] == "nest" and len(ln) >= 4]
-        if lines[1][:1] != ["feedback"] or exchanges is None or exchanges < 1 or len(recorded) != len(lines) - 4 \
-                or not recorded:
-            self.error("io.restart", bad + ".", "Restart from a checkpoint this GUST wrote.")
-            return
+        exchanges, nests = record
+        recorded = [n for n, _ in nests]
         if recorded != list(names):
             self.error("nest.names", "GUST stops: io.restart = %s: its joint record has the nests %s, nest.names has "
                                      "%s; a joint restart keeps the nests and their order."
@@ -185,6 +219,13 @@ class NestsChecker(Checker):
                                                 "steady.max_iterations = %d leaves none (the joint run counts its "
                                                 "exchanges over the run)." % (c.restart, exchanges, iters),
                        "Set steady.max_iterations above %d." % exchanges)
+        # GUST opens each nest checkpoint relative to the directory the run starts in.
+        missing = [chk for _, chk in nests if c.find_file(os.path.join(chk, "Header"))[1] != "cwd"]
+        if missing:
+            self.error("io.restart", "GUST stops: io.restart = %s: its joint record names nest checkpoints that are "
+                                     "not here: %s (the record names them relative to the directory the joint run "
+                                     "started in; restart from that directory)." % (c.restart, " ".join(missing)),
+                       "Run from the directory the joint run started in.")
 
     def _even_boxes(self, n, span, fb):
         """With defect or relax: at least 2 DEFECT_MARGIN + 1 outer cells in each non-periodic direction, and every box of the

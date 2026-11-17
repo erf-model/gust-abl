@@ -93,6 +93,8 @@ bool read_joint_record (const std::string& dir, JointRecord& r)
         std::getline(is, n.chk);
         const auto first = n.chk.find_first_not_of(' ');
         n.chk = first == std::string::npos ? std::string() : n.chk.substr(first);
+        // A record edited on another system may end its lines with \r or spaces.
+        n.chk.erase(n.chk.find_last_not_of(" \t\r") + 1);
         if (n.chk.empty()) { amrex::Abort(bad + " (nest " + n.name + " names no checkpoint)"); }
         r.nests.push_back(std::move(n));
     }

@@ -77,6 +77,18 @@ TEST(JointRecord, NoFileIsNotAJointCheckpoint)
     EXPECT_TRUE(on_all_ranks(!gust::read_joint_record(d.name, r)));
 }
 
+TEST(JointRecord, LineEndsAreNotPartOfThePath)
+{
+    // A record edited on another system: \r\n line ends and trailing spaces do not join the checkpoint's path.
+    const ScopedDir d("ut_joint_record_crlf");
+    write_text(d.name, "GUST_JOINT 1\r\nfeedback relax\r\nexchanges 7\r\nouter 0x1p-2\r\n"
+                       "nest a 0x0p+0 runs/a b/chk_a00010 \t\r\nnest b 0x1p-1 chk_b00010\r\n");
+    gust::JointRecord r;
+    EXPECT_TRUE(on_all_ranks(gust::read_joint_record(d.name, r) && r.feedback == "relax" && r.exchanges == 7
+                             && r.nests.size() == 2 && r.nests[0].chk == "runs/a b/chk_a00010"
+                             && r.nests[1].chk == "chk_b00010" && r.nests[1].cfl_floor == 0.5));
+}
+
 TEST(JointRecord, MalformedRecordsAbort)
 {
     const ScopedDir d("ut_joint_record_bad");

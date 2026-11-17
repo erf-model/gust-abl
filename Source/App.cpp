@@ -1119,6 +1119,12 @@ std::string run_domain (const DomainRole& role)
             m.max_iterations = sopt.max_iterations;
             m.fill_ghosts = [&] (State& s) { bc.fill_ghosts(s, res_in.surface, fopt.buoyancy, false, nullptr); };
             const std::string label = nest != nullptr ? nest->name + " " : std::string("outer ");
+            if (nest != nullptr && role.resume == nullptr && v.status != SteadyStatus::Steady) {
+                // One value caps the one-way passes and the joint exchanges: a run stopped here and restarted with a
+                // larger steady.max_iterations does not repeat a run that went straight through with that value.
+                amrex::Print() << "gust: nest." << nest->name << ": its one-way run ended without reaching steady "
+                                  "(steady.max_iterations = " << sopt.max_iterations << "); it joins the joint run as it is\n";
+            }
             if (role.resume != nullptr) {
                 driver.set_cfl_floor(role.resume->cfl_floor);
             } else {

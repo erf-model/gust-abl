@@ -351,8 +351,20 @@ CASES = [
     # A joint restart (io.restart with nest.feedback): the checkpoint's joint record is read as the run reads it; a
     # checkpoint without one restarts the outer domain alone. (init.first_guess of the base is reported on io.restart.)
     ("nests_joint_restart_ok", "inflow", NEST_A + "nest.feedback = defect\nio.restart = chk00010\n"
-     "steady.max_iterations = 10\n", [], ["E nest.feedback", "E nest.names", "E steady.max_iterations"],
+     "steady.max_iterations = 10\n", [], ["E nest.feedback", "E nest.names", "E steady.max_iterations", "E io.restart nests"],
+     {"files": {"chk00010/Header": "x\n", "chk00010/Joint": JOINT % ("relax", 4, "a"), "chk_a/Header": "x\n"}}),
+    # Written on another system: \r\n line ends and trailing spaces are not part of the nest checkpoint's path.
+    ("nests_joint_restart_crlf", "inflow", NEST_A + "nest.feedback = defect\nio.restart = chk00010\n", [],
+     ["E io.restart nests", "E nest.names"],
+     {"files": {"chk00010/Header": "x\n", "chk00010/Joint": (JOINT % ("relax", 4, "a")).replace("chk_a\n", "chk_a \t\n").replace("\n", "\r\n"),
+                "chk_a/Header": "x\n"}}),
+    # The record names chk_a, which is not in the directory the run starts in.
+    ("nests_joint_restart_missing", "inflow", NEST_A + "nest.feedback = defect\nio.restart = chk00010\n",
+     ["E io.restart nests"], ["E nest.names"],
      {"files": {"chk00010/Header": "x\n", "chk00010/Joint": JOINT % ("relax", 4, "a")}}),
+    ("nests_joint_restart_feedback", "inflow", NEST_A + "nest.feedback = defect\nio.restart = chk00010\n",
+     ["E io.restart nests"], [],
+     {"files": {"chk00010/Header": "x\n", "chk00010/Joint": JOINT % ("inject", 4, "a"), "chk_a/Header": "x\n"}}),
     ("nests_joint_restart_no_record", "inflow", NEST_A + "nest.feedback = relax\nio.restart = chk00010\n",
      [], ["E nest.feedback", "E nest.names"], {"files": {"chk00010/Header": "x\n"}}),
     ("nests_joint_restart_names", "inflow", NEST_A + "nest.feedback = defect\nio.restart = chk00010\n",

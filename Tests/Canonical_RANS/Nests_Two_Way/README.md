@@ -136,9 +136,9 @@ M must be above the one-way runs' iterations (`steady.max_iterations` caps them 
 ## CTest
 `rt_nests_two_way` (2 ranks, labels `regression;smoke`). `rt_nests_joint_restart` (3 ranks, labels
 `regression;smoke`) and `rt_nests_joint_restart_relax` (2 ranks, label `regression`) run `check_joint_restart.py`
-(above). The abort tests `abort_nests_joint_restart_names`, `_iterations` and `_version` check that a joint record
-naming other nests, a `steady.max_iterations` at or below its exchanges, and a record of another version stop the
-run and name `io.restart`. The abort tests `abort_nests_feedback_value`,
+(above). The abort tests `abort_nests_joint_restart_names`, `_iterations`, `_version` and `_missing` check that a
+joint record naming other nests, a `steady.max_iterations` at or below its exchanges, a record of another version,
+and a record naming a nest checkpoint that is not there stop the run and name `io.restart`. The abort tests `abort_nests_feedback_value`,
 `abort_nests_feedback_no_nests`, `abort_nests_feedback_newton`,
 `abort_nests_feedback_damping`, `abort_nests_feedback_odd_boxes` and `abort_nests_feedback_narrow` check that the inputs `nest.feedback` refuses stop
 the run and name the key. `inputs_abort` is `inputs_outer` without `mesh.max_grid_size` and `steady.stage`, which

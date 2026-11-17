@@ -1806,6 +1806,7 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
     file(WRITE ${JOINT_RECORDS}/names/Joint "GUST_JOINT 1\nfeedback defect\nexchanges 5\nouter 0x1p+3\nnest other 0x1p+3 chk_other00010\n")
     file(WRITE ${JOINT_RECORDS}/iterations/Joint "GUST_JOINT 1\nfeedback defect\nexchanges 5\nouter 0x1p+3\nnest a 0x1p+3 chk_a00010\n")
     file(WRITE ${JOINT_RECORDS}/version/Joint "GUST_JOINT 2\n")
+    file(WRITE ${JOINT_RECORDS}/missing/Joint "GUST_JOINT 1\nfeedback defect\nexchanges 5\nouter 0x1p+3\nnest a 0x1p+3 chk_a_missing00010\n")
     gust_add_test(NAME abort_nests_joint_restart_names NP 1 LABELS "regression;smoke"
                   PREFIX ${EXPECT_ABORT} "its joint record has the nests other, nest\\.names has a; a joint restart keeps the nests and their order" --
                   COMMAND ${NESTS_OUTER} ${NESTS_A} nest.feedback=defect io.restart=${JOINT_RECORDS}/names ${GUST_TEST_AMREX_FLAGS})
@@ -1816,6 +1817,10 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
     gust_add_test(NAME abort_nests_joint_restart_version NP 1 LABELS "regression;smoke"
                   PREFIX ${EXPECT_ABORT} "its Joint file cannot be read \\(expected GUST_JOINT 1\\)" --
                   COMMAND ${NESTS_OUTER} ${NESTS_A} nest.feedback=relax io.restart=${JOINT_RECORDS}/version ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME abort_nests_joint_restart_missing NP 1 LABELS "regression;smoke"
+                  PREFIX ${EXPECT_ABORT} "its joint record names nest checkpoints that are not here: chk_a_missing00010" --
+                  COMMAND ${NESTS_OUTER} ${NESTS_A} nest.feedback=defect io.restart=${JOINT_RECORDS}/missing
+                          steady.max_iterations=100 ${GUST_TEST_AMREX_FLAGS})
     # Nests_One_Process damps every field (the default bc.rayleigh_fields).
     gust_add_test(NAME abort_nests_feedback_damping NP 1 LABELS "regression;smoke"
                   PREFIX ${EXPECT_ABORT} "nest\\.feedback = defect needs bc\\.rayleigh_fields without u, v and tke" --
