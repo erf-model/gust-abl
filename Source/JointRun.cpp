@@ -4,6 +4,7 @@
 #include "NestDefect.H"
 #include "NestFaces.H"
 #include "NestParent.H"
+#include "NestRelax.H"
 #include "Residual.H"
 #include "State.H"
 
@@ -36,10 +37,12 @@ const char* status_name (SteadyStatus s)
 
 JointResult run_joint (const std::vector<JointMember*>& members, int max_exchanges)
 {
-    if (members.size() < 2 || members[0]->defect == nullptr) {
-        amrex::Abort("gust: run_joint: needs the outer domain with its defect source and at least one nest");
+    if (members.size() < 2 || (members[0]->defect == nullptr) == (members[0]->relax == nullptr)) {
+        amrex::Abort("gust: run_joint: needs the outer domain with its defect source or its relaxation (one of them) and "
+                     "at least one nest");
     }
     JointMember& P = *members[0];
+    const bool relax = P.relax != nullptr;
     std::vector<DefectRegion> regions;
     for (std::size_t n = 1; n < members.size(); ++n) {
         const JointMember& N = *members[n];
@@ -49,9 +52,16 @@ JointResult run_joint (const std::vector<JointMember*>& members, int max_exchang
         regions.push_back(defect_region(N.name, N.geom->Domain().size(), N.parent->ratio(), N.parent->offset(),
                                         P.geom->Domain(), {N.geom->isPeriodic(0), N.geom->isPeriodic(1)}));
     }
-    amrex::Print() << "gust: joint run (nest.feedback = defect): the outer domain and " << members.size() - 1
-                   << " nest(s) exchange every iteration, up to " << max_exchanges << " exchanges; the source acts "
-                   << kDefectMargin << " outer cells inside each nest's faces\n";
+    if (relax) {
+        amrex::Print() << "gust: joint run (nest.feedback = relax, nest.feedback_factor = " << P.relax->factor()
+                       << "): the outer domain and " << members.size() - 1 << " nest(s) exchange every iteration, up to "
+                       << max_exchanges << " exchanges; the relaxation's weight rises from 0 on each nest's faces to 1 "
+                       << kDefectMargin << " outer cells inside them\n";
+    } else {
+        amrex::Print() << "gust: joint run (nest.feedback = defect): the outer domain and " << members.size() - 1
+                       << " nest(s) exchange every iteration, up to " << max_exchanges << " exchanges; the source acts "
+                       << kDefectMargin << " outer cells inside each nest's faces\n";
+    }
     State qr;
     qr.define(P.state->p.boxArray(), P.state->p.DistributionMap());
     ResidualFields R;
@@ -69,8 +79,20 @@ JointResult run_joint (const std::vector<JointMember*>& members, int max_exchang
                            P.fill_ghosts, qr);
         }
         P.fill_ghosts(qr);
-        P.residual_without_defect(qr, R);
-        P.defect->set(R, regions);
+        if (relax) {
+            P.relax->set(qr, regions);
+            if (it == 0) {
+                for (const auto& n : P.relax->nests()) {
+                    char line[200];
+                    std::snprintf(line, sizeof(line), "gust: joint: %s: mean horizontal speed %.4e m/s, rate f U / dx "
+                                  "%.4e 1/s\n", n.name.c_str(), double(n.speed), double(n.rate));
+                    amrex::Print() << line;
+                }
+            }
+        } else {
+            P.residual_without_defect(qr, R);
+            P.defect->set(R, regions);
+        }
         double tx = amrex::second() - t0;
         // 2. The outer domain's iteration.
         t0 = amrex::second();
@@ -104,12 +126,21 @@ JointResult run_joint (const std::vector<JointMember*>& members, int max_exchang
         out.exchanges = it + 1;
         const bool last = all_steady || diverged || it + 1 == max_exchanges;
         if (it < 10 || it % 10 == 9 || last) {
-            const auto s = P.defect->max_norms();
-            char line[320];
-            std::snprintf(line, sizeof(line), "gust: joint %5d: max |S| u %.3e v %.3e w %.3e theta %.3e k %.3e; face "
-                          "change %.3e m/s; outer %s", it + 1, double(s[0]), double(s[1]), double(s[2]), double(s[3]),
-                          double(s[4]),
-                          double(change), status_name(P.verdict.status));
+            char line[400];
+            if (relax) {
+                // The outer state after its step against the target of this exchange, where the rate is > 0.
+                const auto d = P.relax->differences(*P.state);
+                std::snprintf(line, sizeof(line), "gust: joint %5d: outer - nest under the nests: max u %.3e v %.3e "
+                              "w %.3e theta %.3e k %.3e, RMS u %.3e v %.3e w %.3e theta %.3e k %.3e; face change %.3e m/s; "
+                              "outer %s", it + 1, double(d[0]), double(d[1]), double(d[2]), double(d[3]), double(d[4]),
+                              double(d[5]), double(d[6]), double(d[7]), double(d[8]), double(d[9]), double(change),
+                              status_name(P.verdict.status));
+            } else {
+                const auto s = P.defect->max_norms();
+                std::snprintf(line, sizeof(line), "gust: joint %5d: max |S| u %.3e v %.3e w %.3e theta %.3e k %.3e; face "
+                              "change %.3e m/s; outer %s", it + 1, double(s[0]), double(s[1]), double(s[2]), double(s[3]),
+                              double(s[4]), double(change), status_name(P.verdict.status));
+            }
             std::string text = line;
             for (std::size_t n = 1; n < members.size(); ++n) {
                 text += ", " + members[n]->name + " " + status_name(members[n]->verdict.status);

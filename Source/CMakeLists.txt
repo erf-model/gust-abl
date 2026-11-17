@@ -56,6 +56,7 @@ set(GUST_SOURCES
     NestBuildings.cpp
     JointRun.cpp
     NestDefect.cpp
+    NestRelax.cpp
     NestFaces.cpp
     NestParent.cpp
     Transfer.cpp

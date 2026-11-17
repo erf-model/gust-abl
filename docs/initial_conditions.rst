@@ -377,7 +377,8 @@ ground on their shared nodes, and that the nest's u, averaged to the outer cells
 Limits of this one-way form:
 
 - The nests do not feed back into the outer domain: each nest takes the outer field on its faces, and the outer field
-  does not change. ``nest.feedback = defect`` adds the feedback (:ref:`two-way-nests`).
+  does not change. ``nest.feedback = defect`` or ``relax`` adds the feedback (:ref:`two-way-nests`,
+  :ref:`two-way-relax`).
 - Two nests that touch each take the outer values on their shared face, but each corrects its own net flux, so their
   normal velocities there differ.
 - The outer Rayleigh layer damps u and v (relaxing towards the inflow profile); a nest's damps w and theta only. Near

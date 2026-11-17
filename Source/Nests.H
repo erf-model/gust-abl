@@ -7,7 +7,10 @@
 //   nest.names     = nest1 nest2      names of the nests (identifiers)
 //   nest.nest1.lo  = x y              the nest's low corner (m)
 //   nest.nest1.hi  = x y              its high corner (m)
-//   nest.feedback  = none | defect    one way (default), or the joint run
+//   nest.feedback  = none | defect | relax
+//                                     one way (default), or the joint run
+//                                     with the defect source or the relaxation
+//   nest.feedback_factor = 1          the relaxation's factor (relax only)
 //
 // Everything else is the outer domain's: the deck's physics, closure,
 // solver and terrain keys, and these derived settings:
@@ -40,6 +43,11 @@
 // source (NestDefect.H) and each nest's faces the current outer domain
 // (NestFaces::refresh), until every domain is steady in the same exchange;
 // then each writes its outputs again, at its new step.
+//
+// nest.feedback = relax (NestRelax.H): the same joint run with the relaxation
+// of the outer domain towards the restricted nests over their footprints in
+// place of the defect source; nest.feedback_factor (default 1, finite and
+// > 0) scales its rate.
 
 #include "BoundaryConditions.H"
 #include "Inputs.H"
@@ -62,19 +70,25 @@ struct NestSpec
     std::array<amrex::Real, 2> lo{0, 0}, hi{0, 0};
 };
 
-//! nest.feedback: none (one way, the default) or defect (the joint run, NestDefect.H, JointRun.H).
-enum class NestFeedback { none, defect };
+//! nest.feedback: none (one way, the default), defect (the joint run with the defect source, NestDefect.H,
+//! JointRun.H) or relax (the joint run with the relaxation, NestRelax.H).
+enum class NestFeedback { none, defect, relax };
+
+//! The value of nest.feedback as the deck gives it.
+const char* nest_feedback_name (NestFeedback f);
 
 struct NestOptions
 {
     std::vector<NestSpec> nests;
     NestFeedback feedback{NestFeedback::none};
+    //! nest.feedback_factor (nest.feedback = relax only; finite, > 0).
+    amrex::Real feedback_factor{1};
     //! Value-count and name problems found while reading.
     std::vector<std::string> errors;
     [[nodiscard]] bool active () const { return !nests.empty(); }
 };
 
-//! Read nest.names, nest.feedback and each nest's nest.<name>.lo and
+//! Read nest.names, nest.feedback, nest.feedback_factor and each nest's nest.<name>.lo and
 //! nest.<name>.hi. No placement checks (check_nests).
 NestOptions read_nest_options ();
 

@@ -335,6 +335,17 @@ CASES = [
      "nest.feedback = defect\nbc.sponge_width = 200\n", ["W nest.feedback nests"], ["E nest.feedback"]),
     ("nests_feedback_odd_boxes", "inflow", "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 1200 900\n"
      "nest.feedback = defect\nmesh.max_grid_size = 7\n", ["E nest.feedback nests"], []),
+    ("nests_relax_ok", "inflow", "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 1200 900\n"
+     "nest.feedback = relax\nnest.feedback_factor = 4\n", [], ["E *"]),
+    ("nests_relax_newton", "inflow", "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 1200 900\n"
+     "nest.feedback = relax\nsteady.stage = simplec_newton\n", ["E nest.feedback nests"], []),
+    ("nests_relax_odd_boxes", "inflow", "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 1200 900\n"
+     "nest.feedback = relax\nmesh.max_grid_size = 7\n", ["E nest.feedback nests"], []),
+    ("nests_relax_factor_zero", "inflow", "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 1200 900\n"
+     "nest.feedback = relax\nnest.feedback_factor = 0\n", ["E nest.feedback_factor values"], []),
+    ("nests_relax_factor_with_defect", "inflow", "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 1200 900\n"
+     "nest.feedback = defect\nnest.feedback_factor = 2\n", ["E nest.feedback_factor nests"], []),
+    ("nests_named_feedback_factor", "inflow", "nest.names = feedback_factor\n", ["E nest.names nests"], []),
     ("nests_feedback_none_odd_boxes", "inflow", "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 1200 900\n"
      "nest.feedback = none\nmesh.max_grid_size = 7\n", [], ["E nest.feedback"]),
     ("nests_periodic_strip", "solve", "nest.names = a\nnest.a.lo = 0 0\nnest.a.hi = 1600 1500\n",

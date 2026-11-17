@@ -15,6 +15,10 @@ Two-way nests, Limits):
 2. one way: the outer domain on 200 m cells, then the nest on 100 m cells (`nest.feedback = none`);
 3. joint: the same, then the joint run (`nest.feedback = defect`).
 
+With `--relax F ...`, `run` then makes one joint run per factor with feedback by relaxation (PR-71,
+`nest.feedback = relax`, `nest.feedback_factor = F`; `docs/boundary_conditions.rst`, Two-way nests by relaxation),
+and `compare` adds them to its tables.
+
 `compare` gives the RMS difference of each run from the reference: over the nest, over the outer cells outside the
 nest's footprint, over the footprint, and downstream (east) of the nest. It then counts the cells in the lowest
 200 m whose horizontal speed differs from the reference's by more than 0.25, 0.5 and 1 m/s
@@ -26,7 +30,7 @@ reference's.
 | File | Role |
 |---|---|
 | `case.yaml` | The case for `tools/make_gust_case.py`: 19.2 km x 16 km centred on 45.70 N, 120.80 W, top 3000 m, 200 m cells, first layer 10 m, 37 layers; wind 8 m/s at 10 m from the west (270 degrees), z0 = 0.05 m, neutral; a 1000 m flat border and a 2000 m slope to the terrain on every side. |
-| `columbia_gorge.py` | `prepare` (fetch the terrain, write the decks), `run` (the three runs), `compare` (the tables below and, with `--plot`, the map). |
+| `columbia_gorge.py` | `prepare` (fetch the terrain, write the decks), `run` (the three runs; with `--relax F ...` also the relax runs, with `--relax-only` only those), `compare` (the tables below and, with `--plot`, the map). |
 
 The deck written by `prepare`: 96 x 80 x 37 cells; inflow on xlo, outflow on xhi, slip walls on y; a Rayleigh layer
 on w above 2100 m (as every nest has, so the outer domain and the nest are damped alike); three hierarchy levels with
@@ -54,6 +58,10 @@ doi:10.1175/BAMS-D-18-0036.1. No WFIP2 data are used.
 python3 columbia_gorge.py prepare
 python3 columbia_gorge.py run --gust <build>/gust --mpi "mpiexec -n 4"
 python3 columbia_gorge.py compare --plot gorge_speed_map.png
+```
+The relax runs at factors 0.5, 1 and 4, after the three runs above (`--relax-only` skips those):
+```bash
+python3 columbia_gorge.py run --gust <build>/gust --mpi "mpiexec -n 4" --relax 0.5 1 4 --relax-only
 ```
 Everything is written to `columbia_gorge_run/` in the current directory (`--work` changes it).
 
@@ -87,6 +95,28 @@ nest's and downstream speed differences a little further but raises the footprin
 parent's interpolated ground in the nest (as ERF's `interpolate`) did not converge. These runs were made while
 choosing the rule (PR-70) and are not options of the code. The largest outer differences (2.7 m/s, west and
 south of the nest) sit where 200 m cells cannot follow the terrain; nesting does not change them.
+
+### Feedback by relaxation (`--relax 0.5 1 4`)
+Measured on 4 ranks with the same decks (RMS of u against the reference, m/s; exchanges of the joint run):
+
+| Run | Exchanges | nest | outer | footprint | downstream |
+|---|---|---|---|---|---|
+| one way | | 0.125 | 0.105 | 0.204 | 0.152 |
+| joint, `defect` | 276 | **0.122** | 0.093 | **0.164** | 0.117 |
+| relax, f = 0.5 | 174 | 0.126 | **0.092** | 0.166 | 0.116 |
+| relax, f = 1 | 180 | 0.128 | **0.092** | 0.167 | **0.115** |
+| relax, f = 4 | 439 | 0.147 | 0.099 | 0.180 | 0.133 |
+
+Cells in the lowest 200 m whose horizontal speed differs from the reference's by more than 1 m/s: over the footprint
+118 (f = 0.5), 114 (f = 1) and 104 (f = 4), against 169 with `defect` and 197 one way; over the nest 60, 62 and 74,
+against 59 and 71. At f = 0.5 and 1 the outer regions match the defect run in fewer exchanges, and the nest's u is
+slightly further from the reference than one way. The footprint w is 0.045 at f = 0.5 and 0.050 at f = 1 (`defect`
+0.068). At f = 4 every region moves away from the reference (`docs/boundary_conditions.rst`, Two-way nests by
+relaxation).
+
+These numbers use the terrain of the PR-70 runs. On the terrain the current `prepare` writes (relief 906 m rather
+than 903 m), the one-way outer run does not reach steady with `turb.nut_relax = 0.5`; this is being followed up
+separately.
 
 ## CTest
 None: the three runs take about 15 minutes on 4 ranks of a laptop. The CTest of two-way nesting is `rt_nests_two_way`

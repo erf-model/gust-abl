@@ -35,7 +35,7 @@ void run ()
     OuterOutcome outcome;
     if (nests.active()) { outer.outcome = &outcome; }
     const bool joint = nests.active() && nests.feedback != NestFeedback::none;
-    // nest.feedback = defect (JointRun.H): the outer domain, once steady, runs each nest inside its own run_domain
+    // nest.feedback = defect or relax (JointRun.H): the outer domain, once steady, runs each nest inside its own run_domain
     // (DomainRole::joint), and the last nest runs the joint loop, so every domain stays in memory.
     std::vector<JointMember*> members;
     std::vector<OuterOutcome> nest_outcomes(nests.nests.size());
@@ -86,7 +86,8 @@ void run ()
         }
         if (!outcome.steady) { not_steady += "\n  the outer domain (last checkpoint " + chk + ")"; }
         if (!not_steady.empty()) {
-            amrex::Abort("gust: nest.feedback = defect: the joint run did not reach steady (steady.max_iterations, "
+            amrex::Abort(std::string("gust: nest.feedback = ") + nest_feedback_name(nests.feedback)
+                         + ": the joint run did not reach steady (steady.max_iterations, "
                          "steady.residual_tol, steady.residual_drop_orders); a joint run does not restart, so rerun "
                          "it from the start with other settings. Not steady:" + not_steady);
         }

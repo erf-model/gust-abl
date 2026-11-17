@@ -18,6 +18,7 @@
 #include "Initializer.H"
 #include "NestBuildings.H"
 #include "NestDefect.H"
+#include "NestRelax.H"
 #include "NestFaces.H"
 #include "NestParent.H"
 #include "Nests.H"
@@ -352,10 +353,11 @@ std::string run_domain (const DomainRole& role)
         }
         if (buildings_opt.active()) { err.emplace_back("nest.names is not supported with buildings.type yet"); }
         if (role.nests->feedback != NestFeedback::none) {
+            const std::string fbk = std::string("nest.feedback = ") + nest_feedback_name(role.nests->feedback);
             // The joint run (JointRun.H) steps every domain's SIMPLEC driver; the Newton stage's residual differs
             // from the one the source is formed with, and a joint restart is not written.
-            if (newton) { err.emplace_back("nest.feedback = defect needs steady.stage = simplec (not simplec_newton)"); }
-            if (!in.io.restart.empty()) { err.emplace_back("nest.feedback = defect does not restart (io.restart): run from the start"); }
+            if (newton) { err.push_back(fbk + " needs steady.stage = simplec (not simplec_newton)"); }
+            if (!in.io.restart.empty()) { err.push_back(fbk + " does not restart (io.restart): run from the start"); }
             // The restriction coarsens each nest's boxes by 2 2 1 (restrict_patch). A nest has an even number of
             // cells; AMReX's maxSize keeps the boxes even when mesh.max_grid_size is even, not when it is odd.
             if (check_nests(*role.nests, in.mesh).empty()) {
@@ -365,17 +367,17 @@ std::string run_domain (const DomainRole& role)
                     const MeshInputs nm = nest_mesh(nest, in.mesh);
                     for (int d = 0; d < 2; ++d) {
                         if (nm.is_periodic[d] == 0 && nm.n_cell[d] / 2 < 2 * kDefectMargin + 1) {
-                            err.emplace_back("nest.feedback = defect: nest." + nest.name + " spans "
-                                             + std::to_string(nm.n_cell[d] / 2) + " outer cells in "
-                                             + (d == 0 ? "x" : "y") + "; it needs at least "
-                                             + std::to_string(2 * kDefectMargin + 1) + " (the source keeps "
-                                             + std::to_string(kDefectMargin) + " cells from each face)");
+                            err.push_back(fbk + ": nest." + nest.name + " spans "
+                                          + std::to_string(nm.n_cell[d] / 2) + " outer cells in "
+                                          + (d == 0 ? "x" : "y") + "; it needs at least "
+                                          + std::to_string(2 * kDefectMargin + 1) + " (the source keeps "
+                                          + std::to_string(kDefectMargin) + " cells from each face)");
                         }
                     }
                     if (!make_box_array(nm).coarsenable(amrex::IntVect(2, 2, 1))) {
-                        err.emplace_back("nest.feedback = defect: nest." + nest.name + " splits into boxes with an odd "
-                                         "number of cells in x or y at mesh.max_grid_size: give an even "
-                                         "mesh.max_grid_size");
+                        err.push_back(fbk + ": nest." + nest.name + " splits into boxes with an odd "
+                                      "number of cells in x or y at mesh.max_grid_size: give an even "
+                                      "mesh.max_grid_size");
                     }
                 }
             }
@@ -383,11 +385,11 @@ std::string run_domain (const DomainRole& role)
             // equations, so an outer Rayleigh term on u, v or k would act outside the footprints and not inside:
             // a jump in the forcing at the footprint's edge above bc.rayleigh_zdamp.
             if (bin.rayleigh_zdamp > 0 && (bin.rayleigh_fields[0] || bin.rayleigh_fields[1] || bin.rayleigh_fields[4])) {
-                err.emplace_back("nest.feedback = defect needs bc.rayleigh_fields without u, v and tke (the nests damp w "
-                                 "and theta only): use bc.rayleigh_fields = w or w theta");
+                err.push_back(fbk + " needs bc.rayleigh_fields without u, v and tke (the nests damp w "
+                              "and theta only): use bc.rayleigh_fields = w or w theta");
             }
             if (bin.sponge_width > 0) {
-                amrex::Print() << "gust: note: nest.feedback = defect with bc.sponge_width > 0: the nests have no side "
+                amrex::Print() << "gust: note: " << fbk << " with bc.sponge_width > 0: the nests have no side "
                                   "sponge, so over a nest's footprint inside the sponge the joint run does not damp "
                                   "(place the nests outside bc.sponge_width)\n";
             }
@@ -788,11 +790,19 @@ std::string run_domain (const DomainRole& role)
         }
         // nest.feedback = defect: the outer domain's source of its nests (NestDefect.H), zero until the joint run sets it.
         std::unique_ptr<NestDefect> defect;
-        if (role.joint && nest == nullptr) { defect = std::make_unique<NestDefect>(ba, dm); }
+        // nest.feedback = relax: the outer domain's relaxation towards its nests (NestRelax.H) in its place.
+        std::unique_ptr<NestRelax> relax;
+        if (role.joint && nest == nullptr) {
+            if (role.nests->feedback == NestFeedback::relax) {
+                relax = std::make_unique<NestRelax>(ba, dm, geom, role.nests->feedback_factor);
+            } else {
+                defect = std::make_unique<NestDefect>(ba, dm);
+            }
+        }
         LevelSolver level0(setup, mesh, geom, state.z_phys_nd, ba, dm, "", newton, nullptr,
                            canopy.active() ? &canopy : nullptr, nullptr, buildings.active() ? &building_forcing : nullptr,
                            (buildings.active() && buildings_opt.wall_tke) ? &building_tke : nullptr,
-                           building_heat ? &building_theta : nullptr, time_term.get(), defect.get());
+                           building_heat ? &building_theta : nullptr, time_term.get(), defect.get(), relax.get());
         if (buildings.active()) {
             // After the wall distance above: its Poisson solve does not see the buildings.
             mesh.set_open_faces(buildings.beta_face(0), buildings.beta_face(1), buildings.beta_face(2), buildings.beta(), geom);
@@ -1080,7 +1090,7 @@ std::string run_domain (const DomainRole& role)
         };
         finish();
         if (role.joint && v.status != SteadyStatus::Diverged) {
-            // nest.feedback = defect: this domain joins the joint run (Run.cpp, JointRun.H), which steps it in
+            // nest.feedback = defect or relax: this domain joins the joint run (Run.cpp, JointRun.H), which steps it in
             // memory; then its outputs are written again at its new step.
             JointMember m;
             m.name = role_name;
@@ -1109,6 +1119,7 @@ std::string run_domain (const DomainRole& role)
                     residual(q, fin, mesh, geom, R);
                 };
             }
+            if (relax) { m.relax = relax.get(); }
             if (nest != nullptr) {
                 m.parent = parent.get();
                 m.faces = nest_faces.get();

@@ -1018,11 +1018,11 @@
 # stays at the outer domain's centre, and the forcing is the outer run's final forcing.
 #
 # nest.names =    # none
-#     Names of the nests, each once: a letter, then letters, digits or _; not names or feedback. With nests the
-#     outer deck needs steady.stage = simplec or simplec_newton and io.write_checkpoint = 1; buildings and
-#     simplec.theta = frozen are refused, and so is terrain.smoothing = 1 over terrain other than flat. The nests
-#     run only if the outer domain reaches steady; GUST stops with an error after the nests if one did not (with
-#     nest.feedback = defect, after the joint run).
+#     Names of the nests, each once: a letter, then letters, digits or _; not names, feedback or feedback_factor.
+#     With nests the outer deck needs steady.stage = simplec or simplec_newton and io.write_checkpoint = 1;
+#     buildings and simplec.theta = frozen are refused, and so is terrain.smoothing = 1 over terrain other than
+#     flat. The nests run only if the outer domain reaches steady; GUST stops with an error after the nests if one
+#     did not (with nest.feedback = defect or relax, after the joint run).
 #
 # nest.<name>.lo =    # required
 #     Two finite values x y (m): the nest's low corner, on the outer cell faces, at least 2 outer cells inside each
@@ -1034,15 +1034,25 @@
 #     cells inside each non-periodic outer face.
 #
 # nest.feedback = none
-#     none or defect. none: one way, the nests after the outer domain. defect: after the one-way runs, the outer
-#     domain and every nest iterate together in memory, the nests' faces taking the outer field and the outer domain
-#     taking the nests' solution over their footprints through a defect source (two-way-nests,
-#     docs/boundary_conditions.rst). Given only with nest.names (either value). defect is refused with steady.stage
-#     = simplec_newton, with io.restart, with u, v or tke in bc.rayleigh_fields, and when an odd mesh.max_grid_size
-#     splits a nest into boxes with an odd number of cells in x or y, or when a nest spans fewer than 5 outer cells
-#     in a non-periodic x or y (the source keeps 2 cells from each face). With bc.sponge_width > 0 the run prints a
-#     note: the nests have no side sponge. With defect the one-way nest runs already use the joint run's coordinate
-#     surfaces, so they differ from a none run's. steady.max_iterations also caps the joint exchanges.
+#     none, defect or relax. none: one way, the nests after the outer domain. defect: after the one-way runs, the
+#     outer domain and every nest iterate together in memory, the nests' faces taking the outer field and the outer
+#     domain taking the nests' solution over their footprints through a defect source (two-way-nests,
+#     docs/boundary_conditions.rst). relax: the same joint run, with a relaxation of the outer domain towards the
+#     nests' solution over their footprints in place of the defect source (two-way-relax,
+#     docs/boundary_conditions.rst). Given only with nest.names (any value). defect and relax are refused with
+#     steady.stage = simplec_newton, with io.restart, with u, v or tke in bc.rayleigh_fields, and when an odd
+#     mesh.max_grid_size splits a nest into boxes with an odd number of cells in x or y, or when a nest spans fewer
+#     than 5 outer cells in a non-periodic x or y (the source keeps 2 cells from each face). With bc.sponge_width >
+#     0 the run prints a note: the nests have no side sponge. With defect the one-way nest runs already use the
+#     joint run's coordinate surfaces, so they differ from a none run's (the same holds for relax).
+#     steady.max_iterations also caps the joint exchanges.
+#
+# nest.feedback_factor = 1
+#     Finite, > 0 (dimensionless): the relaxation's rate over the advection rate, f in c = w(s) f U / Δ x, U the
+#     nest's mean horizontal speed and Δ x the smaller of the outer Δ x, Δ y (two-way-relax,
+#     docs/boundary_conditions.rst). Given only with nest.feedback = relax, once. A larger factor holds the outer
+#     domain closer to the nest under it, but does not by itself bring either domain closer to a fine run
+#     (two-way-relax, docs/boundary_conditions.rst, Results).
 
 # ==================================================================================================================
 # refavg (reference-averaging tool)

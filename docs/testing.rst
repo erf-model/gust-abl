@@ -626,6 +626,51 @@ AppleClang). All 10 are killed.
      - u copied onto the parent without the periodicity
      - ``RestrictionSetsBothCopiesOfAPeriodicSeamFace``
 
+The one-line mutants of the two-way nests' relaxation source (``Source/NestRelax.cpp``), each run against
+``NestRelax.*`` on two ranks with the unit-test flags by ``tools/nest_relax_mutants.py`` (macOS arm64, AppleClang).
+All 10 are killed.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 6 50 44
+
+   * - Mutant
+     - Change
+     - Failing tests
+   * - X1
+     - The source with the wrong sign
+     - ``DiagonalIsTheDerivativeOfTheSource``, ``FootprintOnAPeriodicSeam``, ``PeriodicSpanHasNoFaces``, ``ResidualGainsTheSourceOnTheFootprintRows``, ``SourceIsItsClosedFormOnUnevenBoxes``
+   * - X2
+     - k left out of the source
+     - ``DiagonalIsTheDerivativeOfTheSource``, ``FootprintOnAPeriodicSeam``, ``PeriodicSpanHasNoFaces``, ``ResidualGainsTheSourceOnTheFootprintRows``, ``SourceIsItsClosedFormOnUnevenBoxes``
+   * - X3
+     - A margin of three parent cells
+     - ``FootprintOnAPeriodicSeam``, ``PeriodicSpanHasNoFaces``, ``SourceIsItsClosedFormOnUnevenBoxes``
+   * - X4
+     - Cells measured from the face like face points
+     - ``DiagonalIsTheDerivativeOfTheSource``, ``FootprintOnAPeriodicSeam``, ``PeriodicSpanHasNoFaces``, ``ResidualGainsTheSourceOnTheFootprintRows``, ``SourceIsItsClosedFormOnUnevenBoxes``
+   * - X5
+     - Faces also across a periodic span
+     - ``PeriodicSpanHasNoFaces``
+   * - X6
+     - Overlapping footprints: the last one's rate, not the larger
+     - ``SourceIsItsClosedFormOnUnevenBoxes``
+   * - X7
+     - The rate floored at 0.1 of its full value
+     - ``FootprintOnAPeriodicSeam``, ``PeriodicSpanHasNoFaces``, ``SourceIsItsClosedFormOnUnevenBoxes``
+   * - X8
+     - :math:`U` from :math:`|u|` alone
+     - ``FootprintOnAPeriodicSeam``, ``PeriodicSpanHasNoFaces``, ``SourceIsItsClosedFormOnUnevenBoxes``
+   * - X9
+     - :math:`\Delta x` the larger horizontal cell size
+     - ``FootprintOnAPeriodicSeam``, ``PeriodicSpanHasNoFaces``, ``SourceIsItsClosedFormOnUnevenBoxes``
+   * - X10
+     - No diagonal
+     - ``DiagonalIsTheDerivativeOfTheSource``
+
+By hand against ``rt_nests_relax``: k left out of the source (X2 in the application) leaves the nest's u error at
+:math:`f = 16` at 3.26e-2 against 3.27e-2, so the test does not detect it; the unit tests do.
+
 By hand against ``rt_nests_two_way``: ``nest.feedback = none`` in place of ``defect`` (no joint run) fails its
 log check, and the first two-nest layout (the crest nest ending at x = 900 m, on the lee slope) fails the nest
 ratio at 3.33.
@@ -1817,8 +1862,19 @@ Current tests
        the RMS of u against the reference over each nest at most 0.5 (``hill``; measured 0.247) or 0.7 (``crest``
        0.418, ``lee`` 0.606) of the one-way one, and over the outer cells outside the footprints at most 0.6
        (0.340) or 0.9 (0.801).
+   * - ``rt_nests_relax``
+     - Two-way nests by relaxation (``Tests/Canonical_RANS/Nests_Two_Way``, ``check_nests_two_way.py --relax``; PR-71,
+       ``nest.feedback = relax``): the ``rt_nests_two_way`` hill with the nest ``hill``, the defect run beside joint
+       runs at ``nest.feedback_factor`` = 1, 4 and 16, on two ranks with the GPU-CI flags. Each run's start line names
+       the factor; the outer domain minus the restricted nest under the nest (the log's last RMS of u) falls with the
+       factor, and at 16 is at most 0.35 of its value at 1 (measured 0.19); at factor 1 the nest's u RMS against the
+       25 m run is at most 0.5 of the one-way one (0.41) and the outer domain's outside the footprint at most 0.6
+       (0.35). About 2 minutes on an Apple M-series laptop, most of it the factor-16 run (508 exchanges).
+   * - ``abort_nests_feedback_factor``, ``_factor_nan``, ``_factor_unused``, ``_relax_damping``
+     - ``nest.feedback_factor = 0``; ``= nan``; ``= 2`` with ``nest.feedback = defect``; ``relax`` with a Rayleigh
+       layer on u, v and k: each stops the run before the outer domain starts, naming the key.
    * - ``abort_nests_feedback_value``, ``_no_nests``, ``_newton``, ``_restart``, ``_damping``, ``_odd_boxes``, ``_narrow``
-     - ``nest.feedback = inject``; ``defect`` without ``nest.names``; with ``steady.stage = simplec_newton``; with
+     - ``nest.feedback = inject`` (the message lists none, defect and relax); ``defect`` without ``nest.names``; with ``steady.stage = simplec_newton``; with
        ``io.restart``; with a Rayleigh layer on u, v and k; with ``mesh.max_grid_size = 15 12``, which splits the
        nest's 32 cells into boxes of 11, 11 and 10; with a nest 4 outer cells wide in x: each stops the run before the outer domain starts, naming
        ``nest.feedback``.
@@ -3351,6 +3407,34 @@ GoogleTest suite
      - ``defect_region``: the footprint and the inner box ``kDefectMargin`` cells in (not across a periodic
        direction); :math:`S = R` on the inner box's points (faces from L to H + 1 along their normal) and 0 elsewhere;
        ``add_to_residual`` subtracts it, and does nothing while inactive.
+   * - ``NestRelax.SourceIsItsClosedFormOnUnevenBoxes`` (UT-8.3.1)
+     - Two overlapping footprints on a parent of 20 × 16 × 8 cells (dx 100 m, dy 80 m) in boxes of 7 × 6, with
+       non-uniform u, v, w, θ and k: on every point of every location the rate is
+       :math:`\max_g w(s_g) f U_g / \min(\Delta x, \Delta y)` computed from the point's position (``kDefectMargin``
+       written as 2), 0 outside both footprints and on their faces, with points inside the margin; :math:`R` gains
+       :math:`c(q - q^*)` and ``differences`` gives the largest :math:`|q - q^*|`; on 1, 2 and 4 ranks.
+   * - ``NestRelax.PeriodicSpanHasNoFaces`` (UT-8.3.1)
+     - A footprint spanning a periodic y: the rate does not fall towards the y ends, and falls to 0 at the x faces.
+   * - ``NestRelax.FootprintOnAPeriodicSeam`` (UT-8.3.1, beyond the plan)
+     - A footprint from face 0 of a periodic y that does not span it: the closed form with y faces, and a rate of 0
+       on both copies of the seam face (0 and its image 16).
+   * - ``NestRelax.InactiveLeavesTheHillBitForBit`` (UT-8.3.2)
+     - On a hill, the residual and the implicit diagonals with an unset ``NestRelax`` attached are bit for bit those
+       with none.
+   * - ``NestRelax.ResidualGainsTheSourceOnTheFootprintRows`` (UT-8.3.2)
+     - On a hill, the residual with the source minus the one without equals :math:`c(q - q^*)` on every row the
+       boundary conditions keep, and 0 on the rows they replace (40 ground and top w faces and 20 wall-k cells in the
+       footprint) and outside the footprint; continuity's residual is unchanged.
+   * - ``NestRelax.DiagonalIsTheDerivativeOfTheSource`` (UT-8.3.3)
+     - For each equation, the implicit diagonal with the source minus the one without equals the finite-difference
+       derivative of the residual's change, point by point; no other coefficient changes.
+   * - ``NestRelax.SameSourceOnAnyRankMapAndLayout`` (UT-8.3.4)
+     - U and the rates at every point: bit for bit the same with the boxes of 7 × 6 on reversed ranks, and the same to
+       round-off with one box; on 1, 2 and 4 ranks (on 1 rank the reversed map is the same map, so that half
+       acts in ``unit_np2`` and ``unit_np4`` only).
+   * - ``NestRelax.FactorCheckNamesTheKey``
+     - ``check_feedback_factor`` accepts 1 and 16 and refuses 0, −1, NaN and infinity, naming
+       ``nest.feedback_factor``.
    * - ``NestBuildings.PatchHasTheWholeDomainsFractionsAndWalls`` (UT-9.4.1)
      - An L-shaped block with two tops and a lifted deck on sloping ground: a patch (16 × 17 cells in boxes of 5 × 6)
        builds the solid fractions, the three face fractions and the wall cells bit for bit as the whole domain (32 ×

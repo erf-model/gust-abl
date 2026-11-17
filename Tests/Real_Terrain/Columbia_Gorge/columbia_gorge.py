@@ -2,7 +2,7 @@
 """Two-way nesting over the Columbia River Gorge: prepare, run, compare.
 
     columbia_gorge.py prepare [--work DIR]
-    columbia_gorge.py run --gust GUST [--work DIR] [--mpi "mpiexec -n 4"]
+    columbia_gorge.py run --gust GUST [--work DIR] [--mpi "mpiexec -n 4"] [--relax F ...] [--relax-only]
     columbia_gorge.py compare [--work DIR]
 
 prepare: fetches the terrain (tools/fetch_terrain.py, SRTM 1 arc-second
@@ -13,7 +13,9 @@ prepare: fetches the terrain (tools/fetch_terrain.py, SRTM 1 arc-second
 run:     runs, one after another in DIR/gorge_outer: the uniform 100 m
          reference (ref_*), the outer domain and the nest one way
          (nest.feedback = none, ow_*), and the joint run (nest.feedback =
-         defect, jt_*).
+         defect, jt_*); with --relax F ..., then one joint run per factor
+         with nest.feedback = relax, nest.feedback_factor = F (rx<F>_*);
+         --relax-only skips the first three (already run).
 compare: the RMS of u, v, w and k of each run against the reference: over
          the nest, over the outer cells outside the nest's footprint, over
          the footprint, and in the outer cells east of the nest (downstream);
@@ -22,6 +24,7 @@ compare: the RMS of u, v, w and k of each run against the reference: over
          (tools/speed_difference.py), and with --plot PNG a terrain map of
          each column's largest difference. The nest is compared at its own
          cell heights (a joint nest's levels differ from the reference's).
+         The relax runs found in DIR (rx<F>_*) are compared as well.
 
 The nest (NEST) covers the river bend and the south face of the Columbia
 Hills: its north face cuts the ridge and its east face crosses the river.
@@ -82,12 +85,23 @@ def prepare(work):
     print(f"columbia_gorge: wrote {deck} and inputs_ref")
 
 
-def run(work, gust, mpi):
+def run(work, gust, mpi, relax=(), relax_only=False):
     case = os.path.join(work, "gorge_outer")
     launch = mpi.split() + [os.path.abspath(gust)]
-    sh(launch + ["inputs_ref", "io.plot_file=ref_plt", "io.chk_file=ref_chk"], case, "ref.log")
-    sh(launch + ["inputs", *NEST, "nest.feedback=none", "io.plot_file=ow_plt", "io.chk_file=ow_chk"], case, "ow.log")
-    sh(launch + ["inputs", *NEST, "nest.feedback=defect", "io.plot_file=jt_plt", "io.chk_file=jt_chk"], case, "jt.log")
+    if not relax_only:
+        sh(launch + ["inputs_ref", "io.plot_file=ref_plt", "io.chk_file=ref_chk"], case, "ref.log")
+        sh(launch + ["inputs", *NEST, "nest.feedback=none", "io.plot_file=ow_plt", "io.chk_file=ow_chk"], case, "ow.log")
+        sh(launch + ["inputs", *NEST, "nest.feedback=defect", "io.plot_file=jt_plt", "io.chk_file=jt_chk"], case, "jt.log")
+    for f in relax:
+        tag = f"rx{f:g}"
+        sh(launch + ["inputs", *NEST, "nest.feedback=relax", f"nest.feedback_factor={f:g}", f"io.plot_file={tag}_plt",
+                     f"io.chk_file={tag}_chk"], case, tag + ".log")
+
+
+def relax_runs(case):
+    """The tags of the relax runs in case (rx<F>), by factor."""
+    tags = {os.path.basename(p).split("_plt")[0] for p in glob.glob(os.path.join(case, "rx*_plt_rg[0-9]*"))}
+    return sorted(tags, key=lambda t: float(t[2:]))
 
 
 def last(case, prefix):
@@ -109,6 +123,7 @@ def compare(work, plot=None):
     R = rd(last(case, "ref_plt"))
     OO, OJ = rd(last(case, "ow_plt")), rd(last(case, "jt_plt"))
     NO, NJ = rd(last(case, "ow_plt_rg")), rd(last(case, "jt_plt_rg"))
+    RX = {t: (rd(last(case, t + "_plt")), rd(last(case, t + "_plt_rg"))) for t in relax_runs(case)}
     lo = [float(s) for s in NEST[1].split("=")[1].split()]
     hi = [float(s) for s in NEST[2].split("=")[1].split()]
     i0, j0 = (int(round((lo[d] - OUTER["lo"][d]) / OUTER["dx"])) for d in range(2))
@@ -131,6 +146,15 @@ def compare(work, plot=None):
         vals = [rms(NO[f] - ro), rms(NJ[f] - rj), rms((OO[f] - rc)[o3]), rms((OJ[f] - rc)[o3]),
                 rms((OO[f] - rc)[fp]), rms((OJ[f] - rc)[fp]), rms((OO[f] - rc)[dn]), rms((OJ[f] - rc)[dn])]
         print(f"{f:5s} " + " ".join(f"{v:10.4e}" for v in vals))
+    for t, (O, N) in RX.items():
+        print(f"\n{t} (nest.feedback = relax, nest.feedback_factor = {t[2:]}):")
+        print(f"{'field':5s} {'nest':>10s} {'out':>10s} {'foot':>10s} {'down':>10s}")
+        for f in FIELDS:
+            rc = sd.coarsen(R[f])
+            rn = sd.at_height(N["z"], zr, R[f][sl])
+            o3 = np.broadcast_to(out[:, :, None], rc.shape)
+            vals = [rms(N[f] - rn), rms((O[f] - rc)[o3]), rms((O[f] - rc)[fp]), rms((O[f] - rc)[dn])]
+            print(f"{f:5s} " + " ".join(f"{v:10.4e}" for v in vals))
 
     # Wind-speed differences in m/s, in the lowest sd.AGL m: counts above the thresholds and a map.
     Rs = sd.speed(R)
@@ -139,7 +163,7 @@ def compare(work, plot=None):
     print(f"\nhorizontal speed |S - S_ref| below {sd.AGL:g} m above the ground "
           f"(reference mean {Rs[sd.near_ground(R['z'])].mean():.2f} m/s)")
     rows, layers = [], {}
-    for name, N, O in (("one-way", NO, OO), ("joint", NJ, OJ)):
+    for name, N, O in [("one-way", NO, OO), ("joint", NJ, OJ)] + [(t, N, O) for t, (O, N) in RX.items()]:
         d_n = sd.speed(N) - sd.at_height(N["z"], zr, Rs[sl])
         m_n = sd.near_ground(N["z"])
         d_o = sd.speed(O) - Rc
@@ -147,7 +171,7 @@ def compare(work, plot=None):
                  (name, "outer", d_o[mc & out[:, :, None]])]
         layers[name] = (sd.column_max(d_n, m_n), sd.column_max(d_o, mc))
     sd.print_table(rows)
-    for name in ("ref", "ow", "jt"):
+    for name in ["ref", "ow", "jt"] + list(RX):
         log = os.path.join(case, name + ".log")
         if os.path.exists(log):
             with open(log) as fh:
@@ -186,6 +210,9 @@ def main():
     ap.add_argument("--gust", help="the gust executable (run)")
     ap.add_argument("--plot", help="compare: also write the map of the speed differences to this PNG")
     ap.add_argument("--mpi", default="mpiexec -n 4", help='MPI launcher (default "mpiexec -n 4")')
+    ap.add_argument("--relax", type=float, nargs="+", default=[], metavar="F",
+                    help="run: also the joint run with nest.feedback = relax at each nest.feedback_factor F")
+    ap.add_argument("--relax-only", action="store_true", help="run: only the relax runs (the others already ran)")
     a = ap.parse_args()
     work = os.path.abspath(a.work)
     if a.step == "prepare":
@@ -193,7 +220,9 @@ def main():
     elif a.step == "run":
         if not a.gust:
             ap.error("run needs --gust")
-        run(work, a.gust, a.mpi)
+        if a.relax_only and not a.relax:
+            ap.error("--relax-only needs --relax")
+        run(work, a.gust, a.mpi, a.relax, a.relax_only)
     else:
         compare(work, a.plot)
     return 0

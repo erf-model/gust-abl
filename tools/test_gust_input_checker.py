@@ -274,7 +274,7 @@ def named_keys(pattern):
     keys = []
     for m in re.findall(r"[a-z]+\.[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)?", text):
         parts = m.split(".")
-        if parts[0] == "nest" and len(parts) == 2 and parts[1] not in ("names", "feedback"):
+        if parts[0] == "nest" and len(parts) == 2 and parts[1] not in ("names", "feedback", "feedback_factor"):
             keys += [m + ".lo", m + ".hi"]          # "nest.a must lie ...": the nest's corners
         elif parts[0] == "nest":
             keys.append(m)
@@ -293,6 +293,8 @@ OTHER_KEY = {
     "abort_unsteady_restart_average_start",   # the same
     "abort_unsteady_restart_past_stop",       # the same
     "abort_buildings_lusgs",                  # reported on steady.sweep
+    "abort_nests_feedback_factor_nan",        # nan is left to AMReX's parser (deck.to_real); the deck's Rayleigh
+                                              # layer on u, v and k is reported on nest.feedback
     "abort_abl_capped_no_sink",               # reported on bc.rayleigh_fields / bc.theta_profile
     "abort_stage_no_guess",                   # reported on init.first_guess
     "abort_sequencing_overlap",               # reported on steady.line_overlap
