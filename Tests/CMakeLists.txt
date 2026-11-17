@@ -2809,6 +2809,19 @@ add_test(NAME speed_difference_selftest
          WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/tools)
 set_tests_properties(speed_difference_selftest PROPERTIES LABELS unit ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
 
+# The nest-placement check (tools/nest_placement.py) on analytic terrains; it needs numpy and scipy, and
+# without them the test is not registered (the configure says so).
+execute_process(COMMAND ${Python3_EXECUTABLE} -c "import numpy, scipy"
+                RESULT_VARIABLE _gust_scipy OUTPUT_QUIET ERROR_QUIET)
+if(_gust_scipy EQUAL 0)
+    add_test(NAME nest_placement_selftest
+             COMMAND ${Python3_EXECUTABLE} -m unittest -v test_nest_placement
+             WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/tools)
+    set_tests_properties(nest_placement_selftest PROPERTIES LABELS unit ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
+else()
+    message(STATUS "GUST: numpy or scipy not found for ${Python3_EXECUTABLE}; nest_placement_selftest is not registered")
+endif()
+
 # --- The extern_erf drift check's own tests -----------------------------------
 add_test(NAME drift_check_selftest
          COMMAND ${Python3_EXECUTABLE} -m unittest -v test_check_extern_erf

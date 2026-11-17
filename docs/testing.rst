@@ -2224,6 +2224,22 @@ Current tests
      - ``tools/speed_difference.py`` on hand-made fields: the counts strictly above 0.25, 0.5 and 1 m/s, the column
        interpolation to other heights (exact for a field linear in z), the 2 × 2 mean, the near-ground mask and the
        column maximum. Label ``unit``.
+   * - ``nest_placement_selftest``
+     - ``tools/nest_placement.py`` on analytic terrains (dx 200 m): a channel through the inflow and outflow faces
+       along the wind (clear, covering the nest's share of it) and at 35° (flagged), a 2 km wide one at 35° that
+       the outer cells follow (clear), the 35° site scaled down four times with dx 50 m (the same verdict, every
+       threshold a quarter: misfit 1.25 m, prominence and step rise 6.25 m, margin 500 m), an escarpment crossing
+       the inflow face at 50° (a step, flagged), a ridge crossing only the south and north faces (clear for 270°,
+       flagged for 0° and 180°), a channel bending 600 m beyond the outflow face (a note, not a flag), oblique
+       waves where no position is clear (the warning, exit status 2), the margin kept by ``--recommend`` and
+       noted by ``--nest``, a smooth hill (no high-misfit column), the 60° face-kind rule, the exit status of a
+       check (1 flagged, 0 clear), terrain points that do not cover ``--domain`` and 21 input errors (each exits
+       with status 3 and names the input). Registered when Python has numpy and scipy. Label ``unit``. The
+       one-line mutants of ``tools/nest_placement_mutants.py`` each fail it: P1 angle rule off, P2 fixed
+       thresholds, P3 no steps, P4 only the first wind direction, P5 a bend flags the face, P6 no warning, P7 the
+       margin of before (4 dx), P8 side faces flagged, P9 misfit gate off, P10 a check always exits 0, P11 the
+       face-kind cutoff of before (0.3), P12 terrain smaller than the domain accepted, P13 nest corners off the
+       outer nodes accepted. All 13 are killed.
    * - ``erf_plotfile_selftest``
      - ``extern_erf/erf_plotfile.py`` (a local change, :doc:`extraction`) on hand-made one-box plotfiles in double
        and float, little- and big-endian: every value read back exactly. The upstream reader fails the two float
