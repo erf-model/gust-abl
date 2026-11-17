@@ -1876,9 +1876,25 @@ Current tests
    * - ``abort_nests_feedback_factor``, ``_factor_nan``, ``_factor_unused``, ``_relax_damping``
      - ``nest.feedback_factor = 0``; ``= nan``; ``= 2`` with ``nest.feedback = defect``; ``relax`` with a Rayleigh
        layer on u, v and k: each stops the run before the outer domain starts, naming the key.
-   * - ``abort_nests_feedback_value``, ``_no_nests``, ``_newton``, ``_restart``, ``_damping``, ``_odd_boxes``, ``_narrow``
+   * - ``rt_nests_joint_restart``, ``rt_nests_joint_restart_relax``
+     - A joint run stopped after 150 exchanges (``steady.max_iterations``) and restarted from the joint record its
+       message names (``Tests/Canonical_RANS/Nests_Two_Way/check_joint_restart.py``): the record has the feedback,
+       150 exchanges and the nests in order; the restart logs ``restarted after exchange 150``, is steady after the
+       straight run's exchanges with each domain's iterations over the run equal, and the last plotfile and
+       checkpoint of every domain (state, node heights, closure history, nest faces, joint record; not the driver
+       record's wall times) are byte for byte the straight run's. The nests ``crest`` and ``lee`` with the defect
+       source on 3 ranks (254 exchanges); the nest ``hill`` with the relaxation on 2 ranks, stopped after 140 (160).
+       Mutants: with AMReX's default rank order for a joint nest's boxes (which follows each rank's memory in use)
+       the relax test fails (the nest's plotfile differs; the 3-rank defect test passes by chance); without the
+       ghost fill after the faces' refresh both fail (the outer plotfile differs, by up to 3.5e-12 in theta).
+   * - ``abort_nests_joint_restart_names``, ``_iterations``, ``_version``, ``_missing``
+     - ``io.restart`` with a joint record (written by the configure step into ``joint_records/``) that names the nest
+       ``other`` for ``nest.names = a``; one of 5 exchanges with ``steady.max_iterations = 5``; one of version 2; one
+       that names a nest checkpoint that is not there: each stops the run before the outer domain starts, naming
+       ``io.restart``.
+   * - ``abort_nests_feedback_value``, ``_no_nests``, ``_newton``, ``_damping``, ``_odd_boxes``, ``_narrow``
      - ``nest.feedback = inject`` (the message lists none, defect and relax); ``defect`` without ``nest.names``; with ``steady.stage = simplec_newton``; with
-       ``io.restart``; with a Rayleigh layer on u, v and k; with ``mesh.max_grid_size = 15 12``, which splits the
+       a Rayleigh layer on u, v and k; with ``mesh.max_grid_size = 15 12``, which splits the
        nest's 32 cells into boxes of 11, 11 and 10; with a nest 4 outer cells wide in x: each stops the run before the outer domain starts, naming
        ``nest.feedback``.
    * - ``rt_bc_neutral_flat``, ``rt_bc_neutral_flat_matches``
@@ -3453,6 +3469,14 @@ GoogleTest suite
    * - ``NestRelax.FactorCheckNamesTheKey``
      - ``check_feedback_factor`` accepts 1 and 16 and refuses 0, −1, NaN and infinity, naming
        ``nest.feedback_factor``.
+   * - ``JointRecord.RoundTripIsExactOnEveryRank``, ``JointRecord.NoFileIsNotAJointCheckpoint``, ``JointRecord.MalformedRecordsAbort``, ``JointRecord.LineEndsAreNotPartOfThePath`` (tracker N-114, beyond the plan)
+     - The joint record (``Source/JointRecord.cpp``) written by the I/O rank reads back on every rank with the
+       feedback, the exchanges, the CFL floors bit for bit (1/3, 0.1 and 0) and each nest's checkpoint path (one with
+       a space). A checkpoint without a record reads as none. Another version, feedback ``inject``, 0 exchanges, a
+       negative or NaN floor, no nest line, a nest line without a checkpoint, text after a floor and a line that is
+       not ``nest`` each abort. A record with ``\r\n`` line ends and trailing spaces after a path reads the paths
+       without them. Mutants: floors written as decimals fail the round trip; a floor with trailing text accepted
+       fails the malformed test; the path not trimmed fails the line-end test.
    * - ``NestBuildings.PatchHasTheWholeDomainsFractionsAndWalls`` (UT-9.4.1)
      - An L-shaped block with two tops and a lifted deck on sloping ground: a patch (16 × 17 cells in boxes of 5 × 6)
        builds the solid fractions, the three face fractions and the wall cells bit for bit as the whole domain (32 ×

@@ -33,7 +33,8 @@ struct JointMember
     State* state{nullptr};
     const Mesh* mesh{nullptr};
     const amrex::Geometry* geom{nullptr};
-    std::string chk;                  //!< the checkpoint the one-way run wrote
+    std::string chk;                  //!< the checkpoint the one-way run wrote (a joint restart: the one read)
+    amrex::Real cfl_floor{0};         //!< the CFL floor of its driver in the joint run (Driver::cfl_floor)
     SteadyVerdict verdict;            //!< the last step's (the one-way run's at first)
     int iterations{0};                //!< joint iterations taken
     int max_iterations{0};            //!< steady.max_iterations as the run read it
@@ -74,6 +75,15 @@ struct DomainRole
     //! are written (not if it diverged); after it returns a domain that took joint iterations
     //! writes its outputs again. Empty: one way.
     std::function<void(JointMember&)> joint;
+    //! A joint restart (JointRecord.H; with joint): the checkpoint this domain restarts from (the outer domain's is
+    //! io.restart) and its driver's CFL floor; the domain then joins the joint run without a one-way iteration.
+    //! Null: not a joint restart.
+    struct JointResume
+    {
+        std::string chk;
+        amrex::Real cfl_floor{0};
+    };
+    const JointResume* resume{nullptr};
 };
 
 //! Read and check the inputs, build the mesh and state (fresh or from

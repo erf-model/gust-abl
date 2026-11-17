@@ -54,6 +54,7 @@ set(GUST_SOURCES
     Sequencing.cpp
     Simplec.cpp
     NestBuildings.cpp
+    JointRecord.cpp
     JointRun.cpp
     NestDefect.cpp
     NestRelax.cpp

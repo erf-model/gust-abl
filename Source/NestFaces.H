@@ -177,7 +177,11 @@ public:
     //! The record a restart checks: the four lateral faces' types, the
     //! parent's step, cells and content (NestParent::content_digest), the
     //! patch's place in it, the zone's settings and terrain.nest_blend_width.
-    [[nodiscard]] static std::string hash_inputs (const NestParent& parent, const BoundaryInputs& bin, amrex::Real blend_width);
+    //! joint: a nest of the joint run (JointRun.H), whose parent is the outer
+    //! domain in memory, not one checkpoint: the parent's step and content are
+    //! left out (a joint restart reads the nest with a later parent checkpoint).
+    [[nodiscard]] static std::string hash_inputs (const NestParent& parent, const BoundaryInputs& bin, amrex::Real blend_width,
+                                                  bool joint = false);
     static void write_checkpoint (const std::string& dir, const std::string& hash);
     //! Aborts, naming io.restart, if the checkpoint dir was written with other
     //! nest settings (hash "": this run has no nest face).

@@ -615,7 +615,7 @@ std::string NestFaces::summary () const
     return os.str();
 }
 
-std::string NestFaces::hash_inputs (const NestParent& parent, const BoundaryInputs& bin, amrex::Real blend_width)
+std::string NestFaces::hash_inputs (const NestParent& parent, const BoundaryInputs& bin, amrex::Real blend_width, bool joint)
 {
     // Every lateral face's type: a face that is not nest decides too whether the net flux is removed.
     std::string s = "faces";
@@ -623,9 +623,13 @@ std::string NestFaces::hash_inputs (const NestParent& parent, const BoundaryInpu
         const FaceType t = bin.face[amrex::Orientation(n / 2, n % 2 == 0 ? amrex::Orientation::low : amrex::Orientation::high)];
         s += std::string(" ") + kLateral[n] + "=" + face_type_name(t);
     }
-    s += "\nparent step " + std::to_string(parent.parent_step());
+    if (joint) {
+        s += "\njoint parent";
+    } else {
+        s += "\nparent step " + std::to_string(parent.parent_step());
+    }
     for (int d = 0; d < 3; ++d) { s += " " + std::to_string(parent.parent_cells()[d]); }
-    s += "\nparent content " + parent.content_digest();
+    if (!joint) { s += "\nparent content " + parent.content_digest(); }
     s += "\noffset " + std::to_string(parent.offset()[0]) + " " + std::to_string(parent.offset()[1]);
     // The default ratio adds nothing: checkpoints written before bc.nest_ratio keep their hash.
     if (parent.ratio() != kNestRatio) { s += "\nratio " + std::to_string(parent.ratio()); }
@@ -673,7 +677,8 @@ void NestFaces::check_restart (const std::string& dir, const std::string& hash)
     if (active && rec != hash) {
         amrex::Abort(where + "the checkpoint was written with other nest settings (the types of the lateral faces bc.xlo, "
                              "bc.xhi, bc.ylo, bc.yhi; the parent in bc.nest_parent: its step, cells, fields or ground, or the "
-                             "patch's place in it; bc.nest_relax_width, bc.nest_relax_factor or terrain.nest_blend_width); "
+                             "patch's place in it; bc.nest_relax_width, bc.nest_relax_factor or terrain.nest_blend_width; for a "
+                             "nest of nest.names, its nest.<name>.lo and hi); "
                              "restart with the inputs and the parent it was written with");
     }
 }

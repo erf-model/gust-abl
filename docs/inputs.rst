@@ -1715,12 +1715,14 @@ the outer run's final forcing.
        (:ref:`two-way-nests`). ``relax``: the same joint run, with a relaxation of the outer domain towards the
        nests' solution over their footprints in place of the defect source (:ref:`two-way-relax`). Given only with
        ``nest.names`` (any value). ``defect`` and ``relax`` are refused with
-       ``steady.stage = simplec_newton``, with ``io.restart``, with ``u``, ``v`` or ``tke`` in
+       ``steady.stage = simplec_newton``, with ``u``, ``v`` or ``tke`` in
        ``bc.rayleigh_fields``, and when an odd ``mesh.max_grid_size`` splits a nest into boxes with an odd number of
        cells in x or y, or when a nest spans fewer than 5 outer cells in a non-periodic x or y (the source keeps 2
        cells from each face). With ``bc.sponge_width`` > 0 the run prints a note: the nests have no side sponge.
        With ``defect`` the one-way nest runs already use the joint run's coordinate surfaces, so they differ from
-       a ``none`` run's (the same holds for ``relax``). ``steady.max_iterations`` also caps the joint exchanges.
+       a ``none`` run's (the same holds for ``relax``). ``steady.max_iterations`` also caps the joint exchanges,
+       counted over the run; ``io.restart`` with a joint run's checkpoint continues the joint run
+       (:ref:`two-way-nests`, Restart).
    * - ``nest.feedback_factor``
      - 1
      - Finite, > 0 (dimensionless): the relaxation's rate over the advection rate, :math:`f` in

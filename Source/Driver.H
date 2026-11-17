@@ -276,6 +276,10 @@ public:
     //! A floor at cfl0 instead keeps the nest's pseudo-time step a cfl_max / cfl0 fraction of the
     //! parent's, and the exchanges then settle into a cycle (PR-70 hill tests).
     void floor_cfl_at_current () { m_cfl_floor = m_h.cfl; }
+    //! The floor floor_cfl_at_current set (0: none), for the joint record (JointRecord.H).
+    [[nodiscard]] amrex::Real cfl_floor () const { return m_cfl_floor; }
+    //! A joint restart (JointRecord.H): the floor the joint run had set, not the CFL the checkpoint holds now.
+    void set_cfl_floor (amrex::Real f) { m_cfl_floor = f; }
     //! The confidence of the last iteration (steady.confidence > 0 and a stage
     //! that computes it; else share -1) and the height of its highest
     //! unconverged cell.

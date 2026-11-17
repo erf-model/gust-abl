@@ -1,12 +1,17 @@
 #include "App.H"
 
 #include "Domain.H"
+#include "Driver.H"
+#include "JointRecord.H"
 #include "JointRun.H"
 #include "Nests.H"
 
 #include <AMReX.H>
+#include <AMReX_FileSystem.H>
 #include <AMReX_ParallelDescriptor.H>
+#include <AMReX_ParmParse.H>
 #include <AMReX_Print.H>
+#include <AMReX_Utility.H>
 
 #include <functional>
 #include <string>
@@ -40,20 +45,92 @@ void run ()
     std::vector<JointMember*> members;
     std::vector<OuterOutcome> nest_outcomes(nests.nests.size());
     std::vector<std::string> nest_chks(nests.nests.size());
+    // A joint restart (JointRecord.H): io.restart holds the record of an earlier joint run. Without one, a restart
+    // continues the outer domain's one-way run and the nests start from its checkpoint, as in a first run.
+    JointRecord prior;
+    bool resume = false;
+    std::vector<DomainRole::JointResume> resumes(nests.nests.size() + 1);
+    if (nests.active() && !joint) {
+        // A joint checkpoint restarted one way: the outer domain goes on alone, its history already holding the joint
+        // run's iterations.
+        std::string restart;
+        amrex::ParmParse("io").query("restart", restart);
+        if (!restart.empty() && read_joint_record(restart, prior)) {
+            amrex::Print() << "gust: io.restart = " << restart << ": a joint checkpoint (" << prior.exchanges
+                           << " exchanges with nest.feedback = " << prior.feedback << "); with nest.feedback = none "
+                           "the outer domain goes on one way and the nests start again from its checkpoint\n";
+            prior = JointRecord{};
+        }
+    }
+    if (joint) {
+        std::string restart;
+        amrex::ParmParse("io").query("restart", restart);
+        if (!restart.empty() && read_joint_record(restart, prior)) {
+            resume = true;
+            std::string names, recorded;
+            for (const auto& s : nests.nests) { names += " " + s.name; }
+            for (const auto& n : prior.nests) { recorded += " " + n.name; }
+            if (names != recorded) {
+                amrex::Abort("gust: io.restart = " + restart + ": its joint record has the nests" + recorded
+                             + ", nest.names has" + names + "; a joint restart keeps the nests and their order");
+            }
+            int max_iterations = SteadyOptions{}.max_iterations;
+            amrex::ParmParse("steady").query("max_iterations", max_iterations);
+            if (max_iterations <= prior.exchanges) {
+                amrex::Abort("gust: io.restart = " + restart + ": the joint run took " + std::to_string(prior.exchanges)
+                             + " exchanges; steady.max_iterations = " + std::to_string(max_iterations)
+                             + " leaves none (the joint run counts its exchanges over the run)");
+            }
+            // Every recorded nest checkpoint is there before anything runs (the record names them relative to the
+            // directory the joint run started in).
+            std::string missing;
+            if (amrex::ParallelDescriptor::IOProcessor()) {
+                for (const auto& n : prior.nests) {
+                    if (!amrex::FileSystem::Exists(n.chk + "/Header")) { missing += " " + n.chk; }
+                }
+            }
+            amrex::Vector<char> mbuf(missing.begin(), missing.end());
+            amrex::BroadcastArray(mbuf, amrex::ParallelDescriptor::MyProc(), amrex::ParallelDescriptor::IOProcessorNumber(),
+                                  amrex::ParallelDescriptor::Communicator());
+            missing.assign(mbuf.begin(), mbuf.end());
+            if (!missing.empty()) {
+                amrex::Abort("gust: io.restart = " + restart + ": its joint record names nest checkpoints that are not"
+                             " here:" + missing + " (the record names them relative to the directory the joint run"
+                             " started in; restart from that directory)");
+            }
+            const std::string fbk = nest_feedback_name(nests.feedback);
+            if (fbk != prior.feedback) {
+                amrex::Print() << "gust: io.restart = " << restart << ": the joint run took " << prior.exchanges
+                               << " exchanges with nest.feedback = " << prior.feedback << "; it goes on with " << fbk << "\n";
+            }
+            resumes[0] = {restart, prior.outer_cfl_floor};
+            for (std::size_t i = 0; i < prior.nests.size(); ++i) {
+                resumes[i + 1] = {prior.nests[i].chk, prior.nests[i].cfl_floor};
+            }
+            outer.resume = &resumes[0];
+        }
+    }
+    JointResult joint_result;
+    // The CFL floors of the joint run's drivers, kept for its record. They are read here, right after the joint run:
+    // a nest's member lives inside its run_domain, which has returned by the time chain(0) does.
+    std::vector<amrex::Real> floors;
     std::function<void(std::size_t)> chain;
     chain = [&] (std::size_t i) {
         if (i == nests.nests.size()) {
-            run_joint(members, members[0]->max_iterations);
+            joint_result = run_joint(members, members[0]->max_iterations, resume ? prior.exchanges : 0);
+            for (const JointMember* j : members) { floors.push_back(j->cfl_floor); }
             return;
         }
         const NestSpec& s = nests.nests[i];
         amrex::Print() << "gust: nest." << s.name << ": " << s.lo[0] << " " << s.lo[1] << " to " << s.hi[0] << " " << s.hi[1]
-                       << " m, from the outer domain's checkpoint " << members[0]->chk << " (joint run)\n";
+                       << " m, " << (resume ? "from its joint checkpoint " + resumes[i + 1].chk + " and" : std::string("from"))
+                       << " the outer domain's checkpoint " << members[0]->chk << " (joint run)\n";
         DomainRole r;
         r.nest = &s;
         r.parent_chk = members[0]->chk;
         r.from_outer = &outcome;
         r.outcome = &nest_outcomes[i];
+        if (resume) { r.resume = &resumes[i + 1]; }
         r.joint = [&chain, &members, i] (JointMember& m) {
             members.push_back(&m);
             chain(i + 1);
@@ -66,7 +143,8 @@ void run ()
     };
     if (joint) {
         outer.joint = [&] (JointMember& m) {
-            if (m.verdict.status != SteadyStatus::Steady) { return; }   // reported after run_domain returns
+            // A joint restart joins whatever its verdict: the checkpoint is a joint one.
+            if (!resume && m.verdict.status != SteadyStatus::Steady) { return; }   // reported after run_domain returns
             members.push_back(&m);
             // The outer run's files are complete on disk before a nest reads them.
             amrex::ParallelDescriptor::Barrier();
@@ -74,6 +152,17 @@ void run ()
         };
     }
     const std::string chk = run_domain(outer);
+    if (joint && !members.empty() && joint_result.exchanges > 0) {
+        // The record of the joint run in the outer domain's last checkpoint, beside the nests' (written by then).
+        JointRecord rec;
+        rec.feedback = nest_feedback_name(nests.feedback);
+        rec.exchanges = joint_result.exchanges;
+        rec.outer_cfl_floor = floors.at(0);
+        for (std::size_t i = 0; i < nests.nests.size(); ++i) {
+            rec.nests.push_back({nests.nests[i].name, floors.at(i + 1), nest_chks[i]});
+        }
+        write_joint_record(chk, rec);
+    }
     if (nests.active() && !outcome.steady && members.empty()) {
         amrex::Abort("gust: nest.names: the outer domain did not reach steady (steady.max_iterations, steady.residual_tol, "
                      "steady.residual_drop_orders), "
@@ -86,10 +175,14 @@ void run ()
         }
         if (!outcome.steady) { not_steady += "\n  the outer domain (last checkpoint " + chk + ")"; }
         if (!not_steady.empty()) {
+            // The blend is refused with io.restart (App.cpp): the restart then runs without it.
+            const std::string blend = amrex::ParmParse("convection").contains("hybrid_sigma_max")
+                ? " and without convection.hybrid_sigma_max (the blend is not in the checkpoint)" : "";
             amrex::Abort(std::string("gust: nest.feedback = ") + nest_feedback_name(nests.feedback)
-                         + ": the joint run did not reach steady (steady.max_iterations, "
-                         "steady.residual_tol, steady.residual_drop_orders); a joint run does not restart, so rerun "
-                         "it from the start with other settings. Not steady:" + not_steady);
+                         + ": the joint run did not reach steady after " + std::to_string(joint_result.exchanges)
+                         + " exchanges (steady.max_iterations, steady.residual_tol, steady.residual_drop_orders); "
+                         "to go on, restart with io.restart = " + chk + " (its joint record names the nests' checkpoints), "
+                         "a larger steady.max_iterations" + blend + ". Not steady:" + not_steady);
         }
         return;
     }

@@ -56,6 +56,8 @@ BASES = {"plain": PLAIN, "guess": GUESS, "solve": SOLVE, "inflow": INFLOW, "hill
 
 PARENT = {"dirs": ("parent_chk",), "files": {"parent_chk/Header": "gust checkpoint\n"}}
 TABLE = "0 0 0 300\n100 5 0 300\n800 10 0 300\n"
+NEST_A = "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 1200 900\n"
+JOINT = "GUST_JOINT 1\nfeedback %s\nexchanges %d\nouter 0x0p+0\nnest %s 0x0p+0 chk_a\n"
 
 CASES = [
     # --- the bases themselves ---------------------------------------------------------------------------
@@ -346,6 +348,34 @@ CASES = [
     ("nests_relax_factor_with_defect", "inflow", "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 1200 900\n"
      "nest.feedback = defect\nnest.feedback_factor = 2\n", ["E nest.feedback_factor nests"], []),
     ("nests_named_feedback_factor", "inflow", "nest.names = feedback_factor\n", ["E nest.names nests"], []),
+    # A joint restart (io.restart with nest.feedback): the checkpoint's joint record is read as the run reads it; a
+    # checkpoint without one restarts the outer domain alone. (init.first_guess of the base is reported on io.restart.)
+    ("nests_joint_restart_ok", "inflow", NEST_A + "nest.feedback = defect\nio.restart = chk00010\n"
+     "steady.max_iterations = 10\n", [], ["E nest.feedback", "E nest.names", "E steady.max_iterations", "E io.restart nests"],
+     {"files": {"chk00010/Header": "x\n", "chk00010/Joint": JOINT % ("relax", 4, "a"), "chk_a/Header": "x\n"}}),
+    # Written on another system: \r\n line ends and trailing spaces are not part of the nest checkpoint's path.
+    ("nests_joint_restart_crlf", "inflow", NEST_A + "nest.feedback = defect\nio.restart = chk00010\n", [],
+     ["E io.restart nests", "E nest.names"],
+     {"files": {"chk00010/Header": "x\n", "chk00010/Joint": (JOINT % ("relax", 4, "a")).replace("chk_a\n", "chk_a \t\n").replace("\n", "\r\n"),
+                "chk_a/Header": "x\n"}}),
+    # The record names chk_a, which is not in the directory the run starts in.
+    ("nests_joint_restart_missing", "inflow", NEST_A + "nest.feedback = defect\nio.restart = chk00010\n",
+     ["E io.restart nests"], ["E nest.names"],
+     {"files": {"chk00010/Header": "x\n", "chk00010/Joint": JOINT % ("relax", 4, "a")}}),
+    ("nests_joint_restart_feedback", "inflow", NEST_A + "nest.feedback = defect\nio.restart = chk00010\n",
+     ["E io.restart nests"], [],
+     {"files": {"chk00010/Header": "x\n", "chk00010/Joint": JOINT % ("inject", 4, "a"), "chk_a/Header": "x\n"}}),
+    ("nests_joint_restart_no_record", "inflow", NEST_A + "nest.feedback = relax\nio.restart = chk00010\n",
+     [], ["E nest.feedback", "E nest.names"], {"files": {"chk00010/Header": "x\n"}}),
+    ("nests_joint_restart_names", "inflow", NEST_A + "nest.feedback = defect\nio.restart = chk00010\n",
+     ["E nest.names nests"], [], {"files": {"chk00010/Header": "x\n", "chk00010/Joint": JOINT % ("defect", 4, "b")}}),
+    ("nests_joint_restart_iterations", "inflow", NEST_A + "nest.feedback = defect\nio.restart = chk00010\n"
+     "steady.max_iterations = 4\n", ["E steady.max_iterations nests"], ["E nest.names"],
+     {"files": {"chk00010/Header": "x\n", "chk00010/Joint": JOINT % ("defect", 4, "a")}}),
+    ("nests_joint_restart_version", "inflow", NEST_A + "nest.feedback = defect\nio.restart = chk00010\n",
+     ["E io.restart nests"], [],
+     {"files": {"chk00010/Header": "x\n", "chk00010/Joint": "GUST_JOINT 2\nfeedback defect\nexchanges 4\n"
+                                                              "outer 0x0p+0\nnest a 0x0p+0 chk_a\n"}}),
     ("nests_feedback_none_odd_boxes", "inflow", "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 1200 900\n"
      "nest.feedback = none\nmesh.max_grid_size = 7\n", [], ["E nest.feedback"]),
     ("nests_periodic_strip", "solve", "nest.names = a\nnest.a.lo = 0 0\nnest.a.hi = 1600 1500\n",

@@ -83,6 +83,8 @@ std::string run_domain (const DomainRole& role)
     apply_abl_setup_defaults(abl);
     Inputs in = parse_inputs();
     if (nest != nullptr) { apply_nest_inputs(*nest, in); }
+    // A joint restart (JointRecord.H): a nest restarts from the checkpoint the record names.
+    if (nest != nullptr && role.resume != nullptr) { in.io.restart = role.resume->chk; }
     auto err = validate(in);
     InitOptions iopt = read_init_options();
     SteadyOptions sopt = read_steady_options();
@@ -92,7 +94,7 @@ std::string run_domain (const DomainRole& role)
         // The outer deck's init.* keys set up the outer domain's first guess: a nest's
         // field comes from the outer domain, so they are not checked again here
         // (init.projection, alpha_h and alpha_v still apply, value-checked as before).
-        iopt.first_guess = InitOptions::FirstGuess::nest;
+        iopt.first_guess = role.resume != nullptr ? InitOptions::FirstGuess::none : InitOptions::FirstGuess::nest;
         iopt.given.clear();
         iopt.obrien = false;   // the parent gives w: no O'Brien pass (nor its log line)
         seq.enabled = false;
@@ -360,9 +362,8 @@ std::string run_domain (const DomainRole& role)
         if (role.nests->feedback != NestFeedback::none) {
             const std::string fbk = std::string("nest.feedback = ") + nest_feedback_name(role.nests->feedback);
             // The joint run (JointRun.H) steps every domain's SIMPLEC driver; the Newton stage's residual differs
-            // from the one the source is formed with, and a joint restart is not written.
+            // from the one the source is formed with. io.restart: Run.cpp reads the checkpoint's joint record.
             if (newton) { err.push_back(fbk + " needs steady.stage = simplec (not simplec_newton)"); }
-            if (!in.io.restart.empty()) { err.push_back(fbk + " does not restart (io.restart): run from the start"); }
             // The restriction coarsens each nest's boxes by 2 2 1 (restrict_patch). A nest has an even number of
             // cells; AMReX's maxSize keeps the boxes even when mesh.max_grid_size is even, not when it is odd.
             if (check_nests(*role.nests, in.mesh).empty()) {
@@ -458,7 +459,16 @@ std::string run_domain (const DomainRole& role)
     }
     if (role.after_checks) { role.after_checks(); }
     if (role.check_only) { return final_chk; }
-    const amrex::DistributionMapping dm(ba);
+    // The ranks of the boxes. AMReX's default map gives the heaviest boxes to the ranks with the least memory in use,
+    // so a nest's map would follow what the outer run holds when the nest is built, which a joint restart changes.
+    // A joint run's nest takes the same space-filling-curve map in rank order: the map then depends on the boxes and
+    // the rank count alone, and a joint restart sums over the same ranks as the run it continues.
+    const amrex::DistributionMapping dm = [&] {
+        if (role.nest == nullptr || !role.joint) { return amrex::DistributionMapping(ba); }
+        amrex::Vector<amrex::Real> cost(static_cast<std::size_t>(ba.size()));
+        for (int i = 0; i < ba.size(); ++i) { cost[static_cast<std::size_t>(i)] = static_cast<amrex::Real>(ba[i].numPts()); }
+        return amrex::DistributionMapping::makeSFC(cost, ba, false);
+    }();
 
     if (abl.active()) {
         amrex::Print() << "gust: set-up: abl.drive = " << abl_drive_name(abl.drive) << ", abl.theta = "
@@ -553,7 +563,7 @@ std::string run_domain (const DomainRole& role)
         if (joint_nest) {
             levels_edit = [&] (amrex::MultiFab& z, const amrex::Vector<amrex::Real>& zl) { follow_parent_levels(*parent, geom, zl, z); };
         }
-        if (nest_face) { nest_hash = NestFaces::hash_inputs(*parent, bin, blend); }
+        if (nest_face) { nest_hash = NestFaces::hash_inputs(*parent, bin, blend, joint_nest); }
     }
     auto build_nest_faces = [&] () {
         if (!nest_face) { return; }
@@ -681,7 +691,7 @@ std::string run_domain (const DomainRole& role)
     } else {
         read_checkpoint(in.io.restart, state, in.mesh);
         NestFaces::check_restart(in.io.restart, nest_hash);
-        mesh.check_restart(in, geom, state.z_phys_nd, ground_edit);
+        mesh.check_restart(in, geom, state.z_phys_nd, ground_edit, levels_edit);
         amrex::Print() << "gust: restarted from " << in.io.restart
                        << " at step " << state.step << "\n";
         build_canopy();
@@ -1016,7 +1026,8 @@ std::string run_domain (const DomainRole& role)
             if (!probes->open(probes_out, sopt.probes_file, restart ? n0 : -1.0)) { probes->write_row(probes_out, n0, state); }
             amrex::Print() << "gust: steady: " << probes->probes().size() << " probes to " << probes_out << ", a row per iteration\n";
         }
-        while (!unsteady && static_cast<int>(driver.history().records.size()) < sopt.max_iterations) {
+        // A joint restart (DomainRole::resume) joins the joint run at once: its checkpoint is a joint one.
+        while (!unsteady && role.resume == nullptr && static_cast<int>(driver.history().records.size()) < sopt.max_iterations) {
             v = driver.step(state);
             ++done;
             ++state.step;
@@ -1093,7 +1104,8 @@ std::string run_domain (const DomainRole& role)
         if (v.status == SteadyStatus::Diverged) { amrex::Abort("gust: the run diverged" + reasons); }
         if (role.outcome != nullptr) { role.outcome->steady = (v.status == SteadyStatus::Steady); }
         };
-        finish();
+        // A joint restart writes nothing before its joint iterations: its step is the checkpoint's.
+        if (role.resume == nullptr) { finish(); }
         if (role.joint && v.status != SteadyStatus::Diverged) {
             // nest.feedback = defect or relax: this domain joins the joint run (Run.cpp, JointRun.H), which steps it in
             // memory; then its outputs are written again at its new step.
@@ -1102,12 +1114,23 @@ std::string run_domain (const DomainRole& role)
             m.state = &state;
             m.mesh = &mesh;
             m.geom = &geom;
-            m.chk = final_chk;
+            m.chk = role.resume != nullptr ? in.io.restart : final_chk;
             m.verdict = v;
             m.max_iterations = sopt.max_iterations;
             m.fill_ghosts = [&] (State& s) { bc.fill_ghosts(s, res_in.surface, fopt.buoyancy, false, nullptr); };
             const std::string label = nest != nullptr ? nest->name + " " : std::string("outer ");
-            driver.floor_cfl_at_current();
+            if (nest != nullptr && role.resume == nullptr && v.status != SteadyStatus::Steady) {
+                // One value caps the one-way passes and the joint exchanges: a run stopped here and restarted with a
+                // larger steady.max_iterations does not repeat a run that went straight through with that value.
+                amrex::Print() << "gust: nest." << nest->name << ": its one-way run ended without reaching steady "
+                                  "(steady.max_iterations = " << sopt.max_iterations << "); it joins the joint run as it is\n";
+            }
+            if (role.resume != nullptr) {
+                driver.set_cfl_floor(role.resume->cfl_floor);
+            } else {
+                driver.floor_cfl_at_current();
+            }
+            m.cfl_floor = driver.cfl_floor();
             m.step = [&, label] () {
                 driver.rearm_confidence();
                 const SteadyVerdict sv = driver.step(state);

@@ -790,6 +790,43 @@ exchanges. The joint run starts once the outer domain is steady, also when a nes
 stops with an error after the joint run, naming every domain that is not steady. The log gives, for the first ten exchanges and then every tenth, the largest :math:`|S|` per equation and
 the largest change of a nest's face velocities.
 
+**Restart.** A joint run that stops after ``steady.max_iterations`` exchanges, not steady, writes every domain's
+plotfile and checkpoint, and a joint record, the file ``Joint``, in the outer domain's checkpoint. The record holds
+the feedback mode, the exchanges taken, each driver's CFL floor (above) and each nest's checkpoint. The error
+message names that checkpoint. To go on, rerun the same deck with ``io.restart`` set to it, without the ``init.*``
+keys, and with a larger ``steady.max_iterations``; the joint run counts its exchanges over the run, so the value is
+the total. Every domain then reads its checkpoint and its CFL floor and joins the joint run at once, with no one-way
+iterations. The log says ``joint run: restarted after exchange N``.
+
+- ``nest.names`` must list the record's nests in the same order. Each nest's ``lo`` and ``hi`` must be the ones
+  its checkpoint was written with (its node heights and nest-face record are checked against them).
+- The record names each nest's checkpoint as written, relative to the directory the run started in. Restart from
+  the same directory: a recorded checkpoint that is not there stops the run before anything runs, naming
+  ``io.restart`` and the missing paths.
+- ``convection.hybrid_sigma_max`` (the blend) is refused with ``io.restart``, as for any restart: the blend is not
+  in the checkpoint. A joint run with the blend therefore restarts without it, and its error message says so.
+- On the same number of ranks a restart continues the run bit for bit: the regression ``rt_nests_joint_restart``
+  stops a run after 150 exchanges, restarts it, and compares the last plotfiles and checkpoints byte for byte. Two
+  things make this hold. A joint nest's boxes go to the ranks in a fixed order (a space-filling curve in rank order),
+  not to the ranks with the least memory in use, which depends on what the outer domain holds when the nest is
+  built. And after each exchange the nest's ghost cells are filled again from its new faces, as the first step of a
+  restart fills them; the driver's local pseudo-time step reads them before the iteration does. Both change a joint
+  run without a restart at round-off (the rank order changes the order of reductions; the second fill changes the
+  local step), and the extra fill costs one ghost fill per nest per exchange.
+- ``steady.max_iterations`` also caps each nest's one-way run. A nest whose one-way run stops there without reaching
+  steady joins the joint run as it is (the log notes it). A run stopped and restarted then repeats a straight run with
+  the larger value only when the stop point is above every one-way run's iterations.
+- ``nest.feedback`` may change at a restart (the log notes it). ``steady.max_iterations`` at or below the recorded
+  exchanges, a record that names other nests, and a record that cannot be read stop the run, naming
+  ``io.restart``.
+- A checkpoint without a record, such as the outer domain's when its one-way run did not reach steady, restarts that
+  one-way run; the nests then start from its last checkpoint, as in a first run. A joint checkpoint restarted with
+  ``nest.feedback = none`` does the same (the log notes it); the outer domain's history then already holds the joint
+  run's iterations.
+- The checkpoints of a joint run can start a one-way run (``init.first_guess``, a parent for ``bc.nest_parent``). A
+  joint nest's checkpoint does not restart as a stand-alone patch with ``bc.nest_parent``: its nest-face record
+  leaves out the parent's step and content, which change at every exchange, so the check against a parent fails.
+
 **Damping.** A nest damps only :math:`w` and :math:`\theta` (above). Over each footprint the joint run carries the
 nests' equations, so an outer Rayleigh term on :math:`u, v` or :math:`k` would act outside the footprints and not
 inside them: a jump in the forcing at each footprint's edge above ``bc.rayleigh_zdamp``. ``nest.feedback = defect``
@@ -802,10 +839,6 @@ sponge either: with ``bc.sponge_width > 0`` the run prints a note, and the nests
   history, not one of :math:`q^*`'s own. At a steady state the history equals :math:`\nu_t` of the outer state, so
   the steady state is the same; whether the iteration reaches it can depend on ``turb.nut_relax``
   (:ref:`nut-relax-end`).
-- No joint restart: ``io.restart`` is refused. Each domain writes its own plotfile and checkpoint at the end. These
-  checkpoints hold the joint state and can start a one-way run (``init.first_guess``, a parent for ``bc.nest_parent``);
-  a nest's checkpoint still names the one-way outer checkpoint as its parent, and the driver history in it runs past
-  ``steady.max_iterations``, so a restart from it is not a continuation of the joint run.
 - ``steady.probes_file`` rows stop at the end of the one-way run: the joint run writes none.
 - The outer domain's turbulence plotfile after the joint run shows the residual with :math:`S` included.
 - ``steady.stage = simplec_newton`` is refused: its residual is not the one the source is formed with.

@@ -66,6 +66,7 @@ add_executable(unit_tests
     Unit_Tests/test_Continuation.cpp
     Unit_Tests/test_NewtonPreconditioner.cpp
     Unit_Tests/test_Terrain.cpp
+    Unit_Tests/test_JointRecord.cpp
     Unit_Tests/test_NestBuildings.cpp
     Unit_Tests/test_NestDefect.cpp
     Unit_Tests/test_NestRelax.cpp
@@ -1766,6 +1767,16 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
                       PREFIX ${Python3_EXECUTABLE} ${NESTS2_CASE}/check_nests_two_way.py --relax --
                       COMMAND ${NESTS2_OUTER} ${GUST_TEST_AMREX_FLAGS})
     endif()
+    # A joint run stopped after 150 exchanges (steady.max_iterations) and restarted from the joint record its
+    # message names (tracker N-114, item 3): the restart is steady after the straight run's exchanges, and the last
+    # plotfiles and checkpoints are byte for byte the straight run's. The two nests on 3 ranks with the defect
+    # source; the nest hill on 2 ranks with the relaxation.
+    gust_add_test(NAME rt_nests_joint_restart NP 3 LABELS "regression;smoke"
+                  PREFIX ${Python3_EXECUTABLE} ${NESTS2_CASE}/check_joint_restart.py --stop 150 --
+                  COMMAND ${NESTS2_OUTER} ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME rt_nests_joint_restart_relax NP 2 LABELS "regression"
+                  PREFIX ${Python3_EXECUTABLE} ${NESTS2_CASE}/check_joint_restart.py --relax --stop 140 --
+                  COMMAND ${NESTS2_OUTER} ${GUST_TEST_AMREX_FLAGS})
     gust_add_test(NAME abort_nests_feedback_value NP 1 LABELS "regression;smoke"
                   PREFIX ${EXPECT_ABORT} "nest\\.feedback = 'inject' is not none, defect or relax" --
                   COMMAND ${NESTS_OUTER} ${NESTS_A} nest.feedback=inject ${GUST_TEST_AMREX_FLAGS})
@@ -1789,9 +1800,27 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
     gust_add_test(NAME abort_nests_feedback_newton NP 1 LABELS "regression;smoke"
                   PREFIX ${EXPECT_ABORT} "nest\\.feedback = defect needs steady\\.stage = simplec \\(not simplec_newton\\)" --
                   COMMAND ${NESTS2_ABORT} ${NESTS_A} nest.feedback=defect steady.stage=simplec_newton ${GUST_TEST_AMREX_FLAGS})
-    gust_add_test(NAME abort_nests_feedback_restart NP 1 LABELS "regression;smoke"
-                  PREFIX ${EXPECT_ABORT} "nest\\.feedback = defect does not restart \\(io\\.restart\\)" --
-                  COMMAND ${NESTS_OUTER} ${NESTS_A} nest.feedback=defect io.restart=outer_chk00010 ${GUST_TEST_AMREX_FLAGS})
+    # A joint restart (tracker N-114, item 3) reads the joint record (Joint) in io.restart before anything runs:
+    # records written here stand in for a joint run's checkpoint.
+    set(JOINT_RECORDS ${CMAKE_CURRENT_BINARY_DIR}/joint_records)
+    file(WRITE ${JOINT_RECORDS}/names/Joint "GUST_JOINT 1\nfeedback defect\nexchanges 5\nouter 0x1p+3\nnest other 0x1p+3 chk_other00010\n")
+    file(WRITE ${JOINT_RECORDS}/iterations/Joint "GUST_JOINT 1\nfeedback defect\nexchanges 5\nouter 0x1p+3\nnest a 0x1p+3 chk_a00010\n")
+    file(WRITE ${JOINT_RECORDS}/version/Joint "GUST_JOINT 2\n")
+    file(WRITE ${JOINT_RECORDS}/missing/Joint "GUST_JOINT 1\nfeedback defect\nexchanges 5\nouter 0x1p+3\nnest a 0x1p+3 chk_a_missing00010\n")
+    gust_add_test(NAME abort_nests_joint_restart_names NP 1 LABELS "regression;smoke"
+                  PREFIX ${EXPECT_ABORT} "its joint record has the nests other, nest\\.names has a; a joint restart keeps the nests and their order" --
+                  COMMAND ${NESTS_OUTER} ${NESTS_A} nest.feedback=defect io.restart=${JOINT_RECORDS}/names ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME abort_nests_joint_restart_iterations NP 1 LABELS "regression;smoke"
+                  PREFIX ${EXPECT_ABORT} "the joint run took 5 exchanges; steady\\.max_iterations = 5 leaves none" --
+                  COMMAND ${NESTS_OUTER} ${NESTS_A} nest.feedback=defect io.restart=${JOINT_RECORDS}/iterations
+                          steady.max_iterations=5 ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME abort_nests_joint_restart_version NP 1 LABELS "regression;smoke"
+                  PREFIX ${EXPECT_ABORT} "its Joint file cannot be read \\(expected GUST_JOINT 1\\)" --
+                  COMMAND ${NESTS_OUTER} ${NESTS_A} nest.feedback=relax io.restart=${JOINT_RECORDS}/version ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME abort_nests_joint_restart_missing NP 1 LABELS "regression;smoke"
+                  PREFIX ${EXPECT_ABORT} "its joint record names nest checkpoints that are not here: chk_a_missing00010" --
+                  COMMAND ${NESTS_OUTER} ${NESTS_A} nest.feedback=defect io.restart=${JOINT_RECORDS}/missing
+                          steady.max_iterations=100 ${GUST_TEST_AMREX_FLAGS})
     # Nests_One_Process damps every field (the default bc.rayleigh_fields).
     gust_add_test(NAME abort_nests_feedback_damping NP 1 LABELS "regression;smoke"
                   PREFIX ${EXPECT_ABORT} "nest\\.feedback = defect needs bc\\.rayleigh_fields without u, v and tke" --

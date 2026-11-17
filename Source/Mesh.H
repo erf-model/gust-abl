@@ -105,7 +105,8 @@ public:
     //! say so in the log when the nodes differ within it), take the rebuilt
     //! nodes, ghosts included, then compute the metrics.
     void check_restart (const Inputs& in, const amrex::Geometry& geom,
-                        amrex::MultiFab& z_phys_nd, const GroundEdit& ground_edit = nullptr);
+                        amrex::MultiFab& z_phys_nd, const GroundEdit& ground_edit = nullptr,
+                        const LevelsEdit& levels_edit = nullptr);
 
     //! For node heights built by another Mesh (from) and copied onto this
     //! mesh's layout, ghost nodes included (a hierarchy level gathered onto
