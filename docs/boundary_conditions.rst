@@ -782,7 +782,8 @@ sponge either: with ``bc.sponge_width > 0`` the run prints a note, and the nests
 
 - With ``turb.nut_relax`` below 1 the outer :math:`\nu_t` blends with its own history, so :math:`R_c(q^*)` uses that
   history, not one of :math:`q^*`'s own. At a steady state the history equals :math:`\nu_t` of the outer state, so
-  this changes the path to the joint steady state, not the state itself.
+  the steady state is the same; whether the iteration reaches it can depend on ``turb.nut_relax``
+  (:ref:`nut-relax-end`).
 - No joint restart: ``io.restart`` is refused. Each domain writes its own plotfile and checkpoint at the end. These
   checkpoints hold the joint state and can start a one-way run (``init.first_guess``, a parent for ``bc.nest_parent``);
   a nest's checkpoint still names the one-way outer checkpoint as its parent, and the driver history in it runs past

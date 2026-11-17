@@ -126,7 +126,8 @@ Model options
 -------------
 
 - ``turb.face_mean``: how the cell diffusivities are averaged to the faces (:doc:`discretization`).
-- ``turb.nut_relax``: under-relaxation of :math:`\nu_t` between iterations.
+- ``turb.nut_relax``: under-relaxation of :math:`\nu_t` between iterations; ``turb.nut_relax_end`` ends it below a
+  relative residual (:ref:`nut-relax-end`).
 - ``turb.frozen_switch``: holds at the floor, during the Newton stage, the cells whose :math:`k` was at the floor
   when Newton started (:doc:`solution_algorithm`). The stable/unstable branch and the :math:`R_t` smoothing are not
   frozen: the length and :math:`R_t` are continuously differentiable across them (below).
@@ -208,6 +209,79 @@ reads follows the cap (:math:`\mathrm{d}\,\mathrm{cap}/\mathrm{d}k = \mathrm{cap
 (``init.first_guess = column``) does not apply it. Around buildings, whose edges fix their separation, the cap fades
 out within ``buildings.limiter_zone`` building heights (:doc:`buildings`).
 
+.. _nut-relax-end:
+
+Ending the relaxation of :math:`\nu_t`
+--------------------------------------
+
+The steady states are the same for every ``turb.nut_relax``: at a fixed point
+:math:`\nu_t^\mathrm{old} = \nu_t^\mathrm{new}`. Whether the iteration reaches one is not. On the Columbia Gorge outer
+domain (``Tests/Real_Terrain/Columbia_Gorge``, 200 m cells) the run with ``turb.nut_relax = 0.5`` stops falling at a
+relative residual of :math:`3.9 \times 10^{-3}`; with ``turb.nut_relax = 1`` it reaches the steady verdict after 164
+iterations. The stall is a period-2 cycle, not a fixed point: :math:`k`, :math:`\nu_t` and the k residual change sign
+every iteration and repeat every second one, so the log, which prints every tenth iteration, shows norms frozen to
+seven digits. The cycle sits in a few cells of the first layers on the steep south face of the Columbia Hills (half of
+the k residual's squared norm in one cell, 99 % in 12), where the cap holds; there :math:`k` alternates between 2.07
+and 2.15 m²/s² and :math:`\nu_t` between 2.63 and 2.71 m²/s; no :math:`k` is clipped. The cap
+:math:`C_r k/S` that sets the new :math:`\nu_t` is built from the :math:`k` at the start of the iteration, and that
+:math:`k` is low when :math:`S` is high: the two swing in anti-phase (:math:`k` by ±1.9 %, :math:`S` by ±2.8 %), so
+the cap swings by ±4.7 %. A cap that alternates by :math:`\pm\delta` gives a relaxed :math:`\nu_t` that alternates by
+:math:`\pm\delta\,w/(2 - w)`, ±1.6 % with :math:`w = 0.5`, as observed. The cycle therefore runs through the momentum
+equations (the strain) as well as through :math:`k`.
+
+**What a one-cell model shows.** With :math:`S` held fixed, the k update alone has the gain :math:`A`; through
+:math:`\nu_t` it gains the production feedback :math:`B`; :math:`h` is the stored :math:`\nu_t`, scaled by
+:math:`k/(m\,\nu_t)`:
+
+.. math::
+
+   k^{n+1} = (A + wB)\,k^n + (1 - w)\,B\,h^n, \qquad h^{n+1} = w\,k^n + (1 - w)\,h^n,
+
+- :math:`A = 1 - a/D`: the k update with :math:`\nu_t` held, :math:`a` the derivative of the k residual in
+  :math:`k` and :math:`D` the diagonal of the update (pseudo-time, diffusion and Patankar terms, a rate);
+- :math:`B = P\,m/(k\,D) \ge 0`: the change of production through :math:`\nu_t`, with :math:`P` the shear production
+  and :math:`m = \partial\nu_t^\mathrm{new}/\partial k\cdot k/\nu_t^\mathrm{new}` (:math:`m = 1` where the cap holds);
+- :math:`w` = ``turb.nut_relax``.
+
+The iteration converges for :math:`A^* < A < 1 - B`, with
+
+.. math::
+
+   A^* = -1 - \frac{wB}{2 - w}
+
+(:math:`-1 - B` at :math:`w = 1`, :math:`-1 - B/3` at :math:`w = 0.5`; the range is empty for
+:math:`B \ge (2 - w)/(1 - w)`). At :math:`A = A^*` an eigenvalue passes through :math:`-1`: a two-iteration cycle. The
+upper bound does not depend on :math:`w`. So :math:`w < 1` can only narrow the range against a cycle. For the
+Patankar update of :math:`k` in neutral flow, however, :math:`A \ge -1/2`, so this model alone does not cycle; with
+:math:`S` added as a third variable, random parameter samples gave no case that is stable at :math:`w = 1` and cycles
+through an eigenvalue below :math:`-1` at :math:`w = 0.5`. **What it means:** the cycle needs the coupling of
+:math:`k`, :math:`\nu_t` and the strain between neighbouring cells; why it persists with :math:`w = 0.5` and not
+with :math:`w = 1` is not explained here. The fixed points are the same for every :math:`w`.
+
+**The option.** With ``turb.nut_relax_end`` :math:`= r_e > 0` the relaxation ends, on each grid-sequencing level, the
+first time the driver's relative residual :math:`r` (:doc:`solution_algorithm`) after a SIMPLEC iteration falls
+below :math:`r_e` (Newton iterations of ``steady.stage = simplec_newton`` do not end it); from the next
+iteration on :math:`w = 1` and :math:`\nu_t` is the new value bit for bit. It does not start again if :math:`r` rises.
+The run prints one line when it ends. A restart replays the recorded :math:`r` values with the restart's
+``turb.nut_relax_end``, so with the same value it continues with the same decision. A nest's relaxation ended in its
+one-way run stays ended in the joint run. ``steady.stage = unsteady`` refuses the option (the end would fall within a
+physical step). Once the relaxation has ended the Newton stage (``steady.stage = simplec_newton``) no longer hands back for
+it (:doc:`solution_algorithm`). On the Columbia Gorge outer domain :math:`r_e = 0.01` ends the relaxation at the first
+level-0 iteration below 0.01 (between iterations 50 and 60, where the convection blend also freezes) and the run reaches the steady
+verdict after 164 iterations. The coarse levels stop at :math:`r` just below 0.01, so the relaxation ends on their
+last iteration and they are unchanged.
+
+**Limits.** After the end, :math:`\nu_t` is not damped between iterations: a cap that still alternates at the end
+passes to :math:`\nu_t` in full instead of by :math:`w/(2 - w)` (three times more with :math:`w = 0.5`). On the
+Columbia Gorge the run converges after the end, but nothing guarantees this in general. The rough Ishihara–Zhou
+ridge with the recommended setting is a counter-example: it reaches the steady verdict after 406 iterations without
+the option; with :math:`r_e = 0.01` the relaxation ends at iteration 175, :math:`r` falls to
+:math:`5 \times 10^{-4}` while the :math:`k` residual grows from iteration 220 on, and from about iteration 690
+:math:`r` oscillates between 0.03 and 0.13 with no steady verdict after 20000 iterations. The option is therefore not
+part of the recommended setting; use it on a run that stalls in a two-iteration cycle. A run that stalls above
+:math:`r_e` is not helped; the option does not detect a cycle. The default 0 keeps the relaxation to the end of the
+run, so existing decks are unchanged bit for bit.
+
 .. _hybrid-convection:
 
 Near-ground blend towards upwind
@@ -253,7 +327,7 @@ Recommended setting
 For terrain with separated lees: ``turb.realizability = 0.309``, ``turb.nut_relax = 0.5``,
 ``convection.hybrid_sigma_max = 0.1``, ``convection.hybrid_height`` = 2.5 terrain heights and
 ``turb.max_geom_lscale = 100`` (on Big Southern Butte the length is uncapped with a moving lid, so that the inflow
-does not drift over its 18.7 km fetch). :math:`C_r = 0.309` is :math:`C_{\mu 0}^2` for the default ``turb.Cmu0``
+does not drift over its 18.7 km fetch). ``turb.nut_relax_end`` (:ref:`nut-relax-end`) is not part of it. :math:`C_r = 0.309` is :math:`C_{\mu 0}^2` for the default ``turb.Cmu0``
 only. On the benchmarks (``Tests/Real_Terrain/WindNinja2019``, ``IshiharaZhou``,
 ``RUSHIL``) every case reaches the steady verdict with it:
 

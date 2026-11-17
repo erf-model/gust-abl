@@ -529,6 +529,9 @@ void Driver::restore (const DriverHistory& h_in, State& q)
             || r.monitors.size() != m_stages.front()->monitor_specs().size()) {
             amrex::Abort("gust: Driver::restore: a record's residual or monitor count does not match the stages");
         }
+        if (r.stage < 0 || r.stage >= static_cast<int>(m_stages.size())) {
+            amrex::Abort("gust: Driver::restore: a record's stage " + std::to_string(r.stage) + " does not exist");
+        }
     }
     if (std::isnan(h.cfl) || !std::isfinite(h.cfl) || !(h.cfl > 0)) {
         amrex::Abort("gust: Driver::restore: the history's CFL is not finite and > 0");
@@ -578,6 +581,12 @@ void Driver::restore (const DriverHistory& h_in, State& q)
     // The options may have changed across the restart: the CFL continues
     // within the new bounds.
     m_h.cfl = amrex::min(amrex::max(m_h.cfl, m_opt.cfl0), m_opt.cfl_max);
+    // The stages' decisions taken from r (turb.nut_relax_end: SimplecStage::note_relative_residual) are replayed
+    // in order, so a restart continues with the decisions the run had taken (with this run's
+    // turb.nut_relax_end: a changed value applies to the recorded r).
+    for (const IterationRecord& rec : m_h.records) {
+        m_stages[static_cast<std::size_t>(rec.stage)]->note_relative_residual(rec.relative_residual, true);
+    }
     m_need_init = true;
     (void)q;
 }

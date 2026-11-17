@@ -23,7 +23,7 @@ namespace gust {
 namespace {
 
 const char* const kKeys[] = {"Cmu0", "Cb", "Rt_crit", "Rt_min", "max_geom_lscale", "tke_floor", "sigma_k",
-                             "nu_molecular", "alpha_molecular", "kappa", "nut_relax", "frozen_switch", "face_mean",
+                             "nu_molecular", "alpha_molecular", "kappa", "nut_relax", "nut_relax_end", "frozen_switch", "face_mean",
                              "wall_distance", "ri_gate", "realizability", "closure"};
 
 //! The keys turb.closure = none keeps: every other key belongs to the k–L closure. turb.face_mean is not
@@ -224,6 +224,14 @@ std::vector<std::string> check_closure_options (const ClosureOptions& opt)
     bad(opt.alpha_molecular, "alpha_molecular", "finite and >= 0 (m^2/s)", [&] { return opt.alpha_molecular >= 0; });
     bad(opt.kappa, "kappa", "finite and > 0", [&] { return opt.kappa > 0; });
     bad(opt.nut_relax, "nut_relax", "finite, > 0 and <= 1", [&] { return opt.nut_relax > 0 && opt.nut_relax <= 1; });
+    bad(opt.nut_relax_end, "nut_relax_end", "0 (off) or finite, > 0 and < 1",
+        [&] { return opt.nut_relax_end == 0 || (opt.nut_relax_end > 0 && opt.nut_relax_end < 1); });
+    // isnan first: the ordered comparison traps on NaN (bad() above reports it).
+    if (!std::isnan(opt.nut_relax_end) && !std::isnan(opt.nut_relax) && opt.nut_relax_end > 0 && !(opt.nut_relax < 1)) {
+        err.emplace_back("turb.nut_relax_end = " + short_value(opt.nut_relax_end)
+                         + " has no effect with turb.nut_relax = " + short_value(opt.nut_relax)
+                         + " (it needs turb.nut_relax < 1: nu_t is not relaxed)");
+    }
     bad(opt.ri_gate, "ri_gate", "0 (off) or finite, >= 1e-6 and <= 1",
         [&] { return opt.ri_gate == 0 || (opt.ri_gate >= amrex::Real(1e-6) && opt.ri_gate <= 1); });
     if (opt.kind == ClosureKind::none) {
@@ -264,6 +272,7 @@ ClosureOptions read_closure_options ()
     pp.query("alpha_molecular", opt.alpha_molecular);
     pp.query("kappa", opt.kappa);
     pp.query("nut_relax", opt.nut_relax);
+    pp.query("nut_relax_end", opt.nut_relax_end);
     pp.query("ri_gate", opt.ri_gate);
     pp.query("realizability", opt.realizability);
     for (const char* key : kKeys) {
@@ -486,7 +495,9 @@ void Closure::evaluate (const State& q, const amrex::MultiFab& dist_in, const Ro
     const amrex::Real alpha = canopy_alpha();
     const amrex::Real nu_mol = m_opt.nu_molecular, alpha_mol = m_opt.alpha_molecular, inv_sigma = 1 / m_opt.sigma_k;
     const bool has = has_history();
-    const amrex::Real w = has ? m_opt.nut_relax : amrex::Real(1);
+    // turb.nut_relax_end: after end_relaxation() w = 1 and the history is not blended in.
+    const bool blend = has && !m_relax_ended;
+    const amrex::Real w = blend ? m_opt.nut_relax : amrex::Real(1);
     for (amrex::MFIter mfi(f.nu, false); mfi.isValid(); ++mfi) {
         const amrex::Box bx = lateral_grown(mfi.validbox());
         const amrex::Box vb = mfi.validbox();
@@ -498,10 +509,12 @@ void Closure::evaluate (const State& q, const amrex::MultiFab& dist_in, const Ro
         const auto cp = cap.const_array(mfi);
         const auto cr = f.cap_ratio.array(mfi);
         const amrex::Real cap_none = std::numeric_limits<amrex::Real>::max();
-        // A valid, finite array in every case: the history when there is one,
-        // else k itself with the weight 1 - w = 0 (0 times a finite value is
-        // 0 exactly; a fresh field could hold signalling NaNs).
-        const auto prev = has ? m_nut_prev.const_array(mfi) : q.tke.const_array(mfi);
+        // A valid, finite array in every case: the history while it is blended
+        // in, else k itself with the weight 1 - w = 0 (0 times a finite value
+        // is 0 exactly; a fresh field could hold signalling NaNs). After
+        // turb.nut_relax_end the history is not read, so the unrelaxed nu_t
+        // does not depend on its ghost cells.
+        const auto prev = blend ? m_nut_prev.const_array(mfi) : q.tke.const_array(mfi);
         const auto dc = dec.const_array(mfi);
         const auto fa = fd.const_array(mfi);
         const auto nu = f.nu.array(mfi), gth = f.gamma_theta.array(mfi), gk = f.gamma_tke.array(mfi), nut = f.nut.array(mfi);

@@ -240,8 +240,10 @@ public:
     //! on both of its faces.
     [[nodiscard]] bool confidence (const std::vector<amrex::Real>& threshold, amrex::Real& share,
                                    amrex::Real& height) const override;
-    //! The upwind blend (convection.hybrid_*, HybridConvection.H) freezes once r < hybrid_freeze.
-    void note_relative_residual (amrex::Real r) override { m_r = r; }
+    //! The upwind blend (convection.hybrid_*, HybridConvection.H) freezes once r < hybrid_freeze; the closure's
+    //! nu_t relaxation ends (Closure::end_relaxation) the first time r < turb.nut_relax_end, so the next
+    //! iteration's residual takes w = 1. The driver replays the recorded r on a restart (Driver::restore).
+    void note_relative_residual (amrex::Real r, bool replay = false) override;
     //! The blend field sigma (empty without convection.hybrid_sigma_max).
     [[nodiscard]] const amrex::MultiFab& hybrid_sigma () const { return m_sigma; }
     //! The line solver of every sweep (steady.sweep and steady.line_*).

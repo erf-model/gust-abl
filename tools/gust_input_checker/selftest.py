@@ -357,6 +357,13 @@ CASES = [
     ("buildings_zjacobi", "solve", "buildings.type = immersed_forcing\nbuildings.file = b.txt\n"
      "steady.sweep = zjacobi\n", [], ["E steady.sweep"], {"files": {"b.txt": "0 0 10 10 5\n"}}),
     # --- abl --------------------------------------------------------------------------------------------
+    # --- turbulence --------------------------------------------------------------------------------------
+    ("nut_relax_end_without_relax", "solve", "turb.nut_relax_end = 0.01\n", ["E turb.nut_relax_end turbulence"], []),
+    ("nut_relax_end_range", "solve", "turb.nut_relax = 0.5\nturb.nut_relax_end = 1\n", ["E turb.nut_relax_end"], []),
+    ("nut_relax_end_unsteady", "unsteady", "turb.nut_relax = 0.5\nturb.nut_relax_end = 0.01\n",
+     ["E turb.nut_relax_end turbulence"], []),
+    ("nut_relax_end_ok", "solve", "turb.nut_relax = 0.5\nturb.nut_relax_end = 0.01\n", [],
+     ["E turb.nut_relax_end"]),
     # --- convection ---------------------------------------------------------------------------------------
     ("convection_blend_no_height", "solve", "turb.realizability = 0.309\nconvection.hybrid_sigma_max = 0.1\n",
      ["E convection.hybrid_height convection"], []),

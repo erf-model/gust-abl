@@ -479,6 +479,7 @@ Switching and fallback
   0's.
 - **Relaxed** :math:`\nu_t`. With ``turb.nut_relax`` < 1 the closure's history is the last SIMPLEC iteration's, which
   the Newton stage does not update, so the stage's equations are not the steady ones: it hands back for the final pass.
+  Once ``turb.nut_relax_end`` has ended the relaxation (:ref:`nut-relax-end`) it no longer hands back for this.
 
 **Limits.**
 

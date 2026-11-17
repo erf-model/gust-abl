@@ -145,6 +145,11 @@ std::string run_domain (const DomainRole& role)
             err.emplace_back("convection.hybrid_sigma_max is not supported with steady.stage = unsteady (the blend "
                              "changes with the inner residual, so the operator would change within and between steps)");
         }
+        // isnan first: the ordered comparison traps on NaN (check_closure_options reports it).
+        if (unsteady && !std::isnan(copt.nut_relax_end) && copt.nut_relax_end > 0) {
+            err.emplace_back("turb.nut_relax_end is not supported with steady.stage = unsteady (the end follows the "
+                             "inner residual, so nu_t would change from relaxed to unrelaxed within a physical step)");
+        }
         if (cin.hybrid.active() && !in.io.restart.empty()) {
             err.emplace_back("convection.hybrid_sigma_max is not supported with io.restart (the blend is not in the "
                              "checkpoint, so a restart would not continue the run)");

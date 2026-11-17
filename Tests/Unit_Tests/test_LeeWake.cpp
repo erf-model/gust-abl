@@ -771,3 +771,85 @@ TEST (LeeWake, SimplecConfidenceCountsTheConvergedCells)
     amrex::Real s = -1, h = -1;
     EXPECT_FALSE(stage.confidence(wrong, s, h));   // not one threshold per residual
 }
+
+// turb.nut_relax_end in SimplecStage::note_relative_residual: the relaxation
+// ends the first time r < nut_relax_end (strictly), stays ended when r rises
+// again, and never ends with nut_relax_end = 0.
+TEST (LeeWake, SimplecEndsTheRelaxationBelowItsResidual)
+{
+    PCase c = flat_case(8, 6, 8, 1000, 800, 400, 4);
+    Laminar lam;
+    lam.make(c, 0.5);
+    gust::SimplecOptions sopt;
+    ClosureOptions on;
+    on.nut_relax = amrex::Real(0.5);
+    on.nut_relax_end = amrex::Real(0.01);
+    ClosureOptions off = on;
+    off.nut_relax_end = 0;
+    gust::Closure ending(on), never(off);
+    gust::ResidualInputs in1 = lam.in, in2 = lam.in;
+    in1.closure = &ending;
+    in2.closure = &never;
+    gust::SimplecStage s1(sopt, 2, in1, &ending, lam.popt, c.mesh, c.geom, c.z, 0, c.ba, c.dm);
+    gust::SimplecStage s2(sopt, 2, in2, &never, lam.popt, c.mesh, c.geom, c.z, 0, c.ba, c.dm);
+    for (const double r : {0.5, 0.02, 0.01}) {
+        s1.note_relative_residual(amrex::Real(r));
+        EXPECT_FALSE(ending.relaxation_ended()) << r;
+    }
+    s1.note_relative_residual(amrex::Real(0.0099));
+    EXPECT_TRUE(ending.relaxation_ended());
+    s1.note_relative_residual(amrex::Real(0.5));
+    EXPECT_TRUE(ending.relaxation_ended());
+    for (const double r : {0.5, 1e-3, 1e-12}) {
+        s2.note_relative_residual(amrex::Real(r));
+        EXPECT_FALSE(never.relaxation_ended()) << r;
+    }
+}
+
+// The restart chain of turb.nut_relax_end: Driver::restore replays the
+// recorded r into the real SimplecStage, which ends its closure's relaxation
+// when one recorded r is below turb.nut_relax_end, and leaves it relaxing
+// when none is.
+TEST (LeeWake, RestoreEndsTheRelaxationFromTheHistory)
+{
+    PCase c = flat_case(8, 6, 8, 1000, 800, 400, 4);
+    Laminar lam;
+    lam.make(c, 0.5);
+    ClosureOptions on;
+    on.nut_relax = amrex::Real(0.5);
+    on.nut_relax_end = amrex::Real(0.01);
+    for (const double last : {0.0099, 0.011}) {
+        gust::Closure closure(on);
+        gust::ResidualInputs in = lam.in;
+        in.closure = &closure;
+        std::vector<std::unique_ptr<gust::Stage>> st;
+        st.push_back(std::make_unique<gust::SimplecStage>(gust::SimplecOptions{}, 2, in, &closure, lam.popt, c.mesh,
+                                                          c.geom, c.z, 0, c.ba, c.dm));
+        const std::size_t nres = st.front()->residual_names().size();
+        const std::size_t nmon = st.front()->monitor_specs().size();
+        gust::Driver d(confidence_options(0, 0), std::move(st), c.mesh, c.geom, nullptr);
+        gust::DriverHistory h;
+        const double rs[] = {0.5, 0.02, last};
+        for (int n = 0; n < 3; ++n) {
+            gust::IterationRecord rec;
+            rec.iteration = n;
+            rec.cfl = 1;
+            rec.relative_residual = amrex::Real(rs[n]);
+            rec.residuals.assign(nres, amrex::Real(1));
+            rec.monitors.assign(nmon, amrex::Real(1));
+            h.records.push_back(rec);
+        }
+        h.accounts.resize(1);
+        h.cfl = 1;
+        h.norm = 1;
+        h.criterion.count = 3;
+        h.criterion.res_ref.assign(nres, amrex::Real(1));
+        h.criterion.res_last.assign(nres, amrex::Real(1));
+        h.criterion.mon_hist.assign(nmon, std::vector<amrex::Real>{});
+        gust::State q;
+        define_state(q, c);
+        EXPECT_FALSE(closure.relaxation_ended());
+        d.restore(h, q);
+        EXPECT_EQ(closure.relaxation_ended(), last < 0.01) << "last recorded r " << last;
+    }
+}

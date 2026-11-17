@@ -376,6 +376,20 @@ void SimplecStage::init (State& q)
     }
 }
 
+void SimplecStage::note_relative_residual (amrex::Real r, bool replay)
+{
+    m_r = r;
+    // r is the same on every rank (Driver::step), so is the decision.
+    if (m_closure == nullptr || m_closure->relaxation_ended()) { return; }
+    const ClosureOptions& o = m_closure->options();
+    if (o.nut_relax_end > 0 && o.nut_relax < 1 && r < o.nut_relax_end) {
+        m_closure->end_relaxation();
+        amrex::Print() << "gust: turb.nut_relax ended (relative residual " << double(r) << " < turb.nut_relax_end "
+                       << double(o.nut_relax_end) << "): nu_t is no longer relaxed on this level"
+                       << (replay ? " (replayed from the restart history)" : "") << "\n";
+    }
+}
+
 std::vector<std::string> stage_residual_names () { return {"u", "v", "w", "p", "theta", "tke"}; }
 
 std::vector<MonitorSpec> stage_monitor_specs (const ResidualInputs& in)
