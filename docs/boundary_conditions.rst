@@ -765,6 +765,33 @@ sponge either: with ``bc.sponge_width > 0`` the run prints a note, and the nests
   pattern, and a conservative variant (the summed nest flux on that face) reduced it there; that variant is not in
   GUST.
 
+**Where to put a joint nest.** ``tools/nest_placement.py`` checks a nest from the terrain file and the outer mesh
+alone, before any run (``--nest X0 Y0 X1 Y1``), or searches for one of a given size (``--recommend WIDTH HEIGHT``).
+It reports the share of high-misfit columns a nest covers (where the outer cells miss the ground) and, for each
+face, the channels, ridges and steps it cuts. For each wind direction a face is inflow or outflow when the wind
+is within 60° of its normal, and a side face otherwise. An inflow or outflow face is flagged when it cuts a
+feature the outer cells cannot follow (local misfit above 5 m at 200 m cells) at more than 20° to the face
+normal; the angle is measured against the face normal, not the wind. ``--direction`` takes one or more wind
+directions or ``all`` (every 22.5°); a nest is clear only when it is clear for each. The thresholds scale with
+the outer cell size only (the misfit is the outer mesh's error in the ground height); the tool prints the
+values it used. The nest corners, the domain and the ``--recommend`` sizes must be whole outer cells. What the
+runs support so far:
+
+- The angle and misfit rules were fitted on four nests of one channel site (200 m outer cells, the wind normal
+  to the faces): the nests at 25° and 28° raised the outer cells above 0.25 m/s from 12 to 663 and 817 in a
+  joint run, and those at 0° and 14° to 26 and 12. They have not been tested on an independent case.
+- A channel bending near the outflow face did not harm a joint run (12 to 12 cells), so a bend is a note, not a
+  flag.
+- A nest 4 outer cells from the outer inflow face did not converge in a joint run on the Columbia Gorge; the
+  search keeps 10 outer cells from the outer faces by default, and a nest closer than that gets a note.
+- The step rule (escarpments, plateau edges, steep valley sides), other cell sizes and oblique wind have not
+  been tested by a run. With the default step rise (0.125 dx, 25 m) no 9.6 km x 7.2 km position on the Columbia
+  Gorge is clear for wind from 270°; with ``--step-rise 100``, 3 are.
+
+When no position is clear, the tool says so, recommends none and exits with status 2. Compare
+``nest.feedback = none`` and ``defect`` on the best-covering flagged position, or try another size. A checked
+nest with a flagged face exits with status 1, and an input error with status 3.
+
 **Results.** RMS of :math:`u` against a run of the whole domain at the nest's resolution, one way / joint.
 "One way" is the first pass of the defect run (nest levels as in the joint run) for the canonical hill, and a
 separate ``nest.feedback = none`` run (the nest's own surfaces) for Askervein and the Columbia Gorge:

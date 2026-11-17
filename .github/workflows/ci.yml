@@ -55,7 +55,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             build-essential clang cmake ninja-build ccache \
             libopenmpi-dev openmpi-bin libfftw3-dev \
-            python3-yaml python3-numpy   # the case tool's tests (Tests/Infrastructure/Case_Setup)
+            python3-yaml python3-numpy python3-scipy   # the case tool's tests; scipy: nest_placement_selftest
 
       - name: Set up ccache
         uses: actions/cache@v4
