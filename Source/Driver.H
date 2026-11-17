@@ -265,6 +265,17 @@ public:
     [[nodiscard]] const DriverHistory& history () const { return m_h; }
     //! The criterion's verdict, Steady also after a confidence stop.
     [[nodiscard]] SteadyVerdict verdict () const;
+    //! The joint run (JointRun.H): forget a confidence stop already met, so that the next step
+    //! tests the confidence again on the changed equations.
+    void rearm_confidence () { m_conf_steady = false; }
+    //! The joint run (JointRun.H): from now on the SER law does not take the CFL below the one it
+    //! holds now, the CFL the domain's one-way run ended at. An exchange raises a converged
+    //! domain's residual above its one-way reference (r_n > 1), where the law would cut the CFL;
+    //! with the pseudo-time step the SIMPLEC denominators d and the Poisson coefficients shrink,
+    //! and p' = (divergence) / d grows in proportion while the velocity correction stays bounded.
+    //! A floor at cfl0 instead keeps the nest's pseudo-time step a cfl_max / cfl0 fraction of the
+    //! parent's, and the exchanges then settle into a cycle (PR-70 hill tests).
+    void floor_cfl_at_current () { m_cfl_floor = m_h.cfl; }
     //! The confidence of the last iteration (steady.confidence > 0 and a stage
     //! that computes it; else share -1) and the height of its highest
     //! unconverged cell.
@@ -320,6 +331,7 @@ private:
     amrex::Real m_conf_share{-1};
     amrex::Real m_conf_height{0};
     bool m_conf_steady{false};
+    amrex::Real m_cfl_floor{0};   //!< floor_cfl_at_current; 0: none
 };
 
 } // namespace gust

@@ -47,11 +47,23 @@ NestOptions read_nest_options ()
     if (pp.countname("names") > 1) { opt.errors.emplace_back("nest.names is given more than once"); }
     std::vector<std::string> names;
     pp.queryarr("names", names);
+    if (pp.countname("feedback") > 1) { opt.errors.emplace_back("nest.feedback is given more than once"); }
+    std::string fb = "none";
+    if (pp.countval("feedback") > 1) { opt.errors.emplace_back("nest.feedback takes one value: none or defect"); }
+    pp.query("feedback", fb);
+    if (fb == "defect") {
+        opt.feedback = NestFeedback::defect;
+    } else if (fb != "none") {
+        opt.errors.emplace_back("nest.feedback = '" + fb + "' is not none or defect");
+    }
+    if (pp.contains("feedback") && names.empty()) {
+        opt.errors.emplace_back("nest.feedback = " + fb + " needs nest.names");
+    }
     for (std::size_t i = 0; i < names.size(); ++i) {
         const std::string& n = names[i];
-        if (!is_identifier(n) || n == "names") {
+        if (!is_identifier(n) || n == "names" || n == "feedback") {
             opt.errors.emplace_back("nest.names: '" + n + "' is not a nest name (a letter, then letters, digits or '_'; "
-                                    "not 'names')");
+                                    "not 'names' or 'feedback')");
             continue;
         }
         if (std::find(names.begin(), names.begin() + static_cast<std::ptrdiff_t>(i), n) != names.begin() + static_cast<std::ptrdiff_t>(i)) {

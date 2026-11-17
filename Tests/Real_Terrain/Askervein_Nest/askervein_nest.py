@@ -5,6 +5,8 @@
     askervein_nest.py nest   NAME PARENT D   -- COMMAND [ARGS ...]
     askervein_nest.py compare PATCH REFERENCE [PARENT] [--ratio R] [--rms X] [--below PATCH2 ...]
     askervein_nest.py study  -- MPIEXEC ... GUST [-- ARGS ...]
+    askervein_nest.py two_way -- COMMAND [ARGS ...]
+    askervein_nest.py two_way paper -- MPIEXEC ... GUST [ARGS ...]
 
 run: the whole 6 km domain (inputs_askervein_domain) on N x N x 18 cells (150:
 40 m, the parent; 300: 20 m, the reference) to the steady verdict. The last
@@ -29,6 +31,26 @@ parent's. --below names patches with nest faces nearer the hill, whose RMS
 must not be smaller than this patch's (to 5 % of it). The exit code is the
 verdict.
 
+two_way: two-way nesting (nest.feedback = defect, PR-70) in the working
+directory: the 20 m reference (ref_*), and the 40 m outer domain with the
+nest ht (-1000, -1000) to (1000, 1000) m, one way (ow_*) and joint (jt_*),
+one after another, each with the recommended setting (TWO_WAY). Prints the
+RMS of u, v, w and k against the reference over the nest (the reference
+interpolated to the nest's cell heights: a joint nest's levels follow the
+outer domain's) and over the outer cells outside its footprint, the cells of the lowest 200 m whose
+horizontal speed differs from the reference's by more than 0.25, 0.5 and
+1 m/s (tools/speed_difference.py), the RMS of the masts' 10 m speeds against the
+reference's, and the RMS of the speed-up on lines A and AA against the
+observations (digitized from Wagenbrenner et al. 2019, Fig. 8, in
+Tests/Real_Terrain/WindNinja2019/wagenbrenner2019_digitized.csv; speed-up
+relative to the inflow's 10 m speed). No verdict: the numbers are those of
+docs/boundary_conditions.rst. With "paper" COMMAND names no deck: the runs
+take a copy of Tests/Real_Terrain/WindNinja2019/inputs_askervein without the
+keys the runs set (PAPER_SET; inputs_askervein_paper; the vertical mesh of the
+Askervein comparison: a 1 m first layer, 64 levels; the log-law inflow): the
+reference on 256 x 256 cells (23.4 m), the outer domain on 128 x 128 and the
+nest ht (-937.5, -937.5) to (937.5, 937.5) m, on outer cell faces.
+
 study: the 40 m parent, the 20 m reference and patches of D = 1000, 1400 and
 2000 m, in the working directory (ARGS are given to every run after its
 deck); the table is printed and written to
@@ -52,6 +74,9 @@ TERRAIN = os.path.join(ROOT, "extern_erf", "askervein.txt")
 INFLOW = os.path.join(ROOT, "Tests", "Real_Terrain", "Askervein_210", "askervein_210_inflow.txt")
 LINES = os.path.join(ROOT, "Tests", "Real_Terrain", "Askervein_210", "askervein_lines.csv")
 SAMPLER = os.path.join(ROOT, "tools", "askervein_lines.py")
+PAPER_DECK = os.path.join(ROOT, "Tests", "Real_Terrain", "WindNinja2019", "inputs_askervein")
+PAPER_SET = ("mesh.n_cell", "io.write_checkpoint", "io.plot_file", "io.chk_file")   # keys the runs set
+OBSERVED = os.path.join(ROOT, "Tests", "Real_Terrain", "WindNinja2019", "wagenbrenner2019_digitized.csv")
 L = 3000.0       # the domain is (-L, L) in x and y
 D_MIN = 900.0    # the masts reach 870 m from HT in x
 
@@ -218,6 +243,127 @@ def study(solver):
     return 1 if bad else 0
 
 
+# The two-way runs: the recommended setting (docs: Recommended settings) and the nest's checkpoint.
+TWO_WAY = ["turb.realizability=0.309", "turb.nut_relax=0.5", "convection.hybrid_sigma_max=0.1",
+           "convection.hybrid_height=290.", "turb.max_geom_lscale=100.", "io.write_checkpoint=1"]
+TWO_WAY_NEST = ["nest.names=ht", "nest.ht.lo=-1000 -1000", "nest.ht.hi=1000 1000"]
+
+
+def two_way(cmd, paper=False):
+    import glob
+    import numpy as np
+    sys.path.insert(0, os.path.join(ROOT, "extern_erf"))
+    import erf_plotfile
+    if paper:   # the deck sets the inflow and the recommended setting; its copy leaves out what the runs set
+        with open(PAPER_DECK) as fh, open("inputs_askervein_paper", "w") as out:
+            out.writelines(line for line in fh if line.split("=")[0].strip() not in PAPER_SET)
+        at = next((i for i, a in enumerate(cmd) if "=" in a and not a.startswith("-")), len(cmd))  # deck before ARGS
+        base = cmd[:at] + ["inputs_askervein_paper"] + cmd[at:] + [f"terrain.file={TERRAIN}", "io.write_checkpoint=1"]
+        n_ref, n_out, half, nz = 256, 128, 937.5, 64
+    else:
+        base = cmd + [f"terrain.file={TERRAIN}", f"bc.inflow_file={INFLOW}"] + TWO_WAY
+        n_ref, n_out, half, nz = 300, 150, 1000.0, 18
+    nest = ["nest.names=ht", f"nest.ht.lo={-half:g} {-half:g}", f"nest.ht.hi={half:g} {half:g}"]
+    runs = [("ref", [f"mesh.n_cell={n_ref} {n_ref} {nz}"]),
+            ("ow", [f"mesh.n_cell={n_out} {n_out} {nz}"] + nest + ["nest.feedback=none"]),
+            ("jt", [f"mesh.n_cell={n_out} {n_out} {nz}"] + nest + ["nest.feedback=defect"])]
+    for name, args in runs:
+        with open(name + ".log", "w") as fh:
+            rc = subprocess.run(base + args + [f"io.plot_file={name}_plt", f"io.chk_file={name}_chk"],
+                                stdout=fh, stderr=subprocess.STDOUT).returncode
+        if rc != 0:
+            fail(f"{name}: the run exited {rc}; see {name}.log")
+
+    def last(prefix):
+        found = [(int(m.group(1)), p) for p in glob.glob(prefix + "[0-9]*")
+                 for m in [re.fullmatch(re.escape(prefix) + r"(\d+)", p)] if m and os.path.isdir(p)]
+        if not found:
+            fail(f"no plotfile {prefix}*")
+        return max(found)[1]
+
+    fields = ["u", "v", "w", "tke"]
+    rd = lambda p: {k: np.array(v, dtype=float) for k, v in erf_plotfile.read_fields(p, fields + ["z"])[1].items()}
+    plt = {"ref": last("ref_plt"), "ow": last("ow_plt"), "jt": last("jt_plt"),
+           "ow_ht": last("ow_plt_ht"), "jt_ht": last("jt_plt_ht")}
+    R, OO, OJ, NO, NJ = (rd(plt[k]) for k in ("ref", "ow", "jt", "ow_ht", "jt_ht"))
+    dx = 6000.0 / n_out                  # the footprint: outer cells i0 .. i0 + ni - 1 in x and y
+    i0, ni = round((3000.0 - half) / dx), round(2 * half / dx)
+    co = lambda a: 0.25 * (a[0::2, 0::2] + a[1::2, 0::2] + a[0::2, 1::2] + a[1::2, 1::2])
+    rms = lambda a: float(np.sqrt(np.mean(a * a)))
+    print(f"{'field':5s} {'nest ow':>10s} {'nest jt':>10s} {'out ow':>10s} {'out jt':>10s}")
+    for f in fields:
+        rc, rn = co(R[f]), R[f][2 * i0:2 * (i0 + ni), 2 * i0:2 * (i0 + ni)]
+        zr = R["z"][2 * i0:2 * (i0 + ni), 2 * i0:2 * (i0 + ni)]
+
+        def at(n):   # the reference at the nest's cell heights, column by column (a joint nest's levels move)
+            out_ = np.empty_like(n["z"])
+            for a in range(out_.shape[0]):
+                for b in range(out_.shape[1]):
+                    out_[a, b] = np.interp(n["z"][a, b], zr[a, b], rn[a, b])
+            return out_
+        out = np.ones(rc.shape[:2], bool)
+        out[i0:i0 + ni, i0:i0 + ni] = False
+        out = np.broadcast_to(out[:, :, None], rc.shape)
+        print(f"{f:5s} {rms(NO[f] - at(NO)):10.4e} {rms(NJ[f] - at(NJ)):10.4e} {rms((OO[f] - rc)[out]):10.4e} "
+              f"{rms((OJ[f] - rc)[out]):10.4e}")
+    # Horizontal speed differences in m/s in the lowest 200 m (tools/speed_difference.py), nest at its own heights.
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    import speed_difference as sd
+    sl = (slice(2 * i0, 2 * (i0 + ni)), slice(2 * i0, 2 * (i0 + ni)))
+    Rs = sd.speed(R)
+    Rc, mc = sd.coarsen(Rs), sd.near_ground(sd.coarsen(R["z"]))
+    outer = np.ones(Rc.shape[:2], bool)
+    outer[i0:i0 + ni, i0:i0 + ni] = False
+    rows = []
+    for k, N, O in (("one-way", NO, OO), ("joint", NJ, OJ)):
+        rows.append((k, "nest", (sd.speed(N) - sd.at_height(N["z"], R["z"][sl], Rs[sl]))[sd.near_ground(N["z"])]))
+        rows.append((k, "outer", (sd.speed(O) - Rc)[mc & outer[:, :, None]]))
+    print(f"horizontal speed |S - S_ref| below {sd.AGL:g} m above the ground "
+          f"(reference mean {Rs[sd.near_ground(R['z'])].mean():.2f} m/s)")
+    sd.print_table(rows)
+    sampled = set(plt)
+    for k, p in plt.items():
+        proc = subprocess.run([sys.executable, SAMPLER, "sample", p, "--terrain", TERRAIN, "--lines", LINES,
+                               "--out", f"tw_{k}_lines.csv"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                              text=True)
+        if proc.returncode != 0:   # the outer domain's ground can lie above the terrain file's at a mast
+            print(f"{p}: the masts are not sampled ({proc.stdout.strip().splitlines()[-1]})")
+            sampled.discard(k)
+    for k in [k for k in ("ow", "jt", "ow_ht", "jt_ht") if k in sampled]:
+        r, mx, _ = differences("tw_" + k, "tw_ref")
+        print(f"masts, {k}: 10 m speed relative to the reference: RMS {r:.4f}, largest {mx:.4f}")
+    uref = 8.9 if paper else inflow_speed(10.0)
+    obs = {}
+    with open(OBSERVED) as fh:
+        for row in csv.reader(line for line in fh if line[0] != "#"):
+            if row[0] == "fig8" and row[2] == "observed" and row[1] in ("LineA", "LineAA"):
+                obs.setdefault(row[1][4:], []).append((float(row[3]), float(row[4])))
+    print(f"speed-up on the masts against the observations (U_ref = {uref:.3f} m/s, the inflow at 10 m):")
+    for k in [k for k in ("ref", "ow", "jt", "ow_ht", "jt_ht") if k in sampled]:
+        with open(f"tw_{k}_lines.csv") as fh:
+            rows = list(csv.DictReader(line for line in fh if line[0] != "#"))
+        for line in sorted(obs):
+            ds = []
+            for d, so in obs[line]:   # the nearest mast within 15 m of each observation
+                near = [r for r in rows if r["line"] == line and abs(float(r["d"]) - d) < 15.0]
+                if near:
+                    r = min(near, key=lambda r: abs(float(r["d"]) - d))
+                    ds.append(float(r["speed"]) / uref - 1.0 - so)
+            print(f"  {k:5s} line {line:2s}: {len(ds)} masts, RMS {rms(np.array(ds)):.4f}, "
+                  f"largest {max(ds, key=abs):+.4f}")
+    return 0
+
+
+def inflow_speed(z):
+    """The speed of the inflow table INFLOW at height z (linear in ln z between the rows around it)."""
+    rows = [[float(v) for v in line.split()] for line in open(INFLOW) if line.strip() and line[0] != "#"]
+    for a, b in zip(rows, rows[1:]):
+        if 0.0 < a[0] < z <= b[0]:
+            t = math.log(z / a[0]) / math.log(b[0] / a[0])
+            return math.hypot(a[1], a[2]) + t * (math.hypot(b[1], b[2]) - math.hypot(a[1], a[2]))
+    fail(f"{INFLOW}: no rows around z = {z} m")
+
+
 def main(argv):
     if not argv:
         print(__doc__)
@@ -236,6 +382,8 @@ def main(argv):
         run_domain(args[1], int(args[2]), cmd)
     elif args[0] == "nest" and len(args) == 4:
         run_nest(args[1], args[2], float(args[3]), cmd)
+    elif args[0] == "two_way" and len(args) in (1, 2) and args[1:] in ([], ["paper"]):
+        return two_way(cmd, paper=len(args) == 2)
     elif args[0] == "study" and len(args) == 1:
         return study(cmd)
     else:

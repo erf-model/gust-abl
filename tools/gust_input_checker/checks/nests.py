@@ -4,7 +4,12 @@ ERROR (each is an abort of Source/Nests.cpp read_nest_options and
 check_nests, or of Source/App.cpp before the outer domain starts):
 
 - nest.names: a name that is not an identifier (a letter, then letters,
-  digits or '_') or is 'names'; a name given twice;
+  digits or '_') or is 'names' or 'feedback'; a name given twice;
+- nest.feedback other than none or defect, or without nest.names; with
+  defect: steady.stage = simplec_newton, io.restart, bc.rayleigh_fields with
+  u, v or tke, an odd mesh.max_grid_size that splits a nest into boxes
+  with an odd number of cells in x or y, or a nest spanning fewer than
+  2 DEFECT_MARGIN + 1 outer cells in a non-periodic x or y (Source/App.cpp);
 - nest.<name>.lo or nest.<name>.hi missing for a name of nest.names;
   nest.<name>.* for a name not in nest.names (GUST does not read it);
 - a corner that is not finite, off the outer cell faces (1e-4 cells), hi not
@@ -20,6 +25,9 @@ check_nests, or of Source/App.cpp before the outer domain starts):
 
 The value counts (two values per corner) are in `values`.
 
+WARNING: nest.feedback = defect with bc.sponge_width > 0 (the nests have no
+side sponge; GUST prints a note).
+
 INFO: each nest's cells (refinement 2 2 1).
 """
 import math
@@ -29,6 +37,7 @@ from ..checker import Checker, register
 
 MARGIN = 2      # NestParent.H, kNestMargin
 RATIO = 2       # NestParent.H, kNestRatio
+DEFECT_MARGIN = 2   # NestDefect.H, kDefectMargin
 _NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
 
 
@@ -52,9 +61,9 @@ class NestsChecker(Checker):
         names = c.tokens("nest.names") if self.given("nest.names") else []
         valid = []
         for n in names:
-            if not _NAME.match(n) or n == "names":
+            if not _NAME.match(n) or n in ("names", "feedback"):
                 self.error("nest.names", "GUST stops: nest.names: '%s' is not a nest name (a letter, then letters, "
-                                         "digits or '_'; not 'names')." % n, "Rename the nest.")
+                                         "digits or '_'; not 'names' or 'feedback')." % n, "Rename the nest.")
             elif n in valid:
                 self.error("nest.names", "GUST stops: nest.names: '%s' is named more than once." % n,
                            "Name each nest once.")
@@ -65,6 +74,7 @@ class NestsChecker(Checker):
             if len(parts) == 3 and parts[1] not in valid:
                 self.error(key, "GUST stops: unknown input '%s': '%s' is not in nest.names." % (key, parts[1]),
                            "Add the name to nest.names, or remove the key.")
+        defect = self._feedback(names)
         if not names:
             return
         self._outer()
@@ -94,9 +104,65 @@ class NestsChecker(Checker):
                                        "Move or shrink one of them.")
                     spans.append((n, span))
                     self._layout(n, span)
+                    if defect:
+                        self._even_boxes(n, span)
                     self.info("nest.%s.lo" % n, "nest.%s: %d x %d x %s cells of %.6g m x %.6g m (refinement 2 2 1)."
                               % (n, RATIO * (span[1] - span[0]), RATIO * (span[3] - span[2]),
                                  c.n_cell[2], c.dx / RATIO, c.dy / RATIO))
+
+    def _feedback(self, names):
+        """nest.feedback (Source/Nests.cpp, Source/App.cpp); True for defect."""
+        c = self.ctx
+        if not self.given("nest.feedback"):
+            return False
+        fb = c.s("nest.feedback")
+        if fb not in ("none", "defect"):
+            self.error("nest.feedback", "GUST stops: nest.feedback = '%s' is not none or defect." % fb,
+                       "Set nest.feedback = none or defect.")
+            return False
+        if not names:
+            self.error("nest.feedback", "GUST stops: nest.feedback = %s needs nest.names." % fb,
+                       "Name the nests, or remove nest.feedback.")
+            return False
+        if fb != "defect":
+            return False
+        if c.stage == "simplec_newton":
+            self.error("nest.feedback", "GUST stops: nest.feedback = defect needs steady.stage = simplec (not "
+                                        "simplec_newton).", "Set steady.stage = simplec.")
+        if c.restart:
+            self.error("nest.feedback", "GUST stops: nest.feedback = defect does not restart (io.restart): run from "
+                                        "the start.", "Remove io.restart.")
+        if c.positive("bc.rayleigh_zdamp") and any(c.rayleigh_field(f) for f in ("u", "v", "tke")):
+            self.error("nest.feedback", "GUST stops: nest.feedback = defect needs bc.rayleigh_fields without u, v and "
+                                        "tke (the nests damp w and theta only).", "Set bc.rayleigh_fields = w theta.")
+        if c.positive("bc.sponge_width"):
+            self.warn("nest.feedback", "nest.feedback = defect with bc.sponge_width > 0: the nests have no side sponge, "
+                                       "so over a footprint inside the sponge the joint run does not damp.",
+                      "Place the nests outside bc.sponge_width.")
+        return True
+
+    def _even_boxes(self, n, span):
+        """With defect: at least 2 DEFECT_MARGIN + 1 outer cells in each non-periodic direction, and every box of the
+        nest an even number of cells in x and y (Source/App.cpp)."""
+        c = self.ctx
+        for d, ax in enumerate("xy"):
+            cells = span[2 * d + 1] - span[2 * d]
+            periodic = c.periodic and c.periodic[d] == 1 and cells == c.n_cell[d]
+            if not periodic and cells < 2 * DEFECT_MARGIN + 1:
+                self.error("nest.feedback", "GUST stops: nest.feedback = defect: nest.%s spans %d outer cells in %s; it "
+                                            "needs at least %d (the source keeps %d cells from each face)."
+                           % (n, cells, ax, 2 * DEFECT_MARGIN + 1, DEFECT_MARGIN), "Widen the nest.")
+        if not c.max_grid:
+            return
+        for d in range(2):
+            cells, m = RATIO * (span[2 * d + 1] - span[2 * d]), c.max_grid[d]
+            nb = -(-cells // m)
+            sizes = {cells // nb, -(-cells // nb)}
+            if any(s % 2 for s in sizes):
+                self.error("nest.feedback", "GUST stops: nest.feedback = defect: nest.%s splits into boxes with an odd "
+                                            "number of cells in x or y at mesh.max_grid_size: give an even "
+                                            "mesh.max_grid_size." % n, "Give an even mesh.max_grid_size.")
+                return
 
     def _outer(self):
         """What the outer deck needs with nests (Source/App.cpp)."""

@@ -7,6 +7,7 @@
 //   nest.names     = nest1 nest2      names of the nests (identifiers)
 //   nest.nest1.lo  = x y              the nest's low corner (m)
 //   nest.nest1.hi  = x y              its high corner (m)
+//   nest.feedback  = none | defect    one way (default), or the joint run
 //
 // Everything else is the outer domain's: the deck's physics, closure,
 // solver and terrain keys, and these derived settings:
@@ -31,8 +32,14 @@
 // not reach steady). STF (terrain.smoothing = 1) over terrain is refused: it
 // smooths over each mesh's own ground. One way: the outer domain does not see the nests, and two
 // nests that touch each take the outer values on their shared face but
-// correct their own net flux, so their normal velocities there differ (the
-// joint run with feedback is PR-70).
+// correct their own net flux, so their normal velocities there differ.
+//
+// nest.feedback = defect (JointRun.H): after the one-way runs above (whose
+// outputs are written as usual), the outer domain and every nest iterate
+// together in memory: each exchange the outer domain gets the nests' defect
+// source (NestDefect.H) and each nest's faces the current outer domain
+// (NestFaces::refresh), until every domain is steady in the same exchange;
+// then each writes its outputs again, at its new step.
 
 #include "BoundaryConditions.H"
 #include "Inputs.H"
@@ -55,16 +62,20 @@ struct NestSpec
     std::array<amrex::Real, 2> lo{0, 0}, hi{0, 0};
 };
 
+//! nest.feedback: none (one way, the default) or defect (the joint run, NestDefect.H, JointRun.H).
+enum class NestFeedback { none, defect };
+
 struct NestOptions
 {
     std::vector<NestSpec> nests;
+    NestFeedback feedback{NestFeedback::none};
     //! Value-count and name problems found while reading.
     std::vector<std::string> errors;
     [[nodiscard]] bool active () const { return !nests.empty(); }
 };
 
-//! Read nest.names and each nest's nest.<name>.lo and nest.<name>.hi. No
-//! placement checks (check_nests).
+//! Read nest.names, nest.feedback and each nest's nest.<name>.lo and
+//! nest.<name>.hi. No placement checks (check_nests).
 NestOptions read_nest_options ();
 
 //! The placement of every nest in the outer mesh: corners on the outer cell

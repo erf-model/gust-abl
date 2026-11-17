@@ -304,7 +304,7 @@ Nest faces
 
 A *patch* is a finer run inside a finished, coarser *parent* run (:doc:`initial_conditions`). A lateral face of the
 patch with ``bc.<face> = nest`` takes its values from the parent's checkpoint (``bc.nest_parent``). The nesting is one
-way: the parent is not changed. The code is in ``Source/NestFaces``.
+way: the parent is not changed (for two-way nests, ``nest.feedback = defect``, see :ref:`two-way-nests`). The code is in ``Source/NestFaces``.
 
 On a nest face:
 
@@ -676,6 +676,193 @@ the zone was tried with factor 1 at one patch size.
 - The nest faces are frozen: with ``steady.stage = unsteady`` the patch's boundary values do not change in time. The
   tests cover ``steady.stage = simplec``; ``simplec_newton`` and ``unsteady`` use the same rows, fills and diagonal and
   are accepted, but have no nest test yet. A patch is solved on level 0 only (grid sequencing is refused).
+
+.. _two-way-nests:
+
+Two-way nests (``nest.feedback = defect``)
+------------------------------------------
+
+With ``nest.names`` in the outer deck (:doc:`inputs`, ``nest``) the nests run one way after the outer domain. With
+``nest.feedback = defect`` the run goes on: the outer domain and all its nests stay in memory and iterate together,
+one *exchange* per iteration (``Source/JointRun``, ``Source/NestDefect``).
+
+The use in mind is one coarse domain over a region with several sites of interest, each with its own fine nest
+(``nest.names = a b c``). The nests run together in the same exchange; each one's flow reaches the coarse domain
+around it, and through it the other nests' faces.
+
+Each exchange:
+
+1. **Up.** Each nest's state :math:`q_f` is restricted onto the outer cells under it (its *footprint*); the outer
+   state with these values on the footprint is :math:`q^*`. The outer residual at :math:`q^*`, without any
+   source, gives the defect source
+
+   .. math::
+
+      S = \chi_s\, R_c(q^*), \qquad q^* = q_c \text{ with } I q_f \text{ on the footprint}.
+
+2. The outer domain takes one iteration of :math:`R_c(q_c) - S = 0`.
+3. **Down.** Each nest's parent images and nest faces are taken from the outer state now.
+4. Each nest takes one iteration.
+
+Here
+
+- :math:`R_c`: the outer residual of :math:`u, v, w, \theta` and :math:`k` (with the stage's upwind blend);
+- :math:`q_c`: the outer state; :math:`q_f`: a nest's state;
+- :math:`I`: the restriction at 2 2 1. Cell values are the :math:`J`-weighted mean of the nest cells; :math:`u` and
+  :math:`v` are the nest's face fluxes summed over the outer face's area; :math:`w` comes from the restricted
+  vertical flux :math:`\Omega`. The restricted field is divergence-free on the outer cells when the nest's field is
+  divergence-free on its own, so continuity gets no source. The pressure is the :math:`J`-weighted mean of the nest cells,
+  shifted by one constant per nest so that its mean over the footprint is the outer pressure's mean there (the two
+  pressures have different levels). The shift uses plain means, not :math:`J`-weighted ones. The level does not
+  reach :math:`S`: the momentum rows of :math:`\chi_s` see the pressure only through differences inside the
+  footprint, where every value carries the same constant (unit test ``ThePressureLevelDoesNotReachTheSource``);
+- :math:`\chi_s`: 1 on the outer points at least 2 outer cells inside the footprint's lateral faces (all
+  :math:`z`), 0 elsewhere. The 2-cell ring between keeps the nest's own face values out of the cells of :math:`S`.
+  The rows of :math:`u` (and :math:`v`) on the edge faces of :math:`\chi_s` still read the nest's face two faces
+  away through the upwind reconstruction of their momentum flux.
+
+At a joint fixed point :math:`R_c(q_c) = 0` outside :math:`\chi_s` and :math:`R_c(q_c) = R_c(q^*)` inside it, so the
+outer domain carries the nests' solution on :math:`\chi_s` and its own equations see it through their stencils. On the
+ring :math:`q^*` takes :math:`I q_f` too, so the rows of :math:`\chi_s` see the nest's state alone at :math:`q^*`;
+at the joint steady state the outer state on the ring is its own, close to :math:`I q_f` but not equal to it, and
+the rows of :math:`\chi_s` within two cells of the ring see that difference, so the outer state differs from
+:math:`I q_f` there too, less so further in. Taking
+:math:`q^*` = :math:`I q_f` on :math:`\chi_s` only (the ring at the outer state) makes :math:`q_c = I q_f` an exact
+fixed point, but on the Columbia Gorge case the exchanges then settled into a cycle near a residual of 1e-4 and did
+not reach steady in 600 exchanges; with :math:`q^*` over the whole footprint the same case is steady in 276. This is the
+local defect correction of Ferket & Reusken (1996) and Anthonissen et al. (2003), applied to the steady RANS
+residual. :math:`S` is constant during the outer iteration and changes only at an exchange. The rows a boundary
+condition or the wall law replaces replace :math:`S` too.
+
+**The nests' coordinate surfaces.** In the joint run a nest's coordinate surfaces follow the outer domain's, with
+the nest's own ground detail decaying with height (a SLEVE-like coordinate, Schär et al. 2002):
+
+.. math::
+
+   z_k = z_{p,k} + (h - h_p)\, \frac{\sinh\big((H - \zeta_k)/s\big)}{\sinh(H/s)}, \qquad
+   s = \max\Big(r\,\Delta x,\; \frac{2 \max|h - h_p|}{m}\Big),
+
+with :math:`z_{p,k}` the outer domain's surface :math:`k` interpolated to the nest's node (bicubic, Catmull-Rom), :math:`h` the
+nest's ground, :math:`h_p = z_{p,0}`, :math:`\zeta_k` the z-levels, :math:`H` the top level, :math:`r\,\Delta x` the
+outer domain's smaller horizontal cell size and :math:`m` the smallest slope :math:`\partial z_p / \partial \zeta`
+of the outer surfaces over the nest. The ground stays the nest's and the top is the outer domain's. The layers keep
+:math:`\partial z / \partial \zeta \ge m - \tfrac{m}{2}\coth(H/s)`, at least :math:`0.48\,m` when :math:`H \ge 2s`;
+a nest whose ground differs from the outer one's by a large fraction of :math:`H` can still invert cells, and the mesh
+check then stops the run. **Why:** the restriction takes
+:math:`w` from the vertical flux :math:`\Omega` summed over the nest faces. With the nest's own terrain-fitted
+surfaces its finer ground detail decays only as :math:`1 - \zeta/H` (BTF), and between the outer nodes the nest's
+surfaces aloft are not the outer domain's. The restricted :math:`\Omega` then carries the slope-velocity covariance
+of that detail as vertical motion: on the Columbia Gorge case the outer :math:`w` error outside the footprint grew to
+0.035 m/s (one way 0.026) and downstream to 0.053 m/s (one way 0.031). With the surfaces above, the nest's surfaces
+lie on the outer domain's within a few :math:`s` of the ground, and the errors are 0.025 and 0.026 m/s. The cost is
+over the footprint: there the outer :math:`w` error grows from 0.044 m/s one way to 0.068 m/s, because the outer
+cells see the nest's flow on surfaces that bend faster than their own. The log gives
+:math:`\max|h - h_p|`, :math:`s` and the largest move of a node. A one-way nest keeps its own terrain-fitted surfaces.
+
+**Pseudo-time step.** When the joint run starts, each domain's CFL is held at no less than the value its one-way run
+ended at. The first exchange raises every domain's residual above its one-way reference, where the SER law would cut
+the CFL; with the pseudo-time step the SIMPLEC denominators and the Poisson coefficients shrink, and the pressure
+correction grows in proportion. A floor at ``steady.cfl0`` instead kept the nest's step a ``cfl_max / cfl0`` fraction
+of the outer domain's, and the exchanges settled into a cycle that did not reach steady.
+
+**Stopping.** The run stops when every domain's driver is steady after the same exchange (each domain's ``steady.*``
+criteria, with :math:`S` and the faces as they are then), when one diverges, or after ``steady.max_iterations``
+exchanges. The joint run starts once the outer domain is steady, also when a nest's one-way run was not; GUST
+stops with an error after the joint run, naming every domain that is not steady. The log gives, for the first ten exchanges and then every tenth, the largest :math:`|S|` per equation and
+the largest change of a nest's face velocities.
+
+**Damping.** A nest damps only :math:`w` and :math:`\theta` (above). Over each footprint the joint run carries the
+nests' equations, so an outer Rayleigh term on :math:`u, v` or :math:`k` would act outside the footprints and not
+inside them: a jump in the forcing at each footprint's edge above ``bc.rayleigh_zdamp``. ``nest.feedback = defect``
+therefore needs ``bc.rayleigh_fields = w`` or ``w theta``, and stops with an error otherwise. A nest has no side
+sponge either: with ``bc.sponge_width > 0`` the run prints a note, and the nests are best placed outside the sponge.
+
+**Limits.**
+
+- With ``turb.nut_relax`` below 1 the outer :math:`\nu_t` blends with its own history, so :math:`R_c(q^*)` uses that
+  history, not one of :math:`q^*`'s own. At a steady state the history equals :math:`\nu_t` of the outer state, so
+  this changes the path to the joint steady state, not the state itself.
+- No joint restart: ``io.restart`` is refused. Each domain writes its own plotfile and checkpoint at the end. These
+  checkpoints hold the joint state and can start a one-way run (``init.first_guess``, a parent for ``bc.nest_parent``);
+  a nest's checkpoint still names the one-way outer checkpoint as its parent, and the driver history in it runs past
+  ``steady.max_iterations``, so a restart from it is not a continuation of the joint run.
+- ``steady.probes_file`` rows stop at the end of the one-way run: the joint run writes none.
+- The outer domain's turbulence plotfile after the joint run shows the residual with :math:`S` included.
+- ``steady.stage = simplec_newton`` is refused: its residual is not the one the source is formed with.
+- Two-way is not always closer to the fine run than one-way (Harris & Durran 2010): the outer domain's error
+  outside the footprints can grow where the nest's solution differs from the outer one's. Compare with
+  ``nest.feedback = none`` on a new site. A nest face on a lee slope is one such place: on the steep hill of
+  ``Tests/Canonical_RANS/Nests_Two_Way`` a nest ending 100 m behind the crest (two thirds of the half-width) has a
+  joint error 3.3 times its one-way one, and one ending 200 m or more behind it 0.4 times or less. A likely cause:
+  the flux leaving :math:`\chi_s` is the outer scheme's flux of :math:`I q_f`, not the nest's own face flux, and
+  where the gradients are strong the two differ. A 1-D model problem (second-order upwind, ratio 2) shows the same
+  pattern, and a conservative variant (the summed nest flux on that face) reduced it there; that variant is not in
+  GUST.
+
+**Where to put a joint nest.** ``tools/nest_placement.py`` checks a nest from the terrain file and the outer mesh
+alone, before any run (``--nest X0 Y0 X1 Y1``), or searches for one of a given size (``--recommend WIDTH HEIGHT``).
+It reports the share of high-misfit columns a nest covers (where the outer cells miss the ground) and, for each
+face, the channels, ridges and steps it cuts. For each wind direction a face is inflow or outflow when the wind
+is within 60° of its normal, and a side face otherwise. An inflow or outflow face is flagged when it cuts a
+feature the outer cells cannot follow (local misfit above 5 m at 200 m cells) at more than 20° to the face
+normal; the angle is measured against the face normal, not the wind. ``--direction`` takes one or more wind
+directions or ``all`` (every 22.5°); a nest is clear only when it is clear for each. The thresholds scale with
+the outer cell size only (the misfit is the outer mesh's error in the ground height); the tool prints the
+values it used. The nest corners, the domain and the ``--recommend`` sizes must be whole outer cells. What the
+runs support so far:
+
+- The angle and misfit rules were fitted on four nests of one channel site (200 m outer cells, the wind normal
+  to the faces): the nests at 25° and 28° raised the outer cells above 0.25 m/s from 12 to 663 and 817 in a
+  joint run, and those at 14° and 0° to 26 and 12. They have not been tested on an independent case.
+- A channel bending near the outflow face did not harm a joint run (12 to 12 cells), so a bend is a note, not a
+  flag.
+- A nest 4 outer cells from the outer inflow face did not converge in a joint run on the Columbia Gorge; the
+  search keeps 10 outer cells from the outer faces by default, and a nest closer than that gets a note.
+- The step rule (escarpments, plateau edges, steep valley sides), other cell sizes and oblique wind have not
+  been tested by a run. With the default step rise (0.125 dx, 25 m) no 9.6 km x 7.2 km position on the Columbia
+  Gorge is clear for wind from 270°; with ``--step-rise 100``, 3 are.
+
+When no position is clear, the tool says so, recommends none and exits with status 2. Compare
+``nest.feedback = none`` and ``defect`` on the best-covering flagged position, or try another size. A checked
+nest with a flagged face exits with status 1, and an input error with status 3.
+
+**Results.** RMS of :math:`u` against a run of the whole domain at the nest's resolution, one way / joint.
+"One way" is the first pass of the defect run (nest levels as in the joint run) for the canonical hill, and a
+separate ``nest.feedback = none`` run (the nest's own surfaces) for Askervein and the Columbia Gorge:
+
+.. list-table::
+   :header-rows: 1
+
+   * - Case
+     - Nest
+     - Outer, outside the footprint
+     - Cost of the joint run
+   * - Steep hill (``Tests/Canonical_RANS/Nests_Two_Way``; 50 m / 25 m, 2 ranks)
+     - 8.23e-3 / **2.03e-3** m/s
+     - 1.44e-2 / **4.89e-3** m/s
+     - 208 exchanges, 5.3 s
+   * - Askervein (40 m / 20 m nest of 2 km x 2 km, 4 ranks)
+     - 3.37e-3 / 3.37e-3 m/s
+     - 4.62e-3 / **3.21e-3** m/s
+     - 156 exchanges, 45 s
+   * - Columbia Gorge (``Tests/Real_Terrain/Columbia_Gorge``; 200 m / 100 m, 4 ranks)
+     - 0.125 / **0.122** m/s
+     - 0.105 / **0.093** m/s
+     - 276 exchanges, 260 s
+
+On Askervein the joint run moves the outer domain towards the 20 m run outside the footprint in every field
+(:math:`v` 9.37e-3 to 6.93e-3, :math:`k` 3.73e-3 to 3.12e-3 RMS) and leaves the nest's :math:`u` where it was. In the
+nest :math:`w` improves (2.87e-3 to 1.48e-3) and :math:`v` and :math:`k` get worse (5.68e-3 to 6.03e-3 and 1.56e-3 to
+2.76e-3). There the one-way nest is already close to the 20 m run: its 10 m speed at the masts of lines A and AA
+differs by 0.04 % RMS, the joint nest's by 0.11 %; the outer domain's moves from 1.18 % to 1.05 %. No nest cell in
+the lowest 200 m differs from the 20 m run by more than 0.25 m/s in either run (largest 0.23 and 0.14 m/s). The
+joint run costs more than the one-way run: on Askervein the joint run takes 45 s after the one-way runs, and the
+uniform 20 m run 85 s (4 ranks). Over the footprint the outer
+:math:`w` follows the restricted contravariant flux, not a cell mean of the nest's :math:`w`; on Askervein's slopes
+the two differ by 0.05 m/s RMS, so read :math:`w` there from the nest. On a gentler hill (60 m, half-width 250 m, the
+hill of ``Nests_One_Process``) where the outer cells already resolve the flow, the nest's :math:`u` error moved from
+1.36e-3 to 1.70e-3 m/s (``check_nests_two_way.py`` of ``Nests_Two_Way`` with ``terrain.hill_height = 60`` and
+``terrain.hill_half_width = 250`` in a copy of its deck).
 
 Pressure
 --------

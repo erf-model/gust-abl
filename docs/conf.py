@@ -35,4 +35,6 @@ latex_elements = {
 linkcheck_ignore = [
     r"https://doi\.org/10\.1029/.*",  # AGU DOIs resolve to Wiley
     r"https://agupubs\.onlinelibrary\.wiley\.com/.*",
+    r"https://doi\.org/10\.1175/.*",  # AMS DOIs: journals.ametsoc.org answers the link checker with 405
+    r"https://journals\.ametsoc\.org/.*",
 ]

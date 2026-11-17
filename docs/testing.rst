@@ -584,6 +584,52 @@ tests: the nest's ``init.*`` record kept fails ``rt_nests_outer_init_keys``; the
 ``abort_nests_stf``; the nest steady verdict ignored fails ``abort_nests_nest_not_steady``; the checker's STF mirror
 off fails case ``nests_hill_stf`` of its self-test.
 
+The one-line mutants of the two-way nests' restriction and defect source (``Source/NestDefect.cpp``), each run
+against ``NestDefect.*`` on two ranks with the unit-test flags by ``tools/nest_defect_mutants.py`` (macOS arm64,
+AppleClang). All 10 are killed.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 6 50 44
+
+   * - Mutant
+     - Change
+     - Failing tests
+   * - D1
+     - Cell values a plain mean (no :math:`J` weight)
+     - ``RestrictionOfCellFieldsAndThePressureLevel``
+   * - D2
+     - u and v not divided by the parent face area
+     - ``RestrictionConservesTheFluxesOnAHill``
+   * - D3
+     - :math:`\Omega` summed over one nest face row only
+     - ``RestrictionConservesTheFluxesOnAHill``
+   * - D4
+     - The pressure level not shifted to the parent's
+     - ``RestrictionOfCellFieldsAndThePressureLevel``
+   * - D5
+     - The pressure shift with the wrong sign
+     - ``RestrictionOfCellFieldsAndThePressureLevel``
+   * - D6
+     - A margin of one parent cell
+     - ``RegionAndSource``
+   * - D7
+     - The margin also across a periodic direction
+     - ``RegionAndSource``
+   * - D8
+     - The source over the whole footprint
+     - ``RegionAndSource``
+   * - D9
+     - The source added, not subtracted
+     - ``RegionAndSource``
+   * - D10
+     - u copied onto the parent without the periodicity
+     - ``RestrictionSetsBothCopiesOfAPeriodicSeamFace``
+
+By hand against ``rt_nests_two_way``: ``nest.feedback = none`` in place of ``defect`` (no joint run) fails its
+log check, and the first two-nest layout (the crest nest ending at x = 900 m, on the lee slope) fails the nest
+ratio at 3.33.
+
 The one-line mutants of the canopy's drag field (``Source/Canopy.cpp``, ``Source/Canopy_K.H``), each run against
 ``Canopy.*`` on two ranks with the unit-test flags by ``tools/canopy_mutants.py`` (macOS arm64, AppleClang). All 18 are
 killed.
@@ -1763,6 +1809,19 @@ Current tests
    * - ``rt_nests_outer_init_keys``
      - The ``rt_nests_one_process`` deck with one nest and ``init.z_agl_min = 5``, a key of the outer profile first
        guess: the nest runs (it does not check the outer deck's ``init.*`` keys).
+   * - ``rt_nests_two_way``
+     - Two-way nests (``Tests/Canonical_RANS/Nests_Two_Way``; PR-70, ``nest.feedback = defect``): a 100 m Agnesi hill
+       (half-width 150 m) on 50 m outer cells, the uniform 25 m run as the reference, on two ranks with the GPU-CI
+       flags. With the nest ``hill`` and again with the touching nests ``crest`` and ``lee``: the joint log's start
+       line, the largest :math:`|S|` per exchange and the steady line; the one-way plotfiles before the joint ones;
+       the RMS of u against the reference over each nest at most 0.5 (``hill``; measured 0.247) or 0.7 (``crest``
+       0.418, ``lee`` 0.606) of the one-way one, and over the outer cells outside the footprints at most 0.6
+       (0.340) or 0.9 (0.801).
+   * - ``abort_nests_feedback_value``, ``_no_nests``, ``_newton``, ``_restart``, ``_damping``, ``_odd_boxes``, ``_narrow``
+     - ``nest.feedback = inject``; ``defect`` without ``nest.names``; with ``steady.stage = simplec_newton``; with
+       ``io.restart``; with a Rayleigh layer on u, v and k; with ``mesh.max_grid_size = 15 12``, which splits the
+       nest's 32 cells into boxes of 11, 11 and 10; with a nest 4 outer cells wide in x: each stops the run before the outer domain starts, naming
+       ``nest.feedback``.
    * - ``rt_bc_neutral_flat``, ``rt_bc_neutral_flat_matches``
      - ``boundary_fluxes`` on ERF's Neutral_ABL_Flat mesh (8 × 8 × 64, 1000 m) with a fixed log-law state
        (u* = 0.35 m/s, z₀ = 0.1 m, 15°), the surface layer on the ground and a slip top: u* recovered at every ground
@@ -2161,6 +2220,26 @@ Current tests
        temporary, a key array or a loop list), a row with no reader, a placeholder key not read, malformed and
        duplicate rows, a quick-reference default that differs, a namespace with no section, a stale reference and
        a CRLF checkout. Label ``unit``.
+   * - ``speed_difference_selftest``
+     - ``tools/speed_difference.py`` on hand-made fields: the counts strictly above 0.25, 0.5 and 1 m/s, the column
+       interpolation to other heights (exact for a field linear in z), the 2 × 2 mean, the near-ground mask and the
+       column maximum. Label ``unit``.
+   * - ``nest_placement_selftest``
+     - ``tools/nest_placement.py`` on analytic terrains (dx 200 m): a channel through the inflow and outflow faces
+       along the wind (clear, covering the nest's share of it) and at 35° (flagged), a 2 km wide one at 35° that
+       the outer cells follow (clear), the 35° site scaled down four times with dx 50 m (the same verdict, every
+       threshold a quarter: misfit 1.25 m, prominence and step rise 6.25 m, margin 500 m), an escarpment crossing
+       the inflow face at 50° (a step, flagged), a ridge crossing only the south and north faces (clear for 270°,
+       flagged for 0° and 180°), a channel bending 600 m beyond the outflow face (a note, not a flag), oblique
+       waves where no position is clear (the warning, exit status 2), the margin kept by ``--recommend`` and
+       noted by ``--nest``, a smooth hill (no high-misfit column), the 60° face-kind rule, the exit status of a
+       check (1 flagged, 0 clear), terrain points that do not cover ``--domain`` and 21 input errors (each exits
+       with status 3 and names the input). Registered when Python has numpy and scipy. Label ``unit``. The
+       one-line mutants of ``tools/nest_placement_mutants.py`` each fail it: P1 angle rule off, P2 fixed
+       thresholds, P3 no steps, P4 only the first wind direction, P5 a bend flags the face, P6 no warning, P7 the
+       margin of before (4 dx), P8 side faces flagged, P9 misfit gate off, P10 a check always exits 0, P11 the
+       face-kind cutoff of before (0.3), P12 terrain smaller than the domain accepted, P13 nest corners off the
+       outer nodes accepted. All 13 are killed.
    * - ``erf_plotfile_selftest``
      - ``extern_erf/erf_plotfile.py`` (a local change, :doc:`extraction`) on hand-made one-box plotfiles in double
        and float, little- and big-endian: every value read back exactly. The upstream reader fails the two float
@@ -3218,6 +3297,12 @@ GoogleTest suite
      - With ``terrain.nest_blend_width``: the ground equals the parent's interpolated ground on the nest faces, the
        patch's own beyond the width, and the closed-form smoothstep between; a face that is not ``nest`` keeps the
        patch's ground.
+   * - ``NestFaces.JointNestLevelsFollowTheParentsAloft`` (beyond the plan)
+     - A joint run's nest (``follow_parent_levels``), BTF and Sullivan: every node equals the parent's interpolated
+       surface plus :math:`(h - h_p)\sinh((H-\zeta)/s)/\sinh(H/s)`, with :math:`s` recomputed on the host; the ground
+       is the nest's own and the top the parent's; with BTF the nest's detail aloft is nowhere larger than with its
+       own surfaces and at least half smaller somewhere. A decay height without the factor 2, and a mesh build that
+       skips the edit, both fail it.
    * - ``NestFaces.ZoneRateAndSourceEqualTheClosedForm`` (UT-9.2.3)
      - The rate at every point of u, v, w and the cell centres equals :math:`(1 - s/N)\,f\max(0, U_\mathrm{in})/(N\Delta x)`
        computed on the host (corners add; zero where the parent's flow leaves and beyond N cells), and the source
@@ -3241,6 +3326,31 @@ GoogleTest suite
        the same step, and the patch's place in the parent; not with the parent's path or a second read of the same
        parent. A checkpoint is accepted with its own record and refused, naming ``io.restart``, with another, with
        none where it has one, and with one where it has none.
+   * - ``NestFaces.JointNestSurfacesAreSmoothBetweenTheParentsNodes`` (beyond the plan)
+     - A parent whose surfaces are quadratic in x and y comes back exactly at every valid and ghost node of a joint
+       nest (``interpolate_ground_smooth``, bicubic Catmull-Rom); the bilinear form misses the curvature by 0.75 m at
+       the parent cells' centres.
+   * - ``NestDefect.RestrictionConservesTheFluxesOnAHill`` (PR-70)
+     - On a hill parent with an uneven patch layout, for an arbitrary nest field: on every footprint cell the
+       parent's :math:`J\,\nabla\cdot` after the restriction is the mean of the nest's over its 2 × 2 cells (u, v and
+       :math:`\Omega` restricted as fluxes), so a divergence-free nest field gives a divergence-free footprint.
+   * - ``NestDefect.RestrictionSetsBothCopiesOfAPeriodicSeamFace`` (PR-70)
+     - A parent periodic in x and a footprint starting at its face 0: after the restriction u on face 0 and on its
+       periodic image, face 20, agree.
+   * - ``NestDefect.RestrictionOfCellFieldsAndThePressureLevel`` (PR-70)
+     - θ linear in x and y on flat ground comes back at the parent cell's centre exactly; k constant on the hill is
+       unchanged by the :math:`J` weights; p is the :math:`J`-weighted mean shifted by one constant that keeps the
+       parent's footprint mean; outside the footprint every field keeps its values bit for bit.
+   * - ``NestDefect.ThePressureLevelDoesNotReachTheSource`` (PR-70)
+     - A constant added to p over the footprint leaves the parent's residual unchanged on the source's region
+       (``kDefectMargin`` cells in) and changes it on the footprint's outer cells (the test is not vacuous).
+   * - ``NestDefect.RestrictionDoesNotDependOnTheNestLayout`` (PR-70)
+     - u, v, θ and k of the restriction are bit for bit the same for two nest box layouts and rank maps, on 1, 2 and
+       4 ranks.
+   * - ``NestDefect.RegionAndSource`` (PR-70)
+     - ``defect_region``: the footprint and the inner box ``kDefectMargin`` cells in (not across a periodic
+       direction); :math:`S = R` on the inner box's points (faces from L to H + 1 along their normal) and 0 elsewhere;
+       ``add_to_residual`` subtracts it, and does nothing while inactive.
    * - ``NestBuildings.PatchHasTheWholeDomainsFractionsAndWalls`` (UT-9.4.1)
      - An L-shaped block with two tops and a lifted deck on sloping ground: a patch (16 × 17 cells in boxes of 5 × 6)
        builds the solid fractions, the three face fractions and the wall cells bit for bit as the whole domain (32 ×

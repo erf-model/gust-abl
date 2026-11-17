@@ -55,6 +55,7 @@
 #include <AMReX_BoxArray.H>
 #include <AMReX_DistributionMapping.H>
 #include <AMReX_MultiFab.H>
+#include <AMReX_Periodicity.H>
 
 #include <string>
 #include <vector>
@@ -109,6 +110,12 @@ public:
     //! domain faces' ghost cells. z_phys_nd is not touched.
     void interpolate (State& patch) const;
 
+    //! The joint run (nest.feedback = defect): the parent's u, v, w, p', theta
+    //! and k taken again from the parent's state in memory (valid points, with
+    //! the parent's periodicity, as from the checkpoint). Aborts unless parent
+    //! covers the domain the checkpoint gave. The node heights are not touched.
+    void refresh (const State& parent);
+
     //! The parent's node heights at the patch's nodes (hp: nodal, on the
     //! patch's layout, at least one ghost node in x and y; one or more
     //! z-levels from the ground up), bilinear per z-level as the fields: a
@@ -116,6 +123,13 @@ public:
     //! takes their mean. The ground is level 0. Aborts unless the parent was
     //! read with_ground.
     void interpolate_ground (amrex::MultiFab& hp) const;
+
+    //! As interpolate_ground, but bicubic (Catmull-Rom, tensor product) per
+    //! z-level: through the parent's nodes, with a continuous slope across
+    //! the parent's node lines (bilinear has a jump there). The stencil's
+    //! outer nodes beyond a non-periodic parent face take the face node's
+    //! height. Used for a joint run's nest levels (follow_parent_levels).
+    void interpolate_ground_smooth (amrex::MultiFab& hp) const;
 
     [[nodiscard]] const std::string& dir () const { return m_dir; }
     [[nodiscard]] const amrex::IntVect& offset () const { return m_offset; }
@@ -147,6 +161,7 @@ private:
     amrex::MultiFab m_u, m_v, m_w, m_p, m_theta, m_tke;
     amrex::MultiFab m_z;   //!< the parent's node heights (with_ground), else empty
     transfer::Axis m_cx, m_cy, m_nx, m_ny;
+    amrex::Periodicity m_period;   //!< the parent's
 };
 
 } // namespace gust

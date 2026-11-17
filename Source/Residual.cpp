@@ -5,6 +5,7 @@
 #include "BuildingTke.H"
 #include "CanopyDrag.H"
 #include "CanopyHeat.H"
+#include "NestDefect.H"
 #include "TimeTerm.H"
 
 #include "Diffusion.H"
@@ -335,6 +336,8 @@ void residual (const State& q, const ResidualInputs& in, const Mesh& mesh, const
     // The physical time term (TimeTerm.H), before every row that replaces its residual (the
     // wall-k rows below with bc.surface_wall_k = dirichlet, the boundary and building rows).
     if (in.time != nullptr) { in.time->add_to_residual(q, R); }
+    // The nests' defect source (NestDefect.H), also before the rows that replace their residual.
+    if (in.defect != nullptr) { in.defect->add_to_residual(R); }
     if (in.surface != nullptr) { apply_wall_k(*ssp, *in.surface, q.tke, R.tke); }
     // The canopy drag before the boundary rows, which replace their rows' residuals.
     if (in.canopy != nullptr) { add_canopy_drag(*in.canopy, q.u, q.v, q.w, R.u, R.v, R.w); }

@@ -113,14 +113,16 @@ void Mesh::define (const amrex::BoxArray& ba, const amrex::DistributionMapping& 
     m_min_detJ = 0;   // the minimum of the zeroed detJ, until make_metrics
 }
 
-void Mesh::build (const Inputs& in, const amrex::Geometry& geom, amrex::MultiFab& z_phys_nd, const GroundEdit& ground_edit)
+void Mesh::build (const Inputs& in, const amrex::Geometry& geom, amrex::MultiFab& z_phys_nd, const GroundEdit& ground_edit,
+                  const LevelsEdit& levels_edit)
 {
     fill_terrain_surface(z_phys_nd, geom, in.terrain);
     if (ground_edit) { ground_edit(z_phys_nd); }
-    build_from_ground(in, geom, z_phys_nd);
+    build_from_ground(in, geom, z_phys_nd, levels_edit);
 }
 
-void Mesh::build_from_ground (const Inputs& in, const amrex::Geometry& geom, amrex::MultiFab& z_phys_nd)
+void Mesh::build_from_ground (const Inputs& in, const amrex::Geometry& geom, amrex::MultiFab& z_phys_nd,
+                              const LevelsEdit& levels_edit)
 {
     m_zlevels = make_zlevels(in.mesh, geom);
     m_smoothing = in.terrain.smoothing;
@@ -129,6 +131,7 @@ void Mesh::build_from_ground (const Inputs& in, const amrex::Geometry& geom, amr
     make_terrain_fitted_coords(0, geom, z_phys_nd, m_zlevels, bc, in.terrain.smoothing,
                                in.terrain.gamma_m, &n_capped);
     m_quality.stf_capped_levels = n_capped;
+    if (levels_edit) { levels_edit(z_phys_nd, m_zlevels); }
     // A node shared by two boxes (or a periodic image) gets one value. Each
     // box computes its own copy, and where a compiler contracts multiply-adds
     // (gcc) the copies differ in the last bits (1e-13 m on a BTF hill); the

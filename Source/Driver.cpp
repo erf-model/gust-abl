@@ -339,7 +339,8 @@ amrex::Real Driver::next_cfl (amrex::Real r) const
     // whose reference is seeded and released), then the SER law capped by
     // cfl_max and by the growth per iteration (ser_cfl, PseudoTime.H).
     if (m_criterion.iterations() <= hold_iterations()) { return m_opt.cfl0; }
-    return ser_cfl(m_h.cfl, r, m_opt.cfl0, m_opt.cfl_max, m_opt.ser_exponent, m_opt.ser_max_growth);
+    const amrex::Real cfl = ser_cfl(m_h.cfl, r, m_opt.cfl0, m_opt.cfl_max, m_opt.ser_exponent, m_opt.ser_max_growth);
+    return m_cfl_floor > 0 ? amrex::max(cfl, m_cfl_floor) : cfl;
 }
 
 void Driver::apply_switch_rules (int iteration, amrex::Real r, const std::vector<amrex::Real>& residuals, State& q)

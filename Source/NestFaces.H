@@ -52,6 +52,8 @@
 // In a corner the two faces' rates add. Width 0: no zone, no kernel runs.
 //
 // Ground blend (terrain.nest_blend_width = W > 0 m): blend_nest_ground.
+//
+// A joint run's nest (nest.feedback = defect): follow_parent_levels.
 
 #include "BoundaryConditions.H"
 #include "ImplicitOperator.H"
@@ -87,6 +89,35 @@ std::vector<std::string> check_nest_run (const BoundaryInputs& bin, const Inputs
 //! continuous slope between. Ghost nodes outside a non-periodic face take the
 //! nearest domain node's value. Prints one line with the largest change of
 //! the ground (m). Nothing with W = 0.
+//! A joint run's nest (nest.feedback = defect): the coordinate surfaces
+//! follow the parent's, with the nest's own ground detail decaying with
+//! height (SLEVE-like; Schaer et al. 2002):
+//!
+//!   z(k) = z_p(k) + (h - h_p) b(zeta_k),
+//!   b(zeta) = sinh((H - zeta) / s) / sinh(H / s),
+//!   s = max(r dx, 2 max|h - h_p| / m),
+//!
+//! with z_p(k) the parent's surface k at the node (NestParent::interpolate_ground_smooth,
+//! bicubic through the parent's nodes, so the surfaces have no slope jump at the
+//! parent's node lines; bilinear ones put a kink in every level there), h the nest's ground (the k = 0 slab
+//! of z_phys_nd), h_p = z_p(0), zeta_k the z-levels, H the top level, r dx the
+//! parent's smaller horizontal cell size and m the smallest
+//! (z_p(k+1) - z_p(k)) / (zeta_{k+1} - zeta_k) over the nest. Then b(0) = 1
+//! (the nest's ground) and b(H) = 0 (the top), and dz/dzeta >= m - |h - h_p|
+//! coth(H / s) / s > 0. Aloft the nest's surfaces lie on the parent's (b
+//! falls by e every s), so the restriction of the vertical flux Omega
+//! (restrict_patch, NestDefect.H) is the parent's flux there; with the
+//! nest's own terrain-fitted surfaces the finer ground detail decays only
+//! as 1 - zeta / H (BTF) and the restricted Omega carries it aloft as
+//! vertical motion. Where the ground is the parent's (h = h_p, on blended
+//! faces) the surfaces are the parent's: the terrain-fitted coordinates
+//! (BTF, Sullivan) are linear in the ground. Ghost nodes outside a
+//! non-periodic face use the nearest domain node's parent surfaces. Valid
+//! nodes from k = 0 to the top; the caller refills the ghost nodes. Prints
+//! one line with s and the largest change of a node (m).
+void follow_parent_levels (const NestParent& parent, const amrex::Geometry& geom,
+                           const amrex::Vector<amrex::Real>& zlevels, amrex::MultiFab& z_phys_nd);
+
 void blend_nest_ground (const NestParent& parent, const BoundaryInputs& bin, amrex::Real width,
                         const amrex::Geometry& geom, amrex::MultiFab& z_phys_nd);
 
@@ -109,6 +140,12 @@ public:
     //! The parent's fields on the patch (mesh's layout), the flux correction
     //! and the relaxation rates. Aborts if no lateral face of bin is nest.
     NestFaces (const NestParent& parent, const BoundaryInputs& bin, const amrex::Geometry& geom, const Mesh& mesh);
+
+    //! The joint run (nest.feedback = defect): the parent's fields on the patch,
+    //! the flux correction and the relaxation rates again, from parent as it
+    //! is now (NestParent::refresh first). Returns the largest change of the
+    //! normal velocities u and v on the patch, ghost layers included (m/s).
+    amrex::Real refresh (const NestParent& parent, const Mesh& mesh);
 
     //! Whether face (d, lo) is a nest face.
     [[nodiscard]] bool is_nest (int d, bool lo) const { return m_nest[static_cast<std::size_t>(2 * d + (lo ? 0 : 1))]; }
@@ -147,7 +184,10 @@ public:
     static void check_restart (const std::string& dir, const std::string& hash);
 
 private:
+    void build (const NestParent& parent, const Mesh& mesh);
+
     std::array<bool, 4> m_nest{};   //!< xlo, xhi, ylo, yhi
+    bool m_outflow{false};          //!< a lateral face is an outflow (no flux correction)
     amrex::Geometry m_geom;
     State m_par;                    //!< u, v, w, theta, tke of the parent (p and the heights released)
     Flux m_flux;

@@ -274,7 +274,7 @@ def named_keys(pattern):
     keys = []
     for m in re.findall(r"[a-z]+\.[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)?", text):
         parts = m.split(".")
-        if parts[0] == "nest" and len(parts) == 2 and parts[1] != "names":
+        if parts[0] == "nest" and len(parts) == 2 and parts[1] not in ("names", "feedback"):
             keys += [m + ".lo", m + ".hi"]          # "nest.a must lie ...": the nest's corners
         elif parts[0] == "nest":
             keys.append(m)
