@@ -584,9 +584,9 @@ tests: the nest's ``init.*`` record kept fails ``rt_nests_outer_init_keys``; the
 ``abort_nests_stf``; the nest steady verdict ignored fails ``abort_nests_nest_not_steady``; the checker's STF mirror
 off fails case ``nests_hill_stf`` of its self-test.
 
-The one-line mutants of the two-way nests' restriction and defect source (``Source/NestDefect.cpp``), each run
+The mutants of the two-way nests' restriction and defect source (``Source/NestDefect.cpp``), each run
 against ``NestDefect.*`` on two ranks with the unit-test flags by ``tools/nest_defect_mutants.py`` (macOS arm64,
-AppleClang). All 10 are killed.
+AppleClang). All 11 are killed (D11 came with N-114 item 8).
 
 .. list-table::
    :header-rows: 1
@@ -603,7 +603,7 @@ AppleClang). All 10 are killed.
      - ``RestrictionConservesTheFluxesOnAHill``
    * - D3
      - :math:`\Omega` summed over one nest face row only
-     - ``RestrictionConservesTheFluxesOnAHill``
+     - ``RestrictionConservesTheFluxesOnAHill``, ``TouchingNestsKeepTheRestrictedOmegaOnBothFootprints``
    * - D4
      - The pressure level not shifted to the parent's
      - ``RestrictionOfCellFieldsAndThePressureLevel``
@@ -625,6 +625,9 @@ AppleClang). All 10 are killed.
    * - D10
      - u copied onto the parent without the periodicity
      - ``RestrictionSetsBothCopiesOfAPeriodicSeamFace``
+   * - D11
+     - Each nest restricted in full (u, v, then w) before the next, the order before N-114 item 8
+     - ``TouchingNestsKeepTheRestrictedOmegaOnBothFootprints``
 
 The one-line mutants of the two-way nests' relaxation source (``Source/NestRelax.cpp``), each run against
 ``NestRelax.*`` on two ranks with the unit-test flags by ``tools/nest_relax_mutants.py`` (macOS arm64, AppleClang).
@@ -3413,6 +3416,11 @@ GoogleTest suite
      - u, v, θ and k of the restriction are bit for bit the same for two nest box layouts and rank maps, on 1, 2 and
        4 ranks. Each layout builds its own node heights (until tracker N-114 both took one single-box build, since
        under gcc the BTF heights changed with the layout).
+   * - ``NestDefect.TouchingNestsKeepTheRestrictedOmegaOnBothFootprints`` (N-114, item 8)
+     - Two nests that touch along a parent face, with different u on it, restricted by ``restrict_patches`` on a hill
+       parent: on both footprints the parent's :math:`\Omega` is the :math:`a_z`-weighted mean of the nest's over its
+       2 × 2 faces. Restricting the nests one after the other (the order before) misses by 0.066 against a tolerance
+       of 8e-11, and fails.
    * - ``NestDefect.RegionAndSource`` (PR-70)
      - ``defect_region``: the footprint and the inner box ``kDefectMargin`` cells in (not across a periodic
        direction); :math:`S = R` on the inner box's points (faces from L to H + 1 along their normal) and 0 elsewhere;

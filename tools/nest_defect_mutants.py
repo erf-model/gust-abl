@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-The one-line mutants of the two-way nests' restriction and defect source
+The mutants (one line each, D11 one block) of the two-way nests' restriction and defect source
 (Source/NestDefect.cpp): the restriction I q_f and the source's region.
 
 Run against the NestDefect.* unit tests by the shared runner tools/mutants.py
@@ -31,6 +31,13 @@ M = [
   "amrex::MultiFab::Add(*r[n], *S[n], 0, 0, 1, 0);"),
  ("D10", "u copied without the periodicity", F, "coarse.u.ParallelCopy(img, 0, 0, 1, 0, 0, geom_c.periodicity());",
   "coarse.u.ParallelCopy(img, 0, 0, 1);"),
+ # the order for several nests
+ ("D11", "each nest restricted in full before the next (the order before N-114 item 8)", F,
+  "        restrict_horizontal(*n.fine, *n.mesh, n.ratio, n.offset, mesh_c, geom_c, coarse);\n    }\n"
+  "    // The parent's ghost cells with the new u and v, for its Omega and for w_from_omega.\n"
+  "    coarse_ghosts(coarse);\n    for (const NestImage& n : nests) {\n",
+  "        restrict_horizontal(*n.fine, *n.mesh, n.ratio, n.offset, mesh_c, geom_c, coarse);\n"
+  "        coarse_ghosts(coarse);\n"),
 ]
 EQUIVALENT = set()
 

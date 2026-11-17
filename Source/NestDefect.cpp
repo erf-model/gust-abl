@@ -111,19 +111,16 @@ void copy_in (const amrex::MultiFab& src, const amrex::Box& region, amrex::Multi
     }
 }
 
-} // namespace
-
-void restrict_patch (const State& fine, const Mesh& mesh_f, const amrex::Geometry& geom_f, int r,
-                     const amrex::IntVect& offset, const Mesh& mesh_c, const amrex::Geometry& geom_c,
-                     const std::function<void(State&)>& coarse_ghosts, State& coarse)
+void restrict_horizontal (const State& fine, const Mesh& mesh_f, int r, const amrex::IntVect& offset,
+                          const Mesh& mesh_c, const amrex::Geometry& geom_c, State& coarse)
 {
     const amrex::BoxArray& fba = fine.p.boxArray();
     const amrex::DistributionMapping& fdm = fine.p.DistributionMap();
     if (!fba.coarsenable(amrex::IntVect(r, r, 1))) {
-        amrex::Abort("gust: restrict_patch: the nest's boxes do not coarsen by " + std::to_string(r));
+        amrex::Abort("gust: restrict_horizontal: the nest's boxes do not coarsen by " + std::to_string(r));
     }
     const amrex::IndexType CC = amrex::IndexType::TheCellType();
-    const amrex::IndexType XF(amrex::IntVect(1, 0, 0)), YF(amrex::IntVect(0, 1, 0)), ZF(amrex::IntVect(0, 0, 1));
+    const amrex::IndexType XF(amrex::IntVect(1, 0, 0)), YF(amrex::IntVect(0, 1, 0));
 
     // Cell centres: the detJ-weighted mean on the image, then copied to the parent (valid points; the
     // footprint lies inside the parent's domain, so no periodic shift).
@@ -167,11 +164,20 @@ void restrict_patch (const State& fine, const Mesh& mesh_f, const amrex::Geometr
         restrict_faces<1>(mesh_f.ay, fine.v, r, offset, ac, img);
         coarse.v.ParallelCopy(img, 0, 0, 1, 0, 0, geom_c.periodicity());
     }
-    // The parent's ghost cells with the new u and v, for its Omega and for w_from_omega.
-    coarse_ghosts(coarse);
+}
+
+void restrict_w (const State& fine, const Mesh& mesh_f, const amrex::Geometry& geom_f, int r,
+                 const amrex::IntVect& offset, const Mesh& mesh_c, const amrex::Geometry& geom_c, State& coarse)
+{
+    const amrex::BoxArray& fba = fine.p.boxArray();
+    const amrex::DistributionMapping& fdm = fine.p.DistributionMap();
+    if (!fba.coarsenable(amrex::IntVect(r, r, 1))) {
+        amrex::Abort("gust: restrict_w: the nest's boxes do not coarsen by " + std::to_string(r));
+    }
+    const amrex::IndexType ZF(amrex::IntVect(0, 0, 1));
     // w from the restricted vertical flux Omega: the restricted field is divergence-free on the parent cells
     // when the nest's field is on its own (the u, v fluxes above and Omega are conservative across the
-    // different ground).
+    // different ground), except next to a face another nest's restriction set last (restrict_patches).
     {
         amrex::MultiFab om_f(fine.w.boxArray(), fdm, 1, 0);
         omega_from_w(fine.u, fine.v, fine.w, fine.z_phys_nd, mesh_f, geom_f, om_f, 0);
@@ -188,7 +194,29 @@ void restrict_patch (const State& fine, const Mesh& mesh_f, const amrex::Geometr
         fp.shift(amrex::IntVect(offset[0], offset[1], 0));
         copy_in(wc, amrex::convert(fp, ZF), coarse.w);
     }
+}
+
+} // namespace
+
+void restrict_patches (const std::vector<NestImage>& nests, const Mesh& mesh_c, const amrex::Geometry& geom_c,
+                       const std::function<void(State&)>& coarse_ghosts, State& coarse)
+{
+    for (const NestImage& n : nests) {
+        restrict_horizontal(*n.fine, *n.mesh, n.ratio, n.offset, mesh_c, geom_c, coarse);
+    }
+    // The parent's ghost cells with the new u and v, for its Omega and for w_from_omega.
     coarse_ghosts(coarse);
+    for (const NestImage& n : nests) {
+        restrict_w(*n.fine, *n.mesh, *n.geom, n.ratio, n.offset, mesh_c, geom_c, coarse);
+    }
+    coarse_ghosts(coarse);
+}
+
+void restrict_patch (const State& fine, const Mesh& mesh_f, const amrex::Geometry& geom_f, int r,
+                     const amrex::IntVect& offset, const Mesh& mesh_c, const amrex::Geometry& geom_c,
+                     const std::function<void(State&)>& coarse_ghosts, State& coarse)
+{
+    restrict_patches({NestImage{&fine, &mesh_f, &geom_f, r, offset}}, mesh_c, geom_c, coarse_ghosts, coarse);
 }
 
 DefectRegion defect_region (const std::string& name, const amrex::IntVect& fine_cells, int r, const amrex::IntVect& offset,

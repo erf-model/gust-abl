@@ -76,6 +76,28 @@ void restrict_patch (const State& fine, const Mesh& mesh_f, const amrex::Geometr
                      const amrex::IntVect& offset, const Mesh& mesh_c, const amrex::Geometry& geom_c,
                      const std::function<void(State&)>& coarse_ghosts, State& coarse);
 
+//! One nest for restrict_patches.
+struct NestImage
+{
+    const State* fine = nullptr;
+    const Mesh* mesh = nullptr;
+    const amrex::Geometry* geom = nullptr;
+    int ratio = 2;
+    amrex::IntVect offset;
+};
+
+//! restrict_patch for several nests with two parent ghost fills in all: the
+//! cell fields, u and v of every nest; coarse_ghosts; w of every nest;
+//! coarse_ghosts. w reads the parent's u and v (and their ghosts), so it comes
+//! after every nest's u and v: on a face two footprints share, w on both
+//! sides sees the face's final flux, and the parent's Omega on every
+//! footprint is the restricted nest Omega. That face keeps the restriction of
+//! the later nest in the list; the cells next to it on the earlier nest's
+//! side are then not divergence-free by the difference of the two
+//! restrictions. restrict_patch is this with one nest.
+void restrict_patches (const std::vector<NestImage>& nests, const Mesh& mesh_c, const amrex::Geometry& geom_c,
+                       const std::function<void(State&)>& coarse_ghosts, State& coarse);
+
 //! The footprint of a nest on the parent (cells) and the source's region
 //! inside it (kDefectMargin cells in from each lateral face, all z).
 struct DefectRegion
