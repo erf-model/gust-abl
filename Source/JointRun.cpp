@@ -20,11 +20,12 @@ namespace gust {
 
 namespace {
 
+//! The solution fields and the step; the node heights do not change in the joint run and are copied once.
 void copy_state (const State& src, State& dst)
 {
-    const amrex::MultiFab* s[7] = {&src.u, &src.v, &src.w, &src.p, &src.theta, &src.tke, &src.z_phys_nd};
-    amrex::MultiFab* d[7] = {&dst.u, &dst.v, &dst.w, &dst.p, &dst.theta, &dst.tke, &dst.z_phys_nd};
-    for (int n = 0; n < 7; ++n) { amrex::MultiFab::Copy(*d[n], *s[n], 0, 0, 1, s[n]->nGrow()); }
+    const amrex::MultiFab* s[6] = {&src.u, &src.v, &src.w, &src.p, &src.theta, &src.tke};
+    amrex::MultiFab* d[6] = {&dst.u, &dst.v, &dst.w, &dst.p, &dst.theta, &dst.tke};
+    for (int n = 0; n < 6; ++n) { amrex::MultiFab::Copy(*d[n], *s[n], 0, 0, 1, s[n]->nGrow()); }
     dst.step = src.step;
 }
 
@@ -64,21 +65,22 @@ JointResult run_joint (const std::vector<JointMember*>& members, int max_exchang
     }
     State qr;
     qr.define(P.state->p.boxArray(), P.state->p.DistributionMap());
+    amrex::MultiFab::Copy(qr.z_phys_nd, P.state->z_phys_nd, 0, 0, 1, P.state->z_phys_nd.nGrow());
+    std::vector<NestImage> images;
+    for (std::size_t n = 1; n < members.size(); ++n) {
+        const JointMember& N = *members[n];
+        images.push_back({N.state, N.mesh, N.geom, N.parent->ratio(), N.parent->offset()});
+    }
     ResidualFields R;
     JointResult out;
     const double t_all = amrex::second();
     for (int it = 0; it < max_exchanges; ++it) {
         // 1. Up: the nests restricted onto the outer state's copy, the source from its residual.
         double t0 = amrex::second();
-        // q* = the outer state with I q_f on every footprint.
+        // q* = the outer state with I q_f on every footprint (two outer ghost fills for any number of nests).
         copy_state(*P.state, qr);
-        for (std::size_t n = 1; n < members.size(); ++n) {
-            JointMember& N = *members[n];
-            N.fill_ghosts(*N.state);
-            restrict_patch(*N.state, *N.mesh, *N.geom, N.parent->ratio(), N.parent->offset(), *P.mesh, *P.geom,
-                           P.fill_ghosts, qr);
-        }
-        P.fill_ghosts(qr);
+        for (std::size_t n = 1; n < members.size(); ++n) { members[n]->fill_ghosts(*members[n]->state); }
+        restrict_patches(images, *P.mesh, *P.geom, P.fill_ghosts, qr);
         if (relax) {
             P.relax->set(qr, regions);
             if (it == 0) {

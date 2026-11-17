@@ -705,6 +705,15 @@ Each exchange:
 3. **Down.** Each nest's parent images and nest faces are taken from the outer state now.
 4. Each nest takes one iteration.
 
+With several nests, step 1 restricts the cell fields, :math:`u` and :math:`v` of every nest first, then fills the
+outer ghost cells, then forms :math:`w` of every nest, then fills them again (``restrict_patches``): two outer ghost
+fills per exchange for any number of nests, against :math:`2n + 1` before. :math:`w` reads the outer :math:`u` and
+:math:`v`, so on a face that two touching footprints share it sees the face's final flux, and the outer
+:math:`\Omega` on every footprint is the restricted nest :math:`\Omega` (unit test
+``TouchingNestsKeepTheRestrictedOmegaOnBothFootprints``). In the joint run such a face is a lateral face of both nests
+and carries the outer flux in both, so the two orders give the same answer there. The outer node heights are copied
+into :math:`q^*` once, as they do not change during the joint run.
+
 Here
 
 - :math:`R_c`: the outer residual of :math:`u, v, w, \theta` and :math:`k` (with the stage's upwind blend);

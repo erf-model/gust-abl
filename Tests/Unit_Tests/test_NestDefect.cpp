@@ -15,6 +15,8 @@
 //     - a footprint on a periodic seam sets both copies of the seam face;
 //     - u, v, theta, k do not depend on the nest's box layout or rank map
 //       (bit for bit), on 1, 2 and 4 ranks (the unit_np* tests);
+//   restrict_patches: two nests that touch, with different u on the shared
+//     face, keep the restricted nest Omega on both footprints;
 //   defect_region: the footprint and the inner box kDefectMargin cells in;
 //   NestDefect: S = R on the inner box's points (faces from L to H + 1 along
 //     their normal), 0 elsewhere; add_to_residual subtracts it; nothing
@@ -33,6 +35,7 @@
 
 #include <cmath>
 #include <functional>
+#include <memory>
 #include <type_traits>
 #include <vector>
 
@@ -293,6 +296,74 @@ TEST(NestDefect, RestrictionSetsBothCopiesOfAPeriodicSeamFace)
     }
     EXPECT_GT(scale, 0.1);
     EXPECT_LT(diff, kTol * std::max(1.0, scale)) << "u differs between face 0 and its periodic image, face " << nx;
+}
+
+// Two nests that touch along parent face i = 9 (footprints x 3..8 and 9..14), with different u on the shared face:
+// restrict_patches restricts u, v of both before w of either, so on both footprints the parent's Omega is the
+// restricted nest Omega (the az-weighted mean of the nest's Omega over its 2 x 2 faces). Restricting the nests
+// one after the other (the order before) leaves the first nest's w from its own u on the shared face, which the
+// second nest then replaces: on the hill the parent's Omega there is off by z_x times the u difference.
+TEST(NestDefect, TouchingNestsKeepTheRestrictedOmegaOnBothFootprints)
+{
+    DefectCase p{parent_inputs(true)};
+    p.make();
+    std::vector<std::unique_ptr<DefectCase>> nests;
+    const amrex::IntVect offs[2] = {amrex::IntVect(3, 2, 0), amrex::IntVect(9, 2, 0)};
+    for (int m = 0; m < 2; ++m) {
+        gust::Inputs in = nest_inputs(p.in);
+        in.mesh.n_cell = amrex::IntVect(12, 20, 8);
+        in.mesh.prob_lo = {-700.0 + 600.0 * m, 700, 0};
+        in.mesh.prob_hi = {-100.0 + 600.0 * m, 1700, 800};
+        nests.push_back(std::make_unique<DefectCase>(DefectCase{in}));
+        nests.back()->make(m == 1);
+        DefectCase& n = *nests.back();
+        fill_nest(n, [&] (const amrex::MultiFab& f, int c, int i, int j, int k) {
+            // The second nest's u is larger: the two restrictions of the shared face differ.
+            return field(pos(n.geom, f, i, 0), pos(n.geom, f, j, 1), k, c) + ((m == 1 && c == 0) ? 0.3 + 0.1 * k : 0.0);
+        });
+    }
+    fill_parent(p);
+    std::vector<gust::NestImage> images;
+    for (int m = 0; m < 2; ++m) { images.push_back({&nests[m]->q, &nests[m]->mesh, &nests[m]->geom, kR, offs[m]}); }
+    gust::restrict_patches(images, p.mesh, p.geom, ghosts(p.geom), p.q);
+
+    const amrex::IndexType ZF(amrex::IntVect(0, 0, 1));
+    amrex::MultiFab om_c(p.q.w.boxArray(), p.dm, 1, 0);
+    gust::omega_from_w(p.q.u, p.q.v, p.q.w, p.q.z_phys_nd, p.mesh, p.geom, om_c, 0);
+    const amrex::Box dom_c = p.geom.Domain();
+    const std::vector<double> oc = gather(om_c, dom_c), ac = gather(p.mesh.az, dom_c);
+    const amrex::Box zc = amrex::convert(dom_c, ZF);
+    double err = 0, scale = 0;
+    amrex::Long bad = 0;
+    for (int m = 0; m < 2; ++m) {
+        DefectCase& n = *nests[m];
+        amrex::MultiFab om_f(n.q.w.boxArray(), n.dm, 1, 0);
+        gust::omega_from_w(n.q.u, n.q.v, n.q.w, n.q.z_phys_nd, n.mesh, n.geom, om_f, 0);
+        const amrex::Box dom_f = n.geom.Domain();
+        const std::vector<double> of = gather(om_f, dom_f), af = gather(n.mesh.az, dom_f);
+        const amrex::Box zf = amrex::convert(dom_f, ZF);
+        const amrex::Box fp(offs[m], offs[m] + amrex::IntVect(5, 9, dom_c.bigEnd(2) + 1));
+        for (amrex::BoxIterator it(fp); it.ok(); ++it) {
+            const amrex::IntVect c = it();
+            double s = 0;
+            for (int b = 0; b < kR; ++b) {
+                for (int a = 0; a < kR; ++a) {
+                    const amrex::IntVect f(kR * (c[0] - offs[m][0]) + a, kR * (c[1] - offs[m][1]) + b, c[2]);
+                    const auto q = static_cast<std::size_t>(zf.index(f));
+                    s += af[q] * of[q];
+                }
+            }
+            const auto q = static_cast<std::size_t>(zc.index(c));
+            s /= kR * kR * ac[q];
+            const double d = std::abs(oc[q] - s);
+            if (!std::isfinite(d)) { ++bad; }
+            err = std::max(err, d);
+            scale = std::max(scale, std::abs(s));
+        }
+    }
+    EXPECT_EQ(bad, 0) << "non-finite Omega on a footprint";
+    EXPECT_GT(scale, 1.0e-3) << "the nest Omega is too small to test";
+    EXPECT_LT(err, kTol * std::max(1.0, scale)) << "the parent's Omega differs from the restricted nest Omega";
 }
 
 TEST(NestDefect, RestrictionOfCellFieldsAndThePressureLevel)
