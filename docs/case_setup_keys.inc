@@ -217,7 +217,7 @@
    * - ``wind.side_faces``
      - –
      - slip_wall
-     - The two faces parallel to a wind along x or y. Accepts slip_wall, periodic.
+     - The two faces parallel to a wind along x or y; not with a geostrophic drive. Accepts slip_wall, periodic.
 
 ``atmosphere``: Potential temperature, the Rayleigh layer and rotation.
 

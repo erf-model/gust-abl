@@ -2909,7 +2909,7 @@ if(_gust_case_python EQUAL 0)
             string(JOIN " " _case_launch ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2 ${MPIEXEC_PREFLAGS}
                    ${GUST_MPIEXEC_PREFLAGS})
         endif()
-        foreach(case IN ITEMS flat_sweep flat_nest column_target hill)
+        foreach(case IN ITEMS flat_sweep flat_nest column_target column_axis hill)
             set(_case_dir ${CMAKE_CURRENT_BINARY_DIR}/run/rt_case_setup_${case})
             file(MAKE_DIRECTORY ${_case_dir})
             add_test(NAME rt_case_setup_${case}

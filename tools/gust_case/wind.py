@@ -46,17 +46,22 @@ def unit_vector(towards):
     return c, s
 
 
-def lateral_faces(towards, side_faces="slip_wall"):
+def lateral_faces(towards, side_faces="slip_wall", turning=0.0):
     """The four lateral boundary types for a flow direction.
 
     A face the wind enters through is ``inflow`` and one it leaves through is
     ``outflow``. When the wind is along an axis, the two faces parallel to it
     take ``side_faces`` (``slip_wall`` or ``periodic``).
+
+    ``turning`` (degrees, counter-clockwise positive) turns the direction the
+    faces are chosen from. A geostrophic drive passes half the drag law's
+    turning angle (:func:`face_turning`): its wind turns with height, so a face
+    parallel to the wind near the ground has flow through it aloft.
     Returns a dict with the keys xlo, xhi, ylo, yhi.
     """
     if side_faces not in ("slip_wall", "periodic"):
         raise ValueError("side_faces must be slip_wall or periodic")
-    c, s = unit_vector(towards)
+    c, s = unit_vector(towards + turning)
     faces = {}
     for lo, hi, comp in (("xlo", "xhi", c), ("ylo", "yhi", s)):
         if comp > 0.0:
@@ -95,6 +100,48 @@ def geostrophic_speed(ustar, z0, latitude, kappa=KAPPA):
     if not f > 0.0:
         raise ValueError("the drag law needs a latitude away from the equator")
     return ustar / kappa * math.hypot(math.log(ustar / (f * z0)) - DRAG_LAW_A, DRAG_LAW_B)
+
+
+def drag_law_turning(ustar, z0, latitude):
+    """The neutral drag law's angle (degrees, > 0) between the geostrophic wind and
+    the surface stress,
+
+        alpha = atan2(B, ln(u* / (|f| z0)) - A).
+
+    The geostrophic wind is turned clockwise from the surface wind in the northern
+    hemisphere (f > 0) and counter-clockwise in the southern.
+    """
+    f = abs(coriolis_parameter(latitude))
+    if not f > 0.0:
+        raise ValueError("the drag law needs a latitude away from the equator")
+    return math.degrees(math.atan2(DRAG_LAW_B, math.log(ustar / (f * z0)) - DRAG_LAW_A))
+
+
+def drag_law_ustar(speed, z0, latitude, kappa=KAPPA):
+    """u* of the neutral drag law for a geostrophic wind speed: the inverse of
+    :func:`geostrophic_speed`, by the fixed-point iteration u* = kappa G / sqrt((ln(u* / (|f| z0)) - A)^2 + B^2),
+    which contracts: its slope in ln u* is below 1 / (ln(u* / (|f| z0)) - A) in magnitude."""
+    if not speed > 0.0:
+        raise ValueError("the geostrophic wind speed must be > 0")
+    ustar = 0.03 * speed
+    for _ in range(200):
+        new = speed * ustar / geostrophic_speed(ustar, z0, latitude, kappa)
+        if abs(new - ustar) <= 1.0e-14 * ustar:
+            return new
+        ustar = new
+    raise ValueError("the drag law's u* did not converge for G = %g m/s, z0 = %g m" % (speed, z0))
+
+
+def face_turning(ustar, z0, latitude):
+    """How far (degrees, counter-clockwise positive) to turn the direction the faces of a
+    geostrophic drive are chosen from: half the drag law's turning angle, towards the
+    geostrophic wind (clockwise in the northern hemisphere). The column's wind turns from
+    the direction asked for near the ground to the geostrophic wind aloft; the faces take
+    the middle of that turn. It is a rule of thumb: the height-integrated flux turns more
+    (0.8 to 0.9 alpha at mid latitudes) and, in a domain shallower than the boundary layer
+    (low latitudes), less. Along an axis, the faces parallel to the wind near the ground
+    become inflow and outflow faces on the side the wind aloft crosses."""
+    return -math.copysign(0.5 * drag_law_turning(ustar, z0, latitude), latitude)
 
 
 def sweep_directions(spec):

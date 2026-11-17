@@ -168,7 +168,7 @@ SPEC = {
         "table": Key("path", None, "The profile table; copied into the case folder. With profile: table."),
         "upstream_roughness": Key("number", None, "Roughness length of the inflow profile. Default: surface.roughness.",
                                   unit="m", lo=0.0, lo_open=True),
-        "side_faces": Key("choice", "slip_wall", "The two faces parallel to a wind along x or y.",
+        "side_faces": Key("choice", "slip_wall", "The two faces parallel to a wind along x or y; not with a geostrophic drive.",
                           choices=("slip_wall", "periodic")),
     },
     "atmosphere": {

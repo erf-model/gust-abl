@@ -181,6 +181,40 @@ class WindTests(unittest.TestCase):
         periodic = wind.lateral_faces(0.0, "periodic")
         self.assertEqual((periodic["ylo"], periodic["yhi"]), ("periodic", "periodic"))
 
+    def test_geostrophic_faces_follow_the_turning_wind(self):
+        """UT-13.1.1: with a geostrophic drive no face is a slip wall: the faces parallel to a wind along an axis
+        take the side the wind aloft crosses (clockwise turn in the north, counter-clockwise in the south)."""
+        turn_n = wind.face_turning(0.564336173406487, 0.03, 45.0)
+        turn_s = wind.face_turning(0.564336173406487, 0.03, -45.0)
+        # half of atan2(4.5, ln(0.5643 / (1.0284e-4 * 0.03)) - 1.8) = 11.78 degrees (the column turns 18.1)
+        self.assertAlmostEqual(turn_n, -0.5 * math.degrees(math.atan2(4.5, math.log(
+            0.564336173406487 / (1.0284451246e-4 * 0.03)) - 1.8)), places=8)
+        self.assertAlmostEqual(turn_n, -11.7830, places=3)
+        self.assertEqual(turn_s, -turn_n)
+        north = {   # from: (xlo, xhi, ylo, yhi) at 45 N
+            0.0: ("outflow", "inflow", "outflow", "inflow"),      # aloft from about 18 degrees: towards -x
+            90.0: ("outflow", "inflow", "inflow", "outflow"),
+            180.0: ("inflow", "outflow", "inflow", "outflow"),
+            270.0: ("inflow", "outflow", "outflow", "inflow"),    # aloft from about 288: towards -y
+            240.0: ("inflow", "outflow", "inflow", "outflow"),    # off the axes: as without turning
+        }
+        for met, faces in north.items():
+            got = wind.lateral_faces(wind.towards_from_meteorological(met), "slip_wall", turn_n)
+            self.assertEqual((got["xlo"], got["xhi"], got["ylo"], got["yhi"]), faces, "wind from %g, 45 N" % met)
+        got = wind.lateral_faces(wind.towards_from_meteorological(270.0), "slip_wall", turn_s)
+        self.assertEqual((got["ylo"], got["yhi"]), ("inflow", "outflow"), "wind from 270, 45 S")
+        for met in range(0, 360, 5):
+            got = wind.lateral_faces(wind.towards_from_meteorological(met), "slip_wall", turn_n)
+            self.assertNotIn("slip_wall", got.values(), "wind from %g" % met)
+
+    def test_drag_law_inverse(self):
+        for z0, lat in ((0.03, 45.0), (1.0, -30.0), (0.0002, 60.0)):
+            for ustar in (0.05, 0.3, 1.2):
+                G = wind.geostrophic_speed(ustar, z0, lat)
+                self.assertAlmostEqual(wind.drag_law_ustar(G, z0, lat) / ustar, 1.0, places=12)
+        with self.assertRaises(ValueError):
+            wind.drag_law_ustar(0.0, 0.03, 45.0)
+
     def test_log_law(self):
         # 0.41 * 8 / ln(10.03 / 0.03)
         self.assertAlmostEqual(wind.friction_velocity(8.0, 10.0, 0.03), 0.564336173406487, places=12)
@@ -539,7 +573,9 @@ class PlanTests(CaseDir):
             ({"wind__drive": "geostrophic_inflow", "atmosphere__latitude": 45.0, "atmosphere__geostrophic_wind": [10.0, 0.0]},
              "wind.speed and atmosphere.geostrophic_wind"),
             ({"wind__drive": "geostrophic_inflow", "atmosphere__latitude": 45.0, "wind__side_faces": "periodic"},
-             "wind.side_faces = periodic"),
+             "wind.side_faces has no effect with wind.drive"),
+            ({"wind__drive": "geostrophic_column", "atmosphere__latitude": 45.0, "wind__side_faces": "slip_wall"},
+             "wind.side_faces has no effect with wind.drive"),
             ({"wind__drive": "couette", "atmosphere__theta": "capped", "atmosphere__inversion": inversion,
               "atmosphere__lapse_rate": 0.003}, "wind.drive = couette needs atmosphere.theta = neutral"),
             ({"wind__drive": "couette", "wind__upstream_roughness": 0.1}, "wind.upstream_roughness = surface.roughness"),
@@ -745,6 +781,10 @@ class BuilderTests(CaseDir):
         self.assertEqual((deck["bc.inflow_profile"], deck["bc.inflow_file"]), (["file"], ["column/column_guess.dat"]))
         self.assertEqual(deck["abl.drive"], ["geostrophic_inflow"])
         self.assertNotIn("forcing.ug", deck)           # run.sh passes the column run's values
+        # from 270 at 45 N the wind aloft crosses y towards -y: no slip walls (UT-13.1.1)
+        self.assertEqual([deck["bc." + f][0] for f in ("xlo", "xhi", "ylo", "yhi")],
+                         ["inflow", "outflow", "outflow", "inflow"])
+        self.assertNotIn("mesh.is_periodic", deck)
         self.assertEqual(column["mesh.n_cell"], ["4", "4", "16"])
         self.assertEqual(column["mesh.is_periodic"], ["1", "1", "0"])
         self.assertEqual((column["init.column_target_u"], column["init.column_target_v"], column["init.column_target_height"]),
@@ -766,6 +806,29 @@ class BuilderTests(CaseDir):
             deck = read_deck(os.path.join(result.case_dir, rel))
             self.assertEqual((deck["forcing.ug"], deck["forcing.vg"]), (["10."], ["-2."]), rel)
         self.assertNotIn("init.column_target_u", read_deck(os.path.join(result.case_dir, "column", "inputs")))
+        # the faces follow G's direction (-11.31 degrees) turned back by half the drag law's angle (u* 0.3835 m/s):
+        # towards +0.88, so y-low is an inflow face, whatever wind.direction (270) says
+        deck = read_deck(os.path.join(result.case_dir, "inputs"))
+        self.assertEqual([deck["bc." + f][0] for f in ("xlo", "xhi", "ylo", "yhi")],
+                         ["inflow", "outflow", "inflow", "outflow"])
+
+    def test_given_geostrophic_wind_sets_the_faces(self):
+        """UT-13.1.1: G = (10, 0) at 45 N: the wind near the ground comes from G turned back 12.2 degrees
+        (counter-clockwise), so it enters through y-low; at 45 S through y-high. wind.direction does not matter."""
+        for lat, ylo, yhi in ((45.0, "inflow", "outflow"), (-45.0, "outflow", "inflow")):
+            for direction in (270.0, 300.0):
+                raw = changed(base_case(), wind__drive="geostrophic_inflow", wind__speed=None, wind__height=None,
+                              wind__direction=direction, atmosphere={"latitude": lat, "geostrophic_wind": [10.0, 0.0]})
+                deck = read_deck(os.path.join(self.build(raw, overwrite=True).case_dir, "inputs"))
+                self.assertEqual([deck["bc." + f][0] for f in ("xlo", "xhi", "ylo", "yhi")],
+                                 ["inflow", "outflow", ylo, yhi], "latitude %g, direction %g" % (lat, direction))
+
+    def test_southern_hemisphere_target_faces(self):
+        """UT-13.1.1: 8 m/s at 10 m from 270 at 45 S: the wind aloft turns counter-clockwise (towards +y)."""
+        raw = changed(base_case(), wind__drive="geostrophic_column", atmosphere={"latitude": -45.0})
+        deck = read_deck(os.path.join(self.build(raw).case_dir, "inputs"))
+        self.assertEqual([deck["bc." + f][0] for f in ("xlo", "xhi", "ylo", "yhi")],
+                         ["inflow", "outflow", "inflow", "outflow"])
 
     def test_patch_deck(self):
         hill = os.path.join(self.dir, "hill.asc")

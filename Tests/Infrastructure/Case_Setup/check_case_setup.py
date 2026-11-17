@@ -3,7 +3,7 @@
 
     check_case_setup.py CASE --gust EXE [--mpi "mpiexec -n 2"] [-- key=value ...]
 
-CASE is flat_sweep, flat_nest, column_target or hill (the YAML file of that
+CASE is flat_sweep, flat_nest, column_target, column_axis or hill (the YAML file of that
 name beside this script). The run happens in the current directory: the YAML
 file is copied there (hill.asc is written there for the hill), the case folder
 is written with --overwrite, and run.sh runs with GUST=EXE and MPI=<--mpi>
@@ -19,6 +19,10 @@ The checks pin closed forms, not the code's own output:
   the 3-D run that took the column's geostrophic wind meets it to 1 % and
   0.3 degrees, and its own column first guess, solved from the forcing
   run.sh passed, has the table's wind at the top;
+- column_axis: with the 10 m wind along y and along x, every cell's wind of the
+  3-D run is the column table's at its height to 4 % of the top wind (a face
+  parallel to the 10 m wind made a slip wall gives 73 % from 0, 72 % from 270), and no lateral face
+  of the decks is a slip wall;
 - hill: GUST's ground follows the hill's formula (crest in the right cell,
   relief to 2 %, RMS difference below 0.3 % of the relief).
 """
@@ -115,13 +119,18 @@ def check_flat(folder, direction_from, label):
     return dx
 
 
-def check_column_table(path, direction_from):
+def column_table(path):
     rows = []
     with open(path) as fh:
         for ln in fh:
             ln = ln.split("#")[0].split()
             if ln:
                 rows.append([float(x) for x in ln])
+    return rows
+
+
+def check_column_table(path, direction_from):
+    rows = column_table(path)
     z = [r[0] for r in rows]
     u = log_interp(z[1:], [r[1] for r in rows[1:]], HEIGHT)
     v = log_interp(z[1:], [r[2] for r in rows[1:]], HEIGHT)
@@ -143,6 +152,30 @@ def check_column_handover(log, top_wind):
     u, v = (float(found[-1].group(1)), float(found[-1].group(2))) if found else (float("nan"),) * 2
     error = math.hypot(u - top_wind[0], v - top_wind[1]) / math.hypot(*top_wind)
     check("3-D column guess: top wind against the column table (relative)", error, 0.0, 1e-4, "abs")
+
+
+def check_column_axis(folder, label):
+    """Flat ground: every cell's (u, v) against the column table at the cell's height, relative to the table's
+    top wind. A face that blocks the flow aloft (a slip wall) distorts the whole field."""
+    with open(os.path.join(folder, "inputs")) as fh:
+        faces = {ln.split()[0]: ln.split()[2] for ln in fh if re.match(r"bc\.[xy](lo|hi) ", ln)}
+    check("%s: lateral faces that are slip walls" % label, float(sum(v == "slip_wall" for v in faces.values())),
+          0.0, 0.0, "abs")
+    rows = column_table(os.path.join(folder, "column", "column_guess.dat"))[1:]
+    zc = [r[0] for r in rows]
+    top = math.hypot(rows[-1][1], rows[-1][2])
+    hdr, data = erf_plotfile.read_fields(last_plotfile(folder), ["u", "v", "z"])
+    worst = 0.0
+    for i, plane in enumerate(data["z"]):
+        for j, column in enumerate(plane):
+            for k, z in enumerate(column):
+                n = max([0] + [m for m in range(len(zc) - 1) if zc[m] <= z])
+                n = min(n, len(zc) - 2)
+                t = min(max((z - zc[n]) / (zc[n + 1] - zc[n]), 0.0), 1.0)
+                uc = (1.0 - t) * rows[n][1] + t * rows[n + 1][1]
+                vc = (1.0 - t) * rows[n][2] + t * rows[n + 1][2]
+                worst = max(worst, math.hypot(data["u"][i][j][k] - uc, data["v"][i][j][k] - vc) / top)
+    check("%s: max |wind - column table| / top wind" % label, worst, 0.0, 4e-2, "abs")
 
 
 def check_hill(folder, top, first_layer):
@@ -176,7 +209,7 @@ def main():
         n = argv.index("--")
         argv, extra = argv[:n], argv[n + 1:]
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("case", choices=("flat_sweep", "flat_nest", "column_target", "hill"))
+    ap.add_argument("case", choices=("flat_sweep", "flat_nest", "column_target", "column_axis", "hill"))
     ap.add_argument("--gust", required=True, help="the GUST executable")
     ap.add_argument("--mpi", default="", help="the launcher run.sh puts before GUST (empty: none)")
     opts = ap.parse_args(argv)
@@ -212,6 +245,9 @@ def main():
         speed, direction, _ = wind_at_height(opts.case)
         check("3-D run: speed at %g m (m/s)" % HEIGHT, speed, SPEED, 1e-2, "rel")
         check("3-D run: direction error (degrees)", angle_error(direction, towards(240.0)), 0.0, 0.3, "abs")
+    elif opts.case == "column_axis":
+        for d in (0.0, 270.0):
+            check_column_axis(os.path.join(opts.case, "dir_%03d" % d), "from %g" % d)
     else:
         check_hill(opts.case, 1500.0, 4.0)
 
