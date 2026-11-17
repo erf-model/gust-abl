@@ -17,7 +17,7 @@ ERROR:
 - turb.* (Source/Closure.cpp, Source/App.cpp): every key without a stage;
   turb.Rt_min not below turb.Rt_crit; the k-L keys and the options that need
   the closure with turb.closure = none; turb.frozen_switch without
-  steady.stage = simplec_newton;
+  steady.stage = simplec_newton; turb.nut_relax_end with turb.nut_relax = 1 or with steady.stage = unsteady;
 - convection.* (Source/Convection.cpp, Source/App.cpp): every key without a
   stage; the blend's keys without convection.hybrid_sigma_max > 0; the blend
   without convection.hybrid_height, with the upwind limiter, with the Newton
@@ -265,6 +265,13 @@ class TurbulenceChecker(Checker):
         if c.closure == "none":
             self._laminar()
         elif c.closure == "kl":
+            relax = c.r("turb.nut_relax")
+            if c.r("turb.nut_relax_end") and (relax is None or relax >= 1):
+                self.no_effect("turb.nut_relax_end", "with turb.nut_relax = 1 (nu_t is not relaxed)",
+                               "Set turb.nut_relax below 1, or remove turb.nut_relax_end.")
+            if c.unsteady and c.r("turb.nut_relax_end"):
+                self.error("turb.nut_relax_end", "GUST stops: turb.nut_relax_end is not supported with steady.stage = "
+                                                 "unsteady.", "Remove turb.nut_relax_end.")
             self._lee()
 
     def _laminar(self):
@@ -312,7 +319,7 @@ class TurbulenceChecker(Checker):
         if c.unsteady:
             self.advise("turb.realizability", "A terrain run with none of the recommended lee setting.",
                         "Consider turb.realizability = 0.309 and turb.nut_relax = 0.5 (steady.stage = unsteady refuses "
-                        "the upwind blend).")
+                        "the upwind blend and turb.nut_relax_end).")
         else:
             self.advise("turb.realizability", "A terrain run with none of the recommended lee setting.",
                         "Consider turb.realizability = 0.309, turb.nut_relax = 0.5, convection.hybrid_sigma_max = 0.1 "

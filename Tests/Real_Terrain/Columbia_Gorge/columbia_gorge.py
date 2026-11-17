@@ -9,7 +9,8 @@ prepare: fetches the terrain (tools/fetch_terrain.py, SRTM 1 arc-second
          from the AWS Terrain Tiles; nothing is downloaded when the tiles
          are in the cache) to DIR/dem.asc, and writes the outer deck
          DIR/gorge_outer/inputs from case.yaml (tools/make_gust_case.py),
-         plus inputs_ref, the same deck on 100 m cells.
+         with turb.nut_relax_end = 0.01 added, plus inputs_ref, the same
+         deck on 100 m cells.
 run:     runs, one after another in DIR/gorge_outer: the uniform 100 m
          reference (ref_*), the outer domain and the nest one way
          (nest.feedback = none, ow_*), and the joint run (nest.feedback =
@@ -75,6 +76,9 @@ def prepare(work):
     text = re.sub(r"^io\.turb_plot_file\s*=.*$", "", text, flags=re.M)
     if not re.search(r"^io\.write_checkpoint\s*=", text, re.M):
         text += "io.write_checkpoint = 1\n"
+    # Without the end of the nu_t relaxation the outer run stalls in a two-iteration cycle (README, Purpose).
+    if not re.search(r"^turb\.nut_relax_end\s*=", text, re.M):
+        text += "turb.nut_relax_end = 0.01\n"
     with open(deck, "w") as fh:
         fh.write(text)
     ref, n = re.subn(r"^mesh\.n_cell\s*=.*$", "mesh.n_cell = 192 160 37", text, flags=re.M)

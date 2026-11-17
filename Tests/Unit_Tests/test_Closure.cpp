@@ -317,7 +317,7 @@ TEST(Closure, InputsAreReadAndChecked)
     const std::string text =
         "turb.Cmu0 = 0.55\nturb.Cb = 0.3\nturb.Rt_crit = -0.5\nturb.Rt_min = -2.5\nturb.max_geom_lscale = 40\n"
         "turb.tke_floor = 1e-6\nturb.sigma_k = 1.3\nturb.nu_molecular = 1.5e-5\nturb.alpha_molecular = 2e-5\n"
-        "turb.kappa = 0.4\nturb.nut_relax = 0.7\nturb.frozen_switch = 0\nturb.face_mean = logarithmic\n"
+        "turb.kappa = 0.4\nturb.nut_relax = 0.7\nturb.nut_relax_end = 0.02\nturb.frozen_switch = 0\nturb.face_mean = logarithmic\n"
         "turb.wall_distance = tucker\nturb.ri_gate = 0.05\n";
     const std::string fname = "ut_turb_inputs_tmp";
     if (amrex::ParallelDescriptor::IOProcessor()) {
@@ -335,7 +335,8 @@ TEST(Closure, InputsAreReadAndChecked)
     {
         amrex::ParmParse pp("turb");
         for (const char* k : {"Cmu0", "Cb", "Rt_crit", "Rt_min", "max_geom_lscale", "tke_floor", "sigma_k", "nu_molecular",
-                              "alpha_molecular", "kappa", "nut_relax", "frozen_switch", "face_mean", "wall_distance", "ri_gate"}) {
+                              "alpha_molecular", "kappa", "nut_relax", "nut_relax_end", "frozen_switch", "face_mean", "wall_distance",
+                              "ri_gate"}) {
             while (pp.remove(k) > 0) {}
         }
     }
@@ -350,6 +351,7 @@ TEST(Closure, InputsAreReadAndChecked)
     EXPECT_EQ(o.alpha_molecular, amrex::Real(2e-5));
     EXPECT_EQ(o.kappa, amrex::Real(0.4));
     EXPECT_EQ(o.nut_relax, amrex::Real(0.7));
+    EXPECT_EQ(o.nut_relax_end, amrex::Real(0.02));
     EXPECT_FALSE(o.frozen_switch);   // the default is 1 (below)
     EXPECT_EQ(o.ri_gate, amrex::Real(0.05));
     EXPECT_EQ(o.face_mean, FaceMean::logarithmic);
@@ -388,6 +390,12 @@ TEST(Closure, InputsAreReadAndChecked)
         {"turb.kappa", [] (ClosureOptions& b) { b.kappa = 0; }},
         {"turb.nut_relax", [] (ClosureOptions& b) { b.nut_relax = 0; }},
         {"turb.nut_relax", [] (ClosureOptions& b) { b.nut_relax = amrex::Real(1.5); }},
+        {"turb.nut_relax_end", [] (ClosureOptions& b) { b.nut_relax_end = amrex::Real(-0.1); }},
+        {"turb.nut_relax_end", [] (ClosureOptions& b) { b.nut_relax_end = 1; }},
+        {"turb.nut_relax_end", [] (ClosureOptions& b) { b.nut_relax_end = amrex::Real(1.5); }},
+        {"turb.nut_relax_end", [] (ClosureOptions& b) { b.nut_relax_end = std::numeric_limits<amrex::Real>::quiet_NaN(); }},
+        // An end with nothing to end: nu_t is not relaxed with nut_relax = 1.
+        {"turb.nut_relax_end", [] (ClosureOptions& b) { b.nut_relax = 1; }},
         {"turb.ri_gate", [] (ClosureOptions& b) { b.ri_gate = amrex::Real(-0.01); }},
         {"turb.ri_gate", [] (ClosureOptions& b) { b.ri_gate = amrex::Real(1e-7); }},
         {"turb.ri_gate", [] (ClosureOptions& b) { b.ri_gate = amrex::Real(1.01); }},
@@ -398,7 +406,10 @@ TEST(Closure, InputsAreReadAndChecked)
         const auto err = gust::check_closure_options(x);
         ASSERT_FALSE(err.empty()) << b.key;
         bool found = false;
-        for (const auto& e : err) { found = found || e.find(b.key) != std::string::npos; }
+        // The message starts with "<key> =": a substring match would let
+        // turb.nut_relax match a turb.nut_relax_end message.
+        const std::string head = std::string(b.key) + " =";
+        for (const auto& e : err) { found = found || e.rfind(head, 0) == 0; }
         EXPECT_TRUE(found) << b.key << ": " << err.front();
         EXPECT_THROW(gust::Closure{x}, std::runtime_error);
     }
@@ -1093,6 +1104,68 @@ TEST(Closure, RelaxationCheckpointAndFrozenSwitches)
         if (amrex::ParallelDescriptor::IOProcessor()) { amrex::FileSystem::RemoveAll(dir2); }
     }
     (void)cc;
+}
+
+// turb.nut_relax_end: after end_relaxation() the closure with a stored history
+// gives the unrelaxed nu_t bit for bit (the same field as a closure that was
+// never relaxed), and relaxing() reports the switch. Before it, the relaxed
+// nu_t differs from the plain one.
+TEST(Closure, EndedRelaxationGivesTheUnrelaxedNut)
+{
+    PCase c = make_mesh(8, 8, 8, 0);
+    gust::State q;
+    define_state(q, c);
+    const auto fl = gust::trtest::make_flow(c, 0);
+    const amrex::Array<amrex::MultiFab*, 3> vel{&q.u, &q.v, &q.w};
+    for (int d = 0; d < 3; ++d) {
+        gust::trtest::fill_loc(*vel[d], gust::velocity_loc(d), c, [&] (double x, double y, double z) { return 2 + fl.vel(d, x, y, z); });
+    }
+    gust::trtest::fill_loc(q.theta, Loc::cell, c, [&] (double x, double y, double z) { return 300 + 0.003 * z + 0.2 * fl.q(x, y, z); });
+    gust::trtest::fill_loc(q.tke, Loc::cell, c, [&] (double x, double y, double z) { return 0.2 + 0.1 * fl.q(x, y, z); });
+    q.p.setVal(0.0);
+    amrex::MultiFab dist;
+    gust::height_above_ground(q.z_phys_nd, dist);
+    const gust::BuoyancyOptions buoy;
+    ClosureOptions opt;
+    opt.nut_relax = amrex::Real(0.5);
+    opt.nut_relax_end = amrex::Real(0.01);
+    gust::Closure closure(opt);
+    EXPECT_FALSE(closure.relaxing());   // no history yet
+    gust::ClosureFields f1, f2, f3, fp;
+    closure.evaluate(q, dist, amrex::Real(0.1), buoy, c.mesh, c.geom, f1);
+    closure.accept(f1);
+    EXPECT_TRUE(closure.relaxing());
+    EXPECT_FALSE(closure.relaxation_ended());
+    q.tke.mult(amrex::Real(2), 0, 1, 2);
+    gust::Closure plain(ClosureOptions{});
+    plain.evaluate(q, dist, amrex::Real(0.1), buoy, c.mesh, c.geom, fp);
+    closure.evaluate(q, dist, amrex::Real(0.1), buoy, c.mesh, c.geom, f2);
+    closure.end_relaxation();
+    EXPECT_TRUE(closure.relaxation_ended());
+    EXPECT_FALSE(closure.relaxing());
+    EXPECT_TRUE(closure.has_history());   // the history stays; it is no longer used
+    closure.evaluate(q, dist, amrex::Real(0.1), buoy, c.mesh, c.geom, f3);
+    double relaxed_gap = 0, ended_gap = 0, scale = 0;
+    for (amrex::MFIter mfi(f3.nut, false); mfi.isValid(); ++mfi) {
+        const auto a2 = host_copy(f2.nut, mfi), a3 = host_copy(f3.nut, mfi), p = host_copy(fp.nut, mfi);
+        amrex::LoopOnCpu(amrex::grow(mfi.validbox(), amrex::IntVect(1, 1, 0)), [&] (int i, int j, int k) {
+            const amrex::IntVect iv(i, j, k);
+            relaxed_gap = std::max(relaxed_gap, std::abs(double(a2(iv)) - double(p(iv))));
+            ended_gap = std::max(ended_gap, std::abs(double(a3(iv)) - double(p(iv))));
+            scale = std::max(scale, std::abs(double(p(iv))));
+        });
+    }
+    amrex::ParallelDescriptor::ReduceRealMax(relaxed_gap);
+    amrex::ParallelDescriptor::ReduceRealMax(ended_gap);
+    amrex::ParallelDescriptor::ReduceRealMax(scale);
+    EXPECT_GT(relaxed_gap, 1e-3 * scale);   // relaxed: not the plain nu_t
+    EXPECT_EQ(ended_gap, 0);                // ended: the plain nu_t, valid cells and lateral ghosts
+    for (const auto& pr : {std::make_pair(&f3.Ps, &fp.Ps), std::make_pair(&f3.dSdk, &fp.dSdk)}) {
+        amrex::MultiFab d(c.ba, c.dm, 1, 0);
+        amrex::MultiFab::Copy(d, *pr.first, 0, 0, 1, 0);
+        amrex::MultiFab::Subtract(d, *pr.second, 0, 0, 1, 0);
+        EXPECT_EQ(d.norm0(), 0);
+    }
 }
 
 // PR-49, UT-6.4.1 (beyond the plan): turb.closure = none is a laminar run. The fields are the molecular

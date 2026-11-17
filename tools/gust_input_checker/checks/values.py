@@ -169,6 +169,7 @@ turb.nu_molecular real 1 >=0
 turb.alpha_molecular real 1 >=0
 turb.kappa real 1 >0
 turb.nut_relax real 1 >0&<=1
+turb.nut_relax_end real 1 0|>0&<1
 turb.frozen_switch flag 1
 turb.ri_gate real 1 0|>=1e-6&<=1
 turb.realizability real 1 0|>=0.01&<=10

@@ -8,9 +8,12 @@ the river bend and the south face of the hills. Its north face cuts across the r
 river, so the faces stand where the flow changes most. The case tests the nesting under these conditions: it is not a
 comparison with the WFIP2 observations, and none are used.
 
-Three runs, one after another, all with the recommended lee setting of `tools/make_gust_case.py` (its
-`turb.nut_relax = 0.5` changes the path of the joint run, not its steady state: `docs/boundary_conditions.rst`,
-Two-way nests, Limits):
+Three runs, one after another, all with the recommended lee setting of `tools/make_gust_case.py`. Its
+`turb.nut_relax = 0.5` does not change the steady state, but it decides whether the outer run reaches it: without
+`turb.nut_relax_end` the outer domain stalls at a relative residual of 3.9e-3 in a two-iteration cycle on the south
+face of the Columbia Hills (`docs/turbulence_model.rst`, Ending the relaxation of nu_t). `prepare` therefore adds
+`turb.nut_relax_end = 0.01` to the decks, which ends the relaxation below a relative residual of 0.01. The key is not
+part of the recommended setting: on the Ishihara and Zhou rough ridge it stops a run that converges without it.
 1. the reference: the whole domain on 100 m cells;
 2. one way: the outer domain on 200 m cells, then the nest on 100 m cells (`nest.feedback = none`);
 3. joint: the same, then the joint run (`nest.feedback = defect`).
@@ -34,7 +37,7 @@ reference's.
 
 The deck written by `prepare`: 96 x 80 x 37 cells; inflow on xlo, outflow on xhi, slip walls on y; a Rayleigh layer
 on w above 2100 m (as every nest has, so the outer domain and the nest are damped alike); three hierarchy levels with
-grid sequencing. The terrain spans 0 to 903 m after the lowest point (49 m) is subtracted. The reference deck
+grid sequencing. The terrain spans 0 to 906 m after the lowest point (49 m) is subtracted. The reference deck
 `inputs_ref` is the same with 192 x 160 x 37 cells. The nest `rg` runs from (-4000, -2400) to (5600, 4800) m:
 96 x 72 x 37 cells of 100 m.
 
@@ -66,35 +69,38 @@ python3 columbia_gorge.py run --gust <build>/gust --mpi "mpiexec -n 4" --relax 0
 Everything is written to `columbia_gorge_run/` in the current directory (`--work` changes it).
 
 ## Expected Results
-Measured on 4 ranks (RMS against the 100 m reference; m/s, k in m^2/s^2):
+Measured on 4 ranks with the decks `prepare` writes (terrain 0 to 906 m, `turb.nut_relax_end = 0.01`). Every run
+reaches the steady verdict: the reference after 197 iterations, the outer domain after 164 and the one-way nest after
+207; the joint run after 279 exchanges. RMS against the 100 m reference (m/s, k in m^2/s^2):
 
 | Field | nest, one way | nest, joint | outer, one way | outer, joint | footprint, one way | footprint, joint | downstream, one way | downstream, joint |
 |---|---|---|---|---|---|---|---|---|
-| u | 0.125 | **0.122** | 0.105 | **0.093** | 0.204 | **0.164** | 0.152 | **0.117** |
-| v | 0.034 | **0.032** | 0.034 | **0.031** | 0.056 | **0.038** | 0.048 | **0.038** |
-| w | 0.021 | **0.018** | 0.026 | **0.025** | **0.044** | 0.068 | 0.031 | **0.026** |
-| k | **0.030** | 0.032 | 0.037 | **0.030** | 0.059 | **0.037** | 0.055 | **0.035** |
+| u | 0.122 | **0.120** | 0.102 | **0.088** | 0.202 | **0.159** | 0.148 | **0.110** |
+| v | 0.033 | **0.030** | 0.034 | **0.031** | 0.055 | **0.039** | 0.046 | **0.039** |
+| w | 0.021 | **0.018** | 0.026 | **0.025** | **0.043** | 0.067 | 0.030 | **0.027** |
+| k | **0.028** | 0.031 | 0.036 | **0.030** | 0.056 | **0.035** | 0.054 | **0.036** |
 
 Cells in the lowest 200 m whose horizontal speed differs from the reference's by more than 0.25, 0.5 and 1 m/s
 (reference mean 9.6 m/s):
 
 | Run | Region | Cells | Largest (m/s) | > 0.25 m/s | > 0.5 m/s | > 1 m/s |
 |---|---|---|---|---|---|---|
-| one way | nest | 86969 | 1.32 | 10279 (11.8 %) | 3573 (4.1 %) | 71 (0.08 %) |
-| one way | footprint | 21747 | 2.62 | 7000 (32.2 %) | 2733 (12.6 %) | 197 (0.9 %) |
-| one way | outer | 76390 | 2.71 | 6500 (8.5 %) | 1582 (2.1 %) | 117 (0.15 %) |
-| joint | nest | 87001 | 1.15 | 9763 (11.2 %) | 3470 (4.0 %) | 59 (0.07 %) |
-| joint | footprint | 21747 | 2.42 | 4849 (22.3 %) | 1471 (6.8 %) | 169 (0.8 %) |
-| joint | outer | 76390 | 2.71 | 5710 (7.5 %) | 1165 (1.5 %) | 116 (0.15 %) |
+| one way | nest | 86999 | 1.37 | 11005 (12.7 %) | 3269 (3.8 %) | 3 (0.00 %) |
+| one way | footprint | 21752 | 2.87 | 7337 (33.7 %) | 2726 (12.5 %) | 134 (0.6 %) |
+| one way | outer | 76387 | 2.32 | 6204 (8.1 %) | 1526 (2.0 %) | 87 (0.11 %) |
+| joint | nest | 87009 | 1.44 | 10704 (12.3 %) | 3128 (3.6 %) | 6 (0.01 %) |
+| joint | footprint | 21752 | 2.47 | 4813 (22.1 %) | 1296 (6.0 %) | 111 (0.5 %) |
+| joint | outer | 76387 | 2.32 | 5105 (6.7 %) | 1050 (1.4 %) | 79 (0.10 %) |
 
-The joint run lowers every difference except w over the footprint (0.044 to 0.068) and k in the nest (0.030 to
-0.032). The footprint w is the cost of the nest's levels: they follow the parent's surfaces aloft (decay height
+The joint run lowers every RMS difference except w over the footprint (0.043 to 0.067) and k in the nest (0.028 to
+0.031). In the nest it lowers the counts above 0.25 and 0.5 m/s but has a larger largest difference (1.44 against
+1.37 m/s, 6 cells above 1 m/s against 3). The footprint w is the cost of the nest's levels: they follow the parent's surfaces aloft (decay height
 200 m here), so the outer cells under the nest see the nest's flow on a mesh that bends faster than their own. A
 slower fade (a decay height of 1 km, or a linear fade as ERF's `amr_terrain_refinement = transform`) lowers the
 nest's and downstream speed differences a little further but raises the footprint w RMS to 0.12-0.15; keeping the
 parent's interpolated ground in the nest (as ERF's `interpolate`) did not converge. These runs were made while
-choosing the rule (PR-70) and are not options of the code. The largest outer differences (2.7 m/s, west and
-south of the nest) sit where 200 m cells cannot follow the terrain; nesting does not change them.
+choosing the rule (PR-70, on a 903 m terrain mosaic) and are not options of the code. The largest outer differences
+(2.3 m/s) sit where 200 m cells cannot follow the terrain; nesting does not change them.
 
 ### Feedback by relaxation (`--relax 0.5 1 4`)
 Measured on 4 ranks with the same decks (RMS of u against the reference, m/s; exchanges of the joint run):
@@ -114,9 +120,9 @@ slightly further from the reference than one way. The footprint w is 0.045 at f 
 0.068). At f = 4 every region moves away from the reference (`docs/boundary_conditions.rst`, Two-way nests by
 relaxation).
 
-These numbers use the terrain of the PR-70 runs. On the terrain the current `prepare` writes (relief 906 m rather
-than 903 m), the one-way outer run does not reach steady with `turb.nut_relax = 0.5`; this is being followed up
-separately.
+These numbers use the terrain of the PR-70 runs (relief 903 m) without `turb.nut_relax_end`; they are not yet
+regenerated on the terrain and decks the current `prepare` writes (relief 906 m, `turb.nut_relax_end = 0.01`), on
+which the tables above are measured.
 
 ## CTest
 None: the three runs take about 15 minutes on 4 ranks of a laptop. The CTest of two-way nesting is `rt_nests_two_way`

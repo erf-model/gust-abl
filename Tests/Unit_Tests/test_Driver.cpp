@@ -826,6 +826,70 @@ TEST (Driver, HistoryIsRestartableBitForBit)
     if (amrex::ParallelDescriptor::IOProcessor()) { amrex::FileSystem::RemoveAll(dir); }
 }
 
+// A DecayStage that records every relative residual the driver passes it.
+class RecordingStage : public DecayStage
+{
+public:
+    using DecayStage::DecayStage;
+    void note_relative_residual (amrex::Real r, bool /*replay*/) override { noted.push_back(r); }
+    std::vector<amrex::Real> noted;
+};
+
+// turb.nut_relax_end is decided in SimplecStage::note_relative_residual from
+// the driver's r. A restore replays the recorded r into the stage that took
+// each iteration, in order, so the restored stages hold the decisions of the
+// interrupted run: each stage of the restored run receives the same sequence
+// as the same stage of the uninterrupted run.
+TEST (Driver, RestoreReplaysTheRelativeResiduals)
+{
+    PCase c = make_mesh(0, false);
+    SteadyOptions o = base_options();
+    o.cfl_max = 8;
+    o.switch_window = 3;
+    o.switch_residual = amrex::Real(0.2);
+    std::vector<RecordingStage*> sa, sb;
+    auto stages = [] (std::vector<RecordingStage*>& raw) {
+        std::vector<std::unique_ptr<gust::Stage>> v;
+        auto s0 = std::make_unique<RecordingStage>("slow", amrex::Real(0.5));
+        auto s1 = std::make_unique<RecordingStage>("fast", amrex::Real(0.1));
+        raw = {s0.get(), s1.get()};
+        v.push_back(std::move(s0));
+        v.push_back(std::move(s1));
+        return v;
+    };
+    gust::State qa, qb;
+    define_state(qa, c);
+    define_state(qb, c);
+    qa.u.setVal(1.0);
+    qb.u.setVal(1.0);
+    gust::Driver a(o, stages(sa), c.mesh, c.geom, nullptr);
+    const auto ra = a.run(qa);
+    ASSERT_EQ(ra.verdict.status, SteadyStatus::Steady);
+    ASSERT_FALSE(a.history().switches.empty());   // both stages took iterations
+    const int K = ra.iterations - 2;               // interrupted after the switch
+    ASSERT_GT(a.history().switches.front().iteration, 0);
+    ASSERT_LT(a.history().switches.front().iteration, K);
+    std::vector<RecordingStage*> sk;
+    gust::Driver k(o, stages(sk), c.mesh, c.geom, nullptr);
+    for (int i = 0; i < K; ++i) { k.step(qb); }
+    gust::Driver b(o, stages(sb), c.mesh, c.geom, nullptr);
+    b.restore(k.history(), qb);
+    for (int s = 0; s < 2; ++s) {   // the replay alone: the r of the first K iterations, per stage
+        std::vector<amrex::Real> want;
+        for (const auto& r : k.history().records) {
+            if (r.stage == s) { want.push_back(r.relative_residual); }
+        }
+        EXPECT_EQ(sb[static_cast<std::size_t>(s)]->noted, want) << "stage " << s;
+        EXPECT_EQ(sk[static_cast<std::size_t>(s)]->noted, want) << "stage " << s;
+    }
+    EXPECT_FALSE(sb[0]->noted.empty());
+    EXPECT_FALSE(sb[1]->noted.empty());
+    b.run(qb);
+    for (int s = 0; s < 2; ++s) {
+        EXPECT_EQ(sb[static_cast<std::size_t>(s)]->noted, sa[static_cast<std::size_t>(s)]->noted) << "stage " << s;
+    }
+}
+
 // ---------------------------------------------------------------------------
 // The Diverged verdict stops the run; the stage receives
 // init once at the start; a driver refuses no stages, a null stage and

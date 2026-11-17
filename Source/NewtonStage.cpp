@@ -198,8 +198,9 @@ bool NewtonStage::differs (const State& q) const
     if (m_nin.momentum.limiter != m_in.momentum.limiter || m_nin.theta.limiter != m_in.theta.limiter) { return true; }
     // With turb.nut_relax < 1 the closure blends nu_t with the history of the
     // last SIMPLEC iteration, which the Newton stage does not update: its
-    // equations are not the steady ones.
-    if (m_closure != nullptr && m_closure->has_history() && m_closure->options().nut_relax < 1) { return true; }
+    // equations are not the steady ones (unless turb.nut_relax_end has ended
+    // the blend).
+    if (m_closure != nullptr && m_closure->relaxing()) { return true; }
     if (m_closure == nullptr || !m_closure->frozen()) { return false; }
     return m_closure->changed_switches(q, *m_in.wall_distance, ground_roughness(m_in.surface), m_in.buoyancy, m_mesh, m_geom) > 0;
 }

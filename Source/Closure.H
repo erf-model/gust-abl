@@ -58,6 +58,8 @@
 //   max_geom_lscale 30 m (> 0)   tke_floor 0 (0: machine epsilon; else >= machine epsilon)
 //   sigma_k 1 (> 0)   nu_molecular 0 (>= 0, m^2/s)   alpha_molecular 0 (>= 0, m^2/s)
 //   kappa 0.41 (> 0)   nut_relax 1 ((0, 1])   frozen_switch 1 (0 | 1: freeze the floor during the Newton stage, Smoothness.H)
+//   nut_relax_end 0 (0: off, else in (0, 1) and needs nut_relax < 1: the driver's relative residual below which a
+//     level's SIMPLEC stage ends the relaxation, end_relaxation())
 //   ri_gate 0 (0: off, or in [1e-6, 1]: the stratification gate below)
 //   face_mean arithmetic | logarithmic (Diffusion_K.H)   wall_distance terrain_height | tucker
 //   closure kl | none (kl). none is a laminar run: nu = nu_molecular, gamma_theta =
@@ -107,6 +109,10 @@ struct ClosureOptions
     amrex::Real alpha_molecular{0};
     amrex::Real kappa{amrex::Real(0.41)};
     amrex::Real nut_relax{1};
+    //! turb.nut_relax_end (0: off, else in (0, 1)): once the driver's relative residual r falls below it, the
+    //! level's SIMPLEC stage calls end_relaxation(), and nu_t is the new value (w = 1) from then on. With
+    //! nut_relax < 1 the iteration can settle in a period-2 cycle that w = 1 does not have (docs/turbulence_model.rst).
+    amrex::Real nut_relax_end{0};
     bool frozen_switch{true};
     //! turb.ri_gate, Ri_0 of the stratification gate (0: off, else finite
     //! and in [1e-6, 1]): N^2 -> N^2 Ri^2 / (Ri^2 + Ri_0^2), Ri = N^2 / S^2,
@@ -191,6 +197,12 @@ public:
     //! Store f.nut as the relaxation history (nut_relax < 1 blends with it).
     void accept (const ClosureFields& f);
     [[nodiscard]] bool has_history () const { return !m_nut_prev.empty(); }
+    //! turb.nut_relax_end: from now on evaluate() takes w = 1 (the history is still stored and checkpointed).
+    //! Not undone; a new Closure starts relaxing again (each level of grid sequencing has its own).
+    void end_relaxation () { m_relax_ended = true; }
+    [[nodiscard]] bool relaxation_ended () const { return m_relax_ended; }
+    //! true when evaluate() blends with the history: a history, turb.nut_relax < 1, and the relaxation not ended.
+    [[nodiscard]] bool relaxing () const { return has_history() && m_opt.nut_relax < 1 && !m_relax_ended; }
     //! The stored history (the relaxed nu_t of the last accepted fields;
     //! empty without one).
     [[nodiscard]] const amrex::MultiFab& history () const { return m_nut_prev; }
@@ -255,6 +267,7 @@ private:
     ClosureOptions m_opt;
     ClosureConstants m_c;
     amrex::MultiFab m_nut_prev;      //!< relaxation history (one ghost cell)
+    bool m_relax_ended{false};       //!< end_relaxation() was called
     amrex::iMultiFab m_switches;     //!< frozen decisions, encoded (one ghost cell)
     //! With a roughness map: d + z0 for the geometric length, built on the first call with a (dist, map) pair
     //! and kept for later calls with the same pair (both are fixed over a level's run; a caller that changes

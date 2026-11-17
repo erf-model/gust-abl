@@ -382,6 +382,9 @@ Quick reference
    * - ``turb.nut_relax``
      - ``1``
      - Under-relaxation of :math:`\nu_t`
+   * - ``turb.nut_relax_end``
+     - ``0``
+     - Relative residual below which ``turb.nut_relax`` stops (0: never; recommended 0.01 with ``turb.nut_relax`` < 1)
    * - ``turb.frozen_switch``
      - ``1``
      - Freeze the k-floor decisions in the Newton stage
@@ -1202,6 +1205,12 @@ See :doc:`turbulence_model`. Read with the SIMPLEC stage only.
    * - ``turb.nut_relax``
      - ``1``
      - In (0, 1]: under-relaxation of :math:`\nu_t` (1: none).
+   * - ``turb.nut_relax_end``
+     - ``0``
+     - 0 (off) or finite, > 0 and < 1: on each grid-sequencing level, the relaxation of ``turb.nut_relax`` ends the
+       first time the relative residual :math:`r` of a SIMPLEC iteration falls below this value; from the next
+       iteration :math:`\nu_t` is not relaxed (:ref:`nut-relax-end`). It aborts as a key with no effect with
+       ``turb.nut_relax = 1``, and with ``steady.stage = unsteady``.
    * - ``turb.frozen_switch``
      - ``1``
      - 0 or 1: freeze the k-floor decisions of the closure from the switch to Newton to the end of the Newton stage

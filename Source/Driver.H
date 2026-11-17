@@ -172,7 +172,7 @@ public:
     //! largest height above the ground of a cell that is not. Collective;
     //! false (nothing computed) for a stage without cell residuals.
     //! The driver's relative residual r_n after the iterate (Driver::step), for a stage that adapts to it.
-    virtual void note_relative_residual (amrex::Real /*r*/) {}
+    virtual void note_relative_residual (amrex::Real /*r*/, bool /*replay*/ = false) {}
     [[nodiscard]] virtual bool confidence (const std::vector<amrex::Real>& /*threshold*/, amrex::Real& /*share*/,
                                            amrex::Real& /*height*/) const
     {

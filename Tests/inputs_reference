@@ -600,6 +600,12 @@
 # turb.nut_relax = 1
 #     In (0, 1]: under-relaxation of ν_t (1: none).
 #
+# turb.nut_relax_end = 0
+#     0 (off) or finite, > 0 and < 1: on each grid-sequencing level, the relaxation of turb.nut_relax ends the first
+#     time the relative residual r of a SIMPLEC iteration falls below this value; from the next iteration ν_t is not
+#     relaxed (nut-relax-end, docs/turbulence_model.rst). It aborts as a key with no effect with turb.nut_relax = 1,
+#     and with steady.stage = unsteady.
+#
 # turb.frozen_switch = 1
 #     0 or 1: freeze the k-floor decisions of the closure from the switch to Newton to the end of the Newton stage
 #     (docs/solution_algorithm.rst). With steady.stage = simplec it aborts as a key with no effect.
