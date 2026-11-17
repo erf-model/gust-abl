@@ -78,6 +78,11 @@ GUST runs MPI (and GPUs), not OpenMP. The ``GUST_OMP`` option was removed (Octob
 ``ABLSTEADY_OMP=ON``) stops the configuration and drops the option from the build directory, so the next configure
 without it goes through; ``OFF`` is ignored. An external AMReX built with OpenMP is refused.
 
+Do not build with fast-math flags (``-ffast-math``, ``-Ofast``, MSVC ``/fp:fast``, Intel ``icpx``'s default
+``-fp-model=fast``). They let a vectorised loop and its scalar remainder round differently, so a node shared by
+two boxes can get two heights and the mesh can change in the last bits with ``mesh.max_grid_size``
+(:doc:`terrain_coordinates`). The CMake build adds no such flag, and with ``icpx`` it sets ``-fp-model=precise``.
+
 Windows
 -------
 

@@ -47,7 +47,10 @@ selects one of ERF's three mappings:
      A(z) = \cos^6\!\Bigl(\frac{\pi}{2}\frac{z}{z_H}\Bigr),\quad z_H = \frac{2.44\,h_\mathrm{max}}{1 - \gamma_m},\\
    \text{2, Sullivan:}\quad & z = z_k + \Bigl(1 - \frac{z_k}{z_\mathrm{top}}\Bigr)^3 h .
 
-- **BTF** (basic terrain following) shrinks every column linearly; the terrain is felt up to the top.
+- **BTF** (basic terrain following) shrinks every column linearly; the terrain is felt up to the top. GUST
+  evaluates it as :math:`z = z_k + h\,(z_\mathrm{top} - z_k)/z_\mathrm{top}`, ERF's formula rearranged so that no
+  product feeds a sum: gcc fuses such a sum into a multiply-add differently in a vectorised loop and its scalar
+  remainder, so with ERF's form the node heights changed in the last bits with ``mesh.max_grid_size``.
 - **STF** (smoothed terrain following, Klemp 2011) smooths the terrain imprint :math:`h_s` level by level, so the
   coordinate surfaces become flat above the height :math:`z_H`. A smoothing pass that would make a layer thinner than
   the fraction :math:`\gamma_m` (``terrain.gamma_m``, 0.5) of its flat thickness is rejected, so STF never folds a

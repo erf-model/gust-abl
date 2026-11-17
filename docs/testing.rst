@@ -2467,6 +2467,11 @@ GoogleTest suite
    * - ``Mesh.SharedNodesAgree``
      - Node heights shared by two boxes (or periodic images) are equal, for BTF, STF and Sullivan,
        periodic and not (under gcc each box's copy differed by up to 1e-13 m before ``Mesh`` synchronised them).
+   * - ``Mesh.NodeHeightsDoNotDependOnTheLayout`` (tracker N-114)
+     - The same mesh in one box and in boxes of at most 8 x 8 and 12 x 4 cells (``mesh.max_grid_size``) has the same node heights, bit for bit, at every node a
+       box holds (every box's copy of a seam node, and the ghost nodes). BTF, STF and Sullivan, periodic and not.
+       Under gcc-16 the BTF heights differed by up to 4.5e-13 m before the BTF formula was rearranged (each box's
+       copy differed, and ``OverrideSync`` kept the owner's).
    * - ``Mesh.GhostNodesStandForTheirImages``
      - Every ghost node in x and y, at every k (the rows below the ground and above the top included), equals the node
        it stands for, bit for bit: its periodic image, or the edge node of its row at a non-periodic face. BTF, STF
@@ -3353,6 +3358,10 @@ GoogleTest suite
      - With ``terrain.nest_blend_width``: the ground equals the parent's interpolated ground on the nest faces, the
        patch's own beyond the width, and the closed-form smoothstep between; a face that is not ``nest`` keeps the
        patch's ground.
+   * - ``NestFaces.NestNodeHeightsDoNotDependOnTheLayout`` (tracker N-114)
+     - A nest with a blended ground (``blend_nest_ground``) and a joint run's nest (``follow_parent_levels``), BTF and
+       Sullivan, in one box and in boxes of at most 9 x 7 and 6 x 10 cells: the node heights are the same, bit for bit, at every node a
+       box holds. Under gcc-16 the blended BTF nest failed it before the BTF formula was rearranged.
    * - ``NestFaces.JointNestLevelsFollowTheParentsAloft`` (beyond the plan)
      - A joint run's nest (``follow_parent_levels``), BTF and Sullivan: every node equals the parent's interpolated
        surface plus :math:`(h - h_p)\sinh((H-\zeta)/s)/\sinh(H/s)`, with :math:`s` recomputed on the host; the ground
@@ -3402,7 +3411,8 @@ GoogleTest suite
        (``kDefectMargin`` cells in) and changes it on the footprint's outer cells (the test is not vacuous).
    * - ``NestDefect.RestrictionDoesNotDependOnTheNestLayout`` (PR-70)
      - u, v, θ and k of the restriction are bit for bit the same for two nest box layouts and rank maps, on 1, 2 and
-       4 ranks.
+       4 ranks. Each layout builds its own node heights (until tracker N-114 both took one single-box build, since
+       under gcc the BTF heights changed with the layout).
    * - ``NestDefect.RegionAndSource`` (PR-70)
      - ``defect_region``: the footprint and the inner box ``kDefectMargin`` cells in (not across a periodic
        direction); :math:`S = R` on the inner box's points (faces from L to H + 1 along their normal) and 0 elsewhere;

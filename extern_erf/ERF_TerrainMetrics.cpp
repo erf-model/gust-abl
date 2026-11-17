@@ -351,8 +351,13 @@ init_which_terrain_grid (int lev,
                 Real z_sfc     = z_arr(ii,jj,k0);
                 Real z_lev_sfc = z_lev[k0];
 
-                z_arr(i,j,k) = ( (z_sfc - z_lev_sfc) * z_top +
-                                 (z_top - z_sfc    ) * z     ) / (z_top - z_lev_sfc);
+                // GUST: ERF's ((z_sfc - z_lev_sfc) z_top + (z_top - z_sfc) z) / (z_top - z_lev_sfc),
+                // rearranged so that no product feeds an addition. gcc contracts a * b + c * d
+                // into a fused multiply-add, and the vectorised loop and its scalar remainder
+                // can fuse it differently, so a node shared by two boxes got copies that
+                // differed in the last bits, and the mesh changed with mesh.max_grid_size.
+                // A sum after a division cannot be fused. The top level is z_top exactly.
+                z_arr(i,j,k) = z + (z_sfc - z_lev_sfc) * (z_top - z) / (z_top - z_lev_sfc);
             });
         } // mfi
 

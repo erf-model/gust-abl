@@ -476,7 +476,23 @@
  
                  //
                  // Start with flat z_lev set either with uniform cell size or specified z_levels
-@@ -805,8 +438,7 @@
+@@ -718,8 +351,13 @@
+                 Real z_sfc     = z_arr(ii,jj,k0);
+                 Real z_lev_sfc = z_lev[k0];
+ 
+-                z_arr(i,j,k) = ( (z_sfc - z_lev_sfc) * z_top +
+-                                 (z_top - z_sfc    ) * z     ) / (z_top - z_lev_sfc);
++                // GUST: ERF's ((z_sfc - z_lev_sfc) z_top + (z_top - z_sfc) z) / (z_top - z_lev_sfc),
++                // rearranged so that no product feeds an addition. gcc contracts a * b + c * d
++                // into a fused multiply-add, and the vectorised loop and its scalar remainder
++                // can fuse it differently, so a node shared by two boxes got copies that
++                // differed in the last bits, and the mesh changed with mesh.max_grid_size.
++                // A sum after a division cannot be fused. The top level is z_top exactly.
++                z_arr(i,j,k) = z + (z_sfc - z_lev_sfc) * (z_top - z) / (z_top - z_lev_sfc);
+             });
+         } // mfi
+ 
+@@ -805,8 +443,7 @@
          MultiFab::Copy(h_mf_old, h_mf,0,0,1,h_mf_old.nGrow());
  
          // Minimum allowed fractional grid spacing
@@ -486,7 +502,7 @@
          Real z_H     = Real(2.44)*h_m/(1-gamma_m); // Klemp2011 Eqn. 11
  
          // Levels at which the minimum-thickness criterion forced us to stop smoothing
-@@ -948,13 +580,14 @@
+@@ -948,13 +585,14 @@
  
              if (n_capped > 0) {
                  amrex::Print() << "NOTE: the smoothed terrain-following grid at level " << lev
