@@ -99,6 +99,9 @@ std::array<amrex::Real, 3> BuildingLoads::evaluate (const State& q, ResidualInpu
 {
     in.building_rows = false;
     in.time = nullptr;
+    // The nests' feedback sources are not loads on the buildings (buildings with nests are refused today).
+    in.defect = nullptr;
+    in.relax = nullptr;
     residual(q, in, mesh, geom, m_R, nullptr, nullptr, &m_ws);
     return building_force(b, mesh, geom, m_R);
 }

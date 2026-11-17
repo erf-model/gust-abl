@@ -3,7 +3,7 @@
 
 // One domain's run (App.cpp run_domain) and the role it runs in: the outer
 // domain, or a nest of it (Nests.H). run() (Run.cpp) runs the outer domain,
-// then each nest; with nest.feedback = defect, then the outer domain and the
+// then each nest; with nest.feedback = defect or relax, then the outer domain and the
 // nests together (JointRun.H).
 
 #include "Nests.H"
@@ -18,12 +18,13 @@ namespace gust {
 
 class Mesh;
 class NestDefect;
+class NestRelax;
 class NestFaces;
 class NestParent;
 struct ResidualFields;
 struct State;
 
-//! One domain of the joint run (nest.feedback = defect, JointRun.H), handed
+//! One domain of the joint run (nest.feedback = defect or relax, JointRun.H), handed
 //! out by run_domain once its one-way run is done; its pointers and functions
 //! are valid while the hook that receives it runs.
 struct JointMember
@@ -44,6 +45,8 @@ struct JointMember
     // The outer domain: its residual without the source (with the stage's upwind blend), and the source.
     std::function<void(const State&, ResidualFields&)> residual_without_defect;
     NestDefect* defect{nullptr};
+    //! The outer domain with nest.feedback = relax: the relaxation (NestRelax.H) in place of the defect source.
+    NestRelax* relax{nullptr};
     // A nest: its parent's images and its faces.
     NestParent* parent{nullptr};
     NestFaces* faces{nullptr};
@@ -67,7 +70,7 @@ struct DomainRole
     std::function<void()> after_checks;
     //! Return once the inputs pass their checks.
     bool check_only{false};
-    //! nest.feedback = defect: called with this domain once its one-way run is done and its outputs
+    //! nest.feedback = defect or relax: called with this domain once its one-way run is done and its outputs
     //! are written (not if it diverged); after it returns a domain that took joint iterations
     //! writes its outputs again. Empty: one way.
     std::function<void(JointMember&)> joint;

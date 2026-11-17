@@ -2,7 +2,9 @@
 #define GUST_NEST_DEFECT_H_
 
 // The patches' feedback on the parent in the joint two-level run
-// (nest.feedback = defect; plan rev. 6 tracker, PR-70). The parent and its
+// (nest.feedback = defect; plan rev. 6 tracker, PR-70; the relaxation of
+// nest.feedback = relax, PR-71, is NestRelax.H and reuses restrict_patch,
+// DefectRegion and kDefectMargin from here). The parent and its
 // nests iterate together in memory (JointRun.H); each exchange:
 //
 //   down: each nest's faces take the current parent (NestFaces::refresh);

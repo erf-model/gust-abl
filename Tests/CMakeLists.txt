@@ -68,6 +68,7 @@ add_executable(unit_tests
     Unit_Tests/test_Terrain.cpp
     Unit_Tests/test_NestBuildings.cpp
     Unit_Tests/test_NestDefect.cpp
+    Unit_Tests/test_NestRelax.cpp
     Unit_Tests/test_NestFaces.cpp
     Unit_Tests/test_NestParent.cpp
     Unit_Tests/test_Nests.cpp
@@ -1757,10 +1758,29 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
         gust_add_test(NAME rt_nests_two_way NP 2 LABELS "regression;smoke"
                       PREFIX ${Python3_EXECUTABLE} ${NESTS2_CASE}/check_nests_two_way.py --
                       COMMAND ${NESTS2_OUTER} ${GUST_TEST_AMREX_FLAGS})
+        # Feedback by relaxation (PR-71, nest.feedback = relax) on the same hill: the joint runs at
+        # nest.feedback_factor = 1, 4 and 16 beside the defect run; the parent - restricted nest difference under the
+        # nest must fall with the factor (at 16 at most 0.35 of its value at 1), and at factor 1 the nest and outer
+        # errors against the 25 m run at most 0.5 and 0.6 of the one-way ones (README.md has the measured values).
+        gust_add_test(NAME rt_nests_relax NP 2 LABELS "regression"
+                      PREFIX ${Python3_EXECUTABLE} ${NESTS2_CASE}/check_nests_two_way.py --relax --
+                      COMMAND ${NESTS2_OUTER} ${GUST_TEST_AMREX_FLAGS})
     endif()
     gust_add_test(NAME abort_nests_feedback_value NP 1 LABELS "regression;smoke"
-                  PREFIX ${EXPECT_ABORT} "nest\\.feedback = 'inject' is not none or defect" --
+                  PREFIX ${EXPECT_ABORT} "nest\\.feedback = 'inject' is not none, defect or relax" --
                   COMMAND ${NESTS_OUTER} ${NESTS_A} nest.feedback=inject ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME abort_nests_feedback_factor NP 1 LABELS "regression;smoke"
+                  PREFIX ${EXPECT_ABORT} "nest\\.feedback_factor = 0: must be finite and > 0" --
+                  COMMAND ${NESTS_OUTER} ${NESTS_A} nest.feedback=relax nest.feedback_factor=0 ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME abort_nests_feedback_factor_nan NP 1 LABELS "regression;smoke"
+                  PREFIX ${EXPECT_ABORT} "nest\\.feedback_factor = nan: must be finite and > 0" --
+                  COMMAND ${NESTS_OUTER} ${NESTS_A} nest.feedback=relax nest.feedback_factor=nan ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME abort_nests_feedback_factor_unused NP 1 LABELS "regression;smoke"
+                  PREFIX ${EXPECT_ABORT} "nest\\.feedback_factor has no effect without nest\\.feedback = relax" --
+                  COMMAND ${NESTS_OUTER} ${NESTS_A} nest.feedback=defect nest.feedback_factor=2 ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME abort_nests_feedback_relax_damping NP 1 LABELS "regression;smoke"
+                  PREFIX ${EXPECT_ABORT} "nest\\.feedback = relax needs bc\\.rayleigh_fields without u, v and tke" --
+                  COMMAND ${NESTS_OUTER} ${NESTS_A} nest.feedback=relax ${GUST_TEST_AMREX_FLAGS})
     gust_add_test(NAME abort_nests_feedback_no_nests NP 1 LABELS "regression;smoke"
                   PREFIX ${EXPECT_ABORT} "nest\\.feedback = defect needs nest\\.names" --
                   COMMAND ${NESTS_OUTER} nest.feedback=defect ${GUST_TEST_AMREX_FLAGS})

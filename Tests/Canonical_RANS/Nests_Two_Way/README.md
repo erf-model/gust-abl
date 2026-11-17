@@ -1,7 +1,7 @@
 # Nests_Two_Way
 
 ## Purpose
-Two-way nesting (PR-70, `nest.feedback = defect`). The outer domain and its nest first run one way, as in
+Two-way nesting (PR-70, `nest.feedback = defect`; and PR-71, `nest.feedback = relax`, below). The outer domain and its nest first run one way, as in
 `Nests_One_Process` except that the nest's levels already follow the joint rule (they bend to the outer domain's
 surfaces aloft), so "one way" in the tables below is that first pass. Then they run jointly: every iteration the nest's faces are refreshed from the outer domain, and
 the outer domain carries the defect source of the nest over the nest's footprint
@@ -77,9 +77,45 @@ the one-way one, and outside the footprint 1.59, 2.74, 0.66, 0.40 and 0.34 times
 flow changes most, takes the 50 m solution there as its boundary values, and the joint run then moves both domains
 away from the fine run. The two-nest layout therefore ends the crest nest 1.33 half-widths behind the crest.
 
+## Feedback by relaxation (`--relax`)
+`check_nests_two_way.py --relax` (CTest `rt_nests_relax`, PR-71) runs the reference, the defect run with the nest
+`hill`, and the joint runs with `nest.feedback = relax` at `nest.feedback_factor` = 1, 4 and 16 (`relax1/`,
+`relax4/`, `relax16/`; `docs/boundary_conditions.rst`, Two-way nests by relaxation). It requires:
+1. every run exits 0 (the two-nest `joint2/` run is skipped), and each relax log's start line names its factor;
+2. the outer domain minus the restricted nest where the relaxation acts (the log's last RMS of u) falls from factor 1
+   to 4 to 16, and at 16 is at most 0.35 of its value at 1;
+3. at factor 1, against the 25 m run, the RMS of u over the nest at most 0.5 of one way and over the outer cells
+   outside the footprint at most 0.6.
+
+Measured on 2 ranks (RMS of u, m/s; "outer - nest" where the relaxation acts):
+
+| run | exchanges | outer - nest | nest | outer outside |
+|---|---|---|---|---|
+| one way | | | 8.23e-3 | 1.44e-2 |
+| defect | 208 | | **2.03e-3** | **4.89e-3** |
+| relax, f = 0.25 | 150 | 1.33e-2 | 2.32e-3 | 5.90e-3 |
+| relax, f = 0.5 | 154 | 1.07e-2 | 2.34e-3 | 5.10e-3 |
+| relax, f = 1 | 160 | 8.04e-3 | 3.38e-3 | 5.03e-3 |
+| relax, f = 2 | 159 | 5.52e-3 | 5.60e-3 | 6.14e-3 |
+| relax, f = 4 | 177 | 3.49e-3 | 9.94e-3 | 9.54e-3 |
+| relax, f = 16 | 508 | 1.50e-3 | 3.27e-2 | 2.94e-2 |
+
+(0.25, 0.5 and 2 are not in the test.) The difference between the two domains falls with the factor, but above
+f = 1 both move away from the fine run: the relaxation's target carries no nest pressure gradient, so as it tightens
+the outer velocity under the nest stops responding to the outer pressure, and the nest, which takes its faces from
+it, follows. The exchanges grow with f for the same reason: the flow rate through the footprint is set by a loop
+(the nest returns the flow rate it is given, the relaxation imposes it) whose gain tends to 1. The bounds on the
+errors therefore apply at f = 1 only.
+
 ## CTest
 `rt_nests_two_way` (2 ranks, labels `regression;smoke`). The abort tests `abort_nests_feedback_value`,
 `abort_nests_feedback_no_nests`, `abort_nests_feedback_newton`, `abort_nests_feedback_restart`,
 `abort_nests_feedback_damping`, `abort_nests_feedback_odd_boxes` and `abort_nests_feedback_narrow` check that the inputs `nest.feedback` refuses stop
 the run and name the key. `inputs_abort` is `inputs_outer` without `mesh.max_grid_size` and `steady.stage`, which
 two of them set on the command line (a key given twice stops the run).
+
+`rt_nests_relax` (2 ranks, label `regression`; above): about 2 minutes on an Apple M-series laptop, against under
+1 minute for `rt_nests_two_way`, most of it the f = 16 run (508 exchanges). `--relax` skips the two-nest `joint2/`
+run. `abort_nests_feedback_factor`, `_factor_nan`, `_factor_unused` and `_relax_damping` check that
+`nest.feedback_factor = 0`, `nan`, a factor with `nest.feedback = defect`, and `relax` with a Rayleigh layer on u, v
+and k stop the run and name the key.

@@ -304,7 +304,8 @@ Nest faces
 
 A *patch* is a finer run inside a finished, coarser *parent* run (:doc:`initial_conditions`). A lateral face of the
 patch with ``bc.<face> = nest`` takes its values from the parent's checkpoint (``bc.nest_parent``). The nesting is one
-way: the parent is not changed (for two-way nests, ``nest.feedback = defect``, see :ref:`two-way-nests`). The code is in ``Source/NestFaces``.
+way: the parent is not changed (for two-way nests, ``nest.feedback = defect`` or ``relax``, see :ref:`two-way-nests`
+and :ref:`two-way-relax`). The code is in ``Source/NestFaces``.
 
 On a nest face:
 
@@ -774,7 +775,7 @@ the largest change of a nest's face velocities.
 **Damping.** A nest damps only :math:`w` and :math:`\theta` (above). Over each footprint the joint run carries the
 nests' equations, so an outer Rayleigh term on :math:`u, v` or :math:`k` would act outside the footprints and not
 inside them: a jump in the forcing at each footprint's edge above ``bc.rayleigh_zdamp``. ``nest.feedback = defect``
-therefore needs ``bc.rayleigh_fields = w`` or ``w theta``, and stops with an error otherwise. A nest has no side
+(and ``relax``) therefore needs ``bc.rayleigh_fields = w`` or ``w theta``, and stops with an error otherwise. A nest has no side
 sponge either: with ``bc.sponge_width > 0`` the run prints a note, and the nests are best placed outside the sponge.
 
 **Limits.**
@@ -863,6 +864,189 @@ the two differ by 0.05 m/s RMS, so read :math:`w` there from the nest. On a gent
 hill of ``Nests_One_Process``) where the outer cells already resolve the flow, the nest's :math:`u` error moved from
 1.36e-3 to 1.70e-3 m/s (``check_nests_two_way.py`` of ``Nests_Two_Way`` with ``terrain.hill_height = 60`` and
 ``terrain.hill_half_width = 250`` in a copy of its deck).
+
+.. _two-way-relax:
+
+Two-way nests by relaxation (``nest.feedback = relax``)
+-------------------------------------------------------
+
+``nest.feedback = relax`` runs the same joint run as ``defect`` (:ref:`two-way-nests`: the one-way runs, then one
+exchange per iteration, the same coordinate surfaces, pseudo-time step, stopping rule, damping rule and refusals)
+with another way up (``Source/NestRelax``). Each exchange, :math:`q^*` is formed as for ``defect``, and the outer
+domain takes one iteration of
+
+.. math::
+
+   R_c(q_c) + c\,(q_c - q^*) = 0, \qquad c = w(s)\, \frac{f\, U}{\Delta x}, \qquad
+   w(s) = \min\Big(1, \max\big(0, \frac{s}{M}\big)\Big),
+
+for :math:`u, v, w, \theta` and :math:`k`, with
+
+- :math:`f`: ``nest.feedback_factor`` (default 1);
+- :math:`U`: the mean over the footprint's cells of the horizontal speed of :math:`I q_f`,
+  :math:`\sqrt{u_c^2 + v_c^2}` with :math:`u_c, v_c` the means of the cell's two faces; one value per nest, set at
+  each exchange and printed at the first;
+- :math:`\Delta x`: the outer domain's smaller horizontal cell size;
+- :math:`s`: a point's distance from the nearest lateral face of the footprint, in outer cells (a cell
+  :math:`i - L + \tfrac12` from a face at :math:`L`, a face point :math:`i - L`); a nest that spans a periodic
+  direction has no faces in it;
+- :math:`M = 2`: the defect source's margin. :math:`c` is 0 on the footprint's faces and outside it and rises to its
+  full value 2 cells in. Where footprints overlap the larger rate holds.
+
+**Why this rate:** :math:`U / \Delta x` is the :math:`x`-advection part of an outer cell's diagonal, so at
+:math:`f = 1` the relaxation holds the outer domain towards the nest about as strongly as its own advection along the
+flow holds it to its neighbours. The full diagonal also has the :math:`y` and vertical advection and the diffusion;
+near the ground the diffusion dominates it, and there the relaxation is weaker relative to the cell's own terms. At the fixed point :math:`q_c - q^* = -R_c(q_c)/c`: the outer domain under a nest follows it more
+closely as :math:`f` grows, but not exactly at any finite :math:`f` (with ``defect``, :math:`q_c = I q_f` on
+:math:`\chi_s` up to the ring's effect).
+
+:math:`c` does not depend on :math:`q_c`, and it is added to the diagonal of each equation's implicit rows, so the
+diagonal is the source's exact derivative. No row is fixed and continuity gets no source. The pressure correction
+acts on every outer cell, but its coefficient there is :math:`1/d` with :math:`d = 1/\Delta\tau + c` (SIMPLEC, as
+with canopy drag), so under a nest it is smaller by :math:`1/(1 + f\,w\,U\Delta\tau/\Delta x)`: about 0.1 at
+:math:`f = 1` and under 0.01 at :math:`f = 16` for a step of 8 cells. The rows a boundary condition or the wall law replaces (the ground
+and top :math:`w` faces, the first cells' wall-:math:`k` rows) replace the source too. The kernels have the form of
+the nest relaxation zone's (``Source/NestFaces``), kept apart from it. The log gives, for the first ten exchanges and
+then every tenth, the largest and RMS :math:`|q_c - q^*|` where :math:`c > 0`, per equation.
+
+**The pressure under a nest.** The defect source carries the nest's pressure into the outer momentum rows through
+:math:`R_c(q^*)`. The relaxation has no pressure term: the outer pressure under a nest is the outer domain's own, set
+by its continuity equation with the relaxation in the momentum rows. Under the nest the relaxation force takes the place of
+the outer domain's own momentum balance: the target has no nest pressure gradient or transport in it. As :math:`f`
+grows the outer velocity under the nest is held at :math:`I q_f` whatever the outer pressure is (the pressure
+correction's coefficient falls too, above), while the nest still takes its faces from the outer velocity. The flow
+rate through the footprint is then set by a loop: the nest returns the flow rate it is given, and the relaxation
+imposes it on the outer domain. A two-dimensional linear model of the coupling (Pressel review) gives this loop a
+gain of about :math:`cA/(cA + D)`, with :math:`A` the footprint's area and :math:`D` the outer domain's friction,
+which tends to 1 as :math:`f` grows; the exchanges grow as :math:`1/(1 - \text{gain})`. On the canonical hill this lets both domains drift: the nest and the
+outer domain under it grow faster than the fine run, more so at larger :math:`f` (Results).
+
+**Results.** ``Tests/Canonical_RANS/Nests_Two_Way`` (``check_nests_two_way.py --relax``; 50 m / 25 m, 2 ranks), RMS of
+:math:`u` in m/s: the outer domain minus the restricted nest where :math:`c > 0` (the log's last value), and the nest
+and the outer domain outside the footprint against the uniform 25 m run:
+
+.. list-table::
+   :header-rows: 1
+
+   * - Run
+     - Exchanges
+     - Outer − nest
+     - Nest
+     - Outer, outside the footprint
+   * - One way
+     -
+     -
+     - 8.23e-3
+     - 1.44e-2
+   * - ``defect``
+     - 208
+     -
+     - **2.03e-3**
+     - **4.89e-3**
+   * - ``relax``, :math:`f` = 0.25
+     - 150
+     - 1.33e-2
+     - 2.32e-3
+     - 5.90e-3
+   * - ``relax``, :math:`f` = 0.5
+     - 154
+     - 1.07e-2
+     - 2.34e-3
+     - 5.10e-3
+   * - ``relax``, :math:`f` = 1
+     - 160
+     - 8.04e-3
+     - 3.38e-3
+     - 5.03e-3
+   * - ``relax``, :math:`f` = 2
+     - 159
+     - 5.52e-3
+     - 5.60e-3
+     - 6.14e-3
+   * - ``relax``, :math:`f` = 4
+     - 177
+     - 3.49e-3
+     - 9.94e-3
+     - 9.54e-3
+   * - ``relax``, :math:`f` = 16
+     - 508
+     - 1.50e-3
+     - 3.27e-2
+     - 2.94e-2
+
+The difference between the two domains under the nest falls with :math:`f`, from about :math:`f^{-0.3}` at small
+:math:`f` to :math:`f^{-0.6}` at :math:`f \ge 1`, rather than :math:`1/f`: the nest it is measured against changes
+with :math:`f` too, and :math:`c\,|q_c - q^*|` (the outer residual at the fixed point) grows sevenfold over the
+table. Against one way, both domains are closer
+to the fine run at every :math:`f \le 2`. As :math:`f` grows from 0.25 the nest moves away from the fine run, and the
+outer domain does so above :math:`f = 1`; at :math:`f \ge 4` the nest is further from the fine run than one way.
+The mean :math:`u` error over the nest is :math:`-9\times10^{-5}` m/s at
+:math:`f = 0.25` and :math:`+2.0\times10^{-2}` m/s at :math:`f = 16`, largest in the lowest layers. Leaving
+:math:`k` out of the source does not change this (nest 3.26e-2 at :math:`f = 16`).
+
+On the Columbia Gorge (``Tests/Real_Terrain/Columbia_Gorge``, steep real terrain, 4 ranks), the RMS of :math:`u`
+(m/s) against the uniform 100 m run:
+
+.. list-table::
+   :header-rows: 1
+
+   * - Run
+     - Exchanges
+     - Nest
+     - Outer outside
+     - Footprint
+     - Downstream
+   * - one way
+     -
+     - 0.125
+     - 0.105
+     - 0.204
+     - 0.152
+   * - ``defect``
+     - 276
+     - 0.122
+     - 0.093
+     - 0.164
+     - 0.117
+   * - :math:`f = 0.5`
+     - 174
+     - 0.126
+     - 0.092
+     - 0.166
+     - 0.116
+   * - :math:`f = 1`
+     - 180
+     - 0.128
+     - 0.092
+     - 0.167
+     - 0.115
+   * - :math:`f = 4`
+     - 439
+     - 0.147
+     - 0.099
+     - 0.180
+     - 0.133
+
+At :math:`f` = 0.5 and 1 the outer domain, the footprint and the region downstream are as close to the fine run as
+with ``defect``, in about two thirds of the exchanges; the nest's :math:`u` is slightly further from it than one
+way (0.128 against 0.125). The footprint :math:`w` is 0.045 at :math:`f = 0.5` (``defect`` 0.068, one way 0.044).
+At :math:`f = 4` every region moves away from the fine run and the exchanges grow, as on the hill.
+
+**The default.** :math:`f = 1` is the rate argument above: the relaxation as strong as the outer cell's own
+advection. On this hill :math:`f` = 0.25 to 0.5 gave a nest closer to the fine run (2.3e-3 against 3.4e-3) at a
+similar outer error, and a larger outer-minus-nest difference; one hill does not settle a default, so it stays at 1.
+
+**Limits.**
+
+- At a finite factor the outer domain under a nest differs from the restricted nest by :math:`O(R_c/c)` (the table).
+- A large factor slows the joint run: at :math:`f = 16` it took 508 exchanges, against 160 at :math:`f = 1`. The
+  cause is the coupling loop's gain tending to 1 (above), not stiff rows: :math:`c` on the diagonal damps each outer
+  step more as :math:`f` grows.
+- The pressure under a nest is the outer domain's own (above).
+- Two nests that touch each have :math:`w = 0` on their shared face, so a strip about :math:`2M` outer cells wide
+  between them is relaxed weakly, although the nests cover it (the defect source's region has the same gap).
+- The limits of ``defect`` that concern the joint run (no restart, no probe rows after the one-way run,
+  ``simplec_newton`` refused, :math:`\nu_t` relaxation) hold for ``relax`` too.
 
 Pressure
 --------

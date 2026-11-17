@@ -2,6 +2,7 @@
 
 #include "Forcing.H"
 #include "NestParent.H"
+#include "NestRelax.H"
 #include "SurfaceLayer.H"
 
 #include <AMReX_ParmParse.H>
@@ -40,6 +41,11 @@ std::string num (double x)
 
 } // namespace
 
+const char* nest_feedback_name (NestFeedback f)
+{
+    return f == NestFeedback::defect ? "defect" : f == NestFeedback::relax ? "relax" : "none";
+}
+
 NestOptions read_nest_options ()
 {
     NestOptions opt;
@@ -49,21 +55,36 @@ NestOptions read_nest_options ()
     pp.queryarr("names", names);
     if (pp.countname("feedback") > 1) { opt.errors.emplace_back("nest.feedback is given more than once"); }
     std::string fb = "none";
-    if (pp.countval("feedback") > 1) { opt.errors.emplace_back("nest.feedback takes one value: none or defect"); }
+    if (pp.countval("feedback") > 1) { opt.errors.emplace_back("nest.feedback takes one value: none, defect or relax"); }
     pp.query("feedback", fb);
     if (fb == "defect") {
         opt.feedback = NestFeedback::defect;
+    } else if (fb == "relax") {
+        opt.feedback = NestFeedback::relax;
     } else if (fb != "none") {
-        opt.errors.emplace_back("nest.feedback = '" + fb + "' is not none or defect");
+        opt.errors.emplace_back("nest.feedback = '" + fb + "' is not none, defect or relax");
     }
     if (pp.contains("feedback") && names.empty()) {
         opt.errors.emplace_back("nest.feedback = " + fb + " needs nest.names");
     }
+    if (pp.countname("feedback_factor") > 1) { opt.errors.emplace_back("nest.feedback_factor is given more than once"); }
+    if (pp.contains("feedback_factor")) {
+        if (pp.countval("feedback_factor") != 1) {
+            opt.errors.emplace_back("nest.feedback_factor takes one value");
+        } else {
+            pp.get("feedback_factor", opt.feedback_factor);
+            const std::string e = check_feedback_factor(opt.feedback_factor);
+            if (!e.empty()) { opt.errors.push_back(e); }
+        }
+        if (opt.feedback != NestFeedback::relax) {
+            opt.errors.emplace_back("nest.feedback_factor has no effect without nest.feedback = relax");
+        }
+    }
     for (std::size_t i = 0; i < names.size(); ++i) {
         const std::string& n = names[i];
-        if (!is_identifier(n) || n == "names" || n == "feedback") {
+        if (!is_identifier(n) || n == "names" || n == "feedback" || n == "feedback_factor") {
             opt.errors.emplace_back("nest.names: '" + n + "' is not a nest name (a letter, then letters, digits or '_'; "
-                                    "not 'names' or 'feedback')");
+                                    "not 'names', 'feedback' or 'feedback_factor')");
             continue;
         }
         if (std::find(names.begin(), names.begin() + static_cast<std::ptrdiff_t>(i), n) != names.begin() + static_cast<std::ptrdiff_t>(i)) {
