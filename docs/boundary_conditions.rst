@@ -618,9 +618,43 @@ closer to the reference, at the cost of one more run and 54 % more cells (8 640 
 wider gap between its faces and the cube was not run. The ratio-4 patch on 1, 2 and 4 ranks gives the same field to
 :math:`10^{-8}` of the speed scale (CTests ``rt_nest_shapes_cube_ratio4*`` and ``rt_nest_shapes_cube_chain2``).
 
+**Solar farm (tracker row PR-68).** Six rows of flat panels, 4 m long in x, 0.1 m thick and 1.5 m above the ground,
+10 m apart and spanning the periodic width, on a 160 m × 2 m domain with 0.02 m layers up to 3.2 m. The 1 m parent
+is refined to 0.25 m in two ways: a chain (a 0.5 m middle patch of half-width 64 m, then 0.25 m patches of it) and
+ratio 4 straight from the parent, each at :math:`D` = 32, 40 and 48 m from the array's centre (the outer panel edges
+are :math:`D` − 27 m from the faces). Velocity RMS over the array, % of the speed scale, against the 0.25 m uniform
+run:
+
+.. list-table::
+   :header-rows: 1
+
+   * - Run
+     - :math:`D` = 32, 40, 48 m
+   * - 1 m parent
+     - 1.845 %
+   * - 0.5 m middle patch (:math:`D` = 64 m)
+     - 0.910 %
+   * - 0.25 m chain
+     - 0.092, 0.036, **0.011 %**
+   * - 0.25 m ratio 4
+     - 0.196, 0.082, 0.042 %
+
+The chain and the ratio-4 patch differ by 0.287, 0.117 and 0.052 % at the three :math:`D`; the 4 4 1 patches took
+10 to 16 % more iterations. Against the reference the chain is closer at every :math:`D` (0.011 against 0.042 % at 48 m), as around the cube. On 1, 2 and 4 ranks (four boxes) the chain's
+patch at :math:`D` = 40 m gives the same field to 1.4e-15 of the speed scale. The solar runs use
+``simplec.pressure_reltol`` = 1e-6. At the default 1e-3 the k residual rose by factors of 3 or more after iteration
+500, from the first layer behind the array: there the ground's k row, with the weight :math:`u_*/d_0` (about
+35 s\ :sup:`-1`, :math:`d_0` = 0.01 m), shows the change of the first cell's velocity between iterations, which the
+pressure solve's error at 1e-3 makes non-monotone. The fields of the two tolerances differ by at most 3.5e-8 of the
+speed scale in velocity, the iterations to the steady verdict hardly change, and the 0.25 m patches take 3 to 4
+times as long per iteration (the case's README gives the numbers). The 0.25 m reference
+(1.1 million cells) takes about five hours (2574 iterations) on eight cores of a laptop, so the solar farm is run by hand, not in the
+nightly study.
+
 What these comparisons do not cover: the reference is the same solver with the same closure, so they measure the
-nesting error, not accuracy; neutral flow, refinement 2 2 1 (4 4 1 for the cube above) with the same layers in every
-run, one wind direction per case; the patches are centred on the shape and away from the domain's own boundaries;
+nesting error, not accuracy; neutral flow, refinement 2 2 1 (twice in a chain for the solar farm; 4 4 1 for the cube
+and the solar farm above) with the same layers in every run, one wind direction per case; the patches are centred on
+the shape and away from the domain's own boundaries (the solar farm's middle patch by 16 m);
 the zone was tried with factor 1 at one patch size.
 
 **Limits.**
