@@ -117,7 +117,7 @@ void restrict_horizontal (const State& fine, const Mesh& mesh_f, int r, const am
     const amrex::BoxArray& fba = fine.p.boxArray();
     const amrex::DistributionMapping& fdm = fine.p.DistributionMap();
     if (!fba.coarsenable(amrex::IntVect(r, r, 1))) {
-        amrex::Abort("gust: restrict_patch: the nest's boxes do not coarsen by " + std::to_string(r));
+        amrex::Abort("gust: restrict_horizontal: the nest's boxes do not coarsen by " + std::to_string(r));
     }
     const amrex::IndexType CC = amrex::IndexType::TheCellType();
     const amrex::IndexType XF(amrex::IntVect(1, 0, 0)), YF(amrex::IntVect(0, 1, 0));
@@ -172,12 +172,12 @@ void restrict_w (const State& fine, const Mesh& mesh_f, const amrex::Geometry& g
     const amrex::BoxArray& fba = fine.p.boxArray();
     const amrex::DistributionMapping& fdm = fine.p.DistributionMap();
     if (!fba.coarsenable(amrex::IntVect(r, r, 1))) {
-        amrex::Abort("gust: restrict_patch: the nest's boxes do not coarsen by " + std::to_string(r));
+        amrex::Abort("gust: restrict_w: the nest's boxes do not coarsen by " + std::to_string(r));
     }
     const amrex::IndexType ZF(amrex::IntVect(0, 0, 1));
     // w from the restricted vertical flux Omega: the restricted field is divergence-free on the parent cells
     // when the nest's field is on its own (the u, v fluxes above and Omega are conservative across the
-    // different ground).
+    // different ground), except next to a face another nest's restriction set last (restrict_patches).
     {
         amrex::MultiFab om_f(fine.w.boxArray(), fdm, 1, 0);
         omega_from_w(fine.u, fine.v, fine.w, fine.z_phys_nd, mesh_f, geom_f, om_f, 0);

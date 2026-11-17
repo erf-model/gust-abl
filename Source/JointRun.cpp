@@ -66,6 +66,7 @@ JointResult run_joint (const std::vector<JointMember*>& members, int max_exchang
     State qr;
     qr.define(P.state->p.boxArray(), P.state->p.DistributionMap());
     amrex::MultiFab::Copy(qr.z_phys_nd, P.state->z_phys_nd, 0, 0, 1, P.state->z_phys_nd.nGrow());
+    // The nests' ratios and offsets are fixed after the one-way runs.
     std::vector<NestImage> images;
     for (std::size_t n = 1; n < members.size(); ++n) {
         const JointMember& N = *members[n];

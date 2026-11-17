@@ -705,14 +705,23 @@ Each exchange:
 3. **Down.** Each nest's parent images and nest faces are taken from the outer state now.
 4. Each nest takes one iteration.
 
-With several nests, step 1 restricts the cell fields, :math:`u` and :math:`v` of every nest first, then fills the
+With :math:`n` nests, step 1 restricts the cell fields, :math:`u` and :math:`v` of every nest first, then fills the
 outer ghost cells, then forms :math:`w` of every nest, then fills them again (``restrict_patches``): two outer ghost
-fills per exchange for any number of nests, against :math:`2n + 1` before. :math:`w` reads the outer :math:`u` and
-:math:`v`, so on a face that two touching footprints share it sees the face's final flux, and the outer
-:math:`\Omega` on every footprint is the restricted nest :math:`\Omega` (unit test
-``TouchingNestsKeepTheRestrictedOmegaOnBothFootprints``). In the joint run such a face is a lateral face of both nests
-and carries the outer flux in both, so the two orders give the same answer there. The outer node heights are copied
-into :math:`q^*` once, as they do not change during the joint run.
+fills per exchange for any number of nests, against :math:`2n + 1` when each nest was restricted in full before the
+next. :math:`w` reads the outer :math:`u` and :math:`v`, so on a face that two touching footprints share it sees the
+face's final flux, and the outer :math:`\Omega` on every footprint is the restricted nest :math:`\Omega` (unit test
+``TouchingNestsKeepTheRestrictedOmegaOnBothFootprints``). The outer node heights are copied into :math:`q^*` once, as
+they do not change during the joint run.
+
+Such a shared face is a lateral face of both nests. Each nest's face takes the outer flow interpolated, minus that
+nest's own net-flux shift (``Source/NestFaces``), so the two restrictions of the face differ slightly. The face keeps
+the restriction of the nest listed later in ``nest.names``, and the outer cells next to it on the other nest's side
+keep a continuity mismatch of :math:`a_x \Delta u` (no order can make both sides divergence-free). With each nest
+restricted in full before the next, the earlier nest's column next to the face also had :math:`\Omega` off by about
+:math:`z_x \Delta u / 2`. On the two-way hill deck with two touching nests (``crest`` and ``lee``) the defect run is
+the same bit for bit in both orders: the changed column is outside the stencil of the source's region there. With
+``nest.feedback = relax`` (factor 4) or with ``turb.realizability = 0.309`` it reads that column, and the steady
+fields differ by at most 1.7e-6 m/s and 1.0e-8 m/s in :math:`u`, with the same number of exchanges.
 
 Here
 
