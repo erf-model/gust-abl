@@ -178,11 +178,11 @@ std::string fmt_real (amrex::Real x)
 } // namespace
 
 void Mesh::check_restart (const Inputs& in, const amrex::Geometry& geom, amrex::MultiFab& z_phys_nd,
-                          const GroundEdit& ground_edit)
+                          const GroundEdit& ground_edit, const LevelsEdit& levels_edit)
 {
     amrex::MultiFab rebuilt(z_phys_nd.boxArray(), z_phys_nd.DistributionMap(), 1, z_phys_nd.nGrowVect());
     rebuilt.setVal(0.0);
-    build(in, geom, rebuilt, ground_edit);
+    build(in, geom, rebuilt, ground_edit, levels_edit);
 
     // Valid nodes only, within restart_height_tolerance: another compiler
     // (or a GPU build) may contract the multiply-adds of the mesh build

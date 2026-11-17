@@ -18,7 +18,9 @@
 // The exchange runs every iteration (fixed). The run stops when every domain's
 // driver is steady after the same exchange (each domain's steady.* criteria,
 // with S and the faces as they are then), when one diverges, or after
-// steady.max_iterations exchanges. A line per exchange (the first ten, then
+// steady.max_iterations exchanges over the run. A restart from the outer domain's
+// last checkpoint goes on with the exchanges (JointRecord.H; first_exchange the
+// exchanges its record counts). A line per exchange (the first ten, then
 // every tenth) gives the largest |S| per equation and the largest change of a
 // nest's face velocities.
 
@@ -31,7 +33,7 @@ namespace gust {
 //! What the joint run did.
 struct JointResult
 {
-    int exchanges{0};
+    int exchanges{0};             //!< over the run, a restart's earlier exchanges included
     bool steady{false};
     bool diverged{false};
     double wall_seconds{0};       //!< the whole loop
@@ -39,8 +41,9 @@ struct JointResult
 };
 
 //! Run the exchanges: members[0] is the outer domain (with its defect source),
-//! the others its nests (with their parent images and faces).
-JointResult run_joint (const std::vector<JointMember*>& members, int max_exchanges);
+//! the others its nests (with their parent images and faces); first_exchange: the exchanges an earlier run took
+//! (a joint restart; 0: none), so this run takes at most max_exchanges - first_exchange.
+JointResult run_joint (const std::vector<JointMember*>& members, int max_exchanges, int first_exchange = 0);
 
 } // namespace gust
 

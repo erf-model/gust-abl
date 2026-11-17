@@ -8,10 +8,15 @@ check_nests, or of Source/App.cpp before the outer domain starts):
   given twice;
 - nest.feedback other than none, defect or relax, or without nest.names;
   nest.feedback_factor without nest.feedback = relax (its range is in
-  `values`); with defect or relax: steady.stage = simplec_newton, io.restart, bc.rayleigh_fields with
+  `values`); with defect or relax: steady.stage = simplec_newton, bc.rayleigh_fields with
   u, v or tke, an odd mesh.max_grid_size that splits a nest into boxes
   with an odd number of cells in x or y, or a nest spanning fewer than
   2 DEFECT_MARGIN + 1 outer cells in a non-periodic x or y (Source/App.cpp);
+- with defect or relax and io.restart, the checkpoint's joint record (Joint;
+  Source/JointRecord.cpp, Source/Run.cpp): one that is not GUST_JOINT 1 or
+  cannot be read (io.restart), other nests or another order than nest.names
+  (nest.names), steady.max_iterations at or below its exchanges
+  (steady.max_iterations);
 - nest.<name>.lo or nest.<name>.hi missing for a name of nest.names;
   nest.<name>.* for a name not in nest.names (GUST does not read it);
 - a corner that is not finite, off the outer cell faces (1e-4 cells), hi not
@@ -33,6 +38,7 @@ side sponge; GUST prints a note).
 INFO: each nest's cells (refinement 2 2 1).
 """
 import math
+import os
 import re
 
 from ..checker import Checker, register
@@ -40,6 +46,7 @@ from ..checker import Checker, register
 MARGIN = 2      # NestParent.H, kNestMargin
 RATIO = 2       # NestParent.H, kNestRatio
 DEFECT_MARGIN = 2   # NestDefect.H, kDefectMargin
+MAX_ITERATIONS = 10000   # Driver.H, SteadyOptions::max_iterations
 _NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
 
 
@@ -136,8 +143,7 @@ class NestsChecker(Checker):
             self.error("nest.feedback", "GUST stops: nest.feedback = %s needs steady.stage = simplec (not "
                                         "simplec_newton)." % fb, "Set steady.stage = simplec.")
         if c.restart:
-            self.error("nest.feedback", "GUST stops: nest.feedback = %s does not restart (io.restart): run from "
-                                        "the start." % fb, "Remove io.restart.")
+            self._joint_record(names)
         if c.positive("bc.rayleigh_zdamp") and any(c.rayleigh_field(f) for f in ("u", "v", "tke")):
             self.error("nest.feedback", "GUST stops: nest.feedback = %s needs bc.rayleigh_fields without u, v and "
                                         "tke (the nests damp w and theta only)." % fb, "Set bc.rayleigh_fields = w theta.")
@@ -146,6 +152,39 @@ class NestsChecker(Checker):
                                        "so over a footprint inside the sponge the joint run does not damp." % fb,
                       "Place the nests outside bc.sponge_width.")
         return fb
+
+    def _joint_record(self, names):
+        """io.restart with a joint run: the joint record of the checkpoint, if any, read as Source/JointRecord.cpp
+        and Source/Run.cpp read it (a checkpoint without one restarts the outer domain alone)."""
+        c = self.ctx
+        path, _ = c.find_file(c.restart)
+        if path is None or not os.path.isfile(os.path.join(path, "Joint")):
+            return
+        with open(os.path.join(path, "Joint")) as f:
+            lines = [ln.split() for ln in f.read().split("\n") if ln.strip()]
+        bad = "GUST stops: io.restart = %s: its Joint file cannot be read" % c.restart
+        if len(lines) < 4 or lines[0] != ["GUST_JOINT", "1"]:
+            self.error("io.restart", bad + " (expected GUST_JOINT 1).", "Restart from a checkpoint this GUST wrote.")
+            return
+        try:
+            exchanges = int(lines[2][1]) if lines[2][0] == "exchanges" and len(lines[2]) == 2 else None
+        except ValueError:
+            exchanges = None
+        recorded = [ln[1] for ln in lines[4:] if ln[0] == "nest" and len(ln) >= 4]
+        if lines[1][:1] != ["feedback"] or exchanges is None or exchanges < 1 or len(recorded) != len(lines) - 4 \
+                or not recorded:
+            self.error("io.restart", bad + ".", "Restart from a checkpoint this GUST wrote.")
+            return
+        if recorded != list(names):
+            self.error("nest.names", "GUST stops: io.restart = %s: its joint record has the nests %s, nest.names has "
+                                     "%s; a joint restart keeps the nests and their order."
+                       % (c.restart, " ".join(recorded), " ".join(names)), "Set nest.names = %s." % " ".join(recorded))
+        iters = c.i("steady.max_iterations") if self.given("steady.max_iterations") else MAX_ITERATIONS
+        if iters is not None and iters <= exchanges:
+            self.error("steady.max_iterations", "GUST stops: io.restart = %s: the joint run took %d exchanges; "
+                                                "steady.max_iterations = %d leaves none (the joint run counts its "
+                                                "exchanges over the run)." % (c.restart, exchanges, iters),
+                       "Set steady.max_iterations above %d." % exchanges)
 
     def _even_boxes(self, n, span, fb):
         """With defect or relax: at least 2 DEFECT_MARGIN + 1 outer cells in each non-periodic direction, and every box of the

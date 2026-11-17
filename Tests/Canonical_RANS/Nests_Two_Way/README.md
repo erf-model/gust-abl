@@ -20,6 +20,7 @@ the 50 m outer cells miss a part of the flow the 25 m nest resolves.
 | `inputs_outer` | The outer domain: 32 x 24 x 16 cells of 50 m over 1600 m x 1200 m x 800 m (first layer 10 m), the round Witch of Agnesi hill in the middle, periodic in y, log-law inflow (u* 0.4 m/s, z0 0.1 m, 20 degrees) on xlo, outflow on xhi, neutral, Rayleigh layer above 400 m on w and theta only (as every nest). No nest keys: the check script appends them. |
 | `inputs_abort` | `inputs_outer` without `mesh.max_grid_size` and `steady.stage`, for the abort tests. |
 | `check_nests_two_way.py` | Runs the uniform 25 m reference (the deck with 64 x 48 x 16 cells) and the joint run, and compares them (below). |
+| `check_joint_restart.py` | Runs a joint run straight, the same run stopped after `--stop` exchanges, and its restart from the joint record, and compares them byte for byte (Joint restart, below). |
 
 The nest `hill` covers outer cells 8 to 24 in x and 6 to 18 in y (`nest.hill.lo = 400 300`,
 `nest.hill.hi = 1200 900`): 32 x 24 x 16 cells of 25 m. The second joint run has two nests that touch at
@@ -107,9 +108,38 @@ it, follows. The exchanges grow with f for the same reason: the flow rate throug
 (the nest returns the flow rate it is given, the relaxation imposes it) whose gain tends to 1. The bounds on the
 errors therefore apply at f = 1 only.
 
+## Joint restart (`check_joint_restart.py`)
+A joint run that stops after `steady.max_iterations` exchanges writes a joint record (`Joint`) in the outer
+domain's last checkpoint and names that checkpoint in its error message (`docs/boundary_conditions.rst`, Two-way
+nests, Restart). The script runs, each in its own directory:
+1. `straight/`: the deck with the nests `crest` and `lee` and `nest.feedback = defect` (with `--relax`: the nest
+   `hill` and `nest.feedback = relax`), to the steady verdict;
+2. `stopped/`: the same with `steady.max_iterations = M` (`--stop M`), which stops after M exchanges;
+3. `stopped/`: the restart, with the deck less its `init.*` lines and `io.restart` set to the named checkpoint.
+
+It requires:
+1. the straight run and the restart exit 0, the stopped run does not; the record has the feedback, M exchanges and
+   one line per nest in `nest.names` order, each naming a checkpoint that exists;
+2. the restart logs `restarted after exchange M`, and is steady after the straight run's exchanges with every
+   domain's iterations over the run the same;
+3. the last plotfile of every domain and the last checkpoint's state, node heights, closure history, nest faces and
+   joint record are byte for byte the straight run's (the driver record holds wall times and is not compared).
+
+M must be above the one-way runs' iterations (`steady.max_iterations` caps them too: 99 for the outer domain, up to
+121 for a nest here) and below the straight run's exchanges.
+
+| | ranks | M | exchanges | result |
+|---|---|---|---|---|
+| crest and lee, defect | 3 | 150 | 254 | byte for byte |
+| hill, relax | 2 | 140 | 160 | byte for byte |
+
 ## CTest
-`rt_nests_two_way` (2 ranks, labels `regression;smoke`). The abort tests `abort_nests_feedback_value`,
-`abort_nests_feedback_no_nests`, `abort_nests_feedback_newton`, `abort_nests_feedback_restart`,
+`rt_nests_two_way` (2 ranks, labels `regression;smoke`). `rt_nests_joint_restart` (3 ranks, labels
+`regression;smoke`) and `rt_nests_joint_restart_relax` (2 ranks, label `regression`) run `check_joint_restart.py`
+(above). The abort tests `abort_nests_joint_restart_names`, `_iterations` and `_version` check that a joint record
+naming other nests, a `steady.max_iterations` at or below its exchanges, and a record of another version stop the
+run and name `io.restart`. The abort tests `abort_nests_feedback_value`,
+`abort_nests_feedback_no_nests`, `abort_nests_feedback_newton`,
 `abort_nests_feedback_damping`, `abort_nests_feedback_odd_boxes` and `abort_nests_feedback_narrow` check that the inputs `nest.feedback` refuses stop
 the run and name the key. `inputs_abort` is `inputs_outer` without `mesh.max_grid_size` and `steady.stage`, which
 two of them set on the command line (a key given twice stops the run).

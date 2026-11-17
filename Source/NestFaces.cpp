@@ -615,7 +615,7 @@ std::string NestFaces::summary () const
     return os.str();
 }
 
-std::string NestFaces::hash_inputs (const NestParent& parent, const BoundaryInputs& bin, amrex::Real blend_width)
+std::string NestFaces::hash_inputs (const NestParent& parent, const BoundaryInputs& bin, amrex::Real blend_width, bool joint)
 {
     // Every lateral face's type: a face that is not nest decides too whether the net flux is removed.
     std::string s = "faces";
@@ -623,9 +623,13 @@ std::string NestFaces::hash_inputs (const NestParent& parent, const BoundaryInpu
         const FaceType t = bin.face[amrex::Orientation(n / 2, n % 2 == 0 ? amrex::Orientation::low : amrex::Orientation::high)];
         s += std::string(" ") + kLateral[n] + "=" + face_type_name(t);
     }
-    s += "\nparent step " + std::to_string(parent.parent_step());
+    if (joint) {
+        s += "\njoint parent";
+    } else {
+        s += "\nparent step " + std::to_string(parent.parent_step());
+    }
     for (int d = 0; d < 3; ++d) { s += " " + std::to_string(parent.parent_cells()[d]); }
-    s += "\nparent content " + parent.content_digest();
+    if (!joint) { s += "\nparent content " + parent.content_digest(); }
     s += "\noffset " + std::to_string(parent.offset()[0]) + " " + std::to_string(parent.offset()[1]);
     // The default ratio adds nothing: checkpoints written before bc.nest_ratio keep their hash.
     if (parent.ratio() != kNestRatio) { s += "\nratio " + std::to_string(parent.ratio()); }

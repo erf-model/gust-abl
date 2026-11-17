@@ -388,8 +388,9 @@ Limits of this one-way form:
 - The Rayleigh layer relaxes the nest's theta towards the deck's profile, as the outer domain's does.
 - The check of each nest before the outer run uses the deck's forcing; the nest itself runs with the outer run's final
   forcing (they differ only after a column first guess adjusts it).
-- A nest cannot be restarted within the run. To continue one, run it as a patch on its own (a deck like
-  ``Tests/Canonical_RANS/Nests_One_Process/inputs_nest``) with ``io.restart``.
+- A one-way nest cannot be restarted within the run. To continue one, run it as a patch on its own (a deck like
+  ``Tests/Canonical_RANS/Nests_One_Process/inputs_nest``) with ``io.restart``. A joint run (``nest.feedback =
+  defect`` or ``relax``) restarts from its joint record (:doc:`boundary_conditions`, Two-way nests, Restart).
 - A nest is not checked against the outer sponge or the outflow face beyond the 2-cell margin; a nest placed in the
   sponge takes a damped field on its faces.
 - ``terrain.nest_blend_width`` is not used by the nests (their ground already equals the outer ground on their

@@ -1,0 +1,106 @@
+// The joint run's record (JointRecord.H): written by the I/O rank, read back on every rank bit for bit, and refused
+// when a line is missing or malformed.
+#include "JointRecord.H"
+
+#include <AMReX_ParallelDescriptor.H>
+#include <AMReX_Utility.H>
+
+#include <gtest/gtest.h>
+
+#include <fstream>
+#include <stdexcept>
+#include <string>
+
+namespace {
+
+// A directory for one test, removed afterwards, on the I/O rank.
+struct ScopedDir
+{
+    std::string name;
+    explicit ScopedDir (std::string n) : name(std::move(n))
+    {
+        if (amrex::ParallelDescriptor::IOProcessor()) { amrex::UtilCreateCleanDirectory(name, false); }
+        amrex::ParallelDescriptor::Barrier();
+    }
+    ~ScopedDir ()
+    {
+        amrex::ParallelDescriptor::Barrier();
+        if (amrex::ParallelDescriptor::IOProcessor()) { amrex::FileSystem::RemoveAll(name); }
+        amrex::ParallelDescriptor::Barrier();
+    }
+};
+
+void write_text (const std::string& dir, const std::string& text)
+{
+    if (amrex::ParallelDescriptor::IOProcessor()) { std::ofstream(dir + "/Joint") << text; }
+    amrex::ParallelDescriptor::Barrier();
+}
+
+// 1 on every rank when the predicate holds on every rank (an EXPECT on another rank would not fail the test).
+bool on_all_ranks (bool ok)
+{
+    int v = ok ? 1 : 0;
+    amrex::ParallelDescriptor::ReduceIntMin(v);
+    return v == 1;
+}
+
+} // namespace
+
+TEST(JointRecord, RoundTripIsExactOnEveryRank)
+{
+    const ScopedDir d("ut_joint_record");
+    gust::JointRecord w;
+    w.feedback = "relax";
+    w.exchanges = 150;
+    // Not short decimals: a record printed with fewer digits than a hex float would not restore the floors exactly.
+    w.outer_cfl_floor = amrex::Real(1.0) / amrex::Real(3.0);
+    w.nests = {{"crest", amrex::Real(0.1), "outer_chk_crest00271"},
+               {"lee", amrex::Real(0), "runs/a b/outer_chk_lee00012"}};   // 0: no floor; a path with a space
+    gust::write_joint_record(d.name, w);
+
+    gust::JointRecord r;
+    const bool found = gust::read_joint_record(d.name, r);
+    bool same = found && r.feedback == w.feedback && r.exchanges == w.exchanges
+                && r.outer_cfl_floor == w.outer_cfl_floor && r.nests.size() == w.nests.size();
+    for (std::size_t n = 0; same && n < w.nests.size(); ++n) {
+        same = r.nests[n].name == w.nests[n].name && r.nests[n].cfl_floor == w.nests[n].cfl_floor
+               && r.nests[n].chk == w.nests[n].chk;
+    }
+    EXPECT_TRUE(on_all_ranks(same));
+}
+
+TEST(JointRecord, NoFileIsNotAJointCheckpoint)
+{
+    const ScopedDir d("ut_joint_record_none");
+    gust::JointRecord r;
+    r.exchanges = 9;
+    EXPECT_TRUE(on_all_ranks(!gust::read_joint_record(d.name, r)));
+}
+
+TEST(JointRecord, MalformedRecordsAbort)
+{
+    const ScopedDir d("ut_joint_record_bad");
+    const std::string head = "GUST_JOINT 1\nfeedback defect\nexchanges 4\nouter 0x1p-2\n";
+    const std::string bad[] = {
+        "GUST_JOINT 2\nfeedback defect\nexchanges 4\nouter 0x1p-2\nnest a 0x0p+0 chk\n",   // another version
+        "GUST_JOINT 1\nfeedback inject\nexchanges 4\nouter 0x1p-2\nnest a 0x0p+0 chk\n",   // no such feedback
+        "GUST_JOINT 1\nfeedback defect\nexchanges 0\nouter 0x1p-2\nnest a 0x0p+0 chk\n",   // no exchange taken
+        "GUST_JOINT 1\nfeedback defect\nexchanges 4\nouter -0x1p-2\nnest a 0x0p+0 chk\n",  // a negative floor
+        "GUST_JOINT 1\nfeedback defect\nexchanges 4\nouter nan\nnest a 0x0p+0 chk\n",      // not finite
+        head,                                                                              // no nest
+        head + "nest a 0x0p+0\n",                                                          // no checkpoint
+        head + "nest a 0x1p-3x chk\n",                                                     // trailing text in a floor
+        head + "nests a 0x0p+0 chk\n",                                                     // not a nest line
+    };
+    for (const auto& text : bad) {
+        write_text(d.name, text);
+        gust::JointRecord r;
+        bool threw = false;
+        try { gust::read_joint_record(d.name, r); } catch (const std::runtime_error&) { threw = true; }
+        EXPECT_TRUE(on_all_ranks(threw)) << text;
+    }
+    // The same head with one good nest line reads.
+    write_text(d.name, head + "nest a 0x0p+0 chk\n");
+    gust::JointRecord r;
+    EXPECT_TRUE(on_all_ranks(gust::read_joint_record(d.name, r) && r.nests.size() == 1 && r.outer_cfl_floor == 0.25));
+}

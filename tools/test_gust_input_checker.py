@@ -292,6 +292,8 @@ OTHER_KEY = {
     "abort_force_file_restart_header",        # io.restart: the checkpoint is written by the test's first run
     "abort_unsteady_restart_average_start",   # the same
     "abort_unsteady_restart_past_stop",       # the same
+    "abort_nests_joint_restart_names",        # io.restart: the joint record is written by the configure step into
+    "abort_nests_joint_restart_iterations",   # the build directory, which the sweep does not know
     "abort_buildings_lusgs",                  # reported on steady.sweep
     "abort_nests_feedback_factor_nan",        # nan is left to AMReX's parser (deck.to_real); the deck's Rayleigh
                                               # layer on u, v and k is reported on nest.feedback

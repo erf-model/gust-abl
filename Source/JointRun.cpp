@@ -36,8 +36,12 @@ const char* status_name (SteadyStatus s)
 
 } // namespace
 
-JointResult run_joint (const std::vector<JointMember*>& members, int max_exchanges)
+JointResult run_joint (const std::vector<JointMember*>& members, int max_exchanges, int first_exchange)
 {
+    if (first_exchange < 0 || first_exchange >= max_exchanges) {
+        amrex::Abort("gust: run_joint: " + std::to_string(first_exchange) + " exchanges taken of at most "
+                     + std::to_string(max_exchanges) + " (steady.max_iterations)");
+    }
     if (members.size() < 2 || (members[0]->defect == nullptr) == (members[0]->relax == nullptr)) {
         amrex::Abort("gust: run_joint: needs the outer domain with its defect source or its relaxation (one of them) and "
                      "at least one nest");
@@ -56,11 +60,13 @@ JointResult run_joint (const std::vector<JointMember*>& members, int max_exchang
     if (relax) {
         amrex::Print() << "gust: joint run (nest.feedback = relax, nest.feedback_factor = " << P.relax->factor()
                        << "): the outer domain and " << members.size() - 1 << " nest(s) exchange every iteration, up to "
-                       << max_exchanges << " exchanges; the relaxation's weight rises from 0 on each nest's faces to 1 "
+                       << max_exchanges << " exchanges" << (first_exchange > 0 ? " over the run" : "")
+                       << "; the relaxation's weight rises from 0 on each nest's faces to 1 "
                        << kDefectMargin << " outer cells inside them\n";
     } else {
         amrex::Print() << "gust: joint run (nest.feedback = defect): the outer domain and " << members.size() - 1
-                       << " nest(s) exchange every iteration, up to " << max_exchanges << " exchanges; the source acts "
+                       << " nest(s) exchange every iteration, up to " << max_exchanges << " exchanges"
+                       << (first_exchange > 0 ? " over the run" : "") << "; the source acts "
                        << kDefectMargin << " outer cells inside each nest's faces\n";
     }
     State qr;
@@ -75,7 +81,10 @@ JointResult run_joint (const std::vector<JointMember*>& members, int max_exchang
     ResidualFields R;
     JointResult out;
     const double t_all = amrex::second();
-    for (int it = 0; it < max_exchanges; ++it) {
+    if (first_exchange > 0) {
+        amrex::Print() << "gust: joint run: restarted after exchange " << first_exchange << "\n";
+    }
+    for (int it = first_exchange; it < max_exchanges; ++it) {
         // 1. Up: the nests restricted onto the outer state's copy, the source from its residual.
         double t0 = amrex::second();
         // q* = the outer state with I q_f on every footprint (two outer ghost fills for any number of nests).
@@ -84,7 +93,7 @@ JointResult run_joint (const std::vector<JointMember*>& members, int max_exchang
         restrict_patches(images, *P.mesh, *P.geom, P.fill_ghosts, qr);
         if (relax) {
             P.relax->set(qr, regions);
-            if (it == 0) {
+            if (it == first_exchange) {
                 for (const auto& n : P.relax->nests()) {
                     char line[200];
                     std::snprintf(line, sizeof(line), "gust: joint: %s: mean horizontal speed %.4e m/s, rate f U / dx "
@@ -109,6 +118,9 @@ JointResult run_joint (const std::vector<JointMember*>& members, int max_exchang
             JointMember& N = *members[n];
             N.parent->refresh(*P.state);
             change = std::max(change, N.faces->refresh(*N.parent, *N.mesh));
+            // The ghosts from the new faces: the driver's local step reads them before the iteration fills them, and
+            // a joint restart's first step fills them from these faces (Stage::init), so the run and its restart agree.
+            N.fill_ghosts(*N.state);
         }
         tx += amrex::second() - t0;
         // 4. The nests' iterations.
@@ -128,7 +140,7 @@ JointResult run_joint (const std::vector<JointMember*>& members, int max_exchang
         out.exchange_seconds += tx;
         out.exchanges = it + 1;
         const bool last = all_steady || diverged || it + 1 == max_exchanges;
-        if (it < 10 || it % 10 == 9 || last) {
+        if (it < first_exchange + 10 || it % 10 == 9 || last) {
             char line[400];
             if (relax) {
                 // The outer state after its step against the target of this exchange, where the rate is > 0.
