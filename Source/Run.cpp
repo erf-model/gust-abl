@@ -174,10 +174,24 @@ void run ()
             if (!nest_outcomes[i].steady) { not_steady += "\n  nest." + nests.nests[i].name + " (last checkpoint " + nest_chks[i] + ")"; }
         }
         if (!outcome.steady) { not_steady += "\n  the outer domain (last checkpoint " + chk + ")"; }
+        // The blend is refused with io.restart (App.cpp): the restart then runs without it.
+        const std::string blend = amrex::ParmParse("convection").contains("hybrid_sigma_max")
+            ? " and without convection.hybrid_sigma_max (the blend is not in the checkpoint)" : "";
+        if (not_steady.empty() && joint_result.waiting_on_feedback) {
+            // Every domain's own verdict is steady, but the feedback between them had not settled (JointRun.H).
+            char what[300];
+            std::snprintf(what, sizeof(what), "last change %.3e, sum over the window %.3e",
+                          joint_result.feedback_change, joint_result.feedback_window);
+            amrex::Abort(std::string("gust: nest.feedback = ") + nest_feedback_name(nests.feedback)
+                         + ": the joint run did not reach steady: every domain is steady, but the "
+                         + (nests.feedback == NestFeedback::relax ? "relaxation's target" : "defect source")
+                         + " had not settled over steady.monitor_window exchanges to steady.monitor_rel_tol (" + what
+                         + ") within steady.max_iterations = " + std::to_string(joint_result.exchanges) + " exchanges; "
+                         "to go on, restart with io.restart = " + chk + " (its joint record names the nests' "
+                         "checkpoints), a larger steady.max_iterations" + blend + "; the window starts empty there and fills "
+                         "again over steady.monitor_window exchanges");
+        }
         if (!not_steady.empty()) {
-            // The blend is refused with io.restart (App.cpp): the restart then runs without it.
-            const std::string blend = amrex::ParmParse("convection").contains("hybrid_sigma_max")
-                ? " and without convection.hybrid_sigma_max (the blend is not in the checkpoint)" : "";
             amrex::Abort(std::string("gust: nest.feedback = ") + nest_feedback_name(nests.feedback)
                          + ": the joint run did not reach steady after " + std::to_string(joint_result.exchanges)
                          + " exchanges (steady.max_iterations, steady.residual_tol, steady.residual_drop_orders); "

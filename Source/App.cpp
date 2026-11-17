@@ -561,7 +561,7 @@ std::string run_domain (const DomainRole& role)
         if (blend > 0) { ground_edit = [&, blend] (amrex::MultiFab& z) { blend_nest_ground(*parent, bin, blend, geom, z); }; }
         // A joint run's nest: its coordinate surfaces follow the parent's aloft (NestFaces.H).
         if (joint_nest) {
-            levels_edit = [&] (amrex::MultiFab& z, const amrex::Vector<amrex::Real>& zl) { follow_parent_levels(*parent, geom, zl, z); };
+            levels_edit = [&] (amrex::MultiFab& z, const amrex::Vector<amrex::Real>& zl) { follow_parent_levels(*parent, geom, zl, z, role_name); };
         }
         if (nest_face) { nest_hash = NestFaces::hash_inputs(*parent, bin, blend, joint_nest); }
     }
@@ -1148,6 +1148,20 @@ std::string run_domain (const DomainRole& role)
                 };
             }
             if (relax) { m.relax = relax.get(); }
+            if (defect || relax) {
+                m.feedback_tol = sopt.criterion.monitor_rel_tol;
+                m.feedback_window = sopt.criterion.monitor_window;
+                if (defect) {
+                    // A source change of residual_tol times the residual scale passes the test at any size.
+                    amrex::Real sc[6];
+                    residual_scales(res_in.jvp_scales, simplec_stage.norm_height(), sc);
+                    const amrex::Real f = sopt.criterion.residual_tol / sopt.criterion.monitor_rel_tol;
+                    m.feedback_floor = {f * sc[0], f * sc[1], f * sc[2], f * sc[4], f * sc[5]};
+                } else {
+                    const JvpScales& js = res_in.jvp_scales;
+                    m.feedback_floor = {js.velocity, js.velocity, js.velocity, js.theta, js.tke};
+                }
+            }
             if (nest != nullptr) {
                 m.parent = parent.get();
                 m.faces = nest_faces.get();

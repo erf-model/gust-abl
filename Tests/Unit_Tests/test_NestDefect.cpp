@@ -20,21 +20,29 @@
 //   defect_region: the footprint and the inner box kDefectMargin cells in;
 //   NestDefect: S = R on the inner box's points (faces from L to H + 1 along
 //     their normal), 0 elsewhere; add_to_residual subtracts it; nothing
-//     while inactive.
+//     while inactive;
+//   the change of S between two sets (the joint run's stop test, JointRun.H):
+//     max |S_new - S_old| over the inner box's points and the largest
+//     |S_new|, against values computed here; first on the first set only;
+//     relative_feedback_change's closed form (floor, 0/0, x/0, NaN).
 #include "Inputs.H"
 #include "MassFlux.H"
 #include "Mesh.H"
 #include "NestDefect.H"
 #include "Residual.H"
 #include "State.H"
+#include "TestHelpers.H"
 
 #include <AMReX_ParallelDescriptor.H>
 #include <AMReX_ParallelReduce.H>
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <array>
 #include <cmath>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <type_traits>
 #include <vector>
@@ -577,4 +585,119 @@ TEST(NestDefect, RegionAndSource)
     }
     amrex::ParallelDescriptor::ReduceLongSum(bad);
     EXPECT_EQ(bad, 0) << "S is not R on the inner box's points and 0 elsewhere, or R - S is wrong";
+}
+
+// The change of S between two sets: the second R differs from the first by a field that is largest (7.5) at one
+// point of the inner box and larger still (100) outside it, where S is not set: the change is 7.5 per field, the
+// size the largest |R_2| on the inner box. Beyond the plan (tracker row N-114, item 6).
+TEST(NestDefect, ChangeOfTheSourceBetweenTwoSets)
+{
+    const amrex::Box dom(amrex::IntVect(0, 0, 0), amrex::IntVect(19, 15, 7));
+    const gust::DefectRegion g = gust::defect_region("nest.a", amrex::IntVect(24, 20, 8), 2, kOffset, dom);
+    DefectCase p{parent_inputs(false)};
+    p.make();
+    gust::ResidualFields R1, R2;
+    R1.define(p.ba, p.dm);
+    R2.define(p.ba, p.dm);
+    auto rv = [] (int i, int j, int k, int c) { return 1.0 + i - 2.0 * j + 3.0 * k + 0.25 * c; };
+    const amrex::IntVect peak(7, 6, 3);   // inside the inner box (5..12, 4..9, all z) at every index type
+    const amrex::IntVect out(1, 1, 1);    // outside the footprint
+    int c = 0;
+    for (auto& f : R1.fields()) {
+        const int cc = c++;
+        fill_all(*f.mf, [&] (int i, int j, int k) { return rv(i, j, k, cc); });
+    }
+    c = 0;
+    for (auto& f : R2.fields()) {
+        const int cc = c++;
+        fill_all(*f.mf, [&] (int i, int j, int k) {
+            const amrex::IntVect iv(i, j, k);
+            const double bump = iv == peak ? 7.5 : iv == out ? 100.0 : 0.01 * ((i + j + k) % 5);
+            return rv(i, j, k, cc) + bump;
+        });
+    }
+    gust::NestDefect S(p.ba, p.dm);
+    S.set(R1, {g});
+    EXPECT_TRUE(S.change().first);
+    S.set(R2, {g});
+    EXPECT_FALSE(S.change().first);
+    const amrex::MultiFab* r2[5] = {&R2.u, &R2.v, &R2.w, &R2.theta, &R2.tke};
+    for (int n = 0; n < 5; ++n) {
+        const amrex::Box in = amrex::convert(g.inner, r2[n]->ixType());
+        ASSERT_TRUE(in.contains(peak));
+        double big = 0;
+        each_valid(*r2[n], [&] (int i, int j, int k, double v) {
+            if (in.contains(amrex::IntVect(i, j, k))) { big = std::max(big, std::abs(v)); }
+        });
+        amrex::ParallelAllReduce::Max(big, amrex::ParallelDescriptor::Communicator());
+        EXPECT_DOUBLE_EQ(static_cast<double>(S.change().change[static_cast<std::size_t>(n)]), 7.5) << "field " << n;
+        EXPECT_DOUBLE_EQ(static_cast<double>(S.change().size[static_cast<std::size_t>(n)]), big) << "field " << n;
+    }
+    // The same R again: no change.
+    S.set(R2, {g});
+    for (int n = 0; n < 5; ++n) { EXPECT_EQ(static_cast<double>(S.change().change[static_cast<std::size_t>(n)]), 0.0); }
+}
+
+TEST(NestDefect, RelativeFeedbackChangeClosedForm)
+{
+    gust::FeedbackChange c;
+    const std::array<amrex::Real, 5> nofloor{};
+    EXPECT_TRUE(std::isinf(static_cast<double>(gust::relative_feedback_change(c, nofloor))));   // first
+    c.first = false;
+    c.change = {1, 2, 0, 3, 0.5};
+    c.size = {10, 100, 0, 1, 50};
+    // max(1/10, 2/100, 0/0 = 0, 3/1, 0.5/50) = 3
+    const double eps = 4.0 * static_cast<double>(std::numeric_limits<amrex::Real>::epsilon());   // relative
+    EXPECT_NEAR(static_cast<double>(gust::relative_feedback_change(c, nofloor)), 3.0, 3.0 * eps);
+    // A floor above the size measures absolutely: theta 3 / 30.
+    const std::array<amrex::Real, 5> floor{0, 0, 0, 30, 0};
+    EXPECT_NEAR(static_cast<double>(gust::relative_feedback_change(c, floor)), 0.1, 0.1 * eps);
+    c.change[2] = 1;   // a change over a size and floor of 0
+    EXPECT_TRUE(std::isinf(static_cast<double>(gust::relative_feedback_change(c, floor))));
+    c.change[2] = 0;
+    {
+        const gust::test::ScopedNoInvalidTrap no_trap;   // the NaN is planted on purpose
+        c.change[4] = std::numeric_limits<amrex::Real>::quiet_NaN();
+        EXPECT_TRUE(std::isinf(static_cast<double>(gust::relative_feedback_change(c, floor))));
+    }
+}
+
+// The window test on the per-exchange changes (FeedbackWindow): W = 4, tol = 1e-3.
+TEST(NestDefect, FeedbackWindowSumAndAitken)
+{
+    const amrex::Real tol = 1.0e-3;
+    gust::FeedbackWindow w(4, tol);
+    const amrex::Real inf = std::numeric_limits<amrex::Real>::infinity();
+    w.add(inf);   // the first exchange
+    EXPECT_FALSE(w.settled());
+    for (int n = 0; n < 3; ++n) { w.add(amrex::Real(1.0e-5)); }
+    EXPECT_TRUE(std::isinf(static_cast<double>(w.sum())));   // 3 of 4
+    EXPECT_FALSE(w.settled());
+    // A steady drift of 1e-4 per exchange: sum 4e-4 <= tol, but rho = 1.
+    gust::FeedbackWindow drift(4, tol);
+    for (int n = 0; n < 4; ++n) { drift.add(amrex::Real(1.0e-4)); }
+    EXPECT_NEAR(static_cast<double>(drift.sum()), 4.0e-4,
+                4.0e-4 * 8.0 * static_cast<double>(std::numeric_limits<amrex::Real>::epsilon()));
+    EXPECT_FALSE(drift.settled());
+    // Halving each exchange: d1 = 1.5e-4, d2 = 3.75e-5, rho = 0.25, remainder 1.25e-5.
+    gust::FeedbackWindow fast(4, tol);
+    for (const double d : {1.0e-4, 5.0e-5, 2.5e-5, 1.25e-5}) { fast.add(amrex::Real(d)); }
+    EXPECT_TRUE(fast.settled());
+    // Sum 9.5e-4 <= tol, but rho = 0.9: remainder 4.5e-4 * 0.9 / 0.1 = 4.05e-3 > tol.
+    gust::FeedbackWindow slow(4, tol);
+    for (const double d : {2.5e-4, 2.5e-4, 2.25e-4, 2.25e-4}) { slow.add(amrex::Real(d)); }
+    EXPECT_FALSE(slow.settled());
+    // The same with a 1.2e-3 sum (rho = 0.2) fails on the sum alone.
+    gust::FeedbackWindow big(4, tol);
+    for (const double d : {5.0e-4, 5.0e-4, 1.0e-4, 1.0e-4}) { big.add(amrex::Real(d)); }
+    EXPECT_FALSE(big.settled());
+    // The oldest leaves the window: after 1e-2 and four zeros the window is all zeros (round-off: settled).
+    gust::FeedbackWindow old(4, tol);
+    old.add(amrex::Real(1.0e-2));
+    for (int n = 0; n < 4; ++n) { old.add(0); }
+    EXPECT_EQ(static_cast<double>(old.sum()), 0.0);
+    EXPECT_TRUE(old.settled());
+    // An infinite change (a positive change over a zero size) empties the window.
+    old.add(inf);
+    EXPECT_FALSE(old.settled());
 }

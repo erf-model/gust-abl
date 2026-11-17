@@ -702,7 +702,7 @@ TEST (NestFaces, JointNestLevelsFollowTheParentsAloft)
     const auto zl = gust::make_zlevels(f.in.mesh, g);
     const gust::NestParent parent(dir.name, f.in.mesh, zl, ba, f.dm, true);
     f.make(false, nullptr, [&] (amrex::MultiFab& z, const amrex::Vector<amrex::Real>& lev) {
-        gust::follow_parent_levels(parent, g, lev, z);
+        gust::follow_parent_levels(parent, g, lev, z, "nest.test");
     });
     EXPECT_GT(static_cast<double>(f.mesh.detJ.min(0)), 0.0);
 
@@ -774,6 +774,52 @@ TEST (NestFaces, JointNestLevelsFollowTheParentsAloft)
         EXPECT_GT(lower, 0);
     }
   }
+}
+
+// A joint run's nest whose ground stands far above the parent's: the levels that follow the parent's
+// invert near the ground, and follow_parent_levels aborts naming the nest before Mesh's general check (whose
+// message names no nest). The parent is flat (m = 1, H = 800 m) and the nest has a round 760 m hill (BTF): dh is
+// above 0.91 m H = 728 m, and the first layer at the crest (x = -100 m, y = 1200 m) is about -1.2 m
+// thick. With a 700 m hill (0.875 m H) the bound m - dh coth(H/s)/s is 0.032 > 0 and the levels build.
+TEST (NestFaces, JointNestLevelsThatInvertAbortNamingTheNest)
+{
+    NestRun p;
+    p.in = parent_inputs(false);
+    p.make();
+    const ScopedDir dir{write_parent(p, "ut_nestfaces_invert")};
+    for (const double height : {760.0, 700.0}) {
+        SCOPED_TRACE("hill height " + std::to_string(height) + " m");
+        NestRun f;
+        f.in = patch_inputs(p.in);
+        f.in.terrain.type = "agnesi";
+        f.in.terrain.hill_shape = "round";
+        f.in.terrain.hill_height = static_cast<amrex::Real>(height);
+        f.in.terrain.hill_half_width = 200;
+        f.in.terrain.smoothing = 0;
+        const amrex::Geometry g = gust::make_geometry(f.in.mesh);
+        const amrex::BoxArray ba = gust::make_box_array(f.in.mesh);
+        f.dm = amrex::DistributionMapping(ba);
+        const gust::NestParent parent(dir.name, f.in.mesh, gust::make_zlevels(f.in.mesh, g), ba, f.dm, true);
+        auto levels = [&] (amrex::MultiFab& z, const amrex::Vector<amrex::Real>& lev) {
+            gust::follow_parent_levels(parent, g, lev, z, "nest.tall");
+        };
+        if (height > 728) {
+            std::string what;
+            try {
+                f.make(false, nullptr, levels);
+            } catch (const std::runtime_error& e) {
+                what = e.what();
+            }
+            EXPECT_NE(what.find("nest.tall: the levels that follow the outer domain's surfaces"), std::string::npos) << what;
+            EXPECT_NE(what.find("invert"), std::string::npos) << what;
+            EXPECT_NE(what.find("from level 0 to 1"), std::string::npos) << what;
+            EXPECT_NE(what.find("at x = -100 m, y = 1200 m"), std::string::npos) << what;
+            EXPECT_NE(what.find("mesh.prob_hi z"), std::string::npos) << what;
+        } else {
+            EXPECT_NO_THROW(f.make(false, nullptr, levels));
+            EXPECT_GT(static_cast<double>(f.mesh.detJ.min(0)), 0.0);
+        }
+    }
 }
 
 // UT-9.2.3 to UT-9.2.5 share this: the zone's rate, source and diagonal.
@@ -1202,7 +1248,7 @@ TEST (NestFaces, NestNodeHeightsDoNotDependOnTheLayout)
                 const gust::BoundaryInputs b = all_nest(dir.name);
                 if (joint) {
                     f.make(false, nullptr, [&] (amrex::MultiFab& z, const amrex::Vector<amrex::Real>& lev) {
-                        gust::follow_parent_levels(parent, g, lev, z);
+                        gust::follow_parent_levels(parent, g, lev, z, "nest.test");
                     });
                 } else {
                     f.make(false, [&] (amrex::MultiFab& z) { gust::blend_nest_ground(parent, b, 200, g, z); });

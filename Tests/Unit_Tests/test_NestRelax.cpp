@@ -23,6 +23,12 @@
 //     and agree with a one-box layout; with UT-8.3.1's closed form on 1, 2
 //     and 4 ranks (the unit_np* tests).
 //   nest.feedback_factor's check names the key.
+//   The change of the target between two sets (the joint run's stop test,
+//     JointRun.H; tracker row N-114, item 6, beyond the plan): max |q*_new -
+//     q*_old| where c > 0 only (a larger change on a footprint face, where
+//     c = 0, and outside is not counted), the sizes (one velocity scale, 0 for
+//     theta, the largest k), against values computed here; first on the
+//     first set only.
 #include "HillTestHelpers.H"
 #include "ImplicitOperator.H"
 #include "Inputs.H"
@@ -605,4 +611,59 @@ TEST(NestRelax, FactorCheckNamesTheKey)
         const std::string err = gust::check_feedback_factor(f);
         EXPECT_NE(err.find("nest.feedback_factor"), std::string::npos) << f;
     }
+}
+
+TEST(NestRelax, ChangeOfTheTargetBetweenTwoSets)
+{
+    Parent p(false);
+    const gust::DefectRegion a = gust::defect_region("nest.a", amrex::IntVect(24, 20, 8), 2, amrex::IntVect(3, 2, 0),
+                                                     p.geom.Domain());
+    gust::State q1, q2;
+    q1.define(p.ba, p.dm);
+    q2.define(p.ba, p.dm);
+    fill_state(p, q1, 1);
+    // q2 = q1 + a bump: 0.5 at one point deep in the footprint (c > 0 there at every index type), 50 on the
+    // footprint's low x face (x-face 3: c = 0) and outside the footprint, 0.001 (i + j + k) mod 3 elsewhere.
+    const amrex::IntVect deep(8, 6, 4), face(3, 6, 4), outside(17, 14, 2);
+    amrex::MultiFab* f2[5] = {&q2.u, &q2.v, &q2.w, &q2.theta, &q2.tke};
+    for (int c = 0; c < 5; ++c) {
+        const amrex::IndexType t = f2[c]->ixType();
+        fill_all(*f2[c], [&] (int i, int j, int k) {
+            const amrex::IntVect iv(i, j, k);
+            const double bump = iv == deep ? 0.5 : (iv == outside || (c == 0 && iv == face)) ? 50.0 : 0.001 * ((i + j + k) % 3);
+            return field(pos(p.geom, t, i, 0), pos(p.geom, t, j, 1), k, c, 1) + bump;
+        });
+    }
+    gust::NestRelax S(p.ba, p.dm, p.geom, amrex::Real(kFactor));
+    S.set(q1, {a});
+    EXPECT_TRUE(S.change().first);
+    S.set(q2, {a});
+    EXPECT_FALSE(S.change().first);
+    // The sizes from q2 where c > 0.
+    const Loc locs[5] = {Loc::xface, Loc::yface, Loc::zface, Loc::cell, Loc::cell};
+    double big[5] = {0, 0, 0, 0, 0};
+    for (int c = 0; c < 5; ++c) {
+        amrex::MultiFab both(f2[c]->boxArray(), f2[c]->DistributionMap(), 2, 0);
+        amrex::MultiFab::Copy(both, S.rate(locs[c]), 0, 0, 1, 0);
+        amrex::MultiFab::Copy(both, *f2[c], 0, 1, 1, 0);
+        for (amrex::MFIter mfi(both, false); mfi.isValid(); ++mfi) {
+            const amrex::Box b = mfi.validbox();
+            amrex::FArrayBox h(b, 2, amrex::The_Pinned_Arena());
+            h.copy<amrex::RunOn::Device>(both[mfi], b, 0, b, 0, 2);
+            amrex::Gpu::streamSynchronize();
+            amrex::LoopOnCpu(b, [&] (int i, int j, int k) {
+                const amrex::IntVect iv(i, j, k);
+                if (h(iv, 0) > 0) { big[c] = std::max(big[c], std::abs(static_cast<double>(h(iv, 1)))); }
+            });
+        }
+        amrex::ParallelAllReduce::Max(big[c], amrex::ParallelDescriptor::Communicator());
+    }
+    const double U = std::max(big[0], std::max(big[1], big[2]));
+    const double want[5] = {U, U, U, 0.0, big[4]};
+    for (int c = 0; c < 5; ++c) {
+        const auto n = static_cast<std::size_t>(c);
+        EXPECT_NEAR(static_cast<double>(S.change().change[n]), 0.5, kTol) << "field " << c;
+        EXPECT_DOUBLE_EQ(static_cast<double>(S.change().size[n]), want[c]) << "field " << c;
+    }
+    EXPECT_GT(U, 1.0);
 }

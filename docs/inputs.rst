@@ -1293,7 +1293,9 @@ writes them and stops; the other ``steady.*`` keys are then refused.
    * - ``steady.residual_tol``
      - ``5e-5``
      - Finite, > 0. Every scaled residual must be below it. The scales divide by the depth of the layers, not
-       ``mesh.prob_hi`` z (:ref:`convergence-criteria`).
+       ``mesh.prob_hi`` z (:ref:`convergence-criteria`). In a joint run with ``nest.feedback = defect`` the outer
+       domain's value also sets the size below which the source's change counts absolutely (:doc:`boundary_conditions`,
+       Two-way nests).
    * - ``steady.residual_drop_orders``
      - ``4``
      - ≥ 0 and ≤ the largest decimal exponent of the precision (308 double, 38 single). Every residual must also
@@ -1305,10 +1307,13 @@ writes them and stops; the other ``steady.*`` keys are then refused.
        ``steady.cfl0`` (for grid sequencing see ``steady.sequencing_hold``).
    * - ``steady.monitor_rel_tol``
      - ``1e-3``
-     - Finite, > 0. Relative tolerance of the monitors.
+     - Finite, > 0. Relative tolerance of the monitors. The outer domain's value is also the joint run's tolerance on
+       the feedback's change over ``steady.monitor_window`` exchanges (``nest.feedback = defect`` or ``relax``,
+       :doc:`boundary_conditions`, Two-way nests).
    * - ``steady.monitor_window``
      - ``50``
-     - ≥ 2. Monitor window (iterations).
+     - ≥ 2. Monitor window (iterations; in a joint run, also the outer domain's window of exchanges for the
+       feedback test).
    * - ``steady.confidence``
      - ``0``
      - 0 (off) or finite, > 0 and ≤ 1: the run is also steady when this share of the cells meet the residual
@@ -1722,7 +1727,9 @@ the outer run's final forcing.
        With ``defect`` the one-way nest runs already use the joint run's coordinate surfaces, so they differ from
        a ``none`` run's (the same holds for ``relax``). ``steady.max_iterations`` also caps the joint exchanges,
        counted over the run; ``io.restart`` with a joint run's checkpoint continues the joint run
-       (:ref:`two-way-nests`, Restart).
+       (:ref:`two-way-nests`, Restart). The joint run is steady when every domain is steady and the feedback has
+       settled over the outer domain's ``steady.monitor_window`` exchanges to its ``steady.monitor_rel_tol``;
+       otherwise it stops with an error.
    * - ``nest.feedback_factor``
      - 1
      - Finite, > 0 (dimensionless): the relaxation's rate over the advection rate, :math:`f` in

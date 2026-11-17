@@ -175,6 +175,10 @@ ScalarSweepResult scalar_sweep (Equation eq, amrex::MultiFab& field, const amrex
 //! the largest face speed, the mean k and, with a wall model, the mean u*.
 std::vector<std::string> stage_residual_names ();
 std::vector<MonitorSpec> stage_monitor_specs (const ResidualInputs& in);
+//! The scales s_q of the scaled residual norms (u, v, w, p, theta, k): U^2/H, U^2/H, U^2/H, U/H, U theta_s/H,
+//! U k_s/H with the jvp scales s (U = s.velocity) and the height H; shared by stage_norms, the confidence and the
+//! joint run's floor of the defect source's change (JointRun.H).
+void residual_scales (const JvpScales& s, amrex::Real H, amrex::Real scale[6]);
 //! The scaled residual norms (RMS per unit volume over U^2/H, U/H, U
 //! theta_s/H, U k_s/H with the jvp scales s and the domain height) and the
 //! monitors of R at q; ss: the wall state at q (null without a wall model).
