@@ -779,7 +779,7 @@ runs support so far:
 
 - The angle and misfit rules were fitted on four nests of one channel site (200 m outer cells, the wind normal
   to the faces): the nests at 25° and 28° raised the outer cells above 0.25 m/s from 12 to 663 and 817 in a
-  joint run, and those at 0° and 14° to 26 and 12. They have not been tested on an independent case.
+  joint run, and those at 14° and 0° to 26 and 12. They have not been tested on an independent case.
 - A channel bending near the outflow face did not harm a joint run (12 to 12 cells), so a bend is a note, not a
   flag.
 - A nest 4 outer cells from the outer inflow face did not converge in a joint run on the Columbia Gorge; the
