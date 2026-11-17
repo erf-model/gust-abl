@@ -197,6 +197,16 @@ else()
                  HINTS ${AMReX_ROOT}/bin ${AMReX_DIR}/../../../bin)
 endif()
 set(EXPECT_ABORT ${Python3_EXECUTABLE} ${SUPPORT}/expect_abort.py)
+# Checks that read plotfiles or arrays with numpy are registered only when Python has it (the configure says so).
+execute_process(COMMAND ${Python3_EXECUTABLE} -c "import numpy"
+                RESULT_VARIABLE _gust_numpy OUTPUT_QUIET ERROR_QUIET)
+if(_gust_numpy EQUAL 0)
+    set(GUST_PYTHON_NUMPY ON)
+else()
+    set(GUST_PYTHON_NUMPY OFF)
+    message(STATUS "GUST: numpy not found for ${Python3_EXECUTABLE}; rt_nests_two_way and "
+                   "speed_difference_selftest are not registered")
+endif()
 
 # --- Unit tests on 1, 2 and 4 ranks -------------------------------------------
 if(GUST_MPI)
@@ -1743,9 +1753,11 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
     # (README.md has the measured ratios).
     set(NESTS2_CASE ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Nests_Two_Way)
     set(NESTS2_OUTER $<TARGET_FILE:gust> ${NESTS2_CASE}/inputs_outer)
-    gust_add_test(NAME rt_nests_two_way NP 2 LABELS "regression;smoke"
-                  PREFIX ${Python3_EXECUTABLE} ${NESTS2_CASE}/check_nests_two_way.py --
-                  COMMAND ${NESTS2_OUTER} ${GUST_TEST_AMREX_FLAGS})
+    if(GUST_PYTHON_NUMPY)
+        gust_add_test(NAME rt_nests_two_way NP 2 LABELS "regression;smoke"
+                      PREFIX ${Python3_EXECUTABLE} ${NESTS2_CASE}/check_nests_two_way.py --
+                      COMMAND ${NESTS2_OUTER} ${GUST_TEST_AMREX_FLAGS})
+    endif()
     gust_add_test(NAME abort_nests_feedback_value NP 1 LABELS "regression;smoke"
                   PREFIX ${EXPECT_ABORT} "nest\\.feedback = 'inject' is not none or defect" --
                   COMMAND ${NESTS_OUTER} ${NESTS_A} nest.feedback=inject ${GUST_TEST_AMREX_FLAGS})
@@ -2804,10 +2816,12 @@ add_test(NAME erf_plotfile_selftest
          WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/tools)
 set_tests_properties(erf_plotfile_selftest PROPERTIES LABELS unit ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
 
-add_test(NAME speed_difference_selftest
-         COMMAND ${Python3_EXECUTABLE} -m unittest -v test_speed_difference
-         WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/tools)
-set_tests_properties(speed_difference_selftest PROPERTIES LABELS unit ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
+if(GUST_PYTHON_NUMPY)
+    add_test(NAME speed_difference_selftest
+             COMMAND ${Python3_EXECUTABLE} -m unittest -v test_speed_difference
+             WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/tools)
+    set_tests_properties(speed_difference_selftest PROPERTIES LABELS unit ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
+endif()
 
 # The nest-placement check (tools/nest_placement.py) on analytic terrains; it needs numpy and scipy, and
 # without them the test is not registered (the configure says so).

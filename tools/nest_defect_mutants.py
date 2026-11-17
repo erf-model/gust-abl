@@ -20,7 +20,7 @@ M = [
   "                for (int a = 0; a < r; ++a) {\n                    const int i = r * (I - ox) + a, j = r * (J - oy) + b;\n                    s += aa",
   "                for (int a = 0; a < 1; ++a) {\n                    const int i = r * (I - ox) + a, j = r * (J - oy) + b;\n                    s += aa"),
  ("D4", "the pressure level not shifted to the parent's", F, "img.plus(d, 0, 1, 0);", ""),
- ("D5", "the pressure shift with the wrong sign", F, "(pc.sum(0) - img.sum(0))", "(img.sum(0) - pc.sum(0))"),
+ ("D5", "the pressure shift with the wrong sign", F, "LinComb(diff, 1, pc, 0, -1, img", "LinComb(diff, -1, pc, 0, 1, img"),
  # the region
  ("D6", "a margin of one parent cell", F, "g.inner.grow(d, -kDefectMargin);", "g.inner.grow(d, -kDefectMargin + 1);"),
  ("D7", "the margin also across a periodic direction", F, "if (!periodic[d]) { g.inner", "if (true) { g.inner"),

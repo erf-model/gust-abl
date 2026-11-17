@@ -216,6 +216,9 @@ jobs:
         with:
           python-version: '3.x'
 
+      - name: Install numpy (rt_nests_two_way, speed_difference_selftest)
+        run: python -m pip install numpy
+
       - name: Install FFTW (vcpkg)
         run: vcpkg install fftw3:x64-windows
 

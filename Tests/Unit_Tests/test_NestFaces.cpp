@@ -727,7 +727,7 @@ TEST (NestFaces, JointNestLevelsFollowTheParentsAloft)
     for (std::size_t n = 0; n < host.size(); ++n) {
         const auto& h = host[n];
         amrex::LoopOnCpu(boxes[n], [&] (int i, int j, int k) {
-            if (k == 0) { dh = std::max(dh, std::abs(h(amrex::IntVect(i, j, 0), 2) - h(amrex::IntVect(i, j, 0), 1))); }
+            if (k == 0) { dh = std::max(dh, static_cast<double>(std::abs(h(amrex::IntVect(i, j, 0), 2) - h(amrex::IntVect(i, j, 0), 1)))); }
             if (k < kn) {
                 m = std::min(m, (h(amrex::IntVect(i, j, k + 1), 1) - h(amrex::IntVect(i, j, k), 1))
                                     / static_cast<double>(zl[k + 1] - zl[k]));

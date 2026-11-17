@@ -1,6 +1,7 @@
 #include "NestDefect.H"
 
 #include "MassFlux.H"
+#include "Reductions.H"
 
 #include <AMReX_ParallelDescriptor.H>
 
@@ -135,7 +136,14 @@ void restrict_patch (const State& fine, const Mesh& mesh_f, const amrex::Geometr
             if (src == &fine.p) {
                 amrex::MultiFab pc(img.boxArray(), img.DistributionMap(), 1, 0);
                 pc.ParallelCopy(coarse.p, 0, 0, 1);
-                const amrex::Real d = (pc.sum(0) - img.sum(0)) / amrex::Real(img.boxArray().numPts());
+                // The level shift summed on one box over the footprint, in a fixed order: the same bits for
+                // any nest layout or rank map (MultiFab::sum adds box by box, so its last bits follow the boxes).
+                amrex::MultiFab diff(img.boxArray(), img.DistributionMap(), 1, 0);
+                amrex::MultiFab::LinComb(diff, 1, pc, 0, -1, img, 0, 0, 1, 0);
+                const amrex::BoxArray one(img.boxArray().minimalBox());
+                amrex::MultiFab whole(one, amrex::DistributionMapping(one), 1, 0);
+                whole.ParallelCopy(diff, 0, 0, 1);
+                const amrex::Real d = deterministic_sum(whole, 0) / amrex::Real(one.numPts());
                 img.plus(d, 0, 1, 0);
             }
             dst->ParallelCopy(img, 0, 0, 1);
