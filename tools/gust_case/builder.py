@@ -21,6 +21,7 @@ Each deck writes the keys the case needs and leaves GUST's defaults out, so a
 deck stays short enough to read. ``abl.drive`` and ``abl.theta`` name the
 set-up, and GUST checks the deck against them when it starts.
 """
+import math
 import os
 import shutil
 
@@ -265,7 +266,12 @@ class Builder:
         p = self.plan
         f = p.frame
         towards = wind.towards_from_meteorological(direction)
-        faces = wind.lateral_faces(towards, p.side_faces)
+        turning = self._face_turning(towards)
+        faces = wind.lateral_faces(towards, p.side_faces, turning)
+        if turning != 0.0 and "slip_wall" in faces.values():
+            # the middle of the turn landed on an axis (to 6e-8 degrees): step towards the geostrophic wind
+            turning -= math.copysign(1.0e-6, p.latitude)
+            faces = wind.lateral_faces(towards, p.side_faces, turning)
         cx, cy = wind.unit_vector(towards)
         deck = Deck(self._title("wind from %g degrees" % direction))
 
@@ -292,6 +298,9 @@ class Builder:
         self._idw(deck)
 
         deck.section("Boundaries: wind from %g degrees (towards %g, counter-clockwise from x)" % (direction, towards))
+        if turning != 0.0:
+            deck.section("The geostrophic wind turns with height: the faces follow towards %.6g degrees, the middle of "
+                         "the drag law's turn" % ((towards + turning) % 360.0))
         for face in ("xlo", "xhi", "ylo", "yhi"):
             deck.set("bc." + face, faces[face])
         deck.set("bc.zlo", "surface_layer")
@@ -358,6 +367,24 @@ class Builder:
         chk = self._output(deck, "", self.case["output"]["checkpoint"] or bool(p.patches))
         self._apply_gust_inputs(deck)
         return deck, chk
+
+    def _face_turning(self, towards):
+        """Degrees to turn ``towards`` (the direction of the wind asked for) to the direction the lateral faces are
+        chosen from: 0, or for a geostrophic drive the middle of the drag law's turn between the wind near the
+        ground and the geostrophic wind (wind.face_turning), so that a face parallel to the wind near the ground takes
+        the flow that crosses it aloft rather than a slip wall. With atmosphere.geostrophic_wind given, the middle is
+        measured from the direction of that wind."""
+        p = self.plan
+        if not p.geostrophic:
+            return 0.0
+        z0 = p.upstream_roughness
+        if p.geostrophic_wind is not None:
+            ug, vg = p.geostrophic_wind
+            half = wind.face_turning(wind.drag_law_ustar(math.hypot(ug, vg), z0, p.latitude), z0, p.latitude)
+            middle = math.degrees(math.atan2(vg, ug)) - half      # half < 0 in the north: back from G
+            return (middle - towards + 180.0) % 360.0 - 180.0
+        ustar = wind.friction_velocity(p.speed, p.height, z0)
+        return wind.face_turning(ustar, z0, p.latitude)
 
     # ----------------------------------------------------------------------------------------------------------
     # the column deck of a geostrophic drive

@@ -56,8 +56,9 @@ A first case
    surface:
      roughness: 0.01
 
-The folder ``Tests/Infrastructure/Case_Setup`` holds four more examples, each run and checked by CTest: a sweep of
-directions, a nested patch, a geostrophic wind from the column and a hill from an ESRI ASCII grid.
+The folder ``Tests/Infrastructure/Case_Setup`` holds five more examples, each run and checked by CTest: a sweep of
+directions, a nested patch, a geostrophic wind from the column (along a diagonal, and along x and y) and a hill from
+an ESRI ASCII grid.
 
 What the tool does
 ------------------
@@ -70,7 +71,22 @@ What the tool does
   geographic file is projected to UTM. ``terrain.border`` blends the ground to a flat band inside the lateral faces.
 - **Wind.** The meteorological direction becomes ``bc.inflow_direction`` (towards, counter-clockwise from x:
   :math:`270^\circ - \text{from}`). The faces the wind enters through are ``inflow``, those it leaves through are
-  ``outflow``; a face parallel to the wind is ``wind.side_faces``. The log law gives
+  ``outflow``; a face parallel to the wind is ``wind.side_faces``. With a geostrophic drive the wind turns with
+  height, so the faces are chosen from the middle of the turn: the wind asked for, turned by half the drag law's
+  angle :math:`\alpha = \operatorname{atan2}(B,\ \ln(u_*/(|f| z_0)) - A)` towards the geostrophic wind (clockwise
+  in the northern hemisphere; :math:`A`, :math:`B` and :math:`f` below). With ``atmosphere.geostrophic_wind`` given,
+  the middle is that wind's direction turned back by :math:`\alpha/2`, :math:`u_*` from the drag law, and
+  ``wind.direction`` does not set the faces. No face is then a slip wall: a face parallel to the wind near the ground
+  takes the flow that crosses it aloft. The faces also differ from those of the wind asked for when it is within
+  :math:`\alpha/2` of an axis (11.8 degrees for 8 m/s at 10 m over :math:`z_0 = 0.03` m at 45 degrees north), where
+  the wind crosses a face one way near the ground and the other way aloft. ``wind.side_faces`` has no effect and is
+  refused. :math:`\alpha/2` is a rule of thumb, not the direction of the mass flux: over a 1.5 to 3 km top at 45
+  degrees north the height-integrated flux turns 0.8 to 0.9 :math:`\alpha`, and at 10 degrees north, where the
+  boundary layer is deeper than the domain, 6.8 degrees against :math:`\alpha/2 = 11`. A face nearly parallel to the
+  wind carries little of the flow either way: from 265 degrees the 3-D run is 2.03 % off the column with the turned
+  faces and 1.93 % with those of the wind asked for. Below about 15 degrees of latitude, check the faces against the
+  column's table. From 270 degrees in that case, slip walls left the 3-D run up to 72 % of the top wind off the column's;
+  the turned faces leave 2.0 % (``rt_case_setup_column_axis``). The log law gives
   :math:`u_* = \kappa U_\mathrm{ref} / \ln((z_\mathrm{ref} + z_0)/z_0)`, :math:`\kappa = 0.41`.
 - **Drive** (``abl.drive``, :doc:`howto`). ``inflow_only`` and ``couette`` (a moving lid at the log law's speed at
   the top) need no rotation. ``geostrophic_column`` writes a 1-D column run first: with ``atmosphere.geostrophic_wind``

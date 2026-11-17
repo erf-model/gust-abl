@@ -12,6 +12,7 @@ the case description (`docs/case_setup.rst`).
 | `flat_sweep.yaml` | Flat ground, moving lid (`wind.drive: couette`), two directions (240 and 0 degrees): one run folder per direction. |
 | `flat_nest.yaml` | Flat ground from 240 degrees with a nested patch at half the cell size; the patch starts from the parent's checkpoint. |
 | `column_target.yaml` | `wind.drive: geostrophic_column` at 45 degrees north: GUST's 1-D column finds the geostrophic wind that gives 8 m/s at 10 m from 240 degrees; `run.sh` passes it to the 3-D run. |
+| `column_axis.yaml` | `column_target`'s set-up with the 10 m wind along y (from 0 degrees) and along x (from 270 degrees): the geostrophic wind turns with height, so the faces parallel to the 10 m wind are inflow and outflow faces, not slip walls. |
 | `hill.yaml` | A Gaussian hill from an ESRI ASCII grid in a projected frame, off the domain centre, on a plane rising to the east. |
 | `check_case_setup.py` | Copies a YAML file to the run directory (writes `hill.asc` for the hill), writes the case, runs `run.sh` and checks the result. |
 
@@ -43,6 +44,13 @@ ln(z + z0) between the cell centres around 10 m.
   10 m wind follows the inflow table, so a separate check covers the hand-over: the 3-D run solves its own column
   first guess from the `forcing.ug` and `forcing.vg` that `run.sh` passed, and its wind at the top (printed in
   `log.txt`) matches the table's top row to 1e-4. Measured: equal to the 4 printed decimals.
+- `column_axis`: no lateral face of either deck is a slip wall, and every cell's wind in the 3-D run is the column
+  table's at the cell's height (linear between the table's levels) to 4 % of the table's top wind. Measured on 2
+  ranks: 0.61 % (from 0) and 1.97 % (from 270). The largest difference from 270 is in the first cell at the
+  x-high, y-low corner: below 10 m the wind is turned the other way (backed), so it enters through the y-low
+  outflow face there; the 99th percentile is 1.15 %. The tool before this case made the faces parallel to the
+  10 m wind slip walls, which block the flow that crosses them aloft: 72 % (from 270, 197 iterations against 119
+  to 129 with the turned faces).
 - `hill`: the ground in GUST's plotfile, from the first cell centre (`z = zeta + h (1 - zeta / top)`), against the
   formula at the cell centres: the crest (after the plane is removed) in the same cell, the relief to 2 % and the
   RMS difference (each field less its mean) below 0.3 % of the relief. Measured: same cell, 0.7 %, 0.12 %. The
@@ -51,7 +59,8 @@ ln(z + z0) between the cell centres around 10 m.
   8.0035 m/s (4.4e-4); a DEM read half a cell off gives an RMS of 0.66 %.
 
 ## CTest
-`rt_case_setup_flat_sweep`, `rt_case_setup_flat_nest`, `rt_case_setup_column_target`, `rt_case_setup_hill`
+`rt_case_setup_flat_sweep`, `rt_case_setup_flat_nest`, `rt_case_setup_column_target`, `rt_case_setup_column_axis`,
+`rt_case_setup_hill`
 (labels `regression;smoke`; not on Windows, where `run.sh` cannot run). They and `gust_case_selftest` (the tool's
 unit tests, `tools/test_gust_case.py`) are registered only when the configure's Python has PyYAML and numpy.
 `gust_input_checker_selftest` runs the deck checker's unit tests (standard library only).

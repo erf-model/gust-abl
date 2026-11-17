@@ -260,9 +260,9 @@ def _resolve_wind(case, given, problems, plan, base_dir):
         if drive == "geostrophic_column" and plan.roughness_map:
             problems.append("surface.roughness_map: not with wind.drive = geostrophic_column (GUST's column first "
                             "guess takes one roughness); use wind.drive = geostrophic_inflow")
-        if w["side_faces"] == "periodic":
-            problems.append("wind.side_faces = periodic: not with wind.drive = %s (the wind turns with height, so "
-                            "every lateral face has flow through it)" % drive)
+        if "wind.side_faces" in given:
+            problems.append("wind.side_faces has no effect with wind.drive = %s: the wind turns with height, so every "
+                            "lateral face is an inflow or an outflow face" % drive)
     else:
         if a["latitude"] is not None:
             problems.append("atmosphere.latitude has no effect without a geostrophic wind.drive")
@@ -276,7 +276,7 @@ def _resolve_wind(case, given, problems, plan, base_dir):
     plan.geostrophic = geostrophic
     plan.speed, plan.height = w["speed"], w["height"]
     plan.side_faces = w["side_faces"]
-    if "wind.side_faces" in given and directions and not any(
+    if "wind.side_faces" in given and directions and not geostrophic and not any(
             0.0 in wind.unit_vector(wind.towards_from_meteorological(d)) for d in directions):
         problems.append("wind.side_faces has no effect: no wind.direction is along x or y, so every lateral face is "
                         "an inflow or an outflow face")
