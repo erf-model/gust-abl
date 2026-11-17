@@ -85,14 +85,19 @@ public:
     //! terrain.smoothing; then the metrics. ground_edit, when given, is
     //! called on z_phys_nd between the ground and the coordinates (the k = 0
     //! slab holds the ground, ghost nodes included; a nested patch's ground
-    //! blend, NestFaces.H).
+    //! blend, NestFaces.H). levels_edit, when given, is called with z_phys_nd
+    //! and the z-levels right after the terrain-fitted coordinates, before the
+    //! ghost nodes are refilled and the metrics computed (a joint run's nest:
+    //! follow_parent_levels, NestFaces.H).
     using GroundEdit = std::function<void(amrex::MultiFab&)>;
+    using LevelsEdit = std::function<void(amrex::MultiFab&, const amrex::Vector<amrex::Real>&)>;
     void build (const Inputs& in, const amrex::Geometry& geom, amrex::MultiFab& z_phys_nd,
-                const GroundEdit& ground_edit = nullptr);
+                const GroundEdit& ground_edit = nullptr, const LevelsEdit& levels_edit = nullptr);
 
     //! As build, for a ground already written into the k = 0 slab of
     //! z_phys_nd (ghost nodes in x and y included); terrain.type is not used.
-    void build_from_ground (const Inputs& in, const amrex::Geometry& geom, amrex::MultiFab& z_phys_nd);
+    void build_from_ground (const Inputs& in, const amrex::Geometry& geom, amrex::MultiFab& z_phys_nd,
+                            const LevelsEdit& levels_edit = nullptr);
 
     //! After a restart: rebuild from the inputs, check the result is within
     //! restart_height_tolerance of the checkpoint's z_phys_nd on every valid

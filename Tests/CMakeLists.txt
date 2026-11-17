@@ -67,6 +67,7 @@ add_executable(unit_tests
     Unit_Tests/test_NewtonPreconditioner.cpp
     Unit_Tests/test_Terrain.cpp
     Unit_Tests/test_NestBuildings.cpp
+    Unit_Tests/test_NestDefect.cpp
     Unit_Tests/test_NestFaces.cpp
     Unit_Tests/test_NestParent.cpp
     Unit_Tests/test_Nests.cpp
@@ -1736,6 +1737,43 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
     gust_add_test(NAME rt_nests_outer_init_keys NP 1 LABELS "regression;smoke"
                   COMMAND ${NESTS_OUTER} ${NESTS_A} init.z_agl_min=5
                           ${GUST_TEST_AMREX_FLAGS})
+    # Two-way nesting (PR-70): the outer domain and the nest of a steeper hill run one way, then jointly with the
+    # defect source (nest.feedback = defect); against the uniform 25 m run, the joint nest's u error must be at most
+    # half the one-way nest's, and the outer error outside the footprint at most 0.6 of the one-way one's
+    # (README.md has the measured ratios).
+    set(NESTS2_CASE ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Nests_Two_Way)
+    set(NESTS2_OUTER $<TARGET_FILE:gust> ${NESTS2_CASE}/inputs_outer)
+    gust_add_test(NAME rt_nests_two_way NP 2 LABELS "regression;smoke"
+                  PREFIX ${Python3_EXECUTABLE} ${NESTS2_CASE}/check_nests_two_way.py --
+                  COMMAND ${NESTS2_OUTER} ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME abort_nests_feedback_value NP 1 LABELS "regression;smoke"
+                  PREFIX ${EXPECT_ABORT} "nest\\.feedback = 'inject' is not none or defect" --
+                  COMMAND ${NESTS_OUTER} ${NESTS_A} nest.feedback=inject ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME abort_nests_feedback_no_nests NP 1 LABELS "regression;smoke"
+                  PREFIX ${EXPECT_ABORT} "nest\\.feedback = defect needs nest\\.names" --
+                  COMMAND ${NESTS_OUTER} nest.feedback=defect ${GUST_TEST_AMREX_FLAGS})
+    # inputs_abort: inputs_outer without mesh.max_grid_size and steady.stage, which these tests set.
+    set(NESTS2_ABORT $<TARGET_FILE:gust> ${NESTS2_CASE}/inputs_abort)
+    gust_add_test(NAME abort_nests_feedback_newton NP 1 LABELS "regression;smoke"
+                  PREFIX ${EXPECT_ABORT} "nest\\.feedback = defect needs steady\\.stage = simplec \\(not simplec_newton\\)" --
+                  COMMAND ${NESTS2_ABORT} ${NESTS_A} nest.feedback=defect steady.stage=simplec_newton ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME abort_nests_feedback_restart NP 1 LABELS "regression;smoke"
+                  PREFIX ${EXPECT_ABORT} "nest\\.feedback = defect does not restart \\(io\\.restart\\)" --
+                  COMMAND ${NESTS_OUTER} ${NESTS_A} nest.feedback=defect io.restart=outer_chk00010 ${GUST_TEST_AMREX_FLAGS})
+    # Nests_One_Process damps every field (the default bc.rayleigh_fields).
+    gust_add_test(NAME abort_nests_feedback_damping NP 1 LABELS "regression;smoke"
+                  PREFIX ${EXPECT_ABORT} "nest\\.feedback = defect needs bc\\.rayleigh_fields without u, v and tke" --
+                  COMMAND ${NESTS_OUTER} ${NESTS_A} nest.feedback=defect ${GUST_TEST_AMREX_FLAGS})
+    # 32 nest cells in x at an odd mesh.max_grid_size of 15: boxes of 11, 11 and 10 (an even size keeps them even).
+    gust_add_test(NAME abort_nests_feedback_odd_boxes NP 1 LABELS "regression;smoke"
+                  PREFIX ${EXPECT_ABORT} "nest\\.feedback = defect: nest\\.a splits into boxes with an odd number of cells" --
+                  COMMAND ${NESTS2_ABORT} ${NESTS_A} nest.feedback=defect steady.stage=simplec "mesh.max_grid_size=15 12"
+                          ${GUST_TEST_AMREX_FLAGS})
+    # 4 outer cells in x: the source would keep no cell 2 cells from both faces; stops before the one-way runs.
+    gust_add_test(NAME abort_nests_feedback_narrow NP 1 LABELS "regression;smoke"
+                  PREFIX ${EXPECT_ABORT} "nest\\.feedback = defect: nest\\.a spans 4 outer cells in x; it needs at least 5" --
+                  COMMAND $<TARGET_FILE:gust> ${NESTS2_CASE}/inputs_outer nest.names=a "nest.a.lo=400 300" "nest.a.hi=600 900"
+                          nest.feedback=defect ${GUST_TEST_AMREX_FLAGS})
     # One-way nesting against a uniform fine run (Nest_Validation, sub-phase
     # 9.3, beyond the plan): a 150 m hill in 3200 m x 2400 m. The smoke set
     # runs the whole domain on 100 m cells (the parent) and on 50 m cells (the
@@ -2765,6 +2803,11 @@ add_test(NAME erf_plotfile_selftest
          COMMAND ${Python3_EXECUTABLE} -m unittest -v test_erf_plotfile
          WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/tools)
 set_tests_properties(erf_plotfile_selftest PROPERTIES LABELS unit ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
+
+add_test(NAME speed_difference_selftest
+         COMMAND ${Python3_EXECUTABLE} -m unittest -v test_speed_difference
+         WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/tools)
+set_tests_properties(speed_difference_selftest PROPERTIES LABELS unit ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
 
 # --- The extern_erf drift check's own tests -----------------------------------
 add_test(NAME drift_check_selftest

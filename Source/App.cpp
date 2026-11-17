@@ -17,6 +17,7 @@
 #include "StateIO.H"
 #include "Initializer.H"
 #include "NestBuildings.H"
+#include "NestDefect.H"
 #include "NestFaces.H"
 #include "NestParent.H"
 #include "Nests.H"
@@ -63,6 +64,7 @@ std::string run_domain (const DomainRole& role)
 {
     // A nest takes the outer deck and replaces what Nests.H derives.
     const NestSpec* const nest = role.nest;
+    const std::string role_name = nest != nullptr ? "nest." + nest->name : std::string("outer domain");
     std::string final_chk;
     // The inputs: mesh, terrain, io; with the initializer (init.first_guess =
     // profile) or the SIMPLEC stage (steady.stage = simplec) the boundary
@@ -349,6 +351,47 @@ std::string run_domain (const DomainRole& role)
             err.emplace_back("nest.names needs io.write_checkpoint = 1 (each nest starts from the outer domain's checkpoint)");
         }
         if (buildings_opt.active()) { err.emplace_back("nest.names is not supported with buildings.type yet"); }
+        if (role.nests->feedback != NestFeedback::none) {
+            // The joint run (JointRun.H) steps every domain's SIMPLEC driver; the Newton stage's residual differs
+            // from the one the source is formed with, and a joint restart is not written.
+            if (newton) { err.emplace_back("nest.feedback = defect needs steady.stage = simplec (not simplec_newton)"); }
+            if (!in.io.restart.empty()) { err.emplace_back("nest.feedback = defect does not restart (io.restart): run from the start"); }
+            // The restriction coarsens each nest's boxes by 2 2 1 (restrict_patch). A nest has an even number of
+            // cells; AMReX's maxSize keeps the boxes even when mesh.max_grid_size is even, not when it is odd.
+            if (check_nests(*role.nests, in.mesh).empty()) {
+                for (const auto& nest : role.nests->nests) {
+                    // The source keeps kDefectMargin outer cells from each face (defect_region, NestDefect.cpp):
+                    // checked here so a narrow nest stops before the one-way runs, not after them.
+                    const MeshInputs nm = nest_mesh(nest, in.mesh);
+                    for (int d = 0; d < 2; ++d) {
+                        if (nm.is_periodic[d] == 0 && nm.n_cell[d] / 2 < 2 * kDefectMargin + 1) {
+                            err.emplace_back("nest.feedback = defect: nest." + nest.name + " spans "
+                                             + std::to_string(nm.n_cell[d] / 2) + " outer cells in "
+                                             + (d == 0 ? "x" : "y") + "; it needs at least "
+                                             + std::to_string(2 * kDefectMargin + 1) + " (the source keeps "
+                                             + std::to_string(kDefectMargin) + " cells from each face)");
+                        }
+                    }
+                    if (!make_box_array(nm).coarsenable(amrex::IntVect(2, 2, 1))) {
+                        err.emplace_back("nest.feedback = defect: nest." + nest.name + " splits into boxes with an odd "
+                                         "number of cells in x or y at mesh.max_grid_size: give an even "
+                                         "mesh.max_grid_size");
+                    }
+                }
+            }
+            // A nest damps w and theta only (Nests.cpp). Over each footprint the source carries the nest's
+            // equations, so an outer Rayleigh term on u, v or k would act outside the footprints and not inside:
+            // a jump in the forcing at the footprint's edge above bc.rayleigh_zdamp.
+            if (bin.rayleigh_zdamp > 0 && (bin.rayleigh_fields[0] || bin.rayleigh_fields[1] || bin.rayleigh_fields[4])) {
+                err.emplace_back("nest.feedback = defect needs bc.rayleigh_fields without u, v and tke (the nests damp w "
+                                 "and theta only): use bc.rayleigh_fields = w or w theta");
+            }
+            if (bin.sponge_width > 0) {
+                amrex::Print() << "gust: note: nest.feedback = defect with bc.sponge_width > 0: the nests have no side "
+                                  "sponge, so over a nest's footprint inside the sponge the joint run does not damp "
+                                  "(place the nests outside bc.sponge_width)\n";
+            }
+        }
         if (simplec.theta_frozen) {
             err.emplace_back("nest.names is not supported with simplec.theta = frozen (it needs grid sequencing, which a "
                              "nest does not run)");
@@ -488,15 +531,21 @@ std::string run_domain (const DomainRole& role)
     std::unique_ptr<NestParent> parent;
     std::unique_ptr<NestFaces> nest_faces;
     Mesh::GroundEdit ground_edit;
+    Mesh::LevelsEdit levels_edit;
+    const bool joint_nest = role.nest != nullptr && static_cast<bool>(role.joint);
     std::string nest_hash;
     if (nest_guess || nest_face) {
         const amrex::Real blend = in.terrain.nest_blend_width;
-        parent = std::make_unique<NestParent>(bin.nest_parent, in.mesh, make_zlevels(in.mesh, geom), ba, dm, blend > 0,
-                                              bin.nest_ratio);
+        parent = std::make_unique<NestParent>(bin.nest_parent, in.mesh, make_zlevels(in.mesh, geom), ba, dm,
+                                              blend > 0 || joint_nest, bin.nest_ratio);
         amrex::Print() << parent->summary();
         // The hill where the parent has it, not in the middle of the patch.
         if (in.terrain.type == "agnesi") { in.terrain.hill_centre = parent->domain_centre(); }
         if (blend > 0) { ground_edit = [&, blend] (amrex::MultiFab& z) { blend_nest_ground(*parent, bin, blend, geom, z); }; }
+        // A joint run's nest: its coordinate surfaces follow the parent's aloft (NestFaces.H).
+        if (joint_nest) {
+            levels_edit = [&] (amrex::MultiFab& z, const amrex::Vector<amrex::Real>& zl) { follow_parent_levels(*parent, geom, zl, z); };
+        }
         if (nest_face) { nest_hash = NestFaces::hash_inputs(*parent, bin, blend); }
     }
     auto build_nest_faces = [&] () {
@@ -505,7 +554,7 @@ std::string run_domain (const DomainRole& role)
         amrex::Print() << nest_faces->summary();
     };
     if (!restart) {
-        mesh.build(in, geom, state.z_phys_nd, ground_edit);
+        mesh.build(in, geom, state.z_phys_nd, ground_edit, levels_edit);
         build_canopy();
         build_nest_faces();
         if (initialize) {
@@ -633,7 +682,8 @@ std::string run_domain (const DomainRole& role)
     }
     // The parent's images are not needed again: NestFaces holds its own copy on the patch.
     ground_edit = nullptr;
-    parent.reset();
+    levels_edit = nullptr;
+    if (!role.joint) { parent.reset(); }
     const amrex::MultiFab* canopy_plot = canopy.active() ? &canopy.drag() : nullptr;
     const amrex::MultiFab* lad_plot = (canopy.active() && canopy.heat().on()) ? &canopy.lad() : nullptr;
     const amrex::MultiFab* beta_plot = buildings.active() ? &buildings.beta() : nullptr;
@@ -736,10 +786,13 @@ std::string run_domain (const DomainRole& role)
             topt.dt = uopt.cfl > 0 ? amrex::Real(1) : uopt.dt;
             time_term = std::make_unique<TimeTerm>(topt, ba, dm);
         }
+        // nest.feedback = defect: the outer domain's source of its nests (NestDefect.H), zero until the joint run sets it.
+        std::unique_ptr<NestDefect> defect;
+        if (role.joint && nest == nullptr) { defect = std::make_unique<NestDefect>(ba, dm); }
         LevelSolver level0(setup, mesh, geom, state.z_phys_nd, ba, dm, "", newton, nullptr,
                            canopy.active() ? &canopy : nullptr, nullptr, buildings.active() ? &building_forcing : nullptr,
                            (buildings.active() && buildings_opt.wall_tke) ? &building_tke : nullptr,
-                           building_heat ? &building_theta : nullptr, time_term.get());
+                           building_heat ? &building_theta : nullptr, time_term.get(), defect.get());
         if (buildings.active()) {
             // After the wall distance above: its Poisson solve does not see the buildings.
             mesh.set_open_faces(buildings.beta_face(0), buildings.beta_face(1), buildings.beta_face(2), buildings.beta(), geom);
@@ -958,18 +1011,21 @@ std::string run_domain (const DomainRole& role)
             log.print(driver, simplec_stage, last, "", newton_stage);
             if (v.status != SteadyStatus::NotSteady) { break; }
         }
+        bool joint_pass = false;   // the outputs after the joint run (JointRun.H)
+        auto finish = [&] () {
         const char* status = unsteady ? (v.status == SteadyStatus::Diverged ? "diverged" : "unsteady run ended")
                            : (v.status == SteadyStatus::Steady) ? "steady"
                            : (v.status == SteadyStatus::Diverged) ? "diverged" : "not steady";
         std::string reasons;
         for (const auto& r : v.reasons) { reasons += "\n  " + r; }
-        amrex::Print() << "gust: " << status << " after " << done << " iterations ("
+        amrex::Print() << "gust: " << (joint_pass ? "joint run: " + role_name + " " : std::string()) << status << " after "
+                       << done << (joint_pass ? " joint" : "") << " iterations ("
                        << driver.history().records.size() << " over the run)" << reasons << "\n";
         for (const auto& acc : driver.history().accounts) {
             amrex::Print() << "gust: stage account: " << acc.iterations << " iterations, " << acc.wall_seconds
                            << " s, " << acc.au << " AU\n";
         }
-        if (!levels.empty()) { amrex::Print() << sequencing_report(levels, driver.history(), status, sopt.criterion.residual_ref_iterations); }
+        if (!levels.empty() && !joint_pass) { amrex::Print() << sequencing_report(levels, driver.history(), status, sopt.criterion.residual_ref_iterations); }
         if (building_heat && v.status != SteadyStatus::Diverged) {
             // The walls' heat exchange at the final state (its ghost cells and the law's rates at it).
             bc.fill_ghosts(state, res_in.surface, fopt.buoyancy, false, nullptr);
@@ -1021,6 +1077,50 @@ std::string run_domain (const DomainRole& role)
         }
         if (v.status == SteadyStatus::Diverged) { amrex::Abort("gust: the run diverged" + reasons); }
         if (role.outcome != nullptr) { role.outcome->steady = (v.status == SteadyStatus::Steady); }
+        };
+        finish();
+        if (role.joint && v.status != SteadyStatus::Diverged) {
+            // nest.feedback = defect: this domain joins the joint run (Run.cpp, JointRun.H), which steps it in
+            // memory; then its outputs are written again at its new step.
+            JointMember m;
+            m.name = role_name;
+            m.state = &state;
+            m.mesh = &mesh;
+            m.geom = &geom;
+            m.chk = final_chk;
+            m.verdict = v;
+            m.max_iterations = sopt.max_iterations;
+            m.fill_ghosts = [&] (State& s) { bc.fill_ghosts(s, res_in.surface, fopt.buoyancy, false, nullptr); };
+            const std::string label = nest != nullptr ? nest->name + " " : std::string("outer ");
+            driver.floor_cfl_at_current();
+            m.step = [&, label] () {
+                driver.rearm_confidence();
+                const SteadyVerdict sv = driver.step(state);
+                ++state.step;
+                log.print(driver, simplec_stage, sv.status != SteadyStatus::NotSteady, label, newton_stage);
+                return sv;
+            };
+            if (defect) {
+                m.defect = defect.get();
+                m.residual_without_defect = [&] (const State& q, ResidualFields& R) {
+                    ResidualInputs fin = res_in;
+                    fin.defect = nullptr;
+                    if (!simplec_stage.hybrid_sigma().empty()) { fin.hybrid_sigma = &simplec_stage.hybrid_sigma(); }
+                    residual(q, fin, mesh, geom, R);
+                };
+            }
+            if (nest != nullptr) {
+                m.parent = parent.get();
+                m.faces = nest_faces.get();
+            }
+            role.joint(m);
+            if (m.iterations > 0) {
+                v = m.verdict;
+                done = m.iterations;
+                joint_pass = true;
+                finish();
+            }
+        }
         return final_chk;
     }
 

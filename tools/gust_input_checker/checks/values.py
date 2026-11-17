@@ -259,6 +259,7 @@ io.iteration_log table,full 1
 io.column_guess_file str 1
 io.restart str 1
 nest.names str 1+
+nest.feedback none,defect 1
 nest.<name>.lo real 2
 nest.<name>.hi real 2
 """

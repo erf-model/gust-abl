@@ -238,6 +238,7 @@ NestParent::NestParent (const std::string& dir, const MeshInputs& patch, const a
         m_z.ParallelCopy(src, 0, 0, 1, amrex::IntVect(0), amrex::IntVect(kNestImageGhost, kNestImageGhost, 0), pgeom.periodicity());
     }
 
+    m_period = pgeom.periodicity();
     const int r = m_ratio;
     m_cx = transfer::make_axis(fdom.smallEnd(0), pdom, pgeom.isPeriodic(0), 0, r, false, m_offset[0]);
     m_cy = transfer::make_axis(fdom.smallEnd(1), pdom, pgeom.isPeriodic(1), 1, r, false, m_offset[1]);
@@ -262,6 +263,20 @@ void NestParent::interpolate (State& patch) const
     }
 }
 
+void NestParent::refresh (const State& parent)
+{
+    const amrex::Box dom = parent.p.boxArray().minimalBox();
+    if (dom.size() != m_parent_cells || dom.smallEnd() != amrex::IntVect(0)) {
+        amrex::Abort("gust: NestParent::refresh: the parent state does not cover the parent's domain");
+    }
+    const std::pair<const amrex::MultiFab*, amrex::MultiFab*> items[] = {
+        {&parent.u, &m_u}, {&parent.v, &m_v}, {&parent.w, &m_w}, {&parent.p, &m_p}, {&parent.theta, &m_theta},
+        {&parent.tke, &m_tke}};
+    for (const auto& [src, dst] : items) {
+        dst->ParallelCopy(*src, 0, 0, 1, amrex::IntVect(0), amrex::IntVect(kNestImageGhost, kNestImageGhost, 0), m_period);
+    }
+}
+
 void NestParent::interpolate_ground (amrex::MultiFab& hp) const
 {
     if (m_z.empty()) { amrex::Abort("gust: NestParent::interpolate_ground: the parent was read without its node heights"); }
@@ -270,6 +285,62 @@ void NestParent::interpolate_ground (amrex::MultiFab& hp) const
     }
     const amrex::IntVect ng(std::min(hp.nGrowVect()[0], ngrow_state), std::min(hp.nGrowVect()[1], ngrow_state), 0);
     transfer::interpolate<stencil::XF | stencil::YF>(m_z, hp, m_nx, m_ny, ng);
+}
+
+namespace {
+
+//! The Catmull-Rom weights of nodes -1, 0, 1 and 2 at t in [0, 1] between nodes 0 and 1.
+AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
+void catmull_rom (amrex::Real t, amrex::Real* w) noexcept
+{
+    const amrex::Real t2 = t * t, t3 = t2 * t, h(0.5);
+    w[0] = h * (-t3 + amrex::Real(2) * t2 - t);
+    w[1] = h * (amrex::Real(3) * t3 - amrex::Real(5) * t2 + amrex::Real(2));
+    w[2] = h * (amrex::Real(-3) * t3 + amrex::Real(4) * t2 + t);
+    w[3] = h * (t3 - t2);
+}
+
+} // namespace
+
+void NestParent::interpolate_ground_smooth (amrex::MultiFab& hp) const
+{
+    if (m_z.empty()) { amrex::Abort("gust: NestParent::interpolate_ground_smooth: the parent was read without its node heights"); }
+    if (hp.boxArray() != amrex::convert(m_patch_ba, amrex::IntVect(1, 1, 1)) || hp.DistributionMap() != m_z.DistributionMap()) {
+        amrex::Abort("gust: NestParent::interpolate_ground_smooth: hp is not nodal on the layout the parent was read for");
+    }
+    const amrex::IntVect ng(std::min(hp.nGrowVect()[0], ngrow_state), std::min(hp.nGrowVect()[1], ngrow_state), 0);
+    const transfer::Axis ax = m_nx, ay = m_ny;
+    // The parent's nodes the stencil may use: the domain's across a
+    // non-periodic direction (imax + 1 is the last node), the images'
+    // (kNestImageGhost) across a periodic one, where the bounds do not bind.
+    const int x0 = ax.clo + ax.imin, x1 = ax.clo + ax.imax + 1;
+    const int y0 = ay.clo + ay.imin, y1 = ay.clo + ay.imax + 1;
+    for (amrex::MFIter mfi(hp, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
+        const amrex::Box bx = mfi.growntilebox(ng);
+        const auto f = hp.array(mfi);
+        const auto q = m_z.const_array(mfi);
+        amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+        {
+            int I = 0, J = 0;
+            amrex::Real tx = 0, ty = 0;
+            transfer::locate<true>(ax, i, I, tx);
+            transfer::locate<true>(ay, j, J, ty);
+            amrex::Real wx[4], wy[4];
+            catmull_rom(tx, wx);
+            catmull_rom(ty, wy);
+            amrex::Real sum = 0;
+            for (int b = 0; b < 4; ++b) {
+                const int jj = amrex::max(y0, amrex::min(y1, J - 1 + b));
+                amrex::Real row = 0;
+                for (int a = 0; a < 4; ++a) {
+                    const int ii = amrex::max(x0, amrex::min(x1, I - 1 + a));
+                    row += wx[a] * q(ii, jj, k);
+                }
+                sum += wy[b] * row;
+            }
+            f(i, j, k) = sum;
+        });
+    }
 }
 
 std::string NestParent::summary () const

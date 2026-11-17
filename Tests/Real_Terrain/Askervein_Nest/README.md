@@ -12,7 +12,7 @@ reference, as a function of D, beside the parent against the reference.
 |---|---|
 | `inputs_askervein_domain` | The whole domain: `Askervein_210/inputs_steady_askervein_210` without its cells and output names, plus line LU-SGS and two-level grid sequencing (`steady.sweep`, `steady.sequencing`, `mesh.hierarchy_levels`). |
 | `inputs_askervein_patch` | A patch: four `nest` faces, first guess from the parent, `terrain.nest_blend_width = 200` (the 20 m ground meets the parent's 40 m ground on the faces), line LU-SGS without sequencing. |
-| `askervein_nest.py` | Runs a whole domain (`run`) or a patch (`nest`), samples the masts, compares (`compare`), or does the study (`study`). Pure Python; uses `tools/askervein_lines.py` and the run helpers of `Nest_Validation/nest_validation.py`. |
+| `askervein_nest.py` | Runs a whole domain (`run`) or a patch (`nest`), samples the masts, compares (`compare`), does the study (`study`), or runs the two-way comparison (`two_way`). Pure Python; uses `tools/askervein_lines.py` and the run helpers of `Nest_Validation/nest_validation.py`. |
 
 The terrain (`extern_erf/askervein.txt`), the inflow table and the mast positions
 (`Askervein_210/askervein_210_inflow.txt`, `askervein_lines.csv`) are those of `Askervein_210`.
@@ -42,6 +42,12 @@ python3 askervein_nest.py run par40 150 -- mpiexec -n 4 <build>/gust inputs_aske
 python3 askervein_nest.py run ref20 300 -- mpiexec -n 4 <build>/gust inputs_askervein_domain
 python3 askervein_nest.py nest nest_d1400 par40 1400 -- mpiexec -n 4 <build>/gust inputs_askervein_patch
 python3 askervein_nest.py compare nest_d1400 ref20 par40 --ratio 0.5
+```
+Two-way nesting (PR-70, `nest.feedback = defect`): the 20 m reference, and the 40 m outer domain with a 20 m nest of
+half-width 1000 m, one way and joint, one after another, with the recommended setting; prints the table of
+`docs/boundary_conditions.rst` (Two-way nests, Results):
+```bash
+python3 askervein_nest.py two_way -- mpiexec -n 4 <build>/gust inputs_askervein_domain
 ```
 
 ## Targets
@@ -85,6 +91,23 @@ The reference here is GUST's own 20 m run. That run against ERF's URANS and its 
 The numbers are therefore the nesting error, not accuracy; the limits listed in `Nest_Validation/README.md` apply
 (neutral flow, 2 2 1, one wind direction, centred square patches). Iteration error: the 20 m run against a run to
 six orders differs by 3e-7 RMS at the masts.
+
+Two-way (`two_way`; macOS arm64, AppleClang, 4 ranks, the recommended setting). RMS against the 20 m run; the nest
+against the reference at its own cell heights, the outer domain against the reference's 2 x 2 means outside the
+footprint. "One way" is a separate `nest.feedback = none` run (the nest's own coordinate surfaces). The joint run was
+steady after 156 exchanges.
+
+| Field | Nest, one way | Nest, joint | Outer, one way | Outer, joint |
+|---|---|---|---|---|
+| u | 3.372e-3 | 3.372e-3 | 4.62e-3 | **3.21e-3** |
+| v | **5.68e-3** | 6.03e-3 | 9.37e-3 | **6.93e-3** |
+| w | 2.87e-3 | **1.48e-3** | 2.57e-3 | **2.51e-3** |
+| k | **1.56e-3** | 2.76e-3 | 3.73e-3 | **3.12e-3** |
+
+Horizontal speed in the lowest 200 m: no nest cell differs from the 20 m run by more than 0.25 m/s in either run
+(largest 0.23 m/s one way, 0.14 m/s joint); outside the footprint 24 outer cells one way and 19 joint differ by more
+than 0.25 m/s, 1 by more than 0.5 m/s. 10 m speed at the masts, relative to the 20 m run: nest 0.04 % one way and
+0.11 % joint, outer domain 1.18 % and 1.05 % (RMS).
 
 ## CTest
 `rt_askervein_nest_study` (fixture `rt_askervein_nest_clean`; `nightly`, four ranks, double precision only): the

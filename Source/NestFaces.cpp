@@ -281,6 +281,79 @@ std::vector<std::string> check_nest_run (const BoundaryInputs& bin, const Inputs
     return err;
 }
 
+void follow_parent_levels (const NestParent& parent, const amrex::Geometry& geom, const amrex::Vector<amrex::Real>& zlevels,
+                           amrex::MultiFab& z_phys_nd)
+{
+    amrex::MultiFab hp(z_phys_nd.boxArray(), z_phys_nd.DistributionMap(), 1, amrex::IntVect(1, 1, 0));
+    parent.interpolate_ground_smooth(hp);
+    const amrex::Box& dom = geom.Domain();
+    const int ilo = dom.smallEnd(0), ihi = dom.bigEnd(0) + 1, jlo = dom.smallEnd(1), jhi = dom.bigEnd(1) + 1;
+    const int k0 = dom.smallEnd(2), kn = dom.bigEnd(2) + 1;
+    if (static_cast<int>(zlevels.size()) != kn - k0 + 1) {
+        amrex::Abort("gust: follow_parent_levels: the z-levels do not match the nest's cells in z");
+    }
+    const int big = std::numeric_limits<int>::max() / 2;
+    const int ci0 = geom.isPeriodic(0) ? -big : ilo, ci1 = geom.isPeriodic(0) ? big : ihi;
+    const int cj0 = geom.isPeriodic(1) ? -big : jlo, cj1 = geom.isPeriodic(1) ? big : jhi;
+    amrex::Gpu::DeviceVector<amrex::Real> zl(zlevels.size());
+    amrex::Gpu::copy(amrex::Gpu::hostToDevice, zlevels.begin(), zlevels.end(), zl.begin());
+    const amrex::Real* zeta = zl.data();
+
+    // max |h - h_p| and the smallest slope dz_p / dzeta of the parent's surfaces, over the valid nodes.
+    amrex::ReduceOps<amrex::ReduceOpMax, amrex::ReduceOpMin> scan_op;
+    amrex::ReduceData<amrex::Real, amrex::Real> scan_data(scan_op);
+    for (amrex::MFIter mfi(z_phys_nd, false); mfi.isValid(); ++mfi) {
+        amrex::Box b = mfi.validbox();
+        b.setBig(2, kn - 1);
+        const auto z = z_phys_nd.const_array(mfi);
+        const auto h = hp.const_array(mfi);
+        scan_op.eval(b, scan_data, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept -> amrex::GpuTuple<amrex::Real, amrex::Real>
+        {
+            const amrex::Real slope = (h(i, j, k + 1) - h(i, j, k)) / (zeta[k + 1 - k0] - zeta[k - k0]);
+            return {std::abs(z(i, j, k0) - h(i, j, k0)), slope};
+        });
+    }
+    auto scan = scan_data.value(scan_op);
+    amrex::Real dh = amrex::get<0>(scan);
+    amrex::Real m = amrex::get<1>(scan);
+    amrex::ParallelDescriptor::ReduceRealMax(dh);
+    amrex::ParallelDescriptor::ReduceRealMin(m);
+    if (!(m > 0)) { amrex::Abort("gust: follow_parent_levels: the parent's surfaces are not increasing at the nest"); }
+    const auto dx = geom.CellSizeArray();
+    const amrex::Real H = zlevels.back() - zlevels.front();
+    const amrex::Real s = std::max(static_cast<amrex::Real>(parent.ratio()) * std::min(dx[0], dx[1]), amrex::Real(2) * dh / m);
+    const amrex::Real inv_s = amrex::Real(1) / s;
+    const amrex::Real denom = amrex::Real(1) - std::exp(amrex::Real(-2) * H * inv_s);
+    const amrex::Real z0 = zlevels.front();
+
+    amrex::ReduceOps<amrex::ReduceOpMax> reduce_op;
+    amrex::ReduceData<amrex::Real> reduce_data(reduce_op);
+    for (amrex::MFIter mfi(z_phys_nd, false); mfi.isValid(); ++mfi) {
+        amrex::Box b = mfi.fabbox() & hp[mfi].box();
+        b.setSmall(2, k0);
+        b.setBig(2, kn);
+        const auto z = z_phys_nd.array(mfi);
+        const auto h = hp.const_array(mfi);
+        reduce_op.eval(b, reduce_data, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept -> amrex::GpuTuple<amrex::Real>
+        {
+            const int ic = amrex::max(ci0, amrex::min(ci1, i));
+            const int jc = amrex::max(cj0, amrex::min(cj1, j));
+            if (k == k0) { return {amrex::Real(0)}; }   // the ground stays the nest's
+            const amrex::Real ze = zeta[k - k0] - z0;
+            const amrex::Real bz = (std::exp(-ze * inv_s) - std::exp(-(amrex::Real(2) * H - ze) * inv_s)) / denom;
+            const amrex::Real old = z(i, j, k);
+            z(i, j, k) = h(ic, jc, k) + (z(i, j, k0) - h(ic, jc, k0)) * bz;
+            return {std::abs(z(i, j, k) - old)};
+        });
+    }
+    amrex::Real moved = amrex::get<0>(reduce_data.value(reduce_op));
+    amrex::ParallelDescriptor::ReduceRealMax(moved);
+    char line[240];
+    std::snprintf(line, sizeof(line), "gust: nest levels follow the parent's: max |h - h_parent| %.3e m, decay height %.3e m; "
+                  "nodes moved by up to %.3e m\n", static_cast<double>(dh), static_cast<double>(s), static_cast<double>(moved));
+    amrex::Print() << line;
+}
+
 void blend_nest_ground (const NestParent& parent, const BoundaryInputs& bin, amrex::Real width, const amrex::Geometry& geom,
                         amrex::MultiFab& z_phys_nd)
 {
@@ -345,6 +418,30 @@ NestFaces::NestFaces (const NestParent& parent, const BoundaryInputs& bin, const
     if (!(m_nest[0] || m_nest[1] || m_nest[2] || m_nest[3])) {
         amrex::Abort("gust: NestFaces: no lateral face is a nest face (bc.xlo, bc.xhi, bc.ylo or bc.yhi = nest)");
     }
+    for (const FaceType t : bin.face) { m_outflow = m_outflow || t == FaceType::outflow; }
+    build(parent, mesh);
+}
+
+amrex::Real NestFaces::refresh (const NestParent& parent, const Mesh& mesh)
+{
+    // The old normal velocities, to measure the change.
+    amrex::MultiFab u0(m_par.u.boxArray(), m_par.u.DistributionMap(), 1, m_par.u.nGrow());
+    amrex::MultiFab v0(m_par.v.boxArray(), m_par.v.DistributionMap(), 1, m_par.v.nGrow());
+    amrex::MultiFab::Copy(u0, m_par.u, 0, 0, 1, m_par.u.nGrow());
+    amrex::MultiFab::Copy(v0, m_par.v, 0, 0, 1, m_par.v.nGrow());
+    m_par = State();
+    for (auto& r : m_rate) { r.clear(); }
+    m_flux = Flux();
+    build(parent, mesh);
+    amrex::MultiFab::Subtract(u0, m_par.u, 0, 0, 1, u0.nGrow());
+    amrex::MultiFab::Subtract(v0, m_par.v, 0, 0, 1, v0.nGrow());
+    // Over the valid points and the ghost layers: the faces' values and their ghosts (norm0 reduces over the ranks).
+    return std::max(u0.norm0(0, u0.nGrow()), v0.norm0(0, v0.nGrow()));
+}
+
+void NestFaces::build (const NestParent& parent, const Mesh& mesh)
+{
+    const amrex::Geometry& geom = m_geom;
     const amrex::BoxArray& ba = mesh.detJ.boxArray();
     const amrex::DistributionMapping& dm = mesh.detJ.DistributionMap();
     m_par.define(ba, dm);
@@ -369,9 +466,7 @@ NestFaces::NestFaces (const NestParent& parent, const BoundaryInputs& bin, const
         m_flux.weight = deterministic_dot(acc, 1, one, 0, nullptr);
         m_flux.inflow = deterministic_dot(acc, 2, one, 0, nullptr);
     }
-    bool outflow = false;
-    for (const FaceType t : bin.face) { outflow = outflow || t == FaceType::outflow; }
-    m_flux.applied = !outflow;
+    m_flux.applied = !m_outflow;
     if (m_flux.applied) {
         if (!(m_flux.weight > 0) || !std::isfinite(m_flux.net)) {
             amrex::Abort("gust: bc.nest_parent = " + parent.dir() + ": the parent's velocity on the nest faces is not finite");

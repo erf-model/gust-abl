@@ -315,6 +315,28 @@ CASES = [
      ["E terrain.smoothing nests"], []),
     ("nests_hill_btf", "hill", "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 1200 900\nsteady.stage = simplec\n"
      "terrain.smoothing = 0\n", [], ["E terrain.smoothing"]),
+    ("nests_feedback_ok", "inflow", "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 1200 900\n"
+     "nest.feedback = defect\n", [], ["E *"]),
+    ("nests_feedback_value", "inflow", "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 1200 900\n"
+     "nest.feedback = inject\n", ["E nest.feedback nests"], []),
+    ("nests_feedback_no_nests", "inflow", "nest.feedback = defect\n", ["E nest.feedback nests"], []),
+    ("nests_feedback_named_feedback", "inflow", "nest.names = feedback\n", ["E nest.names nests"], []),
+    ("nests_feedback_newton", "inflow", "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 1200 900\n"
+     "nest.feedback = defect\nsteady.stage = simplec_newton\n", ["E nest.feedback nests"], []),
+    ("nests_feedback_damping", "inflow", "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 1200 900\n"
+     "nest.feedback = defect\nbc.rayleigh_zdamp = 400\nbc.rayleigh_dampcoef = 0.2\nbc.rayleigh_fields = u w\n", ["E nest.feedback nests"], []),
+    ("nests_feedback_damping_w", "inflow", "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 1200 900\n"
+     "nest.feedback = defect\nbc.rayleigh_zdamp = 400\nbc.rayleigh_dampcoef = 0.2\nbc.rayleigh_fields = w theta\n", [], ["E *"]),
+    ("nests_feedback_narrow", "inflow", "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 800 900\n"
+     "nest.feedback = defect\n", ["E nest.feedback nests"], []),
+    ("nests_feedback_five_cells", "inflow", "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 900 900\n"
+     "nest.feedback = defect\n", [], ["E *"]),
+    ("nests_feedback_sponge", "inflow", "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 1200 900\n"
+     "nest.feedback = defect\nbc.sponge_width = 200\n", ["W nest.feedback nests"], ["E nest.feedback"]),
+    ("nests_feedback_odd_boxes", "inflow", "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 1200 900\n"
+     "nest.feedback = defect\nmesh.max_grid_size = 7\n", ["E nest.feedback nests"], []),
+    ("nests_feedback_none_odd_boxes", "inflow", "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 1200 900\n"
+     "nest.feedback = none\nmesh.max_grid_size = 7\n", [], ["E nest.feedback"]),
     ("nests_periodic_strip", "solve", "nest.names = a\nnest.a.lo = 0 0\nnest.a.hi = 1600 1500\n",
      ["I nest.a.lo nests"], ["E *"]),
     # --- canopy and buildings ---------------------------------------------------------------------------

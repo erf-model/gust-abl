@@ -75,7 +75,8 @@ struct NestRun
     gust::Mesh mesh;
     gust::State q;
 
-    void make (bool reverse = false, const gust::Mesh::GroundEdit& edit = nullptr)
+    void make (bool reverse = false, const gust::Mesh::GroundEdit& edit = nullptr,
+               const gust::Mesh::LevelsEdit& levels = nullptr)
     {
         geom = gust::make_geometry(in.mesh);
         ba = gust::make_box_array(in.mesh);
@@ -88,7 +89,7 @@ struct NestRun
         }
         q.define(ba, dm);
         mesh.define(ba, dm);
-        mesh.build(in, geom, q.z_phys_nd, edit);
+        mesh.build(in, geom, q.z_phys_nd, edit, levels);
     }
 };
 
@@ -634,6 +635,144 @@ TEST (NestFaces, BlendedGroundIsTheParentsOnTheFaceAndThePatchsInside)
         EXPECT_LT(between.err, kDouble ? 1.0e-11 : 1.0e-3);
         EXPECT_GT(differ.err, 1.0) << "the parent's ground and the patch's differ on the face by more than 1 m";
     }
+}
+
+// The joint nest's parent surfaces (NestParent::interpolate_ground_smooth) are bicubic: a parent whose
+// surfaces are quadratic in x and y comes back exactly at every valid and ghost node of the patch (the
+// bilinear interpolate_ground misses the curvature by 0.75 m at the parent cells' centres).
+TEST (NestFaces, JointNestSurfacesAreSmoothBetweenTheParentsNodes)
+{
+    NestRun p;
+    p.in = parent_inputs(false);
+    p.make();
+    const auto zlp = p.mesh.zlevels();
+    auto quad = [] (double x, double y, int k) {
+        return 20.0 + 1.0e-4 * x * x - 5.0e-5 * x * y + 2.0e-4 * (y - 1300.0) * (y - 1300.0) + 0.5 * k;
+    };
+    const amrex::IndexType node_t(amrex::IntVect(1, 1, 1));
+    set_valid(p.q.z_phys_nd, [&] (int i, int j, int k) {
+        return static_cast<double>(zlp[k]) + quad(pos(p.geom, node_t, i, 0), pos(p.geom, node_t, j, 1), k);
+    });
+    const ScopedDir dir{write_parent(p, "ut_nestfaces_smooth")};
+    NestRun f;
+    f.in = patch_inputs(p.in);
+    f.make();
+    const auto zl = gust::make_zlevels(f.in.mesh, f.geom);
+    const gust::NestParent parent(dir.name, f.in.mesh, zl, f.ba, f.dm, true);
+    amrex::MultiFab hp(f.q.z_phys_nd.boxArray(), f.dm, 1, amrex::IntVect(1, 1, 0));
+    parent.interpolate_ground_smooth(hp);
+    Sum err;
+    for (amrex::MFIter mfi(hp, false); mfi.isValid(); ++mfi) {
+        const amrex::Box bx = amrex::grow(mfi.validbox(), amrex::IntVect(1, 1, 0));
+        amrex::FArrayBox h(bx, 1, amrex::The_Pinned_Arena());
+        h.copy<amrex::RunOn::Device>(hp[mfi], bx, 0, bx, 0, 1);
+        amrex::Gpu::streamSynchronize();
+        amrex::LoopOnCpu(bx, [&] (int i, int j, int k) {
+            const double want = static_cast<double>(zlp[k]) + quad(pos(f.geom, node_t, i, 0), pos(f.geom, node_t, j, 1), k);
+            err.add(static_cast<double>(h(amrex::IntVect(i, j, k))) - want);
+        });
+    }
+    err.reduce();
+    EXPECT_GE(err.n, 27L * 23 * 9);   // 25 x 21 nodes and one ghost node each side, 9 levels (boxes share nodes)
+    EXPECT_LT(err.err, kDouble ? 1.0e-9 : 1.0e-2);
+}
+
+// A joint run's nest: the coordinate surfaces are the parent's plus the nest's own ground detail times
+// b(zeta) = sinh((H - zeta) / s) / sinh(H / s), s = max(r dx, 2 max|h - h_p| / m) (NestFaces.H), recomputed
+// here on the host from the parent's interpolated surfaces.
+TEST (NestFaces, JointNestLevelsFollowTheParentsAloft)
+{
+  // BTF and Sullivan (STF is refused with nests over terrain).
+  for (const int smoothing : {0, 2}) {
+    SCOPED_TRACE("terrain.smoothing = " + std::to_string(smoothing));
+    NestRun p;
+    p.in = parent_inputs(true);
+    p.in.terrain.smoothing = smoothing;
+    p.make();
+    const ScopedDir dir{write_parent(p, "ut_nestfaces_levels")};
+    NestRun own;   // the nest's own terrain-fitted surfaces
+    own.in = patch_inputs(p.in);
+    own.make();
+    NestRun f;
+    f.in = own.in;
+    f.dm = own.dm;
+    const amrex::Geometry g = gust::make_geometry(f.in.mesh);
+    const amrex::BoxArray ba = gust::make_box_array(f.in.mesh);
+    const auto zl = gust::make_zlevels(f.in.mesh, g);
+    const gust::NestParent parent(dir.name, f.in.mesh, zl, ba, f.dm, true);
+    f.make(false, nullptr, [&] (amrex::MultiFab& z, const amrex::Vector<amrex::Real>& lev) {
+        gust::follow_parent_levels(parent, g, lev, z);
+    });
+    EXPECT_GT(static_cast<double>(f.mesh.detJ.min(0)), 0.0);
+
+    amrex::MultiFab hp(f.q.z_phys_nd.boxArray(), f.dm, 1, amrex::IntVect(1, 1, 0));
+    parent.interpolate_ground_smooth(hp);
+    amrex::MultiFab three(f.q.z_phys_nd.boxArray(), f.dm, 3, 0);
+    amrex::MultiFab::Copy(three, f.q.z_phys_nd, 0, 0, 1, 0);
+    amrex::MultiFab::Copy(three, hp, 0, 1, 1, 0);
+    amrex::MultiFab::Copy(three, own.q.z_phys_nd, 0, 2, 1, 0);
+    const int kn = g.Domain().bigEnd(2) + 1;
+    const double H = static_cast<double>(zl.back() - zl.front());
+    std::vector<amrex::FArrayBox> host;
+    std::vector<amrex::Box> boxes;
+    for (amrex::MFIter mfi(three, false); mfi.isValid(); ++mfi) {
+        const amrex::Box bx = mfi.validbox();
+        host.emplace_back(bx, 3, amrex::The_Pinned_Arena());
+        host.back().copy<amrex::RunOn::Device>(three[mfi], bx, 0, bx, 0, 3);
+        boxes.push_back(bx);
+    }
+    amrex::Gpu::streamSynchronize();
+    // max |h - h_p| and the smallest slope of the parent's surfaces.
+    double dh = 0, m = 1.0e30;
+    for (std::size_t n = 0; n < host.size(); ++n) {
+        const auto& h = host[n];
+        amrex::LoopOnCpu(boxes[n], [&] (int i, int j, int k) {
+            if (k == 0) { dh = std::max(dh, std::abs(h(amrex::IntVect(i, j, 0), 2) - h(amrex::IntVect(i, j, 0), 1))); }
+            if (k < kn) {
+                m = std::min(m, (h(amrex::IntVect(i, j, k + 1), 1) - h(amrex::IntVect(i, j, k), 1))
+                                    / static_cast<double>(zl[k + 1] - zl[k]));
+            }
+        });
+    }
+    const auto comm = amrex::ParallelDescriptor::Communicator();
+    amrex::ParallelAllReduce::Max(dh, comm);
+    amrex::ParallelAllReduce::Min(m, comm);
+    const double s = std::max(2.0 * g.CellSize(0), 2.0 * dh / m);   // patch_inputs: ratio 2, dx = dy
+    Sum formula, ground, top, aloft;
+    long lower = 0;
+    for (std::size_t n = 0; n < host.size(); ++n) {
+        const auto& h = host[n];
+        amrex::LoopOnCpu(boxes[n], [&] (int i, int j, int k) {
+            const double z = h(amrex::IntVect(i, j, k), 0), zp = h(amrex::IntVect(i, j, k), 1), zo = h(amrex::IntVect(i, j, k), 2);
+            const double d0 = h(amrex::IntVect(i, j, 0), 2) - h(amrex::IntVect(i, j, 0), 1);
+            const double ze = static_cast<double>(zl[k] - zl.front());
+            const double b = std::sinh((H - ze) / s) / std::sinh(H / s);
+            formula.add(z - (zp + d0 * b));
+            if (k == 0) { ground.add(z - zo); }
+            if (k == kn) { top.add(z - zp); }
+            // Aloft the nest's detail is smaller than with its own BTF surfaces (1 - zeta / H).
+            if (smoothing == 0 && k > 0 && k < kn) {
+                aloft.add(0);
+                if (std::abs(z - zp) > std::abs(zo - zp) + 1.0e-9) { ++aloft.bad; }
+                if (std::abs(z - zp) < 0.5 * std::abs(zo - zp)) { ++lower; }
+            }
+        });
+    }
+    formula.reduce();
+    ground.reduce();
+    top.reduce();
+    aloft.reduce();
+    amrex::ParallelAllReduce::Sum(lower, comm);
+    EXPECT_GT(dh, 1.0) << "the nest's ground and the parent's differ";
+    EXPECT_LT(formula.err, kDouble ? 1.0e-9 : 1.0e-2);
+    EXPECT_EQ(ground.err, 0.0);
+    EXPECT_LT(top.err, kDouble ? 1.0e-9 : 1.0e-2);
+    if (smoothing == 0) {
+        EXPECT_GT(aloft.n, 0);
+        EXPECT_EQ(aloft.bad, 0);
+        EXPECT_GT(lower, 0);
+    }
+  }
 }
 
 // UT-9.2.3 to UT-9.2.5 share this: the zone's rate, source and diagonal.

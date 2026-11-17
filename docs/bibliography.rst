@@ -1,6 +1,9 @@
 Bibliography
 ============
 
+Anthonissen, M. J. H., Mattheij, R. M. M., ten Thije Boonkkamp, J. H. M. (2003). Convergence analysis of the
+local defect correction method for diffusion equations. *Numerische Mathematik* 95, 401–425.
+
 Axell, L. B., Liungman, O. (2001). A one-equation turbulence model for geophysical applications: comparison with
 data and the k–ε model. *Environmental Fluid Mechanics* 1, 71–106.
 
@@ -19,6 +22,9 @@ Dyer, A. J. (1974). A review of flux-profile relationships. *Boundary-Layer Mete
 Elliott, W. P. (1958). The growth of the atmospheric internal boundary layer. *Transactions, American Geophysical
 Union* 39, 1048–1054.
 
+Ferket, P. J. J., Reusken, A. A. (1996). Further analysis of the local defect correction method. *Computing*
+56, 117–139.
+
 Forthofer, J. M., Butler, B. W., Wagenbrenner, N. S. (2014). A comparison of three approaches for simulating
 fine-scale surface winds in support of wildland fire management. Part I. Model formulation and comparison against
 measurements. *International Journal of Wildland Fire* 23, 969–981.
@@ -31,6 +37,9 @@ Computational Fluid Dynamics and Its Applications* 5, 294–312.
 
 Harman, I. N., Finnigan, J. J. (2007). A simple unified theory for flow in the canopy and roughness sublayer.
 *Boundary-Layer Meteorology* 123, 339–363.
+
+Harris, L. M., Durran, D. R. (2010). An idealized comparison of one-way and two-way grid nesting. *Monthly
+Weather Review* 138, 2174–2187. https://doi.org/10.1175/2010MWR3080.1
 
 Klemp, J. B. (2011). A terrain-following coordinate with smoothed coordinate surfaces. *Monthly Weather Review* 139,
 2163–2169.
@@ -55,6 +64,12 @@ Meteorology* 9, 197–203.
 
 Sanz, C. (2003). A note on k-ε modelling of vegetation canopy air-flows. *Boundary-Layer Meteorology* 108,
 191–197.
+
+Schär, C., Leuenberger, D., Fuhrer, O., Lüthi, D., Girard, C. (2002). A new terrain-following vertical coordinate
+formulation for atmospheric prediction models. *Monthly Weather Review* 130, 2459–2480.
+
+Shaw, W. J., and co-authors (2019). The Second Wind Forecast Improvement Project (WFIP2): general overview.
+*Bulletin of the American Meteorological Society* 100, 1687–1699. https://doi.org/10.1175/BAMS-D-18-0036.1
 
 Sherman, C. A. (1978). A mass-consistent model for wind fields over complex terrain. *Journal of Applied
 Meteorology* 17, 312–319.

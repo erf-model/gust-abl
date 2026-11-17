@@ -1,0 +1,41 @@
+# inputs_outer without mesh.max_grid_size and steady.stage, for the abort tests (they set them on the command line).
+# The outer domain of the two-way nest test (rt_nests_two_way): a 100 m round
+# Witch of Agnesi hill, half-width 150 m, in the middle (steeper than the
+# 60 m, 250 m hill of Nests_One_Process, so the 50 m outer cells miss part of
+# the flow the 25 m nest resolves); 32 x 24 x 16 cells of 50 m over
+# 1600 m x 1200 m x 800 m, first layer 10 m; periodic in y; a log-law inflow,
+# u* = 0.4 m/s, z0 = 0.1 m, from 20 degrees at xlo, outflow at xhi. The
+# Rayleigh layer above 400 m damps w and theta only, as every nest does
+# (docs/boundary_conditions.rst, Two-way nests). The nest and nest.feedback
+# are given on the command line (check_nests_two_way.py), and the uniform
+# 25 m reference is this deck with 64 x 48 x 16 cells.
+mesh.n_cell        = 32 24 16
+mesh.prob_lo       = 0. 0. 0.
+mesh.prob_hi       = 1600. 1200. 800.
+mesh.is_periodic   = 0 1 0
+mesh.dz0           = 10.
+
+terrain.type            = agnesi
+terrain.hill_shape      = round
+terrain.hill_height     = 100.
+terrain.hill_half_width = 150.
+terrain.smoothing       = 0
+
+bc.xlo = inflow
+bc.xhi = outflow
+bc.zlo = surface_layer
+bc.zhi = slip_wall
+bc.surface_z0 = 0.1
+bc.inflow_profile   = log_law
+bc.inflow_ustar     = 0.4
+bc.inflow_z0        = 0.1
+bc.inflow_direction = 20.
+bc.rayleigh_zdamp    = 400.
+bc.rayleigh_dampcoef = 0.2
+bc.rayleigh_fields   = w theta
+
+init.first_guess = profile
+
+
+io.plot_file = outer_plt
+io.chk_file  = outer_chk

@@ -65,6 +65,7 @@ class BuildingTheta;
 class CanopyFaceDrag;
 class CanopyHeat;
 struct CanopyRows;
+class NestDefect;
 class TimeTerm;
 
 class BoundaryConditions;
@@ -169,6 +170,10 @@ struct ResidualInputs
     //! residual adds it to u, v, w, theta and k, and implicit_rows adds 1/dt to their diagonals,
     //! both before the rows that replace their own (the wall-k, Dirichlet and building rows).
     const TimeTerm* time{nullptr};
+    //! The nests' defect source S (NestDefect.H, nest.feedback = defect); null: none. The residual
+    //! subtracts it from u, v, w, theta and k right after the time term, before the rows that
+    //! replace their own; it has no implicit part.
+    const NestDefect* defect{nullptr};
     //! false: the residual leaves the buildings' fixed rows out (BuildingForcing::apply_rows), so the
     //! blocked faces keep their momentum residual, from which BuildingLoads sums the force on them.
     bool building_rows{true};
