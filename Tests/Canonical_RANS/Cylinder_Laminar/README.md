@@ -8,8 +8,9 @@ drag and lift come from `buildings.force_file` (docs: Buildings, Force on the bu
 
 - **Re = 40:** the flow is steady. Both approaches give the same answer: two attached eddies behind the cylinder,
   compared with the drag and wake length of Dennis & Chang (1970) and Fornberg (1980).
-- **Re = 100:** the true flow sheds vortices (the Kármán street). The steady solver converges to the symmetric
-  steady solution (Dennis & Chang 1970, Fornberg 1980: lower drag, a long wake). The unsteady run sheds; its time
+- **Re = 100:** the true flow sheds vortices (the Kármán street). The symmetric steady solution
+  exists (Dennis & Chang 1970, Fornberg 1980: lower drag, a long wake), but the steady solver does not settle on it:
+  the run stops at its iteration limit (Expected Results). The unsteady run sheds; its time
   mean is compared with Park, Kwon & Choi (1998), and its shedding frequency with Williamson (1996).
 
 The case shows what the steady solver gives for a flow that is not steady, and that the unsteady driver recovers the

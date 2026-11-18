@@ -287,10 +287,15 @@ or when the time history is wanted. Take the steady deck and change the stage:
   ``steady.monitor_rel_tol``, ``steady.monitor_window``, ``steady.confidence``, ``steady.confidence_height`` and
   ``io.iteration_log`` have no effect in an unsteady run and are refused. ``steady.residual_tol`` stays: it is the
   floor of each step's inner stop.
-- **Not supported.** Grid sequencing (``steady.sequencing = 1``), the Newton stage and the near-ground upwind
-  blend (``convection.hybrid_sigma_max`` > 0).
-- **Start from the steady run.** Give the steady run's checkpoint as ``io.restart`` (and remove the ``init.*``
-  keys). The time starts at 0 from that state, which shortens the transient.
+  ``steady.probes_file`` is refused too: ``unsteady.probes_file`` names the probes of an unsteady run.
+- **Not supported.** Grid sequencing (``steady.sequencing = 1``), the near-ground upwind blend
+  (``convection.hybrid_sigma_max`` > 0), a relaxation of :math:`\nu_t` that ends with the residual
+  (``turb.nut_relax_end`` > 0), nests (``nest.names``) and an immersed ground
+  (``terrain.representation = immersed_forcing``). The run stops with a message that names the key.
+- **Start from the steady run.** Give the checkpoint of a ``steady.stage = simplec`` run as ``io.restart`` (and
+  remove the ``init.*`` keys). The time starts at 0 from that state, which shortens the transient. A
+  ``simplec_newton`` checkpoint cannot be used. A steady deck with the upwind blend or with
+  ``simplec.theta = frozen`` cannot be restarted at all; start the unsteady run from the first guess then.
 - **Choose the step.** Backward Euler is first order and damps oscillations: resolve a shedding period with many
   steps, and halve the step to see how much the amplitude changes (:doc:`buildings`, Validation, has the cylinder's
   numbers).
@@ -301,8 +306,9 @@ or when the time history is wanted. Take the steady deck and change the stage:
   go to ``<io.plot_file>_probes.csv``. ``unsteady.plot_interval`` and ``unsteady.checkpoint_interval`` write
   plotfiles and checkpoints every so many steps. A later run continues from an unsteady checkpoint with the same
   ``unsteady.average_start`` and a later ``unsteady.stop_time``.
-- **Reading the result.** Variances near zero say the unsteady run settled on a steady field; :doc:`results`
-  (Time mean of the unsteady run against the steady run) compares the two on three cases.
+- **Reading the result.** Move the averaging window later (``unsteady.average_start``). A variance that falls
+  comes from the start-up; one that stays marks a flow that is unsteady. :doc:`results` (Time mean of the unsteady
+  run against the steady run) compares the two solvers in three runs on two cases.
 
 The method is in :ref:`physical-time-term` and :ref:`time-driver`, the outputs in :ref:`unsteady-outputs`, and
 the inputs in :doc:`inputs` (``unsteady``).
@@ -323,7 +329,10 @@ Add a forest, buildings or a nest
      nest.hill.lo = 400 300      # x y (m)
      nest.hill.hi = 1200 900
 
-  ``nest.feedback`` chooses a two-way option (:ref:`two-way-nests`).
+  The corners lie on cell faces of the outer mesh, at least two outer cells inside a face that is not periodic.
+  The deck needs ``steady.stage = simplec`` or ``simplec_newton`` and ``io.write_checkpoint = 1``, and the nests
+  run only if the outer domain reaches its steady verdict. ``nest.feedback`` chooses a two-way option
+  (:ref:`two-way-nests`).
 
 View and check the results
 --------------------------

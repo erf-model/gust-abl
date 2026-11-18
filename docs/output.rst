@@ -107,7 +107,8 @@ Other output files
      - Contents
    * - ``<io.plot_file>_steady_probes.csv``
      - With ``steady.probes_file``: :math:`u, v, w, \theta, k` at each probe for the state the iterations start
-       from and after every iteration of level 0 (:ref:`unsteady-outputs`).
+       from and after every iteration of level 0 (:ref:`unsteady-outputs`). The joint iterations of a two-way run
+       add no rows, and a nest writes no probe file.
    * - ``<io.plot_file>_probes.csv``
      - With ``steady.stage = unsteady`` and ``unsteady.probes_file``: the same values at the start and after each
        physical step, against time. A restart keeps the rows up to the checkpoint's time.
@@ -115,10 +116,12 @@ Other output files
      - The CSV ``t,Fx,Fy,Fz`` of the force on the buildings per unit density: one row after a steady solve; in an
        unsteady run one at the start and one per step (:doc:`buildings`).
    * - ``io.column_guess_file``
-     - With ``init.first_guess = column``: the converged column's table ``z u v theta k``. It reads back as a
-       ``bc.inflow_file`` (:doc:`initial_conditions`).
+     - With ``init.first_guess = column``: the column's table ``z u v theta k``, written in every such run (the
+       default name is ``column_guess.dat``). It is the converged column, or with ``init.column_time`` the column
+       at that time. It reads back as a ``bc.inflow_file`` (:doc:`initial_conditions`).
 
-**Unsteady runs.** The plotfile carries the physical time and is numbered by the total of inner iterations. With
+**Unsteady runs.** The plotfile carries the physical time and is numbered by the total of inner iterations (after
+a start from a steady checkpoint, that checkpoint's iterations are included). With
 ``unsteady.plot_interval`` and ``unsteady.checkpoint_interval`` plotfiles and checkpoints are also written during
 the run. An unsteady checkpoint adds the record ``Unsteady`` and the fields of the running averages
 (``Level_0/unsteady_mean``, ``Level_0/unsteady_m2``). A run that diverges writes no final checkpoint

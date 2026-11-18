@@ -83,11 +83,11 @@ The unsteady solver (``steady.stage = unsteady``, :ref:`time-driver`) is tested 
    * - 2-D hill (``Unsteady_Hill_2D``)
      - Ten steps of 60 s on 1, 2 and 4 ranks give the same steps and the same answer; a restart at a step boundary
        continues bit for bit; averages and probes.
-     - ``rt_unsteady_hill2d``
+     - ``rt_unsteady_hill2d`` (MPI builds)
    * - Laminar cylinder (``Cylinder_Laminar``)
      - At Re = 40 the unsteady run settles to the steady answer; at Re = 100 it sheds vortices
        (:doc:`buildings`, Validation).
-     - ``rt_cylinder_re40``; Re = 100 is a comparison run
+     - Comparison runs. ``rt_cylinder_re40`` checks the steady run at Re = 40.
    * - RUSHIL Hill 5 and Askervein with ERF's setup (``URANS_Averages``)
      - The time mean of the unsteady run against the steady run of the same deck (:doc:`results`).
      - Comparison runs; ``rt_urans_mean_option`` checks the readers
@@ -95,8 +95,8 @@ The unsteady solver (``steady.stage = unsteady``, :ref:`time-driver`) is tested 
 Canopies, buildings, nests and immersed terrain
 -----------------------------------------------
 
-Each capability has its own cases, described on its page with their CTest names; ``Tests/Canonical_RANS/README.md``
-and ``Tests/Real_Terrain/README.md`` list every folder.
+Each capability has its own cases, described on its page. Each case folder's ``README.md`` and :doc:`testing`
+give the CTest names.
 
 .. list-table::
    :header-rows: 1
@@ -141,7 +141,8 @@ Notes
   :math:`2\pi/f` (17.5 h at :math:`f = 10^{-4}` s\ :sup:`-1`) before it settles. Its ERF reference therefore runs
   48 h (:doc:`references`).
 - A case that may not be steady (case 6) is still run. If it does not meet the convergence criteria
-  (:ref:`convergence-criteria`), it is reported as not steady. The unsteady solver can then follow it in time; a
-  steady run that stops at its iteration limit is not by itself a sign of an unsteady flow (:doc:`results`).
+  (:ref:`convergence-criteria`), it is reported as not steady. A steady run that stops at its iteration limit is not by
+  itself a sign of an unsteady flow (:doc:`results`). The unsteady solver can follow such a flow in time, from a
+  deck without grid sequencing and the upwind blend (:doc:`howto`).
 
 Results for these cases are in :doc:`results`.

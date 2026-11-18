@@ -559,7 +559,7 @@ TEST(Newton, JvpEpsSweepAgainstQuadraticResidual)
 // Plain Newton (no dtau) on the Ekman column under the wall law,
 // from the geostrophic wind, GMRES(200) to a relative 1e-10 per step (in
 // practice to the forward difference's floor near 1e-8: GMRES reports
-// convergence there, see docs/solver.rst). The scaled residual |R| goes
+// convergence there, see docs/solution_algorithm.rst). The scaled residual |R| goes
 // 0.760, 0.306, 0.0525, 6.88e-4, 1.44e-7, 1.19e-14 (round-off). The
 // reductions r_{n+1} / r_n are pinned to a factor 2: 0.403, 0.171, 0.0131,
 // 2.09e-4, 8.26e-8. The last two steps above the round-off floor gain more

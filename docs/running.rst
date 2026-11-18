@@ -29,7 +29,9 @@ What a run does
    (:doc:`output`). An unsteady run can also write plotfiles and checkpoints during the run.
 #. **Run the nests**, if the deck names any (``nest.names``): each nest runs in the same process as a finer patch
    of the outer domain's checkpoint, and with ``nest.feedback`` other than ``none`` a joint run of the outer domain
-   and the nests follows (:ref:`nests-one-run`, :ref:`two-way-nests`).
+   and the nests follows (:ref:`nests-one-run`, :ref:`two-way-nests`). The nests run only if the outer domain
+   reaches its steady verdict; otherwise the run stops after the outer domain's output. A joint run writes every
+   domain's output a second time when it ends.
 
 With the default ``steady.stage = none`` the run skips step 4: it writes the mesh and initial field and stops.
 This is useful for checking a new mesh or initial field.
@@ -56,10 +58,12 @@ Set ``io.restart`` to a checkpoint directory (:doc:`howto` has a step-by-step re
   layout, bit for bit, over flat ground and over terrain.
 - The run stops if it would write a checkpoint with the name of the one it read.
 - An unsteady run may start from a steady checkpoint written by ``steady.stage = simplec`` (its time starts at 0)
-  or from an unsteady checkpoint (it continues that run's time, step count and averages). A steady run may start
-  from an unsteady checkpoint; it ignores the averages (:ref:`time-driver`, :ref:`unsteady-outputs`).
-- A restart must give the checkpoint's canopy inputs (:doc:`canopy`) and terrain representation
-  (:doc:`immersed_terrain`).
+  or from an unsteady checkpoint (it continues that run's time, step count and averages). A
+  ``steady.stage = simplec`` run may start from an unsteady checkpoint; it ignores the averages
+  (:ref:`time-driver`, :ref:`unsteady-outputs`). A ``simplec_newton`` checkpoint continues only with
+  ``simplec_newton``.
+- A restart must give the checkpoint's canopy inputs (:doc:`canopy`), buildings (:doc:`buildings`), ``nest`` face
+  inputs (:doc:`boundary_conditions`) and terrain representation (:doc:`immersed_terrain`).
 
 AMReX runtime flags
 -------------------

@@ -6,12 +6,12 @@ Conventions
 
 - **Unit tests** use GoogleTest; each is named ``Suite.Test``. They are deterministic, finish in seconds on
   1–4 ranks, and run on every commit: ``ctest -L unit``.
-- **Regression tests** run the application and compare with stored gold plotfiles using
-  ``amrex_fcompare``. Their check scripts print *measured / target / tolerance / pass* rows.
-  ``ctest -L smoke`` runs the structural checks CI does on every pull request; ``ctest -L physics`` runs the
-  converged checks nightly on Kestrel.
-- **Performance tests** run nightly or weekly on Kestrel. They track iterations, wall time and
-  allocation-unit cost; a slowdown of more than 10 % fails.
+- **Regression tests** run the application and check the result: most with a script against pinned numbers, a
+  log or a gold file, a few with ``amrex_fcompare`` against a gold plotfile. The check scripts print
+  *measured / target / tolerance / pass* rows. ``ctest -L smoke`` runs the checks CI does on every pull request.
+  The longer converged runs carry the label ``regression`` alone or ``nightly``; no CI job or Kestrel script runs
+  them yet, so they are run by hand (``ctest -L regression``, ``ctest -L nightly``).
+- **Performance tests** (iterations, wall time and allocation-unit cost against a stored value) do not exist yet.
 - **Gold files** change only in a reviewed commit.
 
 Every test is first shown to fail on the bug it guards against, or on a one-line mutant of the code it covers.

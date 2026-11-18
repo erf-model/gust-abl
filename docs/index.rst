@@ -46,16 +46,19 @@ Development status
        hierarchy and grid sequencing (:doc:`solution_algorithm`, :doc:`grid_hierarchy`)
      - Available; the production steady solver
    * - Jacobian-free Newton–Krylov, preconditioned by SIMPLEC (``steady.stage = simplec_newton``)
-     - Available as an option. Refused with buildings, laminar flow, a frozen :math:`\theta` and an immersed
-       ground.
+     - Available as an option. Refused with buildings, laminar flow, a frozen :math:`\theta`, the near-ground
+       upwind blend, two-way nests and an immersed ground.
    * - Unsteady RANS by dual time stepping, backward Euler (``steady.stage = unsteady``)
-     - Available. First order in time; grid sequencing and the near-ground upwind blend are refused.
+     - Available. First order in time. Grid sequencing, the near-ground upwind blend, nests and an immersed
+       ground are refused.
    * - Forest canopy: drag, turbulence and heat (:doc:`canopy`)
      - Available
    * - Buildings by immersed forcing (:doc:`buildings`)
-     - Available with SIMPLEC, z-line Jacobi sweeps and one grid level. Validated on a cube and a cube array.
+     - Available with the SIMPLEC and unsteady stages, z-line Jacobi sweeps and one grid level. Compared with
+       measurements on a cube and a cube array.
    * - Nests in one run, one-way and two-way (:ref:`nests-one-run`, :ref:`two-way-nests`)
-     - Available at refinement 2 2 1. Buildings are refused in a deck with nests.
+     - Available at refinement 2 2 1 with the steady stages. Buildings are refused in a deck with ``nest.names``;
+       a patch that is run separately with ``nest`` faces accepts them.
    * - Immersed terrain on a flat mesh (:doc:`immersed_terrain`)
      - In progress: flat ground, neutral and laterally periodic only
    * - Nonlinear FAS multigrid
@@ -70,7 +73,8 @@ Where to start
 - **New users:** build the code (:doc:`building`), then work through the tutorials, starting with
   :doc:`tutorial_column`.
 - **Setting up your own case:** :doc:`case_setup` (from a YAML file), :doc:`howto` and the :doc:`inputs`.
-- **A flow that does not settle:** the unsteady recipe in :doc:`howto`, then :ref:`time-driver`.
+- **A flow that does not settle:** :doc:`tutorial_unsteady`, the unsteady recipe in :doc:`howto`, then
+  :ref:`time-driver`.
 - **The model and the numerics:** the Mathematical model and Numerical method sections below.
 - **Accuracy and speed:** :doc:`results` and :doc:`scaling`.
 
@@ -93,6 +97,7 @@ Contents
    tutorial_flat_abl
    tutorial_hill
    tutorial_askervein
+   tutorial_unsteady
 
 .. toctree::
    :maxdepth: 2

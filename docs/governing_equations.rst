@@ -88,5 +88,6 @@ where :math:`t` is the physical time and :math:`R_q` the steady residual of equa
 has no time term: :math:`\nabla\cdot\mathbf u = 0` holds at every time. The closure, the sources and the boundary
 conditions are those of the steady problem, so this is unsteady RANS with the same k–L model. Time is advanced by
 backward Euler, first order in the step :math:`\Delta t` (:ref:`physical-time-term`, :ref:`time-driver`). A flow
-that has a steady state reaches it; one that has none, such as a wake that sheds vortices, is followed in time and
-its running mean and variance are kept (:ref:`unsteady-outputs`).
+with a stable steady state settles on it. A flow without one, such as a wake that sheds vortices, is followed in
+time, and its running mean and variance are kept (:ref:`unsteady-outputs`). Backward Euler damps oscillations, so
+the amplitude of an unsteady flow depends on the step.
