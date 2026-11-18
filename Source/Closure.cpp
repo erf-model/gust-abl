@@ -24,7 +24,7 @@ namespace {
 
 const char* const kKeys[] = {"Cmu0", "Cb", "Rt_crit", "Rt_min", "max_geom_lscale", "tke_floor", "sigma_k",
                              "nu_molecular", "alpha_molecular", "kappa", "nut_relax", "nut_relax_end", "frozen_switch", "face_mean",
-                             "wall_distance", "ri_gate", "realizability", "closure"};
+                             "wall_distance", "ri_gate", "realizability", "closure", "shear_stencil"};
 
 //! The keys turb.closure = none keeps: every other key belongs to the k–L closure. turb.face_mean is not
 //! kept: with constant diffusivities every face mean gives the same face value.
@@ -296,6 +296,11 @@ ClosureOptions read_closure_options ()
     if (wd == "terrain_height") { opt.wall_distance = WallDistanceKind::terrain_height; }
     else if (wd == "tucker") { opt.wall_distance = WallDistanceKind::tucker; }
     else { amrex::Abort("gust: turb.wall_distance = " + wd + ": must be terrain_height or tucker"); }
+    std::string ss = "central";
+    pp.query("shear_stencil", ss);
+    if (ss == "central") { opt.shear_stencil = ShearStencil::central; }
+    else if (ss == "log_law") { opt.shear_stencil = ShearStencil::log_law; }
+    else { amrex::Abort("gust: turb.shear_stencil = " + ss + ": must be central or log_law"); }
     return checked(opt);
 }
 

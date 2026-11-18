@@ -87,6 +87,9 @@
 namespace gust {
 
 enum class WallDistanceKind { terrain_height, tucker };
+//! turb.shear_stencil: the vertical gradients of u and v in S2 (central: the closure's central difference;
+//! log_law: exact for a logarithmic profile over the ground, LogShear.H).
+enum class ShearStencil { central, log_law };
 
 //! turb.closure: the k–L closure, or none (laminar: the molecular diffusivities alone).
 enum class ClosureKind { kl, none };
@@ -120,6 +123,7 @@ struct ClosureOptions
     amrex::Real ri_gate{0};
     FaceMean face_mean{FaceMean::arithmetic};
     WallDistanceKind wall_distance{WallDistanceKind::terrain_height};
+    ShearStencil shear_stencil{ShearStencil::central};
     //! turb.realizability = C_r (0: off, or finite and > 0): nu_t <= C_r k / S
     //! (ClosureWake.H), applied to the new nu_t before the nu_t relaxation.
     amrex::Real realizability{0};

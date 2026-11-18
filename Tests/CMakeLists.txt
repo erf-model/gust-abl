@@ -2227,6 +2227,40 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
                       PREFIX ${Python3_EXECUTABLE} ${IMMERSED_COLUMN_CASE}/check_immersed_column.py --f ${_f} --cut-max ${_cut} --
                       COMMAND $<TARGET_FILE:gust> ${IMMERSED_COLUMN_CASE}/inputs_immersed_column ${GUST_TEST_AMREX_FLAGS})
     endforeach()
+    # The same columns with turb.shear_stencil = log_law (LogShear.H): the wall stress to 1e-5 as
+    # above, the cut cell within 0.2 % of the log law on either side, the three cells above it
+    # within 0.5 %, and their tke within 1 %, 1.5 % and 2 % of the local balance
+    # u*^2 (1 - d/D) / Cmu0^2 (the central difference: +13 to +22 % in the first, the reason for the
+    # option). f = 0 also runs the body-fitted column with the option and matches it to 1e-6: the
+    # body-fitted and the immersed kernel of LogShear agree. About 30 s each on two ranks.
+    gust_add_test(NAME rt_log_shear_column_f0 NP 2 LABELS "regression"
+                  PREFIX ${Python3_EXECUTABLE} ${IMMERSED_COLUMN_CASE}/check_immersed_column.py --f 0 --cut-max 0.2 --log-shear
+                         --body-fitted ${IMMERSED_COLUMN_CASE}/inputs_body_fitted_column --
+                  COMMAND $<TARGET_FILE:gust> ${IMMERSED_COLUMN_CASE}/inputs_immersed_column turb.shear_stencil=log_law
+                          ${GUST_TEST_AMREX_FLAGS})
+    foreach(_f 0.3 0.7 0.9)
+        string(REPLACE "." "" _tag ${_f})
+        gust_add_test(NAME rt_log_shear_column_f${_tag} NP 2 LABELS "regression"
+                      PREFIX ${Python3_EXECUTABLE} ${IMMERSED_COLUMN_CASE}/check_immersed_column.py --f ${_f} --cut-max 0.2 --log-shear --
+                      COMMAND $<TARGET_FILE:gust> ${IMMERSED_COLUMN_CASE}/inputs_immersed_column turb.shear_stencil=log_law
+                              ${GUST_TEST_AMREX_FLAGS})
+    endforeach()
+    # The refusals of turb.shear_stencil.
+    gust_add_test(NAME abort_shear_stencil_value NP 1 LABELS "regression;smoke"
+                  PREFIX ${EXPECT_ABORT} "turb\\.shear_stencil = foo: must be central or log_law" --
+                  COMMAND $<TARGET_FILE:gust> ${IMMERSED_COLUMN_CASE}/inputs_immersed_column terrain.flat_height=42.1875
+                          turb.shear_stencil=foo ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME abort_shear_stencil_buildings NP 1 LABELS "regression;smoke"
+                  PREFIX ${EXPECT_ABORT} "turb\\.shear_stencil = log_law does not support buildings" --
+                  COMMAND $<TARGET_FILE:gust> ${BUILDING_CUBE_CASE}/inputs_cube buildings.file=${BUILDING_CUBE_CASE}/cube.txt
+                          turb.shear_stencil=log_law ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME abort_shear_stencil_tucker NP 1 LABELS "regression;smoke"
+                  PREFIX ${EXPECT_ABORT} "turb\\.shear_stencil = log_law needs turb\\.wall_distance = terrain_height" --
+                  COMMAND $<TARGET_FILE:gust> ${COLUMN_CASE}/inputs_steady_column turb.shear_stencil=log_law
+                          turb.wall_distance=tucker ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME abort_shear_stencil_no_surface_layer NP 1 LABELS "regression;smoke"
+                  PREFIX ${EXPECT_ABORT} "turb\\.shear_stencil = log_law needs bc\\.zlo = surface_layer" --
+                  COMMAND $<TARGET_FILE:gust> ${IMMERSED_COLUMN_CASE}/inputs_abort_log_shear_wall ${GUST_TEST_AMREX_FLAGS})
     # The iteration table's columns (io.iteration_log = table) on the flat ABL,
     # whose second row has all six residuals non-zero and distinct: the row
     # pins which residual sits in which column (u, v, w, tke, theta, p), the

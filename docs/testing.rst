@@ -1321,7 +1321,7 @@ unit-test flags by ``tools/unsteady_output_mutants.py`` (macOS arm64, AppleClang
 The one-line mutants of the immersed ground (``Source/BuildingForcing.H``, ``Source/BuildingForcing.cpp``,
 ``Source/ImmersedStrain.cpp``, ``Source/Residual.cpp``, ``Source/ImmersedTerrain.cpp`` and ``Source/Inputs.cpp``),
 each run against ``ImmersedTerrain.*`` and ``Inputs.ImmersedTerrain*`` on one rank, with a rebuild from the restored
-sources between two mutants (macOS arm64, AppleClang). All 9 are killed.
+sources between two mutants (macOS arm64, AppleClang). All 15 are killed.
 
 .. list-table::
    :header-rows: 1
@@ -1378,6 +1378,49 @@ sources between two mutants (macOS arm64, AppleClang). All 9 are killed.
 
 IT1 to IT9 were run with a scripted pass over the sources (each change, a rebuild, the named tests, the file
 restored and touched), and IT10 to IT15 the same way against the CTests; the scripts are not in the repository.
+
+The one-line mutants of ``turb.shear_stencil = log_law`` (``Source/LogShear.cpp``, ``Source/Sequencing.cpp``), each
+run against ``LogShear.*`` on one rank, LS1 and LS7 also against ``rt_log_shear_column_f0`` and
+``rt_log_shear_column_f07``, with a rebuild from the restored sources at the end (macOS arm64, AppleClang). All 9
+are killed.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 6 50 44
+
+   * - Mutant
+     - Change
+     - Failing tests
+   * - LS1
+     - The central difference :math:`d_{k+1} - d_{k-1}` in the place of the log length
+     - ``LogProfileGivesTheLogLawGradient``, ``ImmersedGroundStartsAboveTheCutCell``, ``RoughnessMapEntersByColumn``;
+       CTest ``rt_log_shear_column_f0``, ``rt_log_shear_column_f07``
+   * - LS2
+     - :math:`z_0` not added to the distance
+     - the same three unit tests
+   * - LS3
+     - Immersed ground: the wall cell not left out
+     - ``ImmersedGroundStartsAboveTheCutCell``
+   * - LS4
+     - Immersed ground: the solid cells not left out
+     - ``ImmersedGroundStartsAboveTheCutCell``
+   * - LS5
+     - The gradient of :math:`v` taken from :math:`u`
+     - the same three unit tests
+   * - LS6
+     - The roughness map read as a uniform :math:`z_0`
+     - ``RoughnessMapEntersByColumn``
+   * - LS7
+     - The option read but the correction not given to the closure
+     - CTest ``rt_log_shear_column_f0``, ``rt_log_shear_column_f07`` (the unit tests do not run the application)
+   * - LS8
+     - :math:`d_{k-1}` in the place of :math:`d_k` in the log length
+     - the same three unit tests
+   * - LS9
+     - The cell under the top cell left out
+     - ``LogProfileGivesTheLogLawGradient``, ``ImmersedGroundStartsAboveTheCutCell``
+
+LS1 to LS9 were run the same way; the scripts are not in the repository.
 
 The one-line mutants of the force on the buildings and the laminar closure (``Source/BuildingLoads.cpp``,
 ``Source/Residual.cpp`` and ``Source/Closure.cpp``), each run against ``BuildingLoads.*`` and ``Closure.Laminar*`` on
@@ -1730,6 +1773,16 @@ Current tests
        identical columns, :math:`u_*^2` of the wall law at the exact distances equal to :math:`F D` to 1e-5, zero
        speed in the solid layers, and the three cells above the cut cell within 1 % and 2.5 % of the log law. At 0
        the column equals the body-fitted column of 65 layers to 1e-6 in :math:`u` and :math:`k`. Double precision only.
+   * - ``rt_log_shear_column_f0``, ``rt_log_shear_column_f03``, ``rt_log_shear_column_f07``, ``rt_log_shear_column_f09``
+     - The same columns with ``turb.shear_stencil = log_law`` (:ref:`log-shear`): the wall stress to 1e-5, the cut
+       cell within 0.2 % of the log law, the three cells above it within 0.5 %, and their :math:`k` within 1 %,
+       1.5 % and 2 % of the local balance :math:`u_*^2 (1 - d/D)/C_{\mu 0}^2` (``central``: 13 to 22 % above it in
+       the first). At 0 the immersed column equals the body-fitted column with the option to 1e-6. Double precision
+       only.
+   * - ``abort_shear_stencil_value``, ``abort_shear_stencil_buildings``, ``abort_shear_stencil_tucker``,
+       ``abort_shear_stencil_no_surface_layer``
+     - The refusals of ``turb.shear_stencil``: a value that is not ``central`` or ``log_law``, buildings, the Tucker
+       wall distance and a ground without a surface layer. Each stops naming the input.
    * - ``immersed_ground_clean``, ``immersed_ground_run``, ``immersed_ground_restart``,
        ``abort_immersed_restart_changed``, ``abort_immersed_restart_body_fitted``, ``abort_immersed_first_layer``,
        ``abort_immersed_buildings``, ``abort_immersed_surface_zref``

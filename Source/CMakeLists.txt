@@ -22,6 +22,7 @@ set(GUST_SOURCES
     Diffusion.cpp
     ImplicitOperator.cpp
     ImmersedStrain.cpp
+    LogShear.cpp
     ImmersedTerrain.cpp
     MassFlux.cpp
     Forcing.cpp
