@@ -345,12 +345,14 @@ void height_above_ground (const amrex::MultiFab& z_nd, amrex::MultiFab& dist)
         const int klo = mfi.validbox().smallEnd(2);   // the ground layer (boxes span the column)
         const auto d = dist.array(mfi);
         const auto z = z_nd.const_array(mfi);
+        // The ground: the mesh's lowest nodes, or the immersed ground's component (State.H).
+        const int gc = z_nd.nComp() - 1;
         amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
         {
             amrex::Real zc = 0, zg = 0;
             for (int a = 0; a < 2; ++a) {
                 for (int b = 0; b < 2; ++b) {
-                    zg += z(i + a, j + b, klo);
+                    zg += z(i + a, j + b, klo, gc);
                     zc += z(i + a, j + b, k) + z(i + a, j + b, k + 1);
                 }
             }

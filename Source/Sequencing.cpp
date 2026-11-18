@@ -269,6 +269,21 @@ LevelSolver::LevelSolver (const RunSetup& s, const Mesh& mesh, const amrex::Geom
     } else {
         height_above_ground(z_nd, dist);
     }
+    if (buildings != nullptr && buildings->geometry() != nullptr && buildings->geometry()->from_surface()) {
+        // An immersed ground that is a surface: the fluid's mean height above it (Buildings::surface()),
+        // positive in the solid cells too, where the cell centre's height is negative. The ghost layers
+        // below and above the domain copy the nearest layer's, as height_above_ground's.
+        const amrex::MultiFab& sf = buildings->geometry()->surface();
+        const int klo = geom.Domain().smallEnd(2), khi = geom.Domain().bigEnd(2);
+        for (amrex::MFIter mfi(dist, false); mfi.isValid(); ++mfi) {
+            const auto d = dist.array(mfi);
+            const auto h = sf.const_array(mfi, kSurfaceHeight);
+            amrex::ParallelFor(mfi.fabbox(), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+            {
+                d(i, j, k) = h(i, j, amrex::max(klo, amrex::min(khi, k)));
+            });
+        }
+    }
     if (building_tke != nullptr) {
         // The closure's length sees the buildings (BuildingTke.H). The hybrid convection blend
         // keeps the ground's distance.

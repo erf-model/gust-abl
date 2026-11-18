@@ -23,12 +23,19 @@ struct State
     amrex::MultiFab p;          //!< perturbation pressure p' (cell centre)
     amrex::MultiFab theta;      //!< potential temperature (cell centre)
     amrex::MultiFab tke;        //!< turbulent kinetic energy k (cell centre)
-    amrex::MultiFab z_phys_nd;  //!< physical height of each node
+    //! Physical height of each node (component 0). With an immersed ground (terrain.representation =
+    //! immersed_forcing, ImmersedTerrain.H) a second component holds the ground's height in the node's
+    //! column, the same at every k: Heights_K.H reads the last component as the ground, so every
+    //! consumer of a height above the ground follows the immersed surface. The copies of the heights
+    //! between states and the plotfile's z_phys_nd carry component 0 alone, and so do the checkpoint's: a
+    //! restart fills the ground from the inputs, which the checkpoint's record pins (ImmersedTerrain.H).
+    amrex::MultiFab z_phys_nd;
     int step{0};
 
     //! Allocate every field on the cell-centred BoxArray ba. Values are set
-    //! to zero, ghost cells included.
-    void define (const amrex::BoxArray& ba, const amrex::DistributionMapping& dm);
+    //! to zero, ghost cells included. ground_component: z_phys_nd also holds the immersed ground's
+    //! height (two components).
+    void define (const amrex::BoxArray& ba, const amrex::DistributionMapping& dm, bool ground_component = false);
 
     //! The fields in checkpoint order, with their file names.
     struct Field { const char* name; amrex::MultiFab* mf; };

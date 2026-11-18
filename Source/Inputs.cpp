@@ -93,7 +93,7 @@ Inputs parse_inputs ()
         auto& t = in.terrain;
         for (const char* key : {"type", "file", "smoothing", "gamma_m", "hill_height", "hill_half_width",
                                 "hill_shape", "idw_neighbors", "idw_power", "hierarchy_passes", "nest_blend_width",
-                                "representation", "flat_height", "small_volfrac"}) {
+                                "representation", "flat_height", "small_volfrac", "immersed_slope"}) {
             if (pp.contains(key)) {
                 t.given.emplace_back(key);
                 if (pp.countval(key) != 1) {
@@ -115,6 +115,7 @@ Inputs parse_inputs ()
         pp.query("representation", t.representation);
         pp.query("flat_height", t.flat_height);
         pp.query("small_volfrac", t.small_volfrac);
+        pp.query("immersed_slope", t.immersed_slope);
         // The roughness map (bc.surface_z0_file, SurfaceRoughness.H) shares the IDW keys.
         t.idw_for_z0_map = amrex::ParmParse("bc").contains("surface_z0_file");
         // So do the canopy's maps (canopy.type = map, Canopy.H). Read as text
@@ -149,7 +150,7 @@ Inputs parse_inputs ()
                        "stretch_ratio", "zlevels_file", "hierarchy_levels"}},
              {"terrain", {"type", "file", "smoothing", "gamma_m", "hill_height", "hill_half_width",
                           "hill_shape", "idw_neighbors", "idw_power", "hierarchy_passes", "nest_blend_width",
-                          "representation", "flat_height", "small_volfrac"}},
+                          "representation", "flat_height", "small_volfrac", "immersed_slope"}},
              {"io", {"plot_file", "chk_file", "restart", "write_plotfile", "write_checkpoint", "turb_plot_file",
                      "iteration_log", "column_guess_file"}}}) {
         amrex::ParmParse pp(ns);
@@ -297,8 +298,8 @@ std::vector<std::string> validate (const Inputs& in)
         err.emplace_back("terrain.representation must be body_fitted or immersed_forcing (got " + t.representation + ")");
     }
     if (immersed) {
-        if (t.type != "flat") {
-            err.emplace_back("terrain.representation = immersed_forcing needs terrain.type = flat for now (got " + t.type + ")");
+        if (t.immersed_slope != "vertical" && t.immersed_slope != "normal") {
+            err.emplace_back("terrain.immersed_slope must be vertical or normal (got " + t.immersed_slope + ")");
         }
         if (!std::isfinite(t.flat_height) || !(t.flat_height > 0)) {
             err.emplace_back("terrain.flat_height must be finite and > 0 with terrain.representation = immersed_forcing");
@@ -323,7 +324,7 @@ std::vector<std::string> validate (const Inputs& in)
                              "inflow or outflow face crosses the immersed ground yet)");
         }
     } else {
-        for (const char* k : {"flat_height", "small_volfrac"}) {
+        for (const char* k : {"flat_height", "small_volfrac", "immersed_slope"}) {
             if (given(k)) {
                 err.emplace_back(std::string("terrain.") + k + " has no effect unless terrain.representation = immersed_forcing");
             }

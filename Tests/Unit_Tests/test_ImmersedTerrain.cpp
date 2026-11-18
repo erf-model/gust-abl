@@ -27,6 +27,7 @@
 
 #include <cmath>
 #include <filesystem>
+#include <fstream>
 #include <functional>
 #include <stdexcept>
 #include <string>
@@ -354,6 +355,15 @@ TEST (ImmersedTerrain, RestartRecordRefusesAChangedGround)
               std::string::npos);
     EXPECT_NE(abort_message([&] () { gust::check_immersed_terrain_restart(imm, ""); }).find("immersed"), std::string::npos);
     EXPECT_NE(abort_message([&] () { gust::check_immersed_terrain_restart(bf, h); }).find("body-fitted"), std::string::npos);
+
+    // A record of another version (the flat ground's of the first release) is refused by its version.
+    const std::string v1 = scratch_dir("v1");
+    if (amrex::ParallelDescriptor::IOProcessor()) {
+        std::ofstream os(gust::immersed_terrain_checkpoint_file(v1));
+        os << "gust_immersed_terrain 1\nsha256 " << h << "\n";
+    }
+    amrex::ParallelDescriptor::Barrier();
+    EXPECT_NE(abort_message([&] () { gust::check_immersed_terrain_restart(v1, h); }).find("record is version 1"), std::string::npos);
 
     // The Buildings record stays empty: the immersed ground owns its own.
     const PCase c = ground_case(4);

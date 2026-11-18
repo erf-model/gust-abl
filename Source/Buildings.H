@@ -64,6 +64,11 @@ namespace gust {
 //! The components of Buildings::wall().
 enum BuildingWallComp { kWallMask = 0, kWallD1x, kWallD2x, kWallD1y, kWallD2y, kWallD1z, kWallD2z, kNumWallComps };
 
+//! The components of Buildings::surface() (a ground built by build_from_surface): the mean height
+//! of the cell's fluid above the ground (m; half the layer in a solid cell) and the ground's mean
+//! slopes dh/dx and dh/dy over the cell's footprint.
+enum BuildingSurfaceComp { kSurfaceHeight = 0, kSurfaceSlopeX, kSurfaceSlopeY, kNumSurfaceComps };
+
 //! The bits of the mask: a roof below the cell, a side at its low or high x or y,
 //! the underside of a lifted building above the cell.
 enum BuildingWallBit { kWallRoof = 1, kWallXlo = 2, kWallXhi = 4, kWallYlo = 8, kWallYhi = 16, kWallUnder = 32 };
@@ -130,6 +135,8 @@ struct BuildingsOptions
     //! ImmersedTerrain.H). The vertical diffusion across a roof cell's top face then spans the distance between
     //! the two cells' fluid centroids, and the body forces act on the open part of each face (BuildingForcing.H).
     bool immersed_ground{false};
+    //! Set by the application, not read: terrain.immersed_slope = normal (ImmersedSlope.H), with immersed_ground.
+    bool slope_normal{false};
     std::vector<std::string> given;  //!< buildings.* keys in the inputs
     std::vector<std::string> parse_errors;   //!< value counts and repeats
     [[nodiscard]] bool active () const { return type != BuildingsType::none; }
@@ -174,7 +181,21 @@ public:
                          const amrex::Geometry& geom, const amrex::MultiFab& z_nd, const amrex::BoxArray& cell_ba,
                          const amrex::DistributionMapping& dm);
 
+    //! An immersed ground that is a continuous surface (ImmersedSurface_K.H): z_nd's last component
+    //! (of two) holds the ground's height at the nodes of each column, ghost nodes included. The
+    //! cells' and faces' fractions come from the ground interpolated over each footprint and along
+    //! each edge; the ground is the wall below a cell (the roof bit) and has no side walls; the wall
+    //! law's distances are the mean heights of the fluid above the ground (surface()). Aborts on
+    //! boxes not spanning the column and on a ground reaching the top layer. Leaves input_hash() empty.
+    void build_from_surface (const BuildingsOptions& opt, const std::string& where, const amrex::Geometry& geom,
+                             const amrex::MultiFab& z_nd, const amrex::BoxArray& cell_ba,
+                             const amrex::DistributionMapping& dm);
+
     [[nodiscard]] bool active () const { return m_active; }
+    //! Built by build_from_surface (no collective: FabArray::ok() is one).
+    [[nodiscard]] bool from_surface () const { return !m_surface.empty(); }
+    //! The surface's fields (BuildingSurfaceComp), one ghost layer; defined when from_surface().
+    [[nodiscard]] const amrex::MultiFab& surface () const { return m_surface; }
     //! The cells' solid fraction, one ghost layer.
     [[nodiscard]] const amrex::MultiFab& beta () const { return m_beta; }
     //! The solid fraction of the faces normal to d (0, 1, 2), no ghost faces.
@@ -203,6 +224,7 @@ private:
     amrex::MultiFab m_beta;
     std::array<amrex::MultiFab, 3> m_beta_face;
     amrex::MultiFab m_wall;
+    amrex::MultiFab m_surface;
     std::string m_hash;
 };
 

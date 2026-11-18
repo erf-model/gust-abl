@@ -11,6 +11,7 @@
 #include "Inputs.H"
 
 #include <AMReX_Geometry.H>
+#include <AMReX_MultiFab.H>
 
 #include <string>
 #include <vector>
@@ -50,6 +51,15 @@ std::vector<std::string> check_immersed_terrain (const ImmersedTerrainFacts& f);
 //! layer (top_layer_bottom, m), which must hold fluid. Empty when it does.
 std::string check_immersed_terrain_height (const TerrainInputs& t, double first_layer_top, double top_layer_bottom);
 
+//! The ground's height into z_nd's last component (of two), at every node of every column, ghost
+//! nodes included: terrain.flat_height plus the terrain's height (fill_terrain_surface for
+//! terrain.type: 0 for flat). Component 0, the mesh's own heights, is not touched.
+void fill_immersed_ground (amrex::MultiFab& z_nd, const amrex::Geometry& geom, const TerrainInputs& t);
+
+//! The same refusal for the whole surface (z_nd's last component, valid nodes; a collective call).
+//! Empty when the ground lies between the two levels.
+std::string check_immersed_ground_extent (const amrex::MultiFab& z_nd, double first_layer_top, double top_layer_bottom);
+
 //! The wall-law options of the immersed ground: buildings.type = immersed_forcing with the form 7
 //! law on every wall (fraction_stress, open_faces), the wall value of k (wall_tke), no heat
 //! (a neutral run), no lee zone, t.small_volfrac, the ground's roughness z0 (bc.surface_z0) and
@@ -60,7 +70,9 @@ BuildingsOptions immersed_terrain_options (const TerrainInputs& t, double z0);
 //! domain's x and y faces (the domain is periodic in x and y: validate).
 BuildingHeightMap immersed_terrain_map (const TerrainInputs& t, const amrex::Geometry& geom);
 
-//! The SHA-256 of what fixes the immersed ground (flat_height, small_volfrac and z0).
+//! The SHA-256 of what fixes the immersed ground: flat_height, small_volfrac, immersed_slope, z0,
+//! the terrain's type and what the type reads (the hill's size and shape; the file's contents and
+//! the IDW choices). Reads terrain.file on the calling rank.
 std::string immersed_terrain_hash (const TerrainInputs& t, double z0);
 
 //! <dir>/ImmersedTerrain with hash (I/O rank); nothing with an empty hash (a body-fitted run).

@@ -6,6 +6,12 @@
 // node heights with the lateral indices clamped to the stored ghost node and
 // the vertical ones extrapolated, a point's height above its column's ground
 // and its vertical height, for every location type of Stencil_K.H.
+//
+// The ground of a column is the last component of the node heights at the
+// ground layer: the mesh's lowest nodes on a body-fitted mesh (one component),
+// the immersed ground's height where the heights carry it as a second
+// component (State.H; terrain.representation = immersed_forcing). A point
+// below an immersed ground has a negative height.
 
 #include "Stencil_K.H"
 
@@ -31,10 +37,18 @@ struct NodeZ
         if (k > hi.z) { return z(i, j, hi.z) + (k - hi.z) * (z(i, j, hi.z) - z(i, j, hi.z - 1)); }
         return z(i, j, k);
     }
+    //! The ground's height in the column of node (i, j), lateral indices clamped; klo: the ground layer.
+    AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
+    amrex::Real ground (int i, int j, int klo) const noexcept
+    {
+        i = amrex::max(lo.x, amrex::min(hi.x, i));
+        j = amrex::max(lo.y, amrex::min(hi.y, j));
+        return z(i, j, klo, z.nComp() - 1);
+    }
 };
 
 //! Height of the point (i, j, k) of type T: its node-mean height minus the
-//! node-mean ground under its footprint (the ground layer klo).
+//! node-mean ground under its footprint (NodeZ::ground at the ground layer klo).
 template <int T>
 AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
 amrex::Real height_above_ground (const NodeZ& z, int i, int j, int k, int klo) noexcept
@@ -44,7 +58,7 @@ amrex::Real height_above_ground (const NodeZ& z, int i, int j, int k, int klo) n
     amrex::Real zp = 0, zg = 0;
     for (int a = 0; a < nx; ++a) {
         for (int b = 0; b < ny; ++b) {
-            zg += z(i + a, j + b, klo);
+            zg += z.ground(i + a, j + b, klo);
             for (int c = 0; c < nz; ++c) { zp += z(i + a, j + b, k + c); }
         }
     }

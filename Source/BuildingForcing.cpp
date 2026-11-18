@@ -1,5 +1,7 @@
 #include "BuildingForcing.H"
 
+#include "ImmersedSlope.H"
+
 #include <AMReX_ParallelDescriptor.H>
 #include <AMReX_Reduce.H>
 #include <AMReX_iMultiFab.H>
@@ -31,6 +33,10 @@ void BuildingForcing::build (const Buildings& b, const BuildingsOptions& opt, co
     m_rate.define(b.beta().boxArray(), b.beta().DistributionMap(), kNumBuildingRates, 1);
     m_rate.setVal(0.0);
     m_immersed_ground = opt.immersed_ground;
+    m_slope_normal = opt.immersed_ground && opt.slope_normal;
+    if (m_slope_normal && !b.from_surface()) {
+        amrex::Abort("gust: BuildingForcing::build: terrain.immersed_slope = normal needs a ground built from a surface");
+    }
     m_spacing.clear();   // a rebuild without an immersed ground keeps no spacing
     if (m_immersed_ground && wall_law()) { make_centroid_spacing(); }
     // The weight of each face in a cell's speed: 0 on a fixed row with buildings.wall_speed =
@@ -179,7 +185,10 @@ void BuildingForcing::update (const amrex::MultiFab& u, const amrex::MultiFab& v
     const amrex::Real z0 = m_z0, kappa = amrex::Real(0.41), umin = kBuildingMinSpeed;
     m_rate.setVal(0.0);
     // Roofs and undersides: on u and v.
-    if (m_immersed_ground) {
+    if (m_slope_normal) {
+        // terrain.immersed_slope = normal: its own kernel (ImmersedSlope.H), on u, v and w.
+        immersed_slope_rates(*m_b, m_weight, *m_detJ, m_geom, u, v, w, z0, kappa, umin, m_rate);
+    } else if (m_immersed_ground) {
         roof_rates<ExactLaw>(*m_b, m_weight, *m_detJ, m_geom, u, v, z0, kappa, umin, m_rate);
     } else {
         roof_rates<FlooredLaw>(*m_b, m_weight, *m_detJ, m_geom, u, v, z0, kappa, umin, m_rate);

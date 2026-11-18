@@ -215,6 +215,7 @@ private:
     amrex::Real m_z0{0.1};
     BuildingWallForm m_wall_form{BuildingWallForm::fraction_stress};
     bool m_immersed_ground{false};
+    bool m_slope_normal{false};
     amrex::MultiFab m_spacing;
 };
 

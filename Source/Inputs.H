@@ -97,12 +97,18 @@ struct TerrainInputs
     //! from the parent's on a nest face to the patch's own; 0: no blend.
     amrex::Real nest_blend_width{0};
     //! body_fitted (the mesh follows the ground) or immersed_forcing (a flat mesh with the ground
-    //! immersed at flat_height: ImmersedTerrain.H, docs/immersed_terrain.rst).
+    //! immersed in it, at flat_height plus the terrain's height: ImmersedTerrain.H,
+    //! docs/immersed_terrain.rst).
     std::string representation{"body_fitted"};
-    //! immersed_forcing: the ground's height above the mesh bottom (m), > 0 and below the top.
+    //! immersed_forcing: the height above the mesh bottom (m) of the terrain's zero level (the ground
+    //! itself with terrain.type = flat), > 0 and below the top.
     amrex::Real flat_height{0};
     //! immersed_forcing: solid fractions below it are fluid and above 1 - it solid, in [1e-4, 0.5).
     amrex::Real small_volfrac{amrex::Real(0.005)};
+    //! immersed_forcing: the wall law on a sloping ground. vertical: ERF's form (the height above the
+    //! ground, the horizontal speed, the footprint's area); normal: the distance along the ground's
+    //! normal, the speed parallel to the ground and the ground's area (ImmersedSlope.H).
+    std::string immersed_slope{"vertical"};
     //! Keys given in the inputs (a key with no effect for the chosen type is an error).
     std::vector<std::string> given;
 };

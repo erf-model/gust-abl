@@ -27,6 +27,13 @@ Steady cases
      - The same column on a flat mesh with the ground inside a layer (:doc:`immersed_terrain`): the wall stress
        balances the force for solid fractions 0, 0.3, 0.7 and 0.9, and at 0 the column repeats the body-fitted one.
      - ``rt_immersed_column_f0``, ``_f03``, ``_f07``, ``_f09``
+   * - 1c
+     - Ridge and round hill, immersed ground
+     - A sloping ground immersed in a flat mesh against the terrain-following mesh (:doc:`immersed_terrain`): the
+       wind along a ridge (the wall law on slopes up to 18°), across a ridge and over a round hill (crest speed and
+       lee minimum), with ``terrain.immersed_slope`` = ``vertical`` and ``normal``.
+     - ``rt_immersed_along_vertical``, ``_normal``; ``rt_immersed_ridge_vertical``, ``_normal``;
+       ``rt_immersed_hill_vertical``, ``_normal`` (nightly)
    * - 2
      - Flat 3-D periodic (ERF ``Neutral_ABL_Flat``)
      - Horizontal directions, pressure, Coriolis forcing.

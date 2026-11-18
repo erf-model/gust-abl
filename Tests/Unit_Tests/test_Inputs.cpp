@@ -270,11 +270,20 @@ TEST (Inputs, ImmersedTerrainChecksNameTheInput)
         return in;
     };
     EXPECT_TRUE(gust::validate(immersed()).empty());
+    {
+        // A hill is an immersed ground too, with either form of the wall law on its slopes.
+        auto in = immersed();
+        in.terrain.type = "agnesi";
+        in.terrain.hill_height = 50;
+        in.terrain.hill_half_width = 100;
+        EXPECT_TRUE(gust::validate(in).empty());
+        in.terrain.immersed_slope = "normal";
+        EXPECT_TRUE(gust::validate(in).empty());
+    }
     struct Case { const char* key; void (*mutate)(gust::Inputs&); };
     const Case cases[] = {
         {"terrain.representation must be body_fitted or immersed_forcing", [] (gust::Inputs& in) { in.terrain.representation = "immersed"; }},
-        {"needs terrain.type = flat", [] (gust::Inputs& in) {
-             in.terrain.type = "agnesi"; in.terrain.hill_height = 50; in.terrain.hill_half_width = 100; }},
+        {"terrain.immersed_slope must be vertical or normal (got steep)", [] (gust::Inputs& in) { in.terrain.immersed_slope = "steep"; }},
         {"terrain.flat_height must be finite and > 0", [] (gust::Inputs& in) { in.terrain.flat_height = 0; }},
         {"terrain.flat_height must be finite and > 0", [] (gust::Inputs& in) {
              in.terrain.flat_height = std::numeric_limits<amrex::Real>::quiet_NaN(); }},
@@ -291,6 +300,8 @@ TEST (Inputs, ImmersedTerrainChecksNameTheInput)
              in.terrain.representation = "body_fitted"; in.terrain.given.emplace_back("flat_height"); }},
         {"terrain.small_volfrac has no effect unless", [] (gust::Inputs& in) {
              in.terrain.representation = "body_fitted"; in.terrain.given.emplace_back("small_volfrac"); }},
+        {"terrain.immersed_slope has no effect unless", [] (gust::Inputs& in) {
+             in.terrain.representation = "body_fitted"; in.terrain.given.emplace_back("immersed_slope"); }},
     };
     for (const auto& c : cases) {
         auto in = immersed();
@@ -301,14 +312,17 @@ TEST (Inputs, ImmersedTerrainChecksNameTheInput)
     }
 }
 
-// The three keys are read from an inputs file.
+// The four keys are read from an inputs file.
 TEST (Inputs, ParsesTheImmersedTerrainKeys)
 {
-    ScopedKeys guard{{{"terrain", "representation"}, {"terrain", "flat_height"}, {"terrain", "small_volfrac"}}};
-    add_inputs_text("terrain.representation = immersed_forcing\nterrain.flat_height = 12.5\nterrain.small_volfrac = 0.01\n");
+    ScopedKeys guard{{{"terrain", "representation"}, {"terrain", "flat_height"}, {"terrain", "small_volfrac"},
+                      {"terrain", "immersed_slope"}}};
+    add_inputs_text("terrain.representation = immersed_forcing\nterrain.flat_height = 12.5\nterrain.small_volfrac = 0.01\n"
+                    "terrain.immersed_slope = normal\n");
     const auto in = gust::parse_inputs();
     EXPECT_EQ(in.terrain.representation, "immersed_forcing");
     EXPECT_EQ(in.terrain.flat_height, amrex::Real(12.5));
     EXPECT_EQ(in.terrain.small_volfrac, amrex::Real(0.01));
-    EXPECT_EQ(in.terrain.given.size(), 3u);
+    EXPECT_EQ(in.terrain.immersed_slope, "normal");
+    EXPECT_EQ(in.terrain.given.size(), 4u);
 }

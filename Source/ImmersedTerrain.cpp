@@ -1,8 +1,11 @@
 #include "ImmersedTerrain.H"
 
 #include "Sha256.H"
+#include "TerrainSurface.H"
 
 #include <AMReX.H>
+#include <AMReX_GpuDevice.H>
+#include <AMReX_MFIter.H>
 #include <AMReX_ParallelDescriptor.H>
 
 #include <fstream>
@@ -12,7 +15,7 @@ namespace gust {
 namespace {
 
 constexpr const char* kMagic = "gust_immersed_terrain";
-constexpr int kVersion = 1;
+constexpr int kVersion = 2;   // 1: PR-87, a flat ground (flat_height, small_volfrac, z0)
 
 void bcast_string (std::string& s)
 {
@@ -79,7 +82,47 @@ BuildingsOptions immersed_terrain_options (const TerrainInputs& t, double z0)
     o.limiter_zone = 0;
     o.limiter_zone_acts = false;
     o.immersed_ground = true;
+    o.slope_normal = t.immersed_slope == "normal";
     return o;
+}
+
+void fill_immersed_ground (amrex::MultiFab& z_nd, const amrex::Geometry& geom, const TerrainInputs& t)
+{
+    if (z_nd.nComp() < 2) { amrex::Abort("gust: fill_immersed_ground needs node heights with a ground component"); }
+    // The terrain's height in the ground component's k0 slab, ghost columns included (each ghost node
+    // takes the height of the node it stands for, and a node shared by two boxes is one expression of
+    // its index: no sync is needed); then the base level, and the same height at every k of the column.
+    amrex::MultiFab g(z_nd, amrex::make_alias, z_nd.nComp() - 1, 1);
+    fill_terrain_surface(g, geom, t);
+    const int k0 = geom.Domain().smallEnd(2);
+    const amrex::Real base = t.flat_height;
+    for (amrex::MFIter mfi(g, false); mfi.isValid(); ++mfi) {
+        const amrex::Box bx = mfi.fabbox();
+        if (bx.smallEnd(2) > k0 || bx.bigEnd(2) < k0) {
+            amrex::Abort("gust: fill_immersed_ground: every box must span the column (the mesh's layout does)");
+        }
+        const auto a = g.array(mfi);
+        amrex::Box slab = bx;
+        slab.setSmall(2, k0);
+        slab.setBig(2, k0);
+        amrex::ParallelFor(slab, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept { a(i, j, k) += base; });
+        amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+        {
+            if (k != k0) { a(i, j, k) = a(i, j, k0); }
+        });
+    }
+    amrex::Gpu::streamSynchronize();
+}
+
+std::string check_immersed_ground_extent (const amrex::MultiFab& z_nd, double first_layer_top, double top_layer_bottom)
+{
+    const int gc = z_nd.nComp() - 1;
+    const double lo = static_cast<double>(z_nd.min(gc)), hi = static_cast<double>(z_nd.max(gc));
+    if (lo >= first_layer_top && hi <= top_layer_bottom) { return {}; }
+    return "the immersed ground (terrain.flat_height plus the terrain's height: " + std::to_string(lo) + " m to "
+           + std::to_string(hi) + " m) must lie between the top of the mesh's first layer (" + std::to_string(first_layer_top)
+           + " m) and the bottom of its top layer (" + std::to_string(top_layer_bottom)
+           + " m) with terrain.representation = immersed_forcing; change terrain.flat_height or the mesh's levels";
 }
 
 BuildingHeightMap immersed_terrain_map (const TerrainInputs& t, const amrex::Geometry& geom)
@@ -99,9 +142,18 @@ BuildingHeightMap immersed_terrain_map (const TerrainInputs& t, const amrex::Geo
 
 std::string immersed_terrain_hash (const TerrainInputs& t, double z0)
 {
-    const std::string s = std::string(kMagic) + " " + std::to_string(kVersion) + "\nflat_height "
-                          + hexfloat_canonical(static_cast<double>(t.flat_height)) + "\nsmall_volfrac "
-                          + hexfloat_canonical(static_cast<double>(t.small_volfrac)) + "\nz0 " + hexfloat_canonical(z0) + "\n";
+    auto hx = [] (amrex::Real v) { return hexfloat_canonical(static_cast<double>(v)); };
+    std::string s = std::string(kMagic) + " " + std::to_string(kVersion) + "\nflat_height " + hx(t.flat_height)
+                    + "\nsmall_volfrac " + hx(t.small_volfrac) + "\nz0 " + hexfloat_canonical(z0) + "\nslope "
+                    + t.immersed_slope + "\ntype " + t.type + "\n";
+    // The surface: what fill_terrain_surface reads for the type.
+    if (t.type == "agnesi") {
+        s += "hill " + hx(t.hill_height) + " " + hx(t.hill_half_width) + " " + t.hill_shape + "\n";
+    } else if (t.type == "xyz") {
+        s += "file " + sha256_file(t.file) + "\nidw " + std::to_string(t.idw_neighbors) + " " + hx(t.idw_power) + "\n";
+    } else if (t.type == "erf_grid") {
+        s += "file " + sha256_file(t.file) + "\n";
+    }
     return sha256_hex(s);
 }
 
@@ -126,14 +178,20 @@ void check_immersed_terrain_restart (const std::string& dir, const std::string& 
         if (is) {
             std::string magic, key;
             int version = 0;
-            if (!(is >> magic >> version >> key >> rec) || magic != kMagic || version != kVersion || key != "sha256") {
+            if (!(is >> magic >> version >> key >> rec) || magic != kMagic || key != "sha256") {
                 rec = "?";
+            } else if (version != kVersion) {
+                rec = "v" + std::to_string(version);   // not a hash: a hash is 64 hex digits
             }
         }
     }
     bcast_string(rec);
     const std::string where = "gust: io.restart = " + dir + ": ";
     if (rec == "?") { amrex::Abort(where + "its ImmersedTerrain file cannot be read"); }
+    if (!rec.empty() && rec[0] == 'v') {
+        amrex::Abort(where + "its ImmersedTerrain record is version " + rec.substr(1) + ", this build's is " + std::to_string(kVersion)
+                     + " (the immersed ground's geometry changed between them); start the run again");
+    }
     if (active && rec.empty()) {
         amrex::Abort(where + "the checkpoint's ground is body-fitted; a restart cannot change terrain.representation");
     }
@@ -141,7 +199,8 @@ void check_immersed_terrain_restart (const std::string& dir, const std::string& 
         amrex::Abort(where + "the checkpoint's ground is immersed; give terrain.representation = immersed_forcing and its inputs");
     }
     if (active && rec != hash) {
-        amrex::Abort(where + "terrain.flat_height, terrain.small_volfrac or bc.surface_z0 differ from the checkpoint's "
+        amrex::Abort(where + "the immersed ground's inputs (terrain.type and its keys, terrain.flat_height, "
+                             "terrain.small_volfrac, terrain.immersed_slope or bc.surface_z0) differ from the checkpoint's "
                              "(SHA-256 " + hash + " here, " + rec + " there)");
     }
 }

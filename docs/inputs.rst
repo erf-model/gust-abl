@@ -114,10 +114,13 @@ Quick reference
      - The mesh follows the ground, or the ground is immersed in a flat mesh
    * - ``terrain.flat_height``
      - required for ``immersed_forcing``
-     - Height of the immersed flat ground (m)
+     - Height of the immersed terrain's zero level above the mesh's lower face (m)
    * - ``terrain.small_volfrac``
      - ``0.005``
      - Solid fractions this close to 0 or 1 are rounded (immersed ground)
+   * - ``terrain.immersed_slope``
+     - ``vertical``
+     - Wall law of a sloping immersed ground: vertical distances, or along the normal
    * - **Initial conditions** (`init`_)
      -
      -
@@ -689,7 +692,7 @@ Quick reference
      - ``body_fitted``
      - ``body_fitted`` (the mesh follows the ground) or ``immersed_forcing`` (the mesh is flat and the ground is an
        immersed surface with the form 7 wall law, :doc:`immersed_terrain`). ``immersed_forcing`` needs
-       ``terrain.type = flat``, ``mesh.is_periodic = 1 1 0``, ``mesh.hierarchy_levels = 1``,
+       ``mesh.is_periodic = 1 1 0``, ``mesh.hierarchy_levels = 1``,
        ``bc.zlo = surface_layer``, ``bc.surface_stability = neutral``, ``bc.surface_wall_k = dirichlet``,
        ``turb.closure = kl`` and, in a stage, ``steady.sweep = zjacobi``. It refuses ``bc.surface_z0_file``,
        ``bc.surface_zref``, ``bc.surface_denominator_floor``, a non-uniform ``bc.theta_profile``,
@@ -700,12 +703,21 @@ Quick reference
    * - ``terrain.flat_height``
      - required for ``immersed_forcing``
      - Finite, between the top of the mesh's first layer and the bottom of its top layer (m);
-       ``immersed_forcing`` only. The height of the ground above the
-       mesh's lower face (z = 0). Cells below it are solid. May not change across a restart.
+       ``immersed_forcing`` only. The height of the terrain's zero level above the mesh's lower face (z = 0): the
+       ground is ``terrain.flat_height`` plus the height ``terrain.type`` gives (the ground itself with ``flat``),
+       and the whole ground must lie between the same two levels. Cells below it are solid. May not change across
+       a restart.
    * - ``terrain.small_volfrac``
      - ``0.005``
      - ≥ 1e-4 and < 0.5; ``immersed_forcing`` only. A solid fraction below it becomes 0 and one within it of 1 becomes
        1, as with ``buildings.small_volfrac``. May not change across a restart.
+   * - ``terrain.immersed_slope``
+     - ``vertical``
+     - ``vertical`` or ``normal``; ``immersed_forcing`` only (refused when given with ``body_fitted``). ``vertical``:
+       the wall law of a sloping ground reads the heights above the ground and the horizontal speed, on the
+       ground's horizontal area (ERF's form). ``normal``: the distances along the ground's normal, the speed
+       parallel to the ground (:math:`w` included) and the slope's area (:doc:`immersed_terrain`, Slope). The two
+       are bit-identical on a flat ground. May not change across a restart.
 
 ``init``
 --------

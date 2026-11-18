@@ -4,7 +4,7 @@
 
 namespace gust {
 
-void State::define (const amrex::BoxArray& ba, const amrex::DistributionMapping& dm)
+void State::define (const amrex::BoxArray& ba, const amrex::DistributionMapping& dm, bool ground_component)
 {
     using amrex::IntVect;
     u.define(amrex::convert(ba, IntVect(1, 0, 0)), dm, 1, ngrow_state);
@@ -13,7 +13,7 @@ void State::define (const amrex::BoxArray& ba, const amrex::DistributionMapping&
     p.define(ba, dm, 1, ngrow_state);
     theta.define(ba, dm, 1, ngrow_state);
     tke.define(ba, dm, 1, ngrow_state);
-    z_phys_nd.define(amrex::convert(ba, IntVect(1, 1, 1)), dm, 1, ngrow_nodal);
+    z_phys_nd.define(amrex::convert(ba, IntVect(1, 1, 1)), dm, ground_component ? 2 : 1, ngrow_nodal);
     for (auto& f : fields()) { f.mf->setVal(0.0); }
     step = 0;
 }

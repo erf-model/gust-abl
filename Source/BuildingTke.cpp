@@ -429,6 +429,9 @@ void BuildingTke::build (const Buildings& b, const BuildingForcing& law, const B
     m_dist.define(ba, dm, 1, 1);
     m_dist.setVal(far);
     amrex::MultiFab::Copy(m_dist, work[cur], kD, 0, 1, 0);
+    // A ground that is a continuous surface: the fluid's mean height above it, which the cells'
+    // rectangles above do not give on a slope (on a flat ground the two agree).
+    if (b.from_surface()) { amrex::MultiFab::Copy(m_dist, b.surface(), kSurfaceHeight, 0, 1, 0); }
     m_dist.FillBoundary(geom.periodicity());
     m_hb.define(ba, dm, 1, 1);
     m_hb.setVal(0);
