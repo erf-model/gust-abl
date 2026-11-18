@@ -9,6 +9,7 @@ turbulence plotfile where ERF has one.
 | Folder | CTest | Description |
 |---|---|---|
 | `Neutral_Column` | `rt_steady_column` | The 1-D neutral column driven by a pressure-gradient force; a restart chain that must continue bit for bit. |
+| `Immersed_Column` | `rt_immersed_column_*` | The neutral column with the ground immersed in a flat mesh (`terrain.representation = immersed_forcing`) at four cut-cell solid fractions: the exact wall stress, the log law, and the body-fitted column at f = 0. |
 | `Neutral_ABL_Flat` | `rt_steady_neutral_flat` | ERF's Neutral_ABL_Flat to steady, with ERF's `check_neutral.py --physics`. |
 | `Neutral_Hill_2D` | `rt_steady_hill2d`, `rt_steady_hill2d_lusgs`, `rt_steady_hill2d_column` | ERF's Neutral_Hill_2D with Jacobi sweeps, line LU-SGS sweeps and the column first guess. |
 | `Neutral_Hill_3D` | `rt_steady_hill3d` | ERF's Neutral_Hill_3D (64 x 64 x 20); label `nightly`. |

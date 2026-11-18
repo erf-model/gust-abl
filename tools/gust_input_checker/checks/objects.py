@@ -18,7 +18,15 @@ ERROR:
   2 cells + max(bc.nest_relax_width cells, terrain.nest_blend_width) of a
   nest face (Source/NestBuildings.cpp check_nest_buildings; reported on
   that face's key);
-  buildings.force_file without a stage.
+  buildings.force_file without a stage;
+- terrain.representation = immersed_forcing (Source/Inputs.cpp, Source/ImmersedTerrain.cpp
+  check_immersed_terrain and check_immersed_terrain_height): terrain.type other than flat; terrain.flat_height
+  missing, or outside the top of the first layer to the bottom of the top layer; the terrain keys that follow or
+  smooth a ground; a hierarchy; a mesh not periodic in x and y; no surface layer, a stability, a roughness map,
+  bc.surface_zref, bc.surface_denominator_floor, bc.surface_wall_k = source, a stratified bc.theta_profile;
+  buildings, a canopy, nests, the column first guess, probes, the Newton and unsteady stages, the lusgs sweep and
+  solver.poisson_backend = mlmg in a stage, turb.closure = none; terrain.flat_height or terrain.small_volfrac with
+  a body-fitted ground.
 
 The files themselves are checked by `files`.
 """
@@ -261,3 +269,73 @@ class BuildingsChecker(Checker):
                                                  "mlmg.", "Use gmres_mlmg (the default) or gmres_fft.")
         if c.theta_frozen and self.given("buildings.theta_mode") and mode != "none":
             self.no_effect("buildings.theta_mode", "with simplec.theta = frozen (theta is not solved)")
+
+
+@register
+class ImmersedTerrainChecker(Checker):
+    """The immersed ground (terrain.representation = immersed_forcing): what it needs and what it refuses."""
+
+    name = "immersed_terrain"
+
+    def run(self):
+        c = self.ctx
+        rep = c.s("terrain.representation")
+        if rep == "body_fitted":
+            for k in ("flat_height", "small_volfrac"):
+                self.no_effect("terrain." + k, "unless terrain.representation = immersed_forcing")
+            return
+        if rep != "immersed_forcing":
+            return
+        with_rep = "with terrain.representation = immersed_forcing"
+
+        def refuse(key, what, advice=""):
+            self.error(key, "GUST stops: terrain.representation = immersed_forcing %s." % what, advice)
+
+        if c.terrain_type != "flat":
+            refuse("terrain.type", "needs terrain.type = flat for now")
+        h = c.r("terrain.flat_height")
+        if h is None or not h > 0:
+            self.error("terrain.flat_height", "GUST stops: terrain.flat_height must be finite and > 0 " + with_rep + ".",
+                       "Give the ground's height above the mesh's lower face.")
+        elif c.zlevels and len(c.zlevels) > 2 and not c.zlevels[1] <= h <= c.zlevels[-2]:
+            self.error("terrain.flat_height",
+                       "GUST stops: terrain.flat_height must lie between the top of the mesh's first layer (%g m) and "
+                       "the bottom of its top layer (%g m) %s (got %g)." % (c.zlevels[1], c.zlevels[-2], with_rep, h),
+                       "Move the ground, or add layers below it.")
+        for k in ("smoothing", "gamma_m", "hierarchy_passes", "nest_blend_width"):
+            self.no_effect("terrain." + k, with_rep)
+        if c.levels != 1:
+            refuse("mesh.hierarchy_levels", "needs mesh.hierarchy_levels = 1 for now")
+        if c.periodic and c.periodic[:2] != [1, 1]:
+            refuse("mesh.is_periodic", "needs mesh.is_periodic = 1 1 0 for now")
+        if not c.surface_layer:
+            refuse("bc.zlo", "needs bc.zlo = surface_layer", "Set bc.zlo = surface_layer (read with a first guess or a stage).")
+        if c.reads_bc:
+            if c.s("bc.surface_stability") != "neutral":
+                refuse("bc.surface_stability", "needs bc.surface_stability = neutral for now")
+            if self.given("bc.surface_z0_file"):
+                refuse("bc.surface_z0_file", "needs a uniform bc.surface_z0 for now")
+            if c.s("bc.surface_wall_k") == "source":
+                refuse("bc.surface_wall_k", "needs bc.surface_wall_k = dirichlet")
+            for k in ("surface_zref", "surface_denominator_floor"):
+                self.no_effect("bc." + k, with_rep)
+            if c.stratified:
+                refuse("bc.theta_profile", "needs a uniform bc.theta_profile for now")
+        if c.buildings:
+            refuse("buildings.type", "cannot be combined with buildings.type for now")
+        if c.canopy:
+            refuse("canopy.type", "cannot be combined with canopy.type for now")
+        if self.given("nest.names"):
+            refuse("nest.names", "cannot be combined with nests for now")
+        if c.first_guess == "column":
+            refuse("init.first_guess", "is not supported with init.first_guess = column yet", "Use profile.")
+        if self.given("steady.probes_file"):
+            refuse("steady.probes_file", "is not supported with steady.probes_file yet")
+        if c.newton or c.unsteady:
+            refuse("steady.stage", "is not supported with steady.stage = %s yet" % c.stage, "Use simplec.")
+        if c.solve and c.sweep != "zjacobi":
+            refuse("steady.sweep", "needs z-line sweeps", "Set steady.sweep = zjacobi.")
+        if c.solve and c.s("solver.poisson_backend") == "mlmg":
+            refuse("solver.poisson_backend", "cannot use solver.poisson_backend = mlmg", "Use gmres_mlmg or gmres_fft.")
+        if c.reads_bc and c.closure == "none":
+            refuse("turb.closure", "needs turb.closure = kl")

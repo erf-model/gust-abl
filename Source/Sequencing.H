@@ -70,6 +70,7 @@
 #include "Convection.H"
 #include "Driver.H"
 #include "Forcing.H"
+#include "ImmersedStrain.H"
 #include "InflowProfile.H"
 #include "Initializer.H"
 #include "MeshHierarchy.H"
@@ -216,6 +217,8 @@ public:
     //! with simplec.theta = frozen and canopy.heat_frozen = skip.
     CanopyHeat canopy_heat;
     ResidualInputs res_in;
+    //! The strain next to an immersed ground (ImmersedStrain.H), the closure's correction; null without one.
+    std::unique_ptr<ImmersedStrain> immersed_strain;
 
     [[nodiscard]] Driver& driver () { return *m_driver; }
     [[nodiscard]] const Driver& driver () const { return *m_driver; }

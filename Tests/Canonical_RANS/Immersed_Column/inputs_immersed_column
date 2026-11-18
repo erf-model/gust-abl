@@ -1,0 +1,52 @@
+# The 1-D neutral column of Neutral_Column with the ground immersed (terrain.representation =
+# immersed_forcing, docs/immersed_terrain.rst): a flat doubly periodic mesh of 4 x 4 x 67 layers of
+# 15.625 m (1046.875 m), the ground at terrain.flat_height inside layer k = 2 (2 dz + f dz; f the
+# cut cell's solid fraction; terrain.flat_height is given on the command line, e.g.
+# terrain.flat_height=42.1875 for f = 0.7), z0 = 0.1 m, a slip top, uniform theta,
+# driven by the pressure-gradient force F = 1.225e-4 m/s^2 on the fluid. At steady the immersed
+# wall stress balances the force on the fluid exactly: u*^2 = F D, D = 1046.875 - flat_height.
+# solver.poisson_backend = gmres_fft: with the default gmres_mlmg the multigrid-preconditioned
+# Poisson solve returns a pressure that differs between columns by round-off when the divergence is
+# round-off but not zero (f = 0.3, 0.7, 0.9); v and w then grow to about 1e-9 and the run never
+# meets the stop rule, which needs them below 1e-14 here. The mesh of an immersed ground is always
+# flat, so the FFT-preconditioned solve applies. Two boxes in x (mesh.max_grid_size = 2 4): the
+# ground crosses a box seam.
+# Tests/Canonical_RANS/Immersed_Column/check_immersed_column.py.
+mesh.n_cell        = 4 4 67
+mesh.prob_hi       = 2560. 2560. 1046.875
+mesh.is_periodic   = 1 1 0
+mesh.max_grid_size = 2 4
+
+terrain.type = flat
+terrain.representation = immersed_forcing
+
+bc.zlo = surface_layer
+bc.zhi = slip_wall
+bc.surface_z0 = 0.1
+bc.theta_profile_z = 0.
+bc.theta_profile   = 300.
+bc.inflow_profile  = log_law
+bc.inflow_ustar    = 0.25
+bc.inflow_z0       = 0.1
+bc.inflow_direction = 0.
+
+init.first_guess = profile
+
+turb.max_geom_lscale = 1.0e12
+turb.face_mean       = logarithmic
+
+forcing.pressure_gradient = 1.225e-4 0. 0.
+
+steady.stage                = simplec
+steady.sweep                = zjacobi   # z-line Jacobi sweep (the CPU default is lusgs)
+steady.cfl0                 = 1.
+steady.cfl_max              = 50.
+steady.max_iterations       = 6000
+steady.residual_drop_orders = 6
+steady.residual_tol         = 1.e-8
+
+solver.poisson_backend = gmres_fft
+
+io.plot_file      = immersed_column_plt
+io.turb_plot_file = immersed_column_turb
+io.chk_file       = immersed_column_chk

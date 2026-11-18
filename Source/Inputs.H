@@ -96,6 +96,13 @@ struct TerrainInputs
     //! A nested patch (NestFaces.H): the width (m) over which the ground goes
     //! from the parent's on a nest face to the patch's own; 0: no blend.
     amrex::Real nest_blend_width{0};
+    //! body_fitted (the mesh follows the ground) or immersed_forcing (a flat mesh with the ground
+    //! immersed at flat_height: ImmersedTerrain.H, docs/immersed_terrain.rst).
+    std::string representation{"body_fitted"};
+    //! immersed_forcing: the ground's height above the mesh bottom (m), > 0 and below the top.
+    amrex::Real flat_height{0};
+    //! immersed_forcing: solid fractions below it are fluid and above 1 - it solid, in [1e-4, 0.5).
+    amrex::Real small_volfrac{amrex::Real(0.005)};
     //! Keys given in the inputs (a key with no effect for the chosen type is an error).
     std::vector<std::string> given;
 };

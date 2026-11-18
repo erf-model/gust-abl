@@ -60,6 +60,8 @@ NEST_A = "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 1200 900\n"
 JOINT = "GUST_JOINT 1\nfeedback %s\nexchanges %d\nouter 0x0p+0\nnest %s 0x0p+0 chk_a\n"
 JOINT2 = "GUST_JOINT 2\nfeedback %s\nexchanges %d\nouter 0x0p+0\nwindow %s\nnest %s 0x0p+0 chk_a\n"
 
+IMMERSED = "terrain.representation = immersed_forcing\nterrain.flat_height = 250\nbc.zlo = surface_layer\nsteady.sweep = zjacobi\n"
+
 CASES = [
     # --- the bases themselves ---------------------------------------------------------------------------
     ("base_plain", "plain", "", ["W steady.stage"], ["E *"]),
@@ -137,6 +139,18 @@ CASES = [
      ["A steady.sequencing hierarchy"], []),
     ("hierarchy_passes_alone", "solve", "terrain.hierarchy_passes = 2\n",
      ["E terrain.hierarchy_passes hierarchy"], []),
+    # --- the immersed ground ----------------------------------------------------------------------------
+    ("immersed_ok", "solve", IMMERSED, [], ["E *"]),
+    ("immersed_first_layer", "solve", IMMERSED.replace("250", "50"), ["E terrain.flat_height immersed_terrain"], []),
+    ("immersed_top_layer", "solve", IMMERSED.replace("250", "750"), ["E terrain.flat_height immersed_terrain"], []),
+    ("immersed_no_height", "solve", IMMERSED.replace("terrain.flat_height = 250\n", ""),
+     ["E terrain.flat_height immersed_terrain"], []),
+    ("immersed_lusgs", "solve", IMMERSED.replace("zjacobi", "lusgs"), ["E steady.sweep immersed_terrain"], []),
+    ("immersed_zref", "solve", IMMERSED + "bc.surface_zref = 20\n", ["E bc.surface_zref immersed_terrain"], []),
+    ("immersed_wall_k", "solve", IMMERSED + "bc.surface_wall_k = source\n", ["E bc.surface_wall_k immersed_terrain"], []),
+    ("immersed_column_guess", "solve", IMMERSED + "init.first_guess = column\n",
+     ["E init.first_guess immersed_terrain"], [], {"dedupe": "init.first_guess"}),
+    ("immersed_keys_body_fitted", "solve", "terrain.flat_height = 250\n", ["E terrain.flat_height immersed_terrain"], []),
     # --- terrain ----------------------------------------------------------------------------------------
     ("terrain_file_missing_key", "solve", "terrain.type = xyz\n", ["E terrain.file terrain"], []),
     ("terrain_file_on_flat", "solve", "terrain.file = hill.xyz\n", ["E terrain.file terrain"], []),

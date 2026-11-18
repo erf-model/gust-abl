@@ -109,6 +109,15 @@ Quick reference
    * - ``terrain.hierarchy_passes``
      - ``1``
      - Terrain smoothing on coarse hierarchy levels
+   * - ``terrain.representation``
+     - ``body_fitted``
+     - The mesh follows the ground, or the ground is immersed in a flat mesh
+   * - ``terrain.flat_height``
+     - required for ``immersed_forcing``
+     - Height of the immersed flat ground (m)
+   * - ``terrain.small_volfrac``
+     - ``0.005``
+     - Solid fractions this close to 0 or 1 are rounded (immersed ground)
    * - **Initial conditions** (`init`_)
      -
      -
@@ -676,6 +685,27 @@ Quick reference
      - Finite, ≥ 0 (m), below half the patch's width across its ``nest`` faces; 0: off. Refused without a ``nest``
        face. The patch's ground becomes the parent's on the ``nest`` faces and its own from this distance inwards,
        with a smoothstep between (:doc:`boundary_conditions`).
+   * - ``terrain.representation``
+     - ``body_fitted``
+     - ``body_fitted`` (the mesh follows the ground) or ``immersed_forcing`` (the mesh is flat and the ground is an
+       immersed surface with the form 7 wall law, :doc:`immersed_terrain`). ``immersed_forcing`` needs
+       ``terrain.type = flat``, ``mesh.is_periodic = 1 1 0``, ``mesh.hierarchy_levels = 1``,
+       ``bc.zlo = surface_layer``, ``bc.surface_stability = neutral``, ``bc.surface_wall_k = dirichlet``,
+       ``turb.closure = kl`` and, in a stage, ``steady.sweep = zjacobi``. It refuses ``bc.surface_z0_file``,
+       ``bc.surface_zref``, ``bc.surface_denominator_floor``, a non-uniform ``bc.theta_profile``,
+       ``buildings.type``, ``canopy.type``, nests, ``init.first_guess = column``, ``steady.probes_file``,
+       ``steady.stage = simplec_newton`` and ``unsteady``, ``solver.poisson_backend = mlmg`` (in a stage), and
+       ``terrain.smoothing``, ``terrain.gamma_m``, ``terrain.hierarchy_passes`` and ``terrain.nest_blend_width``
+       when given. The refusals apply to a run with no stage too. May not change across a restart.
+   * - ``terrain.flat_height``
+     - required for ``immersed_forcing``
+     - Finite, between the top of the mesh's first layer and the bottom of its top layer (m);
+       ``immersed_forcing`` only. The height of the ground above the
+       mesh's lower face (z = 0). Cells below it are solid. May not change across a restart.
+   * - ``terrain.small_volfrac``
+     - ``0.005``
+     - ≥ 1e-4 and < 0.5; ``immersed_forcing`` only. A solid fraction below it becomes 0 and one within it of 1 becomes
+       1, as with ``buildings.small_volfrac``. May not change across a restart.
 
 ``init``
 --------

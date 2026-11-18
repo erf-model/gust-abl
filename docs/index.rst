@@ -96,6 +96,7 @@ Contents
    boundary_conditions
    canopy
    buildings
+   immersed_terrain
 
 .. toctree::
    :maxdepth: 2

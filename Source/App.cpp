@@ -24,6 +24,7 @@
 #include "NestFaces.H"
 #include "NestParent.H"
 #include "Nests.H"
+#include "ImmersedTerrain.H"
 #include "Inputs.H"
 #include "Mesh.H"
 #include "MeshHierarchy.H"
@@ -269,10 +270,38 @@ std::string run_domain (const DomainRole& role)
             err.emplace_back("solver.poisson_backend = mlmg cannot solve with buildings (no solid cells in its operator); use gmres_mlmg or gmres_fft");
         }
     }
+    // The ground immersed on a flat mesh (ImmersedTerrain.H): the refusals that need other namespaces.
+    if (in.terrain.representation == "immersed_forcing") {
+        ImmersedTerrainFacts itf;
+        itf.surface_layer = surface_layer;
+        itf.neutral = surf.stability == SurfaceLayerOptions::Stability::neutral;
+        itf.z0_map = !surf.z0_file.empty();
+        itf.buildings = buildings_opt.active();
+        itf.nests = role.nests != nullptr || nest != nullptr;
+        itf.newton = newton;
+        // The sweep and the Poisson backend act in a stage only.
+        itf.zline_sweeps = !solve || sopt.sweep == SweepKind::zjacobi;
+        itf.poisson_mlmg = solve && popt.backend == "mlmg";
+        itf.laminar = copt.kind == ClosureKind::none;
+        itf.unsteady = unsteady;
+        itf.canopy = canopy_opt.active();
+        {
+            amrex::ParmParse ppbc("bc");
+            std::vector<amrex::Real> th;
+            ppbc.queryarr("theta_profile", th);
+            for (const amrex::Real x : th) { itf.stratified = itf.stratified || x != th[0]; }
+            itf.zref_given = ppbc.contains("surface_zref");
+            itf.floor_given = ppbc.contains("surface_denominator_floor");
+        }
+        itf.wall_k_source = surf.wall_k == SurfaceLayerOptions::WallK::source;
+        itf.column_guess = iopt.first_guess == InitOptions::FirstGuess::column;
+        itf.probes = !sopt.probes_file.empty();
+        for (auto& e : check_immersed_terrain(itf)) { err.push_back(std::move(e)); }
+    }
     // turb.closure = none (laminar, Closure.H): the options that model turbulence, or need the k-L closure, are refused.
     if (solve && copt.kind == ClosureKind::none) {
         if (canopy_opt.active()) { err.emplace_back("canopy.type needs turb.closure = kl (the canopy acts through the k-L closure's k terms)"); }
-        if (surface_layer) { err.emplace_back("bc.zlo = surface_layer needs turb.closure = kl (a laminar run has no wall law); use no_slip or slip_wall"); }
+        if (surface_layer) { err.emplace_back("bc.zlo = surface_layer needs turb.closure = kl (a laminar run has no wall law); use no_slip_wall or slip_wall"); }
         if (iopt.first_guess == InitOptions::FirstGuess::column) {
             err.emplace_back("init.first_guess = column needs turb.closure = kl (the column solves the k-L closure); use profile");
         }
@@ -452,6 +481,14 @@ std::string run_domain (const DomainRole& role)
             amrex::Abort(all);
         }
     }
+    // terrain.representation = immersed_forcing (ImmersedTerrain.H): the inputs are valid, so the ground takes the
+    // buildings' wall law from here on, through options of its own; its restart record is its own (immersed_hash).
+    const bool immersed = in.terrain.representation == "immersed_forcing";
+    std::string immersed_hash;
+    if (immersed) {
+        buildings_opt = immersed_terrain_options(in.terrain, surf.z0);
+        immersed_hash = immersed_terrain_hash(in.terrain, surf.z0);
+    }
     // With a grid hierarchy, boxes every level coarsens exactly.
     const amrex::BoxArray ba = hierarchy_box_array(in.mesh);
     // Grid sequencing runs the coarse levels on a fresh start only.
@@ -515,8 +552,23 @@ std::string run_domain (const DomainRole& role)
     Canopy canopy;
     Buildings buildings;
     auto build_canopy = [&] () {
-        if (restart) { Buildings::check_restart(in.io.restart, buildings_opt.active() ? Buildings::hash_inputs(buildings_opt) : ""); }
-        if (buildings_opt.active()) {
+        if (restart) {
+            Buildings::check_restart(in.io.restart, buildings_opt.active() && !immersed ? Buildings::hash_inputs(buildings_opt) : "");
+            check_immersed_terrain_restart(in.io.restart, immersed_hash);
+        }
+        if (immersed) {
+            const auto& zl = mesh.zlevels();
+            const std::string low = check_immersed_terrain_height(in.terrain, static_cast<double>(zl[1]),
+                                                                  static_cast<double>(zl[zl.size() - 2]));
+            if (!low.empty()) { amrex::Abort("gust: " + low); }
+            buildings.build_from_map(buildings_opt, immersed_terrain_map(in.terrain, geom), "terrain.flat_height", geom,
+                                     state.z_phys_nd, ba, dm);
+            amrex::Print() << "gust: immersed terrain (terrain.representation = immersed_forcing, terrain.flat_height = "
+                           << in.terrain.flat_height << " m, terrain.small_volfrac = " << in.terrain.small_volfrac
+                           << "): " << buildings.summary(mesh.detJ, geom) << "\n"
+                           << "gust: immersed terrain: the form 7 wall law with bc.surface_z0 = " << buildings_opt.z0
+                           << " m at the exact wall distance, the wall value of k in the cut cells\n";
+        } else if (buildings_opt.active()) {
             buildings.build(buildings_opt, geom, state.z_phys_nd, ba, dm);
             amrex::Print() << "gust: buildings (buildings.type = " << buildings_opt.type_name << "): "
                            << buildings.summary(mesh.detJ, geom) << "\n";
@@ -958,6 +1010,7 @@ std::string run_domain (const DomainRole& role)
             closure.write_checkpoint(name);
             canopy.write_checkpoint(name);
             buildings.write_checkpoint(name);
+            write_immersed_terrain_checkpoint(name, immersed_hash);
             NestFaces::write_checkpoint(name, nest_hash);
             if (newton_stage != nullptr) { newton_stage->write_checkpoint(name); }
             if (rec != nullptr) {
@@ -1242,6 +1295,7 @@ std::string run_domain (const DomainRole& role)
         const auto name = write_checkpoint(in.io.chk_file, state, in.mesh, &mesh.zlevels());
         canopy.write_checkpoint(name);
         buildings.write_checkpoint(name);
+        write_immersed_terrain_checkpoint(name, immersed_hash);
         NestFaces::write_checkpoint(name, nest_hash);
         amrex::Print() << "gust: wrote " << name << "\n";
         final_chk = name;

@@ -426,6 +426,7 @@ void Closure::stratification (const State& q, const BuoyancyOptions& buoyancy, c
                               amrex::MultiFab& N2, amrex::MultiFab& S2) const
 {
     stratification_and_strain(q, buoyancy, geom, N2, S2);
+    if (m_strain_fix != nullptr) { m_strain_fix->apply(q, geom, S2); }
     if (m_opt.ri_gate > 0) { gate_stratification(N2, S2, m_opt.ri_gate); }
 }
 
@@ -479,6 +480,7 @@ void Closure::evaluate (const State& q, const amrex::MultiFab& dist_in, const Ro
         amrex::Abort(std::string("gust: ") + op + ": the scratch fields are not on q's layout");
     }
     stratification_and_strain(q, buoyancy, geom, N2, S2);
+    if (m_strain_fix != nullptr) { m_strain_fix->apply(q, geom, S2); }
     if (m_opt.ri_gate > 0) {
         if (N2g.empty()) { N2g.define(N2.boxArray(), N2.DistributionMap(), 1, N2.nGrow()); }
         amrex::MultiFab::Copy(N2g, N2, 0, 0, 1, N2.nGrow());

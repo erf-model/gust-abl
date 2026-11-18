@@ -172,6 +172,16 @@ struct ClosureScratch
 //! one ghost cell, on the nodes' layout (defined here if empty).
 void height_above_ground (const amrex::MultiFab& z_nd, amrex::MultiFab& dist);
 
+//! A correction of the strain invariant S2 = 2 S_ij S_ij where a wall model knows the near-wall
+//! gradients better than the central difference (ImmersedStrain.H). Applied to S2 right after it is
+//! computed, before the gate, the cap and the length read it.
+class StrainCorrection
+{
+public:
+    virtual ~StrainCorrection () = default;
+    virtual void apply (const State& q, const amrex::Geometry& geom, amrex::MultiFab& S2) const = 0;
+};
+
 class Closure
 {
 public:
@@ -258,6 +268,9 @@ public:
     void set_cap_weight (const amrex::MultiFab* w) { m_cap_weight = w; }
     [[nodiscard]] const amrex::MultiFab* cap_weight () const { return m_cap_weight; }
 
+    //! The strain correction (null: none). It must outlive the closure's use of it.
+    void set_strain_correction (const StrainCorrection* c) { m_strain_fix = c; }
+
     [[nodiscard]] const ClosureOptions& options () const { return m_opt; }
     //! turb.closure = none: a laminar run.
     [[nodiscard]] bool laminar () const { return m_opt.kind == ClosureKind::none; }
@@ -277,6 +290,7 @@ private:
     FreezeScope m_scope{FreezeScope::all};
     const amrex::MultiFab* m_canopy_f{nullptr};
     const amrex::MultiFab* m_cap_weight{nullptr};
+    const StrainCorrection* m_strain_fix{nullptr};
     //! turb.closure = none: the molecular diffusivities on f, nu_t and every source 0.
     void evaluate_laminar (const State& q, ClosureFields& f) const;
     //! Abort unless the drag field (when set) is on q's cells.

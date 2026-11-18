@@ -126,6 +126,10 @@ struct BuildingsOptions
     //! Set by the application from the closure's options, not read: the zone acts (buildings.wall_tke,
     //! turb.realizability > 0 and limiter_zone > 0). It is part of the restart hash.
     bool limiter_zone_acts{false};
+    //! Set by the application, not read: the ground is immersed (terrain.representation = immersed_forcing,
+    //! ImmersedTerrain.H). The vertical diffusion across a roof cell's top face then spans the distance between
+    //! the two cells' fluid centroids, and the body forces act on the open part of each face (BuildingForcing.H).
+    bool immersed_ground{false};
     std::vector<std::string> given;  //!< buildings.* keys in the inputs
     std::vector<std::string> parse_errors;   //!< value counts and repeats
     [[nodiscard]] bool active () const { return type != BuildingsType::none; }
@@ -163,6 +167,12 @@ public:
     //! domain, and on a building reaching the top layer.
     void build (const BuildingsOptions& opt, const amrex::Geometry& geom, const amrex::MultiFab& z_nd,
                 const amrex::BoxArray& cell_ba, const amrex::DistributionMapping& dm);
+    //! The same from a map in memory (ImmersedTerrain.H): where names its source in the aborts
+    //! ("buildings.file = ..." for build). Leaves input_hash() empty, so write_checkpoint writes
+    //! nothing: the caller owns the restart record.
+    void build_from_map (const BuildingsOptions& opt, const BuildingHeightMap& map, const std::string& where,
+                         const amrex::Geometry& geom, const amrex::MultiFab& z_nd, const amrex::BoxArray& cell_ba,
+                         const amrex::DistributionMapping& dm);
 
     [[nodiscard]] bool active () const { return m_active; }
     //! The cells' solid fraction, one ghost layer.
@@ -180,7 +190,7 @@ public:
     //! The SHA-256 of the inputs (options and file contents).
     [[nodiscard]] const std::string& input_hash () const { return m_hash; }
 
-    //! <dir>/Buildings with input_hash(), when active (I/O rank).
+    //! <dir>/Buildings with input_hash(), when active and built from the inputs (I/O rank).
     void write_checkpoint (const std::string& dir) const;
     //! Refuses (abort naming io.restart) a restart whose checkpoint dir holds a
     //! hash other than hash (hash_inputs of the run's options; empty without

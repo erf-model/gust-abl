@@ -92,7 +92,8 @@ Inputs parse_inputs ()
         amrex::ParmParse pp("terrain");
         auto& t = in.terrain;
         for (const char* key : {"type", "file", "smoothing", "gamma_m", "hill_height", "hill_half_width",
-                                "hill_shape", "idw_neighbors", "idw_power", "hierarchy_passes", "nest_blend_width"}) {
+                                "hill_shape", "idw_neighbors", "idw_power", "hierarchy_passes", "nest_blend_width",
+                                "representation", "flat_height", "small_volfrac"}) {
             if (pp.contains(key)) {
                 t.given.emplace_back(key);
                 if (pp.countval(key) != 1) {
@@ -111,6 +112,9 @@ Inputs parse_inputs ()
         pp.query("nest_blend_width", t.nest_blend_width);
         pp.query("idw_power", t.idw_power);
         pp.query("hierarchy_passes", t.hierarchy_passes);
+        pp.query("representation", t.representation);
+        pp.query("flat_height", t.flat_height);
+        pp.query("small_volfrac", t.small_volfrac);
         // The roughness map (bc.surface_z0_file, SurfaceRoughness.H) shares the IDW keys.
         t.idw_for_z0_map = amrex::ParmParse("bc").contains("surface_z0_file");
         // So do the canopy's maps (canopy.type = map, Canopy.H). Read as text
@@ -144,7 +148,8 @@ Inputs parse_inputs ()
              {"mesh", {"n_cell", "prob_lo", "prob_hi", "is_periodic", "max_grid_size", "dz0",
                        "stretch_ratio", "zlevels_file", "hierarchy_levels"}},
              {"terrain", {"type", "file", "smoothing", "gamma_m", "hill_height", "hill_half_width",
-                          "hill_shape", "idw_neighbors", "idw_power", "hierarchy_passes", "nest_blend_width"}},
+                          "hill_shape", "idw_neighbors", "idw_power", "hierarchy_passes", "nest_blend_width",
+                          "representation", "flat_height", "small_volfrac"}},
              {"io", {"plot_file", "chk_file", "restart", "write_plotfile", "write_checkpoint", "turb_plot_file",
                      "iteration_log", "column_guess_file"}}}) {
         amrex::ParmParse pp(ns);
@@ -281,6 +286,46 @@ std::vector<std::string> validate (const Inputs& in)
             if (given(k)) {
                 err.emplace_back(std::string("terrain.") + k + " has no effect unless terrain.type = xyz, bc.surface_z0_file is given "
                                              "or canopy.type = map");
+            }
+        }
+    }
+
+    // The ground's representation (ImmersedTerrain.H). The checks that need other namespaces are
+    // check_immersed_terrain's.
+    const bool immersed = t.representation == "immersed_forcing";
+    if (t.representation != "body_fitted" && !immersed) {
+        err.emplace_back("terrain.representation must be body_fitted or immersed_forcing (got " + t.representation + ")");
+    }
+    if (immersed) {
+        if (t.type != "flat") {
+            err.emplace_back("terrain.representation = immersed_forcing needs terrain.type = flat for now (got " + t.type + ")");
+        }
+        if (!std::isfinite(t.flat_height) || !(t.flat_height > 0)) {
+            err.emplace_back("terrain.flat_height must be finite and > 0 with terrain.representation = immersed_forcing");
+        } else if (std::isfinite(m.prob_hi[2]) && !(t.flat_height < m.prob_hi[2])) {
+            err.emplace_back("terrain.flat_height must be below mesh.prob_hi z");
+        }
+        if (!std::isfinite(t.small_volfrac) || !(t.small_volfrac >= amrex::Real(1e-4)) || !(t.small_volfrac < amrex::Real(0.5))) {
+            err.emplace_back("terrain.small_volfrac must be >= 1e-4 and < 0.5");
+        }
+        // The mesh is flat: nothing follows or smooths a ground.
+        for (const char* k : {"smoothing", "gamma_m", "hierarchy_passes", "nest_blend_width"}) {
+            if (given(k)) {
+                err.emplace_back(std::string("terrain.") + k + " has no effect with terrain.representation = immersed_forcing "
+                                 "(the mesh is flat)");
+            }
+        }
+        if (m.hierarchy_levels > 1) {
+            err.emplace_back("terrain.representation = immersed_forcing needs mesh.hierarchy_levels = 1 for now");
+        }
+        if (m.is_periodic[0] != 1 || m.is_periodic[1] != 1) {
+            err.emplace_back("terrain.representation = immersed_forcing needs mesh.is_periodic = 1 1 0 for now (no "
+                             "inflow or outflow face crosses the immersed ground yet)");
+        }
+    } else {
+        for (const char* k : {"flat_height", "small_volfrac"}) {
+            if (given(k)) {
+                err.emplace_back(std::string("terrain.") + k + " has no effect unless terrain.representation = immersed_forcing");
             }
         }
     }
