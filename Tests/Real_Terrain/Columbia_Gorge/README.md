@@ -20,7 +20,8 @@ part of the recommended setting: on the Ishihara and Zhou rough ridge it stops a
 
 With `--relax F ...`, `run` then makes one joint run per factor with feedback by relaxation (PR-71,
 `nest.feedback = relax`, `nest.feedback_factor = F`; `docs/boundary_conditions.rst`, Two-way nests by relaxation),
-and `compare` adds them to its tables.
+and `compare` adds them to its tables. `--inject F ...` does the same with `nest.feedback = inject` (tracker row
+N-114, item 2; `docs/boundary_conditions.rst`, Two-way nests by injection); the two options can be given together.
 
 `compare` gives the RMS difference of each run from the reference: over the nest, over the outer cells outside the
 nest's footprint, over the footprint, and downstream (east) of the nest. It then counts the cells in the lowest
@@ -33,7 +34,7 @@ reference's.
 | File | Role |
 |---|---|
 | `case.yaml` | The case for `tools/make_gust_case.py`: 19.2 km x 16 km centred on 45.70 N, 120.80 W, top 3000 m, 200 m cells, first layer 10 m, 37 layers; wind 8 m/s at 10 m from the west (270 degrees), z0 = 0.05 m, neutral; a 1000 m flat border and a 2000 m slope to the terrain on every side. |
-| `columbia_gorge.py` | `prepare` (fetch the terrain, write the decks), `run` (the three runs; with `--relax F ...` also the relax runs, with `--relax-only` only those), `compare` (the tables below and, with `--plot`, the map). |
+| `columbia_gorge.py` | `prepare` (fetch the terrain, write the decks), `run` (the three runs; with `--relax F ...` or `--inject F ...` also the relax or inject runs, with `--relax-only` only those), `compare` (the tables below and, with `--plot`, the map). |
 
 The deck written by `prepare`: 96 x 80 x 37 cells; inflow on xlo, outflow on xhi, slip walls on y; a Rayleigh layer
 on w above 2100 m (as every nest has, so the outer domain and the nest are damped alike); three hierarchy levels with
@@ -65,6 +66,10 @@ python3 columbia_gorge.py compare --plot gorge_speed_map.png
 The relax runs at factors 0.5, 1 and 4, after the three runs above (`--relax-only` skips those):
 ```bash
 python3 columbia_gorge.py run --gust <build>/gust --mpi "mpiexec -n 4" --relax 0.5 1 4 --relax-only
+```
+The relax run at factor 1 and the inject run at the default factor, as in the last table below:
+```bash
+python3 columbia_gorge.py run --gust <build>/gust --mpi "mpiexec -n 4" --relax 1 --inject 0.5 --relax-only
 ```
 Everything is written to `columbia_gorge_run/` in the current directory (`--work` changes it).
 
@@ -123,6 +128,28 @@ relaxation).
 These numbers use the terrain of the PR-70 runs (relief 903 m) without `turb.nut_relax_end`; they are not yet
 regenerated on the terrain and decks the current `prepare` writes (relief 906 m, `turb.nut_relax_end = 0.01`), on
 which the tables above are measured.
+
+### Feedback by injection (`--relax 1 --inject 0.5`)
+Measured on 4 ranks with the decks the current `prepare` writes (relief 906 m, `turb.nut_relax_end = 0.01`), so the
+relax run at f = 1 is repeated here. RMS against the reference (m/s):
+
+| Run | Exchanges | Field | nest | outer | footprint | downstream |
+|---|---|---|---|---|---|---|
+| one way | | u | 0.122 | 0.102 | 0.202 | 0.148 |
+| joint, `defect` | 279 | u | **0.120** | **0.088** | **0.159** | **0.110** |
+| relax, f = 1 | 184 | u | 0.123 | **0.088** | 0.162 | 0.112 |
+| inject, f = 0.5 | 555 | u | 0.128 | 0.093 | 0.166 | 0.123 |
+| one way | | v | 0.033 | 0.034 | 0.055 | 0.046 |
+| joint, `defect` | 279 | v | **0.030** | **0.031** | **0.039** | **0.039** |
+| relax, f = 1 | 184 | v | **0.030** | **0.031** | **0.039** | 0.040 |
+| inject, f = 0.5 | 555 | v | 0.049 | 0.036 | 0.052 | 0.046 |
+
+w over the footprint is 0.067 m/s with inject (`defect` 0.067, relax 0.050, one way 0.043); k over the nest
+0.032 m^2/s^2 (0.031, 0.032, 0.028). Cells in the lowest 200 m whose horizontal speed differs from the reference's
+by more than 1 m/s: over the footprint 96 with inject (`defect` 111, relax 93, one way 134), over the nest 3 (6, 4,
+3), outside the footprint 81 (79, 83, 87). Inject reaches the steady verdict but takes about twice the exchanges of
+`defect`, and is further from the reference than `defect` and relax in u and v in every region; its nest u and v
+are further than one way.
 
 ## CTest
 None: the three runs take about 15 minutes on 4 ranks of a laptop. The CTest of two-way nesting is `rt_nests_two_way`

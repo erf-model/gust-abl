@@ -67,6 +67,7 @@ class CanopyHeat;
 struct CanopyRows;
 class NestDefect;
 class NestRelax;
+class NestInject;
 class TimeTerm;
 
 class BoundaryConditions;
@@ -203,6 +204,10 @@ struct ResidualInputs
     //! c (q - q*) to u, v, w, theta and k right after the defect source, and implicit_rows adds c
     //! to their diagonals right after the time term's 1/dt, both before the rows that replace their own.
     const NestRelax* relax{nullptr};
+    //! The nests' injection (NestInject.H, nest.feedback = inject); null: none. The residual zeroes the
+    //! rows of u, v, w, p, theta and k on the injected points after every other term and row (the end of
+    //! residual()); implicit_rows is unchanged.
+    const NestInject* inject{nullptr};
     //! false: the residual leaves the buildings' fixed rows out (BuildingForcing::apply_rows), so the
     //! blocked faces keep their momentum residual, from which BuildingLoads sums the force on them.
     bool building_rows{true};

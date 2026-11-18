@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Two-way nesting (nest.feedback = defect, or relax) on a steep hill against the uniform fine run.
+"""Two-way nesting (nest.feedback = defect, relax or inject) on a steep hill against the uniform fine run.
 
-    check_nests_two_way.py [--relax | --feedback-flux] -- COMMAND [ARGS ...]
+    check_nests_two_way.py [--relax | --inject | --feedback-flux] -- COMMAND [ARGS ...]
 
 COMMAND runs the outer deck (an argument ending in inputs_outer); the script
 runs, each in its own directory under the current one:
@@ -56,6 +56,14 @@ f. CREST with outer: the joint nest error is at least FLUX_OLD_RATIO of the
 g. the hill with nest: the bounds of c. (NEST_RATIO, OUTER_RATIO).
 Measured: README.md.
 
+With --inject (tracker row N-114, item 2, nest.feedback = inject) the script
+runs ref/ and joint/ as above, then inject/: COMMAND with the nest hill and
+nest.feedback = inject at the default nest.feedback_factor (0.5). Checked:
+a. as above (its own start line and per-exchange line);
+f. against the reference, the nest and outer errors (as in c.): at most
+   INJECT_NEST_RATIO and INJECT_OUTER_RATIO of the one-way ones. The defect
+   run's are printed beside them (README.md).
+
 The exit code is the verdict.
 """
 import glob
@@ -96,6 +104,9 @@ RELAX_FACTORS = (1, 4, 16)
 RELAX_FALL = 0.35            # parent - restricted nest, u RMS at 16 over that at 1, measured 0.19
 RELAX_NEST_RATIO = 0.5       # factor 1: nest error over the one-way one (u), measured 0.41
 RELAX_OUTER_RATIO = 0.6      # factor 1: outer error outside the footprint over the one-way one (u), measured 0.35
+INJECT_FACTOR = 0.5          # the default nest.feedback_factor with inject
+INJECT_NEST_RATIO = 0.55     # nest error over the one-way one (u), measured 0.513
+INJECT_OUTER_RATIO = 0.42    # outer error outside the footprint over the one-way one (u), measured 0.377
 
 
 MONITOR_REL_TOL = 1.0e-3     # steady.monitor_rel_tol (default; the decks do not set it)
@@ -132,15 +143,16 @@ def rms(a):
     return float(np.sqrt(np.mean(a * a)))
 
 
-def check(log, where, foots, r, nest_ratio, outer_ratio, factor=None, one_way=False):
+def check(log, where, foots, r, nest_ratio, outer_ratio, factor=None, one_way=False, feedback="relax"):
     """a.-c. for the joint run in where, with the nests foots (name: outer cells i0, j0, ni, nj); factor: the
-    nest.feedback_factor of a relax run (None: defect). Returns the exchanges and the joint errors
-    (nest name: u RMS, and "outer"; with one_way also "<name> one way" and "outer one way")."""
+    nest.feedback_factor of a relax or inject run (feedback; None: defect). Returns the exchanges and the joint
+    errors (nest name: u RMS, and "outer"; with one_way also "<name> one way" and "outer one way")."""
     # a.
     if factor is None:
         start, line = r"nest\.feedback = defect", r"max \|S\| u "
     else:
-        start, line = r"nest\.feedback = relax, nest\.feedback_factor = %g" % factor, r"outer - nest under the nests: "
+        start = r"nest\.feedback = %s, nest\.feedback_factor = %g" % (feedback, factor)
+        line = r"outer - nest under the nests: " if feedback == "relax" else r"outer - injected nest under the nests: "
     for pat in (r"^gust: joint run \(%s\): the outer domain and %d nest" % (start, len(foots)),
                 r"^gust: joint +1: " + line, r"^gust: joint run: steady after \d+ exchanges"):
         if not re.search(pat, log, re.M):
@@ -234,9 +246,9 @@ def main():
         print(__doc__)
         return 2
     opts = sys.argv[1:sys.argv.index("--")]
-    relax, flux = "--relax" in opts, "--feedback-flux" in opts
-    if relax and flux:
-        fail("--relax and --feedback-flux are separate runs")
+    relax, inject, flux = "--relax" in opts, "--inject" in opts, "--feedback-flux" in opts
+    if relax + inject + flux > 1:
+        fail("--relax, --inject and --feedback-flux are separate runs")
     cmd = sys.argv[sys.argv.index("--") + 1:]
     deck = next((a for a in cmd if a.endswith("inputs_outer")), None)
     if deck is None:
@@ -263,6 +275,16 @@ def main():
         return feedback_flux(cmd, r)
     n_def, e_def = check(run(cmd + NEST + ["nest.feedback=defect"], "joint"), "joint", {"hill": FOOT}, r, NEST_RATIO,
                          OUTER_RATIO)
+    if inject:
+        print(f"check_nests_two_way: defect: {n_def} exchanges, u RMS against the 25 m run: nest {e_def['hill']:.4e}, "
+              f"outer {e_def['outer']:.4e}")
+        log = run(cmd + NEST + ["nest.feedback=inject"], "inject")
+        n, e = check(log, "inject", {"hill": FOOT}, r, INJECT_NEST_RATIO, INJECT_OUTER_RATIO, factor=INJECT_FACTOR,
+                     feedback="inject")
+        print(f"check_nests_two_way: inject factor {INJECT_FACTOR:g}: {n} exchanges; u RMS against the 25 m run: "
+              f"nest {e['hill']:.4e}, outer {e['outer']:.4e}")
+        print("check_nests_two_way: passed")
+        return 0
     if relax:
         diff = []
         print(f"check_nests_two_way: defect: {n_def} exchanges, u RMS against the 25 m run: nest {e_def['hill']:.4e}, "

@@ -7,10 +7,13 @@
 //   nest.names     = nest1 nest2      names of the nests (identifiers)
 //   nest.nest1.lo  = x y              the nest's low corner (m)
 //   nest.nest1.hi  = x y              its high corner (m)
-//   nest.feedback  = none | defect | relax
+//   nest.feedback  = none | defect | relax | inject
 //                                     one way (default), or the joint run
-//                                     with the defect source or the relaxation
-//   nest.feedback_factor = 1          the relaxation's factor (relax only)
+//                                     with the defect source, the relaxation
+//                                     or the injection
+//   nest.feedback_factor = 1          the relaxation's factor (relax), or the
+//                                     injection's fraction per exchange
+//                                     (inject; default 0.5, at most 1)
 //   nest.feedback_flux = outer | nest the flux the outer cells just outside
 //                                     the defect source take through its
 //                                     lateral faces (defect only; NestFaceFlux.H)
@@ -56,6 +59,11 @@
 // just outside the defect source's region take the nests' own fluxes through
 // its lateral faces (summed over the nest faces) in place of the outer
 // scheme's flux of the restricted nest state (the default, outer).
+//
+// nest.feedback = inject (NestInject.H): the same joint run with the outer
+// state replaced by the restricted nests on the defect source's region at
+// each exchange (a fraction nest.feedback_factor of the way, default 0.5,
+// finite, > 0 and <= 1), held as data through the outer iteration.
 
 #include "BoundaryConditions.H"
 #include "Inputs.H"
@@ -79,8 +87,9 @@ struct NestSpec
 };
 
 //! nest.feedback: none (one way, the default), defect (the joint run with the defect source, NestDefect.H,
-//! JointRun.H) or relax (the joint run with the relaxation, NestRelax.H).
-enum class NestFeedback { none, defect, relax };
+//! JointRun.H), relax (the joint run with the relaxation, NestRelax.H) or inject (the joint run with the
+//! injection, NestInject.H).
+enum class NestFeedback { none, defect, relax, inject };
 
 //! nest.feedback_flux: outer (the default: the outer scheme's fluxes) or nest (the nests' own summed face fluxes
 //! through the defect source's lateral faces, NestFaceFlux.H; nest.feedback = defect only).
@@ -93,7 +102,8 @@ struct NestOptions
 {
     std::vector<NestSpec> nests;
     NestFeedback feedback{NestFeedback::none};
-    //! nest.feedback_factor (nest.feedback = relax only; finite, > 0).
+    //! nest.feedback_factor: relax's factor (finite, > 0; default 1) or inject's fraction (finite, > 0 and <= 1;
+    //! default kInjectFactorDefault); not given with other feedbacks.
     amrex::Real feedback_factor{1};
     //! nest.feedback_flux (nest.feedback = defect only).
     NestFeedbackFlux feedback_flux{NestFeedbackFlux::outer};

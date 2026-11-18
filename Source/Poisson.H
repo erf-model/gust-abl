@@ -100,6 +100,13 @@ struct FaceCoeffs
     const amrex::MultiFab* z{nullptr};
     const amrex::MultiFab* z_cross{nullptr};
     amrex::Real precond_ratio{1};
+    //! Held cells (nest.feedback = inject, NestInject.H): a cell mask, 0 on the held cells and 1 elsewhere, and
+    //! per direction a face mask, 0 on the held cells' faces (their boundary faces included) and 1 elsewhere
+    //! (all four null, or all four given). As with buildings' solid cells, a held cell's row is phi = rhs (0),
+    //! its faces carry nothing, and the singular mean is over the other cells; the held faces' velocities are
+    //! data of the solve (the caller does not correct them). Needs a GMRES back end, like buildings.
+    const amrex::MultiFab* held_fluid{nullptr};
+    std::array<const amrex::MultiFab*, 3> held_open{{nullptr, nullptr, nullptr}};
 };
 
 struct PoissonResult
@@ -188,6 +195,12 @@ private:
     // With buildings (Mesh::set_open_faces): the multigrid preconditioner's areas, which
     // keep every face, and J over the fluid cells.
     amrex::MultiFab m_pc_ax, m_pc_ay, m_pc_az, m_J_fluid;
+    // The cells in the solve: Mesh::fluid() (buildings) times FaceCoeffs::held_fluid (either, or both).
+    amrex::MultiFab m_fluid;
+    // Level ground (every node's height the same along x and y): the stencil has no cross terms, so a constant over
+    // the fluid cells is in the masked operator's null space and the solve removes its mean (as before held cells).
+    bool m_level{true};
+    bool m_level_known{false};
     // z-faces: beta_z - z_cross (only used when z_cross is given).
     amrex::MultiFab m_dcross;
     bool m_split{false};

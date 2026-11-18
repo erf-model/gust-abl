@@ -5,8 +5,8 @@
     askervein_nest.py nest   NAME PARENT D   -- COMMAND [ARGS ...]
     askervein_nest.py compare PATCH REFERENCE [PARENT] [--ratio R] [--rms X] [--below PATCH2 ...]
     askervein_nest.py study  -- MPIEXEC ... GUST [-- ARGS ...]
-    askervein_nest.py two_way -- COMMAND [ARGS ...]
-    askervein_nest.py two_way paper -- MPIEXEC ... GUST [ARGS ...]
+    askervein_nest.py two_way [relax] [inject] [keep] -- COMMAND [ARGS ...]
+    askervein_nest.py two_way paper [relax] [inject] [keep] -- MPIEXEC ... GUST [ARGS ...]
 
 run: the whole 6 km domain (inputs_askervein_domain) on N x N x 18 cells (150:
 40 m, the parent; 300: 20 m, the reference) to the steady verdict. The last
@@ -44,7 +44,11 @@ reference's, and the RMS of the speed-up on lines A and AA against the
 observations (digitized from Wagenbrenner et al. 2019, Fig. 8, in
 Tests/Real_Terrain/WindNinja2019/wagenbrenner2019_digitized.csv; speed-up
 relative to the inflow's 10 m speed). No verdict: the numbers are those of
-docs/boundary_conditions.rst. With "paper" COMMAND names no deck: the runs
+docs/boundary_conditions.rst. "relax" and "inject" add the joint runs with
+nest.feedback = relax (rx_*) and inject (ij_*) at their default
+nest.feedback_factor (1 and 0.5), compared with the others; "keep" skips a
+run whose plotfile is already in the working directory. With "paper"
+COMMAND names no deck: the runs
 take a copy of Tests/Real_Terrain/WindNinja2019/inputs_askervein without the
 keys the runs set (PAPER_SET; inputs_askervein_paper; the vertical mesh of the
 Askervein comparison: a 1 m first layer, 64 levels; the log-law inflow): the
@@ -249,7 +253,7 @@ TWO_WAY = ["turb.realizability=0.309", "turb.nut_relax=0.5", "convection.hybrid_
 TWO_WAY_NEST = ["nest.names=ht", "nest.ht.lo=-1000 -1000", "nest.ht.hi=1000 1000"]
 
 
-def two_way(cmd, paper=False):
+def two_way(cmd, paper=False, extra=(), keep=False):
     import glob
     import numpy as np
     sys.path.insert(0, os.path.join(ROOT, "extern_erf"))
@@ -267,7 +271,12 @@ def two_way(cmd, paper=False):
     runs = [("ref", [f"mesh.n_cell={n_ref} {n_ref} {nz}"]),
             ("ow", [f"mesh.n_cell={n_out} {n_out} {nz}"] + nest + ["nest.feedback=none"]),
             ("jt", [f"mesh.n_cell={n_out} {n_out} {nz}"] + nest + ["nest.feedback=defect"])]
+    joint = {"rx": "relax", "ij": "inject"}
+    runs += [(k, [f"mesh.n_cell={n_out} {n_out} {nz}"] + nest + [f"nest.feedback={v}"])
+             for k, v in joint.items() if v in extra]
     for name, args in runs:
+        if keep and glob.glob(name + "_plt[0-9]*"):
+            continue
         with open(name + ".log", "w") as fh:
             rc = subprocess.run(base + args + [f"io.plot_file={name}_plt", f"io.chk_file={name}_chk"],
                                 stdout=fh, stderr=subprocess.STDOUT).returncode
@@ -283,14 +292,19 @@ def two_way(cmd, paper=False):
 
     fields = ["u", "v", "w", "tke"]
     rd = lambda p: {k: np.array(v, dtype=float) for k, v in erf_plotfile.read_fields(p, fields + ["z"])[1].items()}
-    plt = {"ref": last("ref_plt"), "ow": last("ow_plt"), "jt": last("jt_plt"),
-           "ow_ht": last("ow_plt_ht"), "jt_ht": last("jt_plt_ht")}
-    R, OO, OJ, NO, NJ = (rd(plt[k]) for k in ("ref", "ow", "jt", "ow_ht", "jt_ht"))
+    tags = [name for name, _ in runs if name != "ref"]   # ow, jt and the extra joint runs
+    plt = {"ref": last("ref_plt")}
+    for t in tags:
+        plt[t], plt[t + "_ht"] = last(t + "_plt"), last(t + "_plt_ht")
+    R = rd(plt["ref"])
+    O = {t: rd(plt[t]) for t in tags}
+    N = {t: rd(plt[t + "_ht"]) for t in tags}
     dx = 6000.0 / n_out                  # the footprint: outer cells i0 .. i0 + ni - 1 in x and y
     i0, ni = round((3000.0 - half) / dx), round(2 * half / dx)
     co = lambda a: 0.25 * (a[0::2, 0::2] + a[1::2, 0::2] + a[0::2, 1::2] + a[1::2, 1::2])
     rms = lambda a: float(np.sqrt(np.mean(a * a)))
-    print(f"{'field':5s} {'nest ow':>10s} {'nest jt':>10s} {'out ow':>10s} {'out jt':>10s}")
+    print(f"{'field':5s} " + " ".join(f"{'nest ' + t:>10s}" for t in tags) + " "
+          + " ".join(f"{'out ' + t:>10s}" for t in tags))
     for f in fields:
         rc, rn = co(R[f]), R[f][2 * i0:2 * (i0 + ni), 2 * i0:2 * (i0 + ni)]
         zr = R["z"][2 * i0:2 * (i0 + ni), 2 * i0:2 * (i0 + ni)]
@@ -304,8 +318,8 @@ def two_way(cmd, paper=False):
         out = np.ones(rc.shape[:2], bool)
         out[i0:i0 + ni, i0:i0 + ni] = False
         out = np.broadcast_to(out[:, :, None], rc.shape)
-        print(f"{f:5s} {rms(NO[f] - at(NO)):10.4e} {rms(NJ[f] - at(NJ)):10.4e} {rms((OO[f] - rc)[out]):10.4e} "
-              f"{rms((OJ[f] - rc)[out]):10.4e}")
+        print(f"{f:5s} " + " ".join(f"{rms(N[t][f] - at(N[t])):10.4e}" for t in tags) + " "
+              + " ".join(f"{rms((O[t][f] - rc)[out]):10.4e}" for t in tags))
     # Horizontal speed differences in m/s in the lowest 200 m (tools/speed_difference.py), nest at its own heights.
     sys.path.insert(0, os.path.join(ROOT, "tools"))
     import speed_difference as sd
@@ -315,9 +329,12 @@ def two_way(cmd, paper=False):
     outer = np.ones(Rc.shape[:2], bool)
     outer[i0:i0 + ni, i0:i0 + ni] = False
     rows = []
-    for k, N, O in (("one-way", NO, OO), ("joint", NJ, OJ)):
-        rows.append((k, "nest", (sd.speed(N) - sd.at_height(N["z"], R["z"][sl], Rs[sl]))[sd.near_ground(N["z"])]))
-        rows.append((k, "outer", (sd.speed(O) - Rc)[mc & outer[:, :, None]]))
+    label = {"ow": "one-way", "jt": "joint", "rx": "relax", "ij": "inject"}
+    for t in tags:
+        n_, o_ = N[t], O[t]
+        rows.append((label[t], "nest",
+                     (sd.speed(n_) - sd.at_height(n_["z"], R["z"][sl], Rs[sl]))[sd.near_ground(n_["z"])]))
+        rows.append((label[t], "outer", (sd.speed(o_) - Rc)[mc & outer[:, :, None]]))
     print(f"horizontal speed |S - S_ref| below {sd.AGL:g} m above the ground "
           f"(reference mean {Rs[sd.near_ground(R['z'])].mean():.2f} m/s)")
     sd.print_table(rows)
@@ -329,7 +346,7 @@ def two_way(cmd, paper=False):
         if proc.returncode != 0:   # the outer domain's ground can lie above the terrain file's at a mast
             print(f"{p}: the masts are not sampled ({proc.stdout.strip().splitlines()[-1]})")
             sampled.discard(k)
-    for k in [k for k in ("ow", "jt", "ow_ht", "jt_ht") if k in sampled]:
+    for k in [k for k in tags + [t + "_ht" for t in tags] if k in sampled]:
         r, mx, _ = differences("tw_" + k, "tw_ref")
         print(f"masts, {k}: 10 m speed relative to the reference: RMS {r:.4f}, largest {mx:.4f}")
     uref = 8.9 if paper else inflow_speed(10.0)
@@ -339,7 +356,7 @@ def two_way(cmd, paper=False):
             if row[0] == "fig8" and row[2] == "observed" and row[1] in ("LineA", "LineAA"):
                 obs.setdefault(row[1][4:], []).append((float(row[3]), float(row[4])))
     print(f"speed-up on the masts against the observations (U_ref = {uref:.3f} m/s, the inflow at 10 m):")
-    for k in [k for k in ("ref", "ow", "jt", "ow_ht", "jt_ht") if k in sampled]:
+    for k in [k for k in ["ref"] + tags + [t + "_ht" for t in tags] if k in sampled]:
         with open(f"tw_{k}_lines.csv") as fh:
             rows = list(csv.DictReader(line for line in fh if line[0] != "#"))
         for line in sorted(obs):
@@ -382,8 +399,10 @@ def main(argv):
         run_domain(args[1], int(args[2]), cmd)
     elif args[0] == "nest" and len(args) == 4:
         run_nest(args[1], args[2], float(args[3]), cmd)
-    elif args[0] == "two_way" and len(args) in (1, 2) and args[1:] in ([], ["paper"]):
-        return two_way(cmd, paper=len(args) == 2)
+    elif args[0] == "two_way" and set(args[1:]) <= {"paper", "relax", "inject", "keep"} \
+            and len(set(args[1:])) == len(args) - 1:
+        return two_way(cmd, paper="paper" in args, extra=[a for a in args if a in ("relax", "inject")],
+                       keep="keep" in args)
     elif args[0] == "study" and len(args) == 1:
         return study(cmd)
     else:

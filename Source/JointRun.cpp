@@ -3,6 +3,7 @@
 #include "Mesh.H"
 #include "NestDefect.H"
 #include "NestFaceFlux.H"
+#include "NestInject.H"
 #include "NestFaces.H"
 #include "NestParent.H"
 #include "NestRelax.H"
@@ -52,12 +53,15 @@ JointResult run_joint (const std::vector<JointMember*>& members, int max_exchang
         amrex::Abort("gust: run_joint: " + std::to_string(first_exchange) + " exchanges taken of at most "
                      + std::to_string(max_exchanges) + " (steady.max_iterations)");
     }
-    if (members.size() < 2 || (members[0]->defect == nullptr) == (members[0]->relax == nullptr)) {
-        amrex::Abort("gust: run_joint: needs the outer domain with its defect source or its relaxation (one of them) and "
-                     "at least one nest");
+    const int feedbacks = members.empty() ? 0 : int(members[0]->defect != nullptr) + int(members[0]->relax != nullptr)
+                                                 + int(members[0]->inject != nullptr);
+    if (members.size() < 2 || feedbacks != 1) {
+        amrex::Abort("gust: run_joint: needs the outer domain with its defect source, its relaxation or its injection (one "
+                     "of them) and at least one nest");
     }
     JointMember& P = *members[0];
     const bool relax = P.relax != nullptr;
+    const bool inject = P.inject != nullptr;
     std::vector<DefectRegion> regions;
     for (std::size_t n = 1; n < members.size(); ++n) {
         const JointMember& N = *members[n];
@@ -67,7 +71,14 @@ JointResult run_joint (const std::vector<JointMember*>& members, int max_exchang
         regions.push_back(defect_region(N.name, N.geom->Domain().size(), N.parent->ratio(), N.parent->offset(),
                                         P.geom->Domain(), {N.geom->isPeriodic(0), N.geom->isPeriodic(1)}));
     }
-    if (relax) {
+    if (inject) {
+        P.inject->set(regions);
+        amrex::Print() << "gust: joint run (nest.feedback = inject, nest.feedback_factor = " << P.inject->factor()
+                       << "): the outer domain and " << members.size() - 1 << " nest(s) exchange every iteration, up to "
+                       << max_exchanges << " exchanges" << (first_exchange > 0 ? " over the run" : "")
+                       << "; the outer state moves that fraction of the way to the restricted nests from "
+                       << kDefectMargin << " outer cells inside each nest's faces, held there through its iteration\n";
+    } else if (relax) {
         amrex::Print() << "gust: joint run (nest.feedback = relax, nest.feedback_factor = " << P.relax->factor()
                        << "): the outer domain and " << members.size() - 1 << " nest(s) exchange every iteration, up to "
                        << max_exchanges << " exchanges" << (first_exchange > 0 ? " over the run" : "")
@@ -103,7 +114,13 @@ JointResult run_joint (const std::vector<JointMember*>& members, int max_exchang
         copy_state(*P.state, qr);
         for (std::size_t n = 1; n < members.size(); ++n) { members[n]->fill_ghosts(*members[n]->state); }
         restrict_patches(images, *P.mesh, *P.geom, P.fill_ghosts, qr);
-        if (relax) {
+        std::vector<amrex::Real> moved;
+        if (inject) {
+            // How far the outer state moved from the last injection (its step, and the nests' since).
+            moved = P.inject->differences(*P.state, qr);
+            P.inject->inject(qr, *P.state);
+            P.fill_ghosts(*P.state);
+        } else if (relax) {
             P.relax->set(qr, regions);
             if (it == first_exchange) {
                 for (const auto& n : P.relax->nests()) {
@@ -120,7 +137,8 @@ JointResult run_joint (const std::vector<JointMember*>& members, int max_exchang
             P.defect->set(R, regions);
         }
         // The feedback's change from the last exchange (infinite at the first).
-        const amrex::Real fchange = relative_feedback_change(relax ? P.relax->change() : P.defect->change(), P.feedback_floor);
+        const FeedbackChange& fc = inject ? P.inject->change() : relax ? P.relax->change() : P.defect->change();
+        const amrex::Real fchange = relative_feedback_change(fc, P.feedback_floor);
         window.add(fchange);
         double tx = amrex::second() - t0;
         // 2. The outer domain's iteration.
@@ -163,7 +181,15 @@ JointResult run_joint (const std::vector<JointMember*>& members, int max_exchang
         const bool last = (all_steady && settled) || diverged || it + 1 == max_exchanges;
         if (it < first_exchange + 10 || it % 10 == 9 || last) {
             char line[512];
-            if (relax) {
+            if (inject) {
+                const auto& d = moved;
+                std::snprintf(line, sizeof(line), "gust: joint %5d: outer - injected nest under the nests: max u %.3e "
+                              "v %.3e w %.3e theta %.3e k %.3e, RMS u %.3e v %.3e w %.3e theta %.3e k %.3e; face change "
+                              "%.3e m/s; target change %.3e (window %.3e); outer %s", it + 1, double(d[0]), double(d[1]), double(d[2]),
+                              double(d[3]), double(d[4]), double(d[5]), double(d[6]), double(d[7]), double(d[8]),
+                              double(d[9]), double(change), double(fchange), double(window.sum()),
+                              status_name(P.verdict.status));
+            } else if (relax) {
                 // The outer state after its step against the target of this exchange, where the rate is > 0.
                 const auto d = P.relax->differences(*P.state);
                 std::snprintf(line, sizeof(line), "gust: joint %5d: outer - nest under the nests: max u %.3e v %.3e "
@@ -189,6 +215,15 @@ JointResult run_joint (const std::vector<JointMember*>& members, int max_exchang
         if (all_steady && settled) { out.steady = true; break; }
         out.waiting_on_feedback = all_steady;
     }
+    if (inject && out.steady) {
+        // The outer output under the nests carries the final nests (NestInject.H). Only at steady: a stopped run's
+        // checkpoint keeps the iterate, so its restart continues the straight run bit for bit.
+        copy_state(*P.state, qr);
+        for (std::size_t n = 1; n < members.size(); ++n) { members[n]->fill_ghosts(*members[n]->state); }
+        restrict_patches(images, *P.mesh, *P.geom, P.fill_ghosts, qr);
+        P.inject->inject(qr, *P.state, true);
+        P.fill_ghosts(*P.state);
+    }
     out.window = window.values();
     out.wall_seconds = amrex::second() - t_all;
     amrex::ParallelDescriptor::ReduceRealMax(out.wall_seconds);
@@ -208,7 +243,7 @@ JointResult run_joint (const std::vector<JointMember*>& members, int max_exchang
         char note[400];
         std::snprintf(note, sizeof(note), "gust: joint run: every domain was steady at the last exchange, but the %s had "
                       "not settled: last change %.3e, sum over steady.monitor_window = %d exchanges %.3e, "
-                      "steady.monitor_rel_tol = %.3e\n", relax ? "target" : "source S", out.feedback_change,
+                      "steady.monitor_rel_tol = %.3e\n", relax || inject ? "target" : "source S", out.feedback_change,
                       P.feedback_window, out.feedback_window, double(P.feedback_tol));
         amrex::Print() << note;
     }

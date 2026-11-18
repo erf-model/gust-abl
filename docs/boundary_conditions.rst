@@ -1270,6 +1270,196 @@ similar outer error, and a larger outer-minus-nest difference; one hill does not
 - The limits of ``defect`` that concern the joint run (no restart, no probe rows after the one-way run,
   ``simplec_newton`` refused, :math:`\nu_t` relaxation) hold for ``relax`` too.
 
+.. _two-way-inject:
+
+Two-way nests by injection (``nest.feedback = inject``)
+-------------------------------------------------------
+
+``nest.feedback = inject`` runs the same joint run as ``defect`` (:ref:`two-way-nests`: the one-way runs, then one
+exchange per iteration, the same coordinate surfaces, pseudo-time step, stopping rule, damping rule, refusals and
+restart) with a third way up (``Source/NestInject``). Each exchange, :math:`q^*` is formed as for ``defect``, and the
+outer state on the defect source's region is moved towards it:
+
+.. math::
+
+   q_c \leftarrow q_c + \omega\,(q^* - q_c) \quad \text{on } \chi_s,
+
+for :math:`u, v, w, p, \theta` and :math:`k`, with
+
+- :math:`q_c`: the outer state;
+- :math:`q^*`: the restricted nests :math:`I q_f` on their footprints (with the restriction's pressure level, as for
+  ``defect``), the outer state elsewhere;
+- :math:`\omega`: ``nest.feedback_factor`` (default 0.5; :math:`0 < \omega \le 1`), the fraction of the way taken
+  per exchange;
+- :math:`\chi_s`: the defect source's region, the outer points at least 2 outer cells inside the footprint's lateral
+  faces, all heights (cells, and faces from L to H + 1 along their normal, so the region's boundary faces are moved
+  too). The ring between :math:`\chi_s` and the footprint's faces keeps the outer domain's own state and equations,
+  as with ``defect`` and ``relax``: the nest's faces take their values from the outer domain there.
+
+**The outer iteration holds** :math:`\chi_s` **as data.** The outer residual's rows (momentum, continuity,
+:math:`\theta` and :math:`k`) are zero on :math:`\chi_s`, so the residual norms and the stopping rule see only the
+points outside it. The SIMPLEC step resets the velocity on :math:`\chi_s` after the momentum predictor and every
+field at the end of the iteration. The pressure correction leaves :math:`\chi_s` out of its Poisson solve, as it does
+buildings' solid cells: a held cell's row is :math:`p' = 0`, no correction flux crosses a held face, and the mean
+removed from the right-hand side is the :math:`J`-weighted mean over the other cells. The ring cells beside
+:math:`\chi_s` therefore see the injected boundary fluxes as given (a Dirichlet boundary of the outer solve).
+:math:`w` on the ground and top faces stays the boundary condition's (on the terrain it follows :math:`u`).
+
+**The fixed point.** At steady :math:`q_c = q^*` on :math:`\chi_s` whatever :math:`\omega` is: :math:`\omega`
+changes the path, not the answer. After a steady joint run the outer state is injected once in full
+(:math:`\omega = 1`), so the outer output under a nest is :math:`I q_f` of the final nest. A run stopped before
+steady (``steady.max_iterations``) writes the iterate, so its restart continues the straight run bit for bit.
+
+**Why** :math:`\omega < 1`. With :math:`\omega = 1` the outer domain and the nest are two regions coupled by
+Dirichlet data, overlapping by 2 outer cells, each taking one pseudo-time step per exchange. On the canonical hill
+neither 1 nor 0.75 reached steady (table below). A partial move per exchange damps that coupling. Smaller :math:`\omega`
+reaches the same state in more exchanges.
+
+**Results.** ``Tests/Canonical_RANS/Nests_Two_Way`` (``check_nests_two_way.py --inject``; 50 m / 25 m, 2 ranks),
+RMS of :math:`u` in m/s against the uniform 25 m run, over the nest and over the outer cells outside the footprint:
+
+.. list-table::
+   :header-rows: 1
+
+   * - Run
+     - Exchanges
+     - Nest
+     - Outer, outside the footprint
+   * - One way
+     -
+     - 8.23e-3
+     - 1.44e-2
+   * - ``defect``
+     - 208
+     - **2.03e-3**
+     - **4.89e-3**
+   * - ``relax``, :math:`f` = 1
+     - 160
+     - 3.38e-3
+     - 5.03e-3
+   * - ``inject``, :math:`\omega` = 0.25
+     - 602
+     - 4.22e-3
+     - 5.41e-3
+   * - ``inject``, :math:`\omega` = 0.5
+     - 344
+     - 4.22e-3
+     - 5.41e-3
+   * - ``inject``, :math:`\omega` = 0.6
+     - 300
+     - 4.22e-3
+     - 5.41e-3
+   * - ``inject``, :math:`\omega` = 0.75
+     - not steady after 3000
+     -
+     -
+   * - ``inject``, :math:`\omega` = 1
+     - not steady after 600
+     -
+     -
+
+(0.25, 0.6, 0.75 and 1 are not in the test.) Up to :math:`\omega = 0.6` the three runs reach the same state to
+the digits shown, in fewer exchanges as :math:`\omega` grows. At 0.75 the difference between the outer state and
+the restricted nest falls for about 8 exchanges and then grows until it settles into an oscillation (nest-face
+change about 1 m/s per exchange, RMS of :math:`v` under the nest about 6e-2 m/s); at 1 the oscillation is larger
+(about 0.28 m/s). The default 0.5 is within a factor of 1.5 of that limit here; the limit depends on the case.
+
+Both domains are closer to the fine run than one way: the nest's error is about half the one-way one and the outer
+domain's about 0.38 of it. On this hill ``inject`` is further from the fine run than ``defect`` (nest 4.22e-3
+against 2.03e-3, outer 5.41e-3 against 4.89e-3) and than ``relax`` at :math:`f = 1`, and takes more exchanges than
+either.
+
+**Terrain.** ``Tests/Real_Terrain/Columbia_Gorge`` (200 m outer, 100 m nest, 4 ranks, ``--relax 1 --inject 0.5``)
+and ``Tests/Real_Terrain/Askervein_Nest`` (40 m / 20 m, ``two_way relax inject``), with the recommended setting.
+RMS against the uniform fine run, in m/s; "outer" is the outer domain outside the footprint:
+
+.. list-table::
+   :header-rows: 1
+
+   * - Case, run
+     - Exchanges
+     - Nest :math:`u`
+     - Nest :math:`v`
+     - Outer :math:`u`
+     - Outer :math:`v`
+   * - Gorge, one way
+     -
+     - 0.122
+     - 0.033
+     - 0.102
+     - 0.034
+   * - Gorge, ``defect``
+     - 279
+     - **0.120**
+     - **0.030**
+     - **0.088**
+     - **0.031**
+   * - Gorge, ``relax``, :math:`f` = 1
+     - 184
+     - 0.123
+     - **0.030**
+     - **0.088**
+     - **0.031**
+   * - Gorge, ``inject``, :math:`\omega` = 0.5
+     - 555
+     - 0.128
+     - 0.049
+     - 0.093
+     - 0.036
+   * - Askervein, one way
+     -
+     - 3.37e-3
+     - **5.68e-3**
+     - 4.62e-3
+     - 9.37e-3
+   * - Askervein, ``defect``
+     - 156
+     - **3.37e-3**
+     - 6.03e-3
+     - **3.21e-3**
+     - **6.93e-3**
+   * - Askervein, ``relax``, :math:`f` = 1
+     - 191
+     - 3.53e-3
+     - 6.33e-3
+     - 3.75e-3
+     - 7.56e-3
+   * - Askervein, ``inject``, :math:`\omega` = 0.5
+     - 2153
+     - 9.92e-3
+     - 3.45e-2
+     - 1.37e-2
+     - 2.46e-2
+
+Both terrain runs reach steady at the default :math:`\omega`. On both, ``inject`` is further from the fine run than
+``defect`` and ``relax`` and takes the most exchanges. On the Gorge its outer domain is still closer to the fine run
+than one way, its nest :math:`u` is 0.006 m/s further than one way, and its nest :math:`v` 0.016 m/s further. On
+Askervein, where every run is within 0.035 m/s of the fine run, ``inject`` is the furthest of the four in
+:math:`u` and :math:`v`, nest and outer; at the masts its 10 m speed is within 0.22 % of the fine run (``defect``
+0.11 %), and the RMS of its speed-up against the observations, on either mast line, differs from the ``defect``
+run's by at most 0.004. Counts of cells in the lowest 200 m more than 1 m/s from the Gorge's fine run: footprint 96
+(``defect`` 111, ``relax`` 93, one way 134), nest 3 (6, 4, 3).
+
+**Limits.**
+
+- :math:`\omega` = 0.75 and 1 (plain injection) did not reach steady on the canonical hill; values above the
+  default are accepted but may not converge, and a joint run that stops reports it (``steady.max_iterations``).
+- With ``turb.nut_relax`` < 1 the closure's :math:`\nu_t` on :math:`\chi_s` blends with the outer domain's own
+  history, as with ``defect`` and ``relax``; it enters the ring's diffusive fluxes on :math:`\chi_s`'s boundary faces.
+- The pressure correction's masks need a GMRES back end of the Poisson solve, as buildings do.
+- ``steady.stage = simplec_newton`` is refused, as with ``defect`` and ``relax``.
+- Cost: an outer iteration with ``inject`` took 1.9 to 4.9 times the time of one with ``defect`` (hill 2.0,
+  Askervein 1.9, Gorge 4.9; not profiled), and the joint runs took 2.2 (hill), 20 (Askervein) and 5.9
+  (Gorge) times as long. The runs shared the machine with other work; the ratios are indicative.
+
+**A change for buildings on terrain.** The masked Poisson solve used by buildings' solid cells (#86) shifted
+:math:`\phi` by its mean after the solve. On terrain the open faces beside masked cells read those cells'
+:math:`\phi` in their cross terms, so a constant is not a null vector of the masked operator, and the shift left a
+residual next to the masked cells. The solve now keeps GMRES's :math:`\phi` when cells are masked (test
+``MaskedPoisson.EnclosedBlockOnABumpSolvesItsSystem``). On level ground the shift is kept, as before. The shift
+applies only when the system is singular (no pressure boundary); every building deck in ``Tests`` has an outflow
+face, and ``building_hill``, the one on terrain, gives the same plotfiles with and without the change.
+
 Pressure
 --------
 

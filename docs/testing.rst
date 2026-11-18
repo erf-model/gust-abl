@@ -683,6 +683,54 @@ All 13 are killed.
 By hand against ``rt_nests_relax``: k left out of the source (X2 in the application) leaves the nest's u error at
 :math:`f = 16` at 3.26e-2 against 3.27e-2, so the test does not detect it; the unit tests do.
 
+The one-line mutants of the two-way nests' injection (``Source/NestInject.cpp``, ``Source/Simplec.cpp``,
+``Source/Poisson.cpp``), each run against ``NestInject.*`` and ``MaskedPoisson.*`` on two ranks with the unit-test flags
+by ``tools/nest_inject_mutants.py`` (macOS arm64, AppleClang). All 12 are killed.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 6 50 44
+
+   * - Mutant
+     - Change
+     - Failing tests
+   * - J1
+     - A factor above 1 accepted
+     - ``FactorCheckNamesTheKey``
+   * - J2
+     - No blend: every exchange injects fully
+     - ``InjectsTheRestrictedNestOnTheInnerBoxOnAHill``
+   * - J3
+     - The blend from :math:`q^*` towards :math:`q`
+     - ``InjectsTheRestrictedNestOnTheInnerBoxOnAHill``
+   * - J4
+     - k's rows kept on the inner box
+     - ``InjectedRunReachesSteady``, ``ResidualRowsOnTheHill``, ``ZeroRowsAndDifferencesOnUnevenBoxes``
+   * - J5
+     - No hold after the momentum predictor
+     - ``InjectedRunReachesSteady``
+   * - J6
+     - No hold at the end of the iteration
+     - ``InjectedRunReachesSteady``
+   * - J7
+     - The held faces open in the Poisson operator
+     - ``InjectedRunReachesSteady``, ``PoissonHeldCellsAreData``
+   * - J8
+     - The held cells solved as fluid cells
+     - ``PoissonHeldCellsAreData``
+   * - J9
+     - The inner box left out of the fluid mask
+     - ``PoissonHeldCellsAreData``
+   * - J10
+     - The inner box's faces left out of the open masks
+     - ``InjectedRunReachesSteady``, ``PoissonHeldCellsAreData``
+   * - J11
+     - A flux through the held faces
+     - ``InjectedRunReachesSteady``, ``PoissonHeldCellsAreData``
+   * - J12
+     - :math:`\phi` shifted by its mean with a mask
+     - ``EnclosedBlockOnABumpSolvesItsSystem``, ``PoissonHeldCellsAreData``
+
 By hand against ``rt_nests_two_way``: ``nest.feedback = none`` in place of ``defect`` (no joint run) fails its
 log check, and the first two-nest layout (the crest nest ending at x = 900 m, on the lee slope) fails the nest
 ratio at 3.33.
@@ -1934,17 +1982,32 @@ Current tests
    * - ``abort_nests_feedback_flux_value``, ``_unused``
      - ``nest.feedback_flux = fine``; ``nest`` without ``nest.feedback = defect``: each stops the run before the outer
        domain starts, naming ``nest.feedback_flux``.
-   * - ``abort_nests_feedback_factor``, ``_factor_nan``, ``_factor_unused``, ``_relax_damping``
+   * - ``rt_nests_inject``
+     - Two-way nests by injection (``Tests/Canonical_RANS/Nests_Two_Way``, ``check_nests_two_way.py --inject``;
+       tracker N-114, item 2, ``nest.feedback = inject``): the ``rt_nests_two_way`` hill with the nest ``hill``, the
+       defect run beside a joint run at the default ``nest.feedback_factor`` (0.5), on two ranks with the GPU-CI
+       flags. The start line names the factor and each exchange logs the outer state minus the injected nest; the
+       nest's u RMS against the 25 m run is at most 0.55 of the one-way one (measured 0.513) and the outer domain's
+       outside the footprint at most 0.42 (0.377). About 30 s. Mutant: the blend's weight forced to 0 (no feedback)
+       fails it.
+   * - ``abort_nests_feedback_factor``, ``_factor_nan``, ``_factor_unused``, ``_relax_damping``, ``abort_nests_inject_factor``
      - ``nest.feedback_factor = 0``; ``= nan``; ``= 2`` with ``nest.feedback = defect``; ``relax`` with a Rayleigh
-       layer on u, v and k: each stops the run before the outer domain starts, naming the key.
-   * - ``rt_nests_joint_restart``, ``rt_nests_joint_restart_relax``
+       layer on u, v and k; ``= 2`` with ``nest.feedback = inject`` (above 1): each stops the run before the outer
+       domain starts, naming the key.
+   * - ``abort_nests_inject_mlmg``, ``_periodic``, ``_feedback_flux``
+     - ``nest.feedback = inject`` with ``solver.poisson_backend = mlmg``; with a nest across the periodic y of the
+       outer deck; with ``nest.feedback_flux = nest`` (the conservative faces are the defect source's): each stops
+       the run before the outer domain starts, naming the key.
+   * - ``rt_nests_joint_restart``, ``rt_nests_joint_restart_relax``, ``rt_nests_joint_restart_inject``
      - A joint run stopped after 150 exchanges (``steady.max_iterations``) and restarted from the joint record its
        message names (``Tests/Canonical_RANS/Nests_Two_Way/check_joint_restart.py``): the record has the feedback,
        150 exchanges and the nests in order; the restart logs ``restarted after exchange 150``, is steady after the
        straight run's exchanges with each domain's iterations over the run equal, and the last plotfile and
        checkpoint of every domain (state, node heights, closure history, nest faces, joint record; not the driver
        record's wall times) are byte for byte the straight run's. The nests ``crest`` and ``lee`` with the defect
-       source on 3 ranks (254 exchanges); the nest ``hill`` with the relaxation on 2 ranks, stopped after 140 (160).
+       source on 3 ranks (254 exchanges); the nest ``hill`` with the relaxation on 2 ranks, stopped after 140 (160),
+       and with the injection on 2 ranks, stopped after 150 (344). With the full injection after the joint loop also
+       applied to a run stopped before steady, the inject restart is steady one exchange early, and fails.
        Mutants: with AMReX's default rank order for a joint nest's boxes (which follows each rank's memory in use)
        the relax test fails (the nest's plotfile differs; the 3-rank defect test passes by chance); without the
        ghost fill after the faces' refresh both fail (the outer plotfile differs, by up to 3.5e-12 in theta).
@@ -1954,7 +2017,7 @@ Current tests
        that names a nest checkpoint that is not there: each stops the run before the outer domain starts, naming
        ``io.restart``.
    * - ``abort_nests_feedback_value``, ``_no_nests``, ``_newton``, ``_damping``, ``_odd_boxes``, ``_narrow``
-     - ``nest.feedback = inject`` (the message lists none, defect and relax); ``defect`` without ``nest.names``; with ``steady.stage = simplec_newton``; with
+     - ``nest.feedback = average`` (the message lists none, defect, relax and inject); ``defect`` without ``nest.names``; with ``steady.stage = simplec_newton``; with
        a Rayleigh layer on u, v and k; with ``mesh.max_grid_size = 15 12``, which splits the
        nest's 32 cells into boxes of 11, 11 and 10; with a nest 4 outer cells wide in x: each stops the run before the outer domain starts, naming
        ``nest.feedback``.
@@ -3540,10 +3603,50 @@ GoogleTest suite
      - A domain name of up to 24 characters is logged as it is; a longer one as its first 12 and last 9 characters
        around ``...``, so two names differing in a suffix of up to 9 characters stay apart, and the per-domain column
        of the run's last line keeps its numbers. Fails with the truncation removed.
+   * - ``NestInject.InjectsTheRestrictedNestOnTheInnerBoxOnAHill`` (UT-I.1, tracker N-114, item 2)
+     - On the hill parent, a full injection sets u, v, w, p, θ and k to the restricted nest on the inner box's points
+       (faces from L to H + 1 along their normal; w's 96 ground and top faces are boundary values and keep the
+       parent's) and leaves every other point bit for bit; an injection at the default factor moves the inner box
+       halfway (to 1e-6 relative) and nothing else. After the full injection the inner cells above the ground layer
+       carry the nest's :math:`J\,\nabla\cdot u` (its 2 × 2 mean; the ground cells read the ground w the
+       application's fill sets, which UT-I.4 covers) and, outside, only the 224 ring cells that share a face with
+       the inner box change their divergence. Fails with the ground and top faces injected.
+   * - ``NestInject.ZeroRowsAndDifferencesOnUnevenBoxes`` (UT-I.2)
+     - Two regions, one spanning a periodic y (no y faces), on boxes of 7, the same on reversed ranks, and one box:
+       ``zero_rows`` zeroes the six residual rows on the inner boxes only, and ``differences`` gives the largest and
+       RMS :math:`|q - q^*|` over them (each point once), the same on the three layouts; on 1, 2 and 4 ranks.
+   * - ``NestInject.ResidualRowsOnTheHill`` (UT-I.3)
+     - On the hill, an inactive ``NestInject`` leaves the residual bit for bit; an active one makes it 0 on every
+       row of the inner box (the wall-k and ground w rows included; checked not vacuous: most rows had a residual
+       there) and leaves it bit for bit elsewhere; the implicit rows do not change.
+   * - ``NestInject.InjectedRunReachesSteady`` (UT-I.4, the stop test)
+     - The converged hill with a target of 1.1 times its velocity on the inner box, injected at the default factor
+       before each SIMPLEC iteration: the first iteration leaves all six fields on the inner box at the injected
+       values exactly (w's ground and top faces are boundary values); the residual falls 6 orders (91 iterations);
+       the state outside the box moves (1.02 m/s); every x-face column carries 1.1 times the converged volume flux
+       (closed form, periodic channel; error 2.5e-9 against 1e-6); on 1, 2 and 4 ranks.
+   * - ``NestInject.FactorCheckNamesTheKey`` (UT-I.5)
+     - ``check_inject_factor`` accepts 1, 0.2 and the default and refuses 0, −0.5, 1.01, 2, infinity and NaN, naming
+       ``nest.feedback_factor`` and ``inject``.
+   * - ``NestInject.PoissonHeldCellsAreData`` (UT-I.6)
+     - The pressure-correction solve with ``NestInject``'s masks on a 16 × 16 × 8 Gaussian bump in boxes of 8, the
+       inner box crossing four boxes, with both GMRES back ends: the mean removed is the :math:`J`-weighted mean of the
+       right-hand side over the fluid cells; :math:`\phi = 0` on the held cells; no flux on a held face; on every
+       fluid cell :math:`|\nabla \cdot F + (b - \bar b)| \le 10^{-6}`.
+   * - ``NestInject.TargetChangeIsTheWindowMeasure`` (UT-I.7)
+     - The target's change that the joint run's stop window reads: at :math:`\omega = 0.4`, the first injection's
+       change is :math:`\omega \max |q^* - q|` and the second's :math:`\omega (1 - \omega) \max |q^* - q|` over the
+       inner data points, with the target's largest velocity component and largest k as the sizes (θ none), computed
+       from gathered fields on boxes of 7 and on reversed ranks; never marked as a first exchange.
+   * - ``MaskedPoisson.EnclosedBlockOnABumpSolvesItsSystem`` (UT-5.2.6b, tracker N-114, item 2)
+     - The enclosed solid block of UT-5.2.6 on a bump: the true residual of the masked system is below the solver's
+       tolerance times the initial one and the divergence check holds. With :math:`\phi` shifted by its mean after
+       the solve on terrain (the code from #86 to this change; the shift is kept on level ground, where the stencil
+       has no cross terms) the residual is 0.458 against 2.4e-7, and the test fails.
    * - ``JointRecord.RoundTripIsExactOnEveryRank``, ``JointRecord.NoFileIsNotAJointCheckpoint``, ``JointRecord.MalformedRecordsAbort``, ``JointRecord.LineEndsAreNotPartOfThePath`` (tracker N-114, beyond the plan)
      - The joint record (``Source/JointRecord.cpp``) written by the I/O rank reads back on every rank with the
        feedback, the exchanges, the CFL floors bit for bit (1/3, 0.1 and 0) and each nest's checkpoint path (one with
-       a space). A checkpoint without a record reads as none. Another version, feedback ``inject``, 0 exchanges, a
+       a space). A checkpoint without a record reads as none. Another version, feedback ``none``, 0 exchanges, a
        negative or NaN floor, no nest line, a nest line without a checkpoint, text after a floor and a line that is
        not ``nest`` each abort. A record with ``\r\n`` line ends and trailing spaces after a path reads the paths
        without them. Mutants: floors written as decimals fail the round trip; a floor with trailing text accepted

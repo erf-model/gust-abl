@@ -1,7 +1,7 @@
 # Nests_Two_Way
 
 ## Purpose
-Two-way nesting (PR-70, `nest.feedback = defect`; and PR-71, `nest.feedback = relax`, below). The outer domain and its nest first run one way, as in
+Two-way nesting (PR-70, `nest.feedback = defect`; PR-71, `nest.feedback = relax`; and `nest.feedback = inject`, below). The outer domain and its nest first run one way, as in
 `Nests_One_Process` except that the nest's levels already follow the joint rule (they bend to the outer domain's
 surfaces aloft), so "one way" in the tables below is that first pass. Then they run jointly: every iteration the nest's faces are refreshed from the outer domain, and
 the outer domain carries the defect source of the nest over the nest's footprint
@@ -136,12 +136,39 @@ joint run 3.3 times worse in u than one way. The conservative faces bring u to 1
 below it outside; w and k stay 1.7 to 1.8 times worse. On the hill, whose faces lie where the flow is level, u is
 3 % worse and w 17 % better. The other layouts of `docs/boundary_conditions.rst` are not in the test.
 
+## Feedback by injection (`--inject`)
+`check_nests_two_way.py --inject` (CTest `rt_nests_inject`, tracker row N-114, item 2) runs the reference, the
+defect run with the nest `hill`, and the joint run with `nest.feedback = inject` at the default
+`nest.feedback_factor` of 0.5 (`inject/`; `docs/boundary_conditions.rst`, Two-way nests by injection). Every
+exchange the outer state, from 2 outer cells inside the nest's faces, moves that fraction of the way to the
+restricted nest and is held there through the outer iteration. It requires:
+1. every run exits 0 (the two-nest `joint2/` run is skipped), and the inject log's start line names its factor;
+2. against the 25 m run, the RMS of u over the nest at most 0.55 of one way and over the outer cells outside the
+   footprint at most 0.42.
+
+Measured on 2 ranks (RMS of u, m/s, against the 25 m run):
+
+| run | exchanges | nest | outer outside |
+|---|---|---|---|
+| one way | | 8.23e-3 | 1.44e-2 |
+| defect | 208 | **2.03e-3** | **4.89e-3** |
+| relax, f = 1 | 160 | 3.38e-3 | 5.03e-3 |
+| inject, f = 0.25 | 602 | 4.22e-3 | 5.41e-3 |
+| inject, f = 0.5 | 344 | 4.22e-3 | 5.41e-3 |
+| inject, f = 0.6 | 300 | 4.22e-3 | 5.41e-3 |
+| inject, f = 0.75 | not steady after 3000 | | |
+| inject, f = 1 | not steady after 600 | | |
+
+(Only 0.5 is in the test.) Up to f = 0.6 injection reaches the same steady state: the factor sets the number of
+exchanges, not the answer. At 0.75 and 1 the joint run oscillates and does not reach steady. On this hill its errors are larger than those of the defect run and of relax at f = 1,
+and it takes more exchanges.
+
 ## Joint restart (`check_joint_restart.py`)
 A joint run that stops after `steady.max_iterations` exchanges writes a joint record (`Joint`) in the outer
 domain's last checkpoint and names that checkpoint in its error message (`docs/boundary_conditions.rst`, Two-way
 nests, Restart). The script runs, each in its own directory:
-1. `straight/`: the deck with the nests `crest` and `lee` and `nest.feedback = defect` (with `--relax`: the nest
-   `hill` and `nest.feedback = relax`), to the steady verdict;
+1. `straight/`: the deck with the nests `crest` and `lee` and `nest.feedback = defect` (with `--relax` or `--inject`:
+   the nest `hill` and `nest.feedback = relax` or `inject`), to the steady verdict;
 2. `stopped/`: the same with `steady.max_iterations = M` (`--stop M`), which stops after M exchanges;
 3. `stopped/`: the restart, with the deck less its `init.*` lines and `io.restart` set to the named checkpoint.
 
@@ -160,10 +187,11 @@ M must be above the one-way runs' iterations (`steady.max_iterations` caps them 
 |---|---|---|---|---|
 | crest and lee, defect | 3 | 150 | 254 | byte for byte |
 | hill, relax | 2 | 140 | 160 | byte for byte |
+| hill, inject | 2 | 150 | 344 | byte for byte |
 
 ## CTest
 `rt_nests_two_way` (2 ranks, labels `regression;smoke`). `rt_nests_joint_restart` (3 ranks, labels
-`regression;smoke`) and `rt_nests_joint_restart_relax` (2 ranks, label `regression`) run `check_joint_restart.py`
+`regression;smoke`) `rt_nests_joint_restart_relax` and `rt_nests_joint_restart_inject` (2 ranks, label `regression`) run `check_joint_restart.py`
 (above). The abort tests `abort_nests_joint_restart_names`, `_iterations`, `_version` and `_missing` check that a
 joint record naming other nests, a `steady.max_iterations` at or below its exchanges, a record of another version,
 and a record naming a nest checkpoint that is not there stop the run and name `io.restart`. The abort tests `abort_nests_feedback_value`,
@@ -181,3 +209,6 @@ and k stop the run and name the key.
 `rt_nests_feedback_flux` (2 ranks, label `regression`; above): about 1.5 minutes on an Apple M-series laptop.
 `abort_nests_feedback_flux_value` and `_unused` check that `nest.feedback_flux = fine` and `nest` without
 `nest.feedback = defect` stop the run and name the key.
+`rt_nests_inject` (2 ranks, label `regression`; above): about 30 s on an Apple M-series laptop.
+`abort_nests_inject_factor` checks that `nest.feedback_factor = 2` with `nest.feedback = inject` stops the run and
+names the key; `abort_nests_feedback_factor_unused` covers a factor with `defect` for both relax and inject.

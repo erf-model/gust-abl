@@ -20,6 +20,7 @@
 #include "NestDefect.H"
 #include "NestFaceFlux.H"
 #include "NestRelax.H"
+#include "NestInject.H"
 #include "NestFaces.H"
 #include "NestParent.H"
 #include "Nests.H"
@@ -365,6 +366,12 @@ std::string run_domain (const DomainRole& role)
             // The joint run (JointRun.H) steps every domain's SIMPLEC driver; the Newton stage's residual differs
             // from the one the source is formed with. io.restart: Run.cpp reads the checkpoint's joint record.
             if (newton) { err.push_back(fbk + " needs steady.stage = simplec (not simplec_newton)"); }
+            const bool inject = role.nests->feedback == NestFeedback::inject;
+            // The injection holds cells in the pressure correction (Poisson.H, held_fluid); mlmg's operator has none.
+            if (inject && popt.backend == "mlmg") {
+                err.push_back(fbk + " needs solver.poisson_backend = gmres_mlmg or gmres_fft (mlmg's operator has no "
+                                    "held cells)");
+            }
             // The restriction coarsens each nest's boxes by 2 2 1 (restrict_patch). A nest has an even number of
             // cells; AMReX's maxSize keeps the boxes even when mesh.max_grid_size is even, not when it is odd.
             if (check_nests(*role.nests, in.mesh).empty()) {
@@ -377,8 +384,16 @@ std::string run_domain (const DomainRole& role)
                             err.push_back(fbk + ": nest." + nest.name + " spans "
                                           + std::to_string(nm.n_cell[d] / 2) + " outer cells in "
                                           + (d == 0 ? "x" : "y") + "; it needs at least "
-                                          + std::to_string(2 * kDefectMargin + 1) + " (the source keeps "
+                                          + std::to_string(2 * kDefectMargin + 1) + " (the feedback keeps "
                                           + std::to_string(kDefectMargin) + " cells from each face)");
+                        }
+                    }
+                    // A held region across the whole of a periodic direction cuts the outer fluid in two, each part
+                    // with its own pressure level; the masked pressure correction removes one mean only.
+                    for (int d = 0; d < 2; ++d) {
+                        if (inject && nm.is_periodic[d] != 0) {
+                            err.push_back(fbk + ": nest." + nest.name + " spans the periodic outer direction "
+                                          + (d == 0 ? "x" : "y") + "; the injection needs a nest with faces in x and y");
                         }
                     }
                     if (!make_box_array(nm).coarsenable(amrex::IntVect(2, 2, 1))) {
@@ -810,9 +825,13 @@ std::string run_domain (const DomainRole& role)
         std::unique_ptr<NestRelax> relax;
         // nest.feedback_flux = nest: the nests' face fluxes on the rows just outside the source (NestFaceFlux.H).
         std::unique_ptr<NestFaceFlux> face_flux;
+        // nest.feedback = inject: the outer domain's injection of its nests (NestInject.H) in its place.
+        std::unique_ptr<NestInject> inject;
         if (role.joint && nest == nullptr) {
             if (role.nests->feedback == NestFeedback::relax) {
                 relax = std::make_unique<NestRelax>(ba, dm, geom, role.nests->feedback_factor);
+            } else if (role.nests->feedback == NestFeedback::inject) {
+                inject = std::make_unique<NestInject>(ba, dm, geom, role.nests->feedback_factor);
             } else {
                 defect = std::make_unique<NestDefect>(ba, dm);
                 if (role.nests->feedback_flux == NestFeedbackFlux::nest) {
@@ -823,7 +842,8 @@ std::string run_domain (const DomainRole& role)
         LevelSolver level0(setup, mesh, geom, state.z_phys_nd, ba, dm, "", newton, nullptr,
                            canopy.active() ? &canopy : nullptr, nullptr, buildings.active() ? &building_forcing : nullptr,
                            (buildings.active() && buildings_opt.wall_tke) ? &building_tke : nullptr,
-                           building_heat ? &building_theta : nullptr, time_term.get(), defect.get(), relax.get());
+                           building_heat ? &building_theta : nullptr, time_term.get(), defect.get(), relax.get(),
+                           inject.get());
         if (buildings.active()) {
             // After the wall distance above: its Poisson solve does not see the buildings.
             mesh.set_open_faces(buildings.beta_face(0), buildings.beta_face(1), buildings.beta_face(2), buildings.beta(), geom);
@@ -1113,7 +1133,7 @@ std::string run_domain (const DomainRole& role)
         // A joint restart writes nothing before its joint iterations: its step is the checkpoint's.
         if (role.resume == nullptr) { finish(); }
         if (role.joint && v.status != SteadyStatus::Diverged) {
-            // nest.feedback = defect or relax: this domain joins the joint run (Run.cpp, JointRun.H), which steps it in
+            // nest.feedback = defect, relax or inject: this domain joins the joint run (Run.cpp, JointRun.H), which steps it in
             // memory; then its outputs are written again at its new step.
             JointMember m;
             m.name = role_name;
@@ -1154,7 +1174,7 @@ std::string run_domain (const DomainRole& role)
                 };
             }
             if (relax) { m.relax = relax.get(); }
-            if (defect || relax) {
+            if (defect || relax || inject) {
                 m.feedback_tol = sopt.criterion.monitor_rel_tol;
                 m.feedback_window = sopt.criterion.monitor_window;
                 if (defect) {
@@ -1164,6 +1184,7 @@ std::string run_domain (const DomainRole& role)
                     const amrex::Real f = sopt.criterion.residual_tol / sopt.criterion.monitor_rel_tol;
                     m.feedback_floor = {f * sc[0], f * sc[1], f * sc[2], f * sc[4], f * sc[5]};
                 } else {
+                    // The relaxation's target and the injection's target: the jvp scales.
                     const JvpScales& js = res_in.jvp_scales;
                     m.feedback_floor = {js.velocity, js.velocity, js.velocity, js.theta, js.tke};
                 }
@@ -1177,6 +1198,7 @@ std::string run_domain (const DomainRole& role)
                 if (!simplec_stage.hybrid_sigma().empty()) { fin.hybrid_sigma = &simplec_stage.hybrid_sigma(); }
                 residual(q, fin, mesh, geom, R);
             };
+            if (inject) { m.inject = inject.get(); }
             if (nest != nullptr) {
                 m.parent = parent.get();
                 m.faces = nest_faces.get();
