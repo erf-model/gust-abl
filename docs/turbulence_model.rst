@@ -214,14 +214,50 @@ CTests, and their decks and scripts are not in the repository: the reference is 
 
 **Limits.**
 
-- The cut cell's speed above an immersed ground. With the length capped at 30 m the constant-stress profile is not
-  a pure logarithm, :math:`u = u_*[\ln((d + z_0)/z_0)/\kappa + d/l_\mathrm{max}]`, while the wall law reads the
-  reference cell's speed as logarithmic. This explains the sign and the growth with :math:`f`, not the size: the
-  cell above also sits about 2 % under that profile. In the geostrophic column the cut cell's speed against the
-  log law with the run's own :math:`u_*` is
-  +0.2, −0.4 and −0.5 % with ``central`` and −1.1, −3.6 and −8.2 % with ``log_law`` (:math:`f` = 0.3, 0.7, 0.9;
-  body-fitted wall cell: +0.9 and +0.1 %). Without the cap (``turb.max_geom_lscale = 1e12``) it is within 0.2 %
-  with ``log_law`` (:doc:`immersed_terrain`, Verification). The cells above the cut cell are as in the table.
+- The cut cell's speed above an immersed ground, with a capped length. The cap adds a term to the constant-stress
+  profile, :math:`u = u_*[\ln((d + z_0)/z_0)/\kappa + d/l_\mathrm{max}]`, so the cell above the cut cell (the
+  wall law's reference cell) is faster than the log law by a share :math:`e_a` that falls as
+  :math:`1/l_\mathrm{max}`. The wall law reads both speeds as logarithmic, and its two parts must add to
+  :math:`u_*^2`: :math:`(1 - f)\,r_c^2 + f\,r_a^2 = 1`, with :math:`r_c` and :math:`r_a = 1 + e_a` the speeds of
+  the cut cell and of the cell above over the log law. The cut cell is then slower by about
+  :math:`e_a\,f/(1 - f)`. In the geostrophic column, with :math:`u_*` from the cut cell's :math:`k`:
+
+  .. list-table::
+     :header-rows: 1
+     :widths: 16 18 22 22 22
+
+     * - ``turb.max_geom_lscale``
+       - Stencil
+       - :math:`f` = 0.3
+       - :math:`f` = 0.7
+       - :math:`f` = 0.9
+     * - 30 m
+       - ``central``
+       - −0.8 % (:math:`e_a` +1.9 %)
+       - −1.5 % (+0.7 %)
+       - −1.7 % (+0.2 %)
+     * - 30 m
+       - ``log_law``
+       - −1.3 % (+2.9 %)
+       - −3.6 % (+1.5 %)
+       - −8.2 % (+0.9 %)
+     * - 100 m
+       - ``central``
+       - 0.0 % (0.0 %)
+       - +0.8 % (−0.3 %)
+       - +3.4 % (−0.4 %)
+     * - 100 m
+       - ``log_law``
+       - −0.3 % (+0.8 %)
+       - −1.1 % (+0.5 %)
+       - −2.6 % (+0.3 %)
+
+  With ``log_law`` :math:`e_a` is 3.1 to 3.5 times smaller at 100 m than at 30 m, as the cap's term, and so is the
+  cut cell's deficit. With ``central`` the extra :math:`k` lowers the speed of the cell above by about 1 %; at
+  30 m this offsets most of the cap's term, and at 100 m it exceeds it, so the cut cell is fast at
+  :math:`f` = 0.9. At 100 m with ``log_law`` the four cells above are within 0.8 % in :math:`k` and 0.3 % in
+  speed (``central``: :math:`k` +5 to +26 %). Without the cap (``turb.max_geom_lscale = 1e12``) the cut cell is
+  within 0.2 % with ``log_law`` (:doc:`immersed_terrain`, Verification).
 - It needs the height above the ground and its roughness length: ``bc.zlo = surface_layer`` and
   ``turb.wall_distance = terrain_height``. With buildings (``buildings.type = immersed_forcing``) the run stops:
   the closure's distance there is the distance to the nearest wall.
