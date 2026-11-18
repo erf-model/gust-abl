@@ -74,3 +74,6 @@ steady.max_iterations          = 20000
 io.plot_file      = steady_hill3d_neutral_plt
 io.turb_plot_file = steady_hill3d_neutral_turb
 io.chk_file       = steady_hill3d_neutral_chk
+
+# The cap of the geometric length before the default became 100 m: keeps this test's answers.
+turb.max_geom_lscale = 30.

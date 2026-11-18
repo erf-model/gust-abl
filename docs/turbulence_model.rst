@@ -39,7 +39,7 @@ The length scale starts from the geometric length
 
    l_g = \kappa\,(d + z_0),
 
-capped harmonically at ``turb.max_geom_lscale``. Here :math:`\kappa` is the von Kármán constant, :math:`d` the wall
+capped harmonically at ``turb.max_geom_lscale`` (100 m by default; 30 m, ERF's default, before November 2026). Here :math:`\kappa` is the von Kármán constant, :math:`d` the wall
 distance and :math:`z_0` the roughness length. Stratification modifies it:
 
 .. math::

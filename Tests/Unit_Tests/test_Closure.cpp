@@ -7,6 +7,7 @@
 #include "Diffusion.H"
 #include "ERF_RANSClosure.H"
 #include "ImplicitOperator.H"
+#include "InflowProfile.H"
 #include "MassFlux.H"
 #include "Reductions.H"
 #include "Residual.H"
@@ -151,6 +152,22 @@ TEST(Closure, KernelsMatchErfBitForBit)
     EXPECT_GT(floored, 0);
 }
 
+// The default cap of the geometric length is 100 m (30 m before). The three places that hold it agree: the closure's
+// options (turb.max_geom_lscale), the kernels' constants and the inflow profile. The harmonic cap at kappa z = 100 m
+// then gives 50 m, and 23.08 m with the earlier 30 m.
+TEST(Closure, DefaultGeomLengthCapIs100m)
+{
+    EXPECT_EQ(ClosureOptions{}.max_geom_lscale, 100);
+    EXPECT_EQ(ClosureConstants{}.l_g_max, 100);
+    EXPECT_EQ(gust::InflowProfileOptions{}.l_max, 100);
+    const ClosureConstants c = gust::closure_constants(ClosureOptions{});
+    EXPECT_NEAR(static_cast<double>(cl::geom_length(amrex::Real(100), c.l_g_max)), 50.0, tol(1e-12, 1e-5));
+    ClosureOptions o30;
+    o30.max_geom_lscale = 30;
+    EXPECT_NEAR(static_cast<double>(cl::geom_length(amrex::Real(100), gust::closure_constants(o30).l_g_max)),
+                3000.0 / 130.0, tol(1e-12, 1e-5));
+}
+
 // ---------------------------------------------------------------------------
 // Kynema's KLAxell (src/turbulence/RANS/KLAxell.cpp, transcribed)
 // where the formulations coincide: neutral, z = d, lambda = 30 m, kappa 0.41,
@@ -158,7 +175,9 @@ TEST(Closure, KernelsMatchErfBitForBit)
 // kappa z), nu_t = Cmu sqrt(k) l, eps = Cmu^3 k^1.5 / l, P = nu_t S^2.
 TEST(Closure, MatchesKynemaKLAxellWhereTheyCoincide)
 {
-    const ClosureConstants c = gust::closure_constants(ClosureOptions{});
+    ClosureOptions o30;
+    o30.max_geom_lscale = 30;   // Kynema's lambda; GUST's default is 100 m
+    const ClosureConstants c = gust::closure_constants(o30);
     const double lambda = 30, kappa = 0.41, Cmu = 0.5562;
     for (double z : {2.5, 7.5, 40.0, 300.0}) {
         for (double k : {0.01, 0.5, 3.0}) {

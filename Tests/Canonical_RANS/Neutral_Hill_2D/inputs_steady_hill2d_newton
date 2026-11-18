@@ -62,3 +62,6 @@ steady.switch_residual         = 1.e-3
 forcing.pressure_gradient      = -1.225e-4 0. 0.
 steady.newton_gmres_restart    = 200
 forcing.gravity                = 0.
+
+# The cap of the geometric length before the default became 100 m: keeps this test's answers.
+turb.max_geom_lscale = 30.

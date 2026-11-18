@@ -61,7 +61,7 @@ struct InflowProfileOptions
     //! caps kappa (z + z0) at l_max (turb.max_geom_lscale, > 0), unbounded does not.
     enum class Length { closure, unbounded };
     Length length{Length::closure};
-    amrex::Real l_max{30};
+    amrex::Real l_max{100};
 };
 
 //! Problems with the options, naming each (the file is not read here).

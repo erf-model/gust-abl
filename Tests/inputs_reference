@@ -213,7 +213,7 @@
 #
 # The wall model and the inflow profile's equilibrium k and ν_t use the turbulence model's turb.Cmu0 and turb.kappa,
 # and the inflow profile its turb.max_geom_lscale. Without the SIMPLEC stage (turb.* is then refused) they use the
-# defaults, 0.5562, 0.41 and 30 m.
+# defaults, 0.5562, 0.41 and 100 m.
 #
 # bc.xlo = periodic
 # bc.xhi = periodic
@@ -602,9 +602,10 @@
 #     Finite, < turb.Rt_crit and > −3.598: the smoothed R_t stays above it. c_μ has its pole at −3.5987 and grows
 #     without bound as turb.Rt_min approaches it (docs/turbulence_model.rst).
 #
-# turb.max_geom_lscale = 30    # m
+# turb.max_geom_lscale = 100    # m
 #     Finite, > 0: the harmonic cap of l_g (about κ × 0.1δ, the l_g at the top of the surface layer, δ the
-#     boundary-layer depth); also the cap of the inflow profile's length with bc.inflow_tke_length = closure.
+#     boundary-layer depth); also the cap of the inflow profile's length with bc.inflow_tke_length = closure. The
+#     default was 30 m (ERF's default) before November 2026; set turb.max_geom_lscale = 30 for the earlier answers.
 #
 # turb.tke_floor = 0
 #     0 (machine epsilon) or ≥ machine epsilon (m²/s²): lower bound on k.

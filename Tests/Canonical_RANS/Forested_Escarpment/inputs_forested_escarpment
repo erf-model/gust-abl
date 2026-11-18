@@ -53,3 +53,6 @@ steady.sequencing     = 1
 io.plot_file      = escarpment_plt
 io.turb_plot_file = escarpment_turb
 io.chk_file       = escarpment_chk
+
+# The cap of the geometric length before the default became 100 m: keeps this test's answers.
+turb.max_geom_lscale = 30.

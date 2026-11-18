@@ -50,3 +50,6 @@ steady.residual_tol            = 5.e-7
 
 io.plot_file = thin_cell_flat_plt
 io.chk_file  = thin_cell_flat_chk
+
+# The cap of the geometric length before the default became 100 m: keeps this test's answers.
+turb.max_geom_lscale = 30.

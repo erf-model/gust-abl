@@ -1917,7 +1917,9 @@ Current tests
        max relative ≤ 0.15, mean ≤ 0.03, ≤ 0.2 cells below 100 m, all finite), and the field against
        ``Tests/Discretization/Wall_Distance/Gold/walldist_hill2d_plt00000`` at relative 1e-8 (a gold written by GUST). Double precision only.
    * - ``rt_init_askervein``, ``rt_init_askervein_matches``
-     - The mass-consistent initial field on the Askervein mesh (30 × 30 × 18; ``Tests/Initialization/Mass_Consistent_Askervein/inputs_init_askervein``:
+     - ``rt_init_askervein_matches`` is disabled since the default of ``turb.max_geom_lscale`` became 100 m: its
+       gold is for 30 m, and a run without the SIMPLEC stage refuses ``turb.*``, so the deck cannot give 30.
+       The mass-consistent initial field on the Askervein mesh (30 × 30 × 18; ``Tests/Initialization/Mass_Consistent_Askervein/inputs_init_askervein``:
        log law u* = 0.6 m/s, z₀ = 0.03 m along x, inflow at xlo, outflow at xhi, :math:`\alpha_h = 1`,
        :math:`\alpha_v = 0.5`; divergence 4.05e-1 → 6.1e-12 1/s). ``Tests/Supporting_Files/check_init.py askervein``: iterations at most 10 % above the gold's 13,
        divergence after at most 10 × ``solver.poisson_reltol`` times before, divergence before (the printed 10 digits),
@@ -3017,6 +3019,11 @@ GoogleTest suite
    * - ``Closure.MatchesKynemaKLAxellWhereTheyCoincide``
      - Kynema's ``KLAxell`` (transcribed) where the formulations coincide (neutral, z = d, λ = 30 m, no z₀, ρ = 1):
        L, ν_t, ε and P_s to 1e-12.
+   * - ``Closure.DefaultGeomLengthCapIs100m``
+     - The default of ``turb.max_geom_lscale`` is 100 m in its three places (the closure's options, the kernels'
+       constants, the inflow profile); the capped length at κz = 100 m is 50 m with it and 23.08 m with the earlier
+       30 m. Mutant: the default put back to 30 fails it. The decks and unit tests that relied on the 30 m default
+       now give ``turb.max_geom_lscale = 30``, so their answers and golds are unchanged.
    * - ``Closure.SmoothingLimitsAndLargeRichardsonNumbers``
      - ``smooth_Rt``: identity above R_t^crit, continuous at it, within (R_t^min, R_t^crit] and monotone down to
        R_t = −1e30; the unstable length finite and below its bound for k down to 1e-16 under N² to −1e3; the same

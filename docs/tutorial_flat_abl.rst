@@ -54,9 +54,9 @@ The input file
    steady.residual_drop_orders    = 2
    turb.tke_floor = 1.e-6
 
-The pressure-gradient force of tutorial 1 is replaced by the geostrophic forcing. The lines
-``turb.max_geom_lscale`` and ``turb.face_mean`` are removed, so ERF's defaults apply: a length-scale cap of 30 m and
-arithmetic face averages.
+The pressure-gradient force of tutorial 1 is replaced by the geostrophic forcing. The deck sets
+``turb.max_geom_lscale = 30`` (ERF's default, and GUST's before it became 100 m), and the line ``turb.face_mean``
+is removed, so the face averages are arithmetic.
 
 **Why only two orders of residual drop?** The boundary layer slowly entrains the warm air of the inversion and warms
 (by about 0.01 K per day) without ever stopping. The :math:`\theta` and :math:`w` residuals therefore level off

@@ -374,7 +374,7 @@ Quick reference
      - ``-1``, ``-3``
      - Richardson-number smoothing limits
    * - ``turb.max_geom_lscale``
-     - 30 m
+     - 100 m
      - Cap on the geometric length scale
    * - ``turb.tke_floor``
      - ``0``
@@ -977,7 +977,7 @@ types, the inflow profile and the sounding; the other keys act in the SIMPLEC st
 
 The wall model and the inflow profile's equilibrium :math:`k` and :math:`\nu_t` use the turbulence model's
 ``turb.Cmu0`` and ``turb.kappa``, and the inflow profile its ``turb.max_geom_lscale``. Without the SIMPLEC stage
-(``turb.*`` is then refused) they use the defaults, 0.5562, 0.41 and 30 m.
+(``turb.*`` is then refused) they use the defaults, 0.5562, 0.41 and 100 m.
 
 ``canopy``
 ----------
@@ -1219,10 +1219,11 @@ See :doc:`turbulence_model`. Read with the SIMPLEC stage only.
      - Finite, < ``turb.Rt_crit`` and > −3.598: the smoothed :math:`R_t` stays above it. :math:`c_\mu` has its pole at
        −3.5987 and grows without bound as ``turb.Rt_min`` approaches it (:doc:`turbulence_model`).
    * - ``turb.max_geom_lscale``
-     - 30 m
+     - 100 m
      - Finite, > 0: the harmonic cap of :math:`l_g` (about :math:`\kappa \times 0.1\delta`, the :math:`l_g` at the
        top of the surface layer, :math:`\delta` the boundary-layer depth);
-       also the cap of the inflow profile's length with ``bc.inflow_tke_length = closure``.
+       also the cap of the inflow profile's length with ``bc.inflow_tke_length = closure``. The default was 30 m
+       (ERF's default) before November 2026; set ``turb.max_geom_lscale = 30`` for the earlier answers.
    * - ``turb.tke_floor``
      - ``0``
      - 0 (machine epsilon) or ≥ machine epsilon (m²/s²): lower bound on :math:`k`.
