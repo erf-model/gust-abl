@@ -15,11 +15,21 @@ What a run does
 #. **Check the inputs** (:doc:`inputs`). If any check fails, the run lists every error and stops.
 #. **Build the mesh** and print its quality report (:doc:`terrain_coordinates`).
 #. **Build the initial field** (:doc:`initial_conditions`), or read it from a checkpoint (``io.restart``).
-#. **Solve** with the SIMPLEC stage when ``steady.stage = simplec`` (:doc:`solution_algorithm`), until the
-   convergence criteria are met or ``steady.max_iterations`` is reached. One row of the iteration log is printed per
-   iteration for the first ten, then every tenth (:doc:`output`).
+#. **Solve**, as ``steady.stage`` says (:doc:`solution_algorithm`):
+
+   - ``simplec``: the SIMPLEC stage, until the convergence criteria are met or ``steady.max_iterations`` is
+     reached. One row of the iteration log is printed per iteration for the first ten, then every tenth
+     (:doc:`output`).
+   - ``simplec_newton``: SIMPLEC, then the Newton–Krylov stage once the switch rules allow it, to the same
+     criteria.
+   - ``unsteady``: physical time steps from 0 to ``unsteady.stop_time``, each converged by SIMPLEC iterations
+     (:ref:`time-driver`). One line is printed per step. The steady criteria do not apply.
+
 #. **Write the output**: a plotfile, the turbulence plotfile if ``io.turb_plot_file`` is set, and a checkpoint
-   (:doc:`output`).
+   (:doc:`output`). An unsteady run can also write plotfiles and checkpoints during the run.
+#. **Run the nests**, if the deck names any (``nest.names``): each nest runs in the same process as a finer patch
+   of the outer domain's checkpoint, and with ``nest.feedback`` other than ``none`` a joint run of the outer domain
+   and the nests follows (:ref:`nests-one-run`, :ref:`two-way-nests`).
 
 With the default ``steady.stage = none`` the run skips step 4: it writes the mesh and initial field and stops.
 This is useful for checking a new mesh or initial field.
@@ -45,6 +55,11 @@ Set ``io.restart`` to a checkpoint directory (:doc:`howto` has a step-by-step re
   and the turbulence model's state, so the continued run reproduces an uninterrupted one on the same ranks and box
   layout, bit for bit, over flat ground and over terrain.
 - The run stops if it would write a checkpoint with the name of the one it read.
+- An unsteady run may start from a steady checkpoint written by ``steady.stage = simplec`` (its time starts at 0)
+  or from an unsteady checkpoint (it continues that run's time, step count and averages). A steady run may start
+  from an unsteady checkpoint; it ignores the averages (:ref:`time-driver`, :ref:`unsteady-outputs`).
+- A restart must give the checkpoint's canopy inputs (:doc:`canopy`) and terrain representation
+  (:doc:`immersed_terrain`).
 
 AMReX runtime flags
 -------------------

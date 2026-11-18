@@ -24,7 +24,9 @@ A *stage* chooses :math:`A` and the way :math:`\delta q` is computed. When :math
 whatever :math:`A` is. A cheaper or rougher :math:`A` changes how fast the iteration converges, not the answer.
 
 The production stage is SIMPLEC (``steady.stage = simplec``), optionally with grid sequencing (below).
-The Newton–Krylov stage (``steady.stage = simplec_newton``) finishes the run; multigrid is in development.
+The Newton–Krylov stage (``steady.stage = simplec_newton``) finishes the run. With ``steady.stage = unsteady``
+the same SIMPLEC iteration converges each physical time step of an unsteady run
+(`Physical time term (dual time stepping)`_, `Time driver`_).
 
 Local time step and CFL ramp
 ----------------------------

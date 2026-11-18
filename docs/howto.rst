@@ -267,7 +267,63 @@ Look at the log first: which residual stays high, and does the CFL number keep d
 - **Very slow decay of w on thin cells:** see the vertical-velocity cap above.
 
 A run that stops at ``steady.max_iterations`` still writes its plotfile and checkpoint, so you can inspect it and
-restart.
+restart. If the flow itself may be unsteady, see the next recipe.
+
+Run unsteady RANS
+-----------------
+
+Use this when a steady run reaches no verdict and the flow may have no steady state (a wake that sheds vortices),
+or when the time history is wanted. Take the steady deck and change the stage:
+
+.. code-block:: text
+
+   steady.stage           = unsteady
+   unsteady.stop_time     = 4800.     # s; required
+   unsteady.dt            = 2.        # s; or unsteady.cfl = 1. for a step from the convective CFL number
+   unsteady.average_start = 2400.     # s; means and variances are taken after this time
+   unsteady.probes_file   = probes.txt   # optional: one "x y h" per line, h the height above the ground
+
+- **Remove the keys of the steady stop.** ``steady.max_iterations``, ``steady.residual_drop_orders``,
+  ``steady.monitor_rel_tol``, ``steady.monitor_window``, ``steady.confidence``, ``steady.confidence_height`` and
+  ``io.iteration_log`` have no effect in an unsteady run and are refused. ``steady.residual_tol`` stays: it is the
+  floor of each step's inner stop.
+- **Not supported.** Grid sequencing (``steady.sequencing = 1``), the Newton stage and the near-ground upwind
+  blend (``convection.hybrid_sigma_max`` > 0).
+- **Start from the steady run.** Give the steady run's checkpoint as ``io.restart`` (and remove the ``init.*``
+  keys). The time starts at 0 from that state, which shortens the transient.
+- **Choose the step.** Backward Euler is first order and damps oscillations: resolve a shedding period with many
+  steps, and halve the step to see how much the amplitude changes (:doc:`buildings`, Validation, has the cylinder's
+  numbers).
+- **Each step** is converged by at most ``unsteady.max_inner`` inner iterations (50) to
+  ``unsteady.inner_drop_orders`` orders (3). The log has one line per step; the summary counts the steps that
+  reached the limit.
+- **Outputs.** Every plotfile holds the running means and variances (``u_mean`` … ``tke_var``). The probe values
+  go to ``<io.plot_file>_probes.csv``. ``unsteady.plot_interval`` and ``unsteady.checkpoint_interval`` write
+  plotfiles and checkpoints every so many steps. A later run continues from an unsteady checkpoint with the same
+  ``unsteady.average_start`` and a later ``unsteady.stop_time``.
+- **Reading the result.** Variances near zero say the unsteady run settled on a steady field; :doc:`results`
+  (Time mean of the unsteady run against the steady run) compares the two on three cases.
+
+The method is in :ref:`physical-time-term` and :ref:`time-driver`, the outputs in :ref:`unsteady-outputs`, and
+the inputs in :doc:`inputs` (``unsteady``).
+
+Add a forest, buildings or a nest
+---------------------------------
+
+- **Forest canopy.** ``canopy.type = patches`` (ERF's forest file) or ``map`` (height and leaf-area files);
+  :doc:`canopy` gives the files and the drag, turbulence and heat options.
+- **Buildings.** ``buildings.type = immersed_forcing`` with a height map (``buildings.file``); :doc:`buildings`
+  gives the formats and what the run refuses (line LU-SGS sweeps, the Newton stage, coarse levels).
+- **A nest.** Name it and give its two horizontal corners; it takes everything else from the outer deck
+  (:ref:`nests-one-run`):
+
+  .. code-block:: text
+
+     nest.names   = hill
+     nest.hill.lo = 400 300      # x y (m)
+     nest.hill.hi = 1200 900
+
+  ``nest.feedback`` chooses a two-way option (:ref:`two-way-nests`).
 
 View and check the results
 --------------------------

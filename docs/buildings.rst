@@ -8,7 +8,8 @@ immersed forcing with the form 7 wall law of ERF (``erf.if_wall_form = fraction_
 **Status.** The geometry acts on momentum with SIMPLEC and z-line sweeps on one level (`Momentum`_). Roofs,
 undersides and sides have the wall law, and the closure sees the buildings (`Turbulence`_): :math:`k` has its wall
 value beside them and the length scale their distance. :math:`\theta` exchanges heat with the walls at a given wall
-temperature (`Temperature`_). Answers near buildings are not validated. The run refuses
+temperature (`Temperature`_). `Validation`_ compares the answers with measurements around a cube and in a cube array, and the steady with the
+unsteady solver on a laminar cylinder. The run refuses
 ``steady.stage = simplec_newton``, ``steady.sweep = lusgs``, ``mesh.hierarchy_levels`` above 1 and
 ``solver.poisson_backend = mlmg``, and fluid sealed off by buildings.
 

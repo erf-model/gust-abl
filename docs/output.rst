@@ -2,7 +2,8 @@ Output files
 ============
 
 A run writes up to three kinds of output at the end: a plotfile with the solution, a plotfile with the turbulence
-fields, and a checkpoint for restarting. While it runs it prints the iteration log.
+fields, and a checkpoint for restarting. While it runs it prints the iteration log. Probe histories, the force on
+buildings, the outputs of an unsteady run and those of nests are described in `Other output files`_.
 
 Iteration log
 -------------
@@ -65,6 +66,11 @@ It can be read with yt, ParaView, VisIt or AMReX's ``amrex_fcompare``.
      - With ``buildings.type`` other than ``none``: the cell's solid fraction (:doc:`buildings`).
    * - ``building_wall``
      - With ``buildings.type`` other than ``none``: the sum of the bits of the cell's walls (:doc:`buildings`).
+   * - ``u_mean``, ``v_mean``, ``w_mean``, ``theta_mean``, ``tke_mean``
+     - With ``steady.stage = unsteady``: the running time mean after ``unsteady.average_start``
+       (:ref:`unsteady-outputs`); 0 before any time is averaged.
+   * - ``u_var``, ``v_var``, ``w_var``, ``theta_var``, ``tke_var``
+     - With ``steady.stage = unsteady``: the running variance in time of the same fields.
 
 The node heights themselves, ghost nodes included, are written to ``Level_0/z_phys_nd`` inside the plotfile as a
 VisMF MultiFab.
@@ -89,6 +95,38 @@ diffusivity), ``Lturb``, ``walldist`` (the closure's wall distance; with ``build
 cells; 0 above), ``z_phys`` (the cell-centre height), and the residual at the final state, ``R_u``, ``R_v``, ``R_w`` (cell means of the face
 residuals), ``R_p``, ``R_theta``, ``R_tke``: where the iteration has not converged. Inside it ``surf_hist.dat`` holds ``t u_star`` and one row with the iteration count and the
 mean :math:`u_*` over the ground, the file ERF's ``--physics`` checks read.
+
+Other output files
+------------------
+
+.. list-table::
+   :header-rows: 1
+   :widths: 34 66
+
+   * - File
+     - Contents
+   * - ``<io.plot_file>_steady_probes.csv``
+     - With ``steady.probes_file``: :math:`u, v, w, \theta, k` at each probe for the state the iterations start
+       from and after every iteration of level 0 (:ref:`unsteady-outputs`).
+   * - ``<io.plot_file>_probes.csv``
+     - With ``steady.stage = unsteady`` and ``unsteady.probes_file``: the same values at the start and after each
+       physical step, against time. A restart keeps the rows up to the checkpoint's time.
+   * - ``buildings.force_file``
+     - The CSV ``t,Fx,Fy,Fz`` of the force on the buildings per unit density: one row after a steady solve; in an
+       unsteady run one at the start and one per step (:doc:`buildings`).
+   * - ``io.column_guess_file``
+     - With ``init.first_guess = column``: the converged column's table ``z u v theta k``. It reads back as a
+       ``bc.inflow_file`` (:doc:`initial_conditions`).
+
+**Unsteady runs.** The plotfile carries the physical time and is numbered by the total of inner iterations. With
+``unsteady.plot_interval`` and ``unsteady.checkpoint_interval`` plotfiles and checkpoints are also written during
+the run. An unsteady checkpoint adds the record ``Unsteady`` and the fields of the running averages
+(``Level_0/unsteady_mean``, ``Level_0/unsteady_m2``). A run that diverges writes no final checkpoint
+(:ref:`unsteady-outputs`).
+
+**Nests.** Each nest of ``nest.names`` writes its own plotfile, checkpoint and turbulence plotfile, named as the
+outer domain's with ``_<name>`` appended to ``io.plot_file``, ``io.chk_file`` and ``io.turb_plot_file``
+(:ref:`nests-one-run`).
 
 Checkpoint
 ----------

@@ -4,8 +4,7 @@ Grid hierarchy
 Iterative solvers remove short-wavelength errors quickly and long-wavelength errors slowly. Coarser grids help: a
 long wave on the fine grid is a short wave on a coarse grid, and coarse iterations are cheap. GUST builds a
 hierarchy of coarser meshes for this purpose. Grid sequencing (``steady.sequencing``, :doc:`solution_algorithm`)
-uses it: it solves on the coarse meshes first and interpolates each result to the next finer mesh. Nonlinear
-multigrid, in development, will also use it. The code is in
+uses it: it solves on the coarse meshes first and interpolates each result to the next finer mesh. The code is in
 ``Source/MeshHierarchy`` and ``Source/Transfer``.
 
 Coarse levels
@@ -44,7 +43,8 @@ Transfer operators
 
 Two operators move a solution between a fine level :math:`l_f` and a coarse level :math:`l_c`, with ratio
 :math:`r = 2^{l_c - l_f}` in x and y. Since z is never coarsened, both work level by level in the vertical. Grid sequencing uses the prolongation;
-the restriction is for nonlinear multigrid.
+the solver does not call the restriction, which the transfer unit tests keep as the reference the prolongation is
+checked against.
 
 **Restriction** (fine to coarse) conserves mass:
 

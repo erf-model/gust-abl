@@ -12,6 +12,13 @@ time for many hours of simulated flow. GUST solves for the steady state directly
 steady equations to zero with a pseudo-time iteration, and accelerates the iteration with line solvers, a good
 initial field and coarse grids.
 
+Some flows have no steady state, such as the wake of a bluff body that sheds vortices. For these GUST also runs
+unsteady RANS (``steady.stage = unsteady``): it marches physical time in backward-Euler steps and converges each
+step with the same pseudo-time iteration (:ref:`time-driver`).
+
+Beyond bare terrain, GUST models forest canopies (:doc:`canopy`) and buildings (:doc:`buildings`), and refines
+parts of the domain with nests (:ref:`nests-one-run`).
+
 GUST reuses ERF components where they fit:
 
 - the Axell–Liungman k–L turbulence model;
@@ -29,25 +36,33 @@ The initial field comes from a mass-consistent model in the style of WindNinja, 
 Development status
 ------------------
 
-Each solution method below adds speed to the one before.
-
 .. list-table::
    :header-rows: 1
-   :widths: 75 25
+   :widths: 50 50
 
-   * - Solution method
+   * - Capability
      - Status
-   * - Pseudo-time SIMPLEC with implicit vertical lines (z-line Jacobi)
-     - Complete
-   * - Line LU-SGS sweeps, a horizontal grid hierarchy and grid sequencing
-     - In progress
-   * - Jacobian-free Newton–Krylov, preconditioned by SIMPLEC
-     - In progress
-   * - Nonlinear FAS multigrid, GPU tuning, validation and release
-     - Planned
+   * - Pseudo-time SIMPLEC with implicit vertical lines (z-line Jacobi or line LU-SGS), a horizontal grid
+       hierarchy and grid sequencing (:doc:`solution_algorithm`, :doc:`grid_hierarchy`)
+     - Available; the production steady solver
+   * - Jacobian-free Newton–Krylov, preconditioned by SIMPLEC (``steady.stage = simplec_newton``)
+     - Available as an option. Refused with buildings, laminar flow, a frozen :math:`\theta` and an immersed
+       ground.
+   * - Unsteady RANS by dual time stepping, backward Euler (``steady.stage = unsteady``)
+     - Available. First order in time; grid sequencing and the near-ground upwind blend are refused.
+   * - Forest canopy: drag, turbulence and heat (:doc:`canopy`)
+     - Available
+   * - Buildings by immersed forcing (:doc:`buildings`)
+     - Available with SIMPLEC, z-line Jacobi sweeps and one grid level. Validated on a cube and a cube array.
+   * - Nests in one run, one-way and two-way (:ref:`nests-one-run`, :ref:`two-way-nests`)
+     - Available at refinement 2 2 1. Buildings are refused in a deck with nests.
+   * - Immersed terrain on a flat mesh (:doc:`immersed_terrain`)
+     - In progress: flat ground, neutral and laterally periodic only
+   * - Nonlinear FAS multigrid
+     - Not pursued. The grid hierarchy serves grid sequencing only.
 
-The production solver today is the SIMPLEC stage (:doc:`solution_algorithm`). The target machine is NLR Kestrel:
-CPU nodes with 104 Sapphire Rapids cores and GPU nodes with four NVIDIA H100.
+Each page states the limits of its capability. The target machine is NLR Kestrel: CPU nodes with 104 Sapphire
+Rapids cores and GPU nodes with four NVIDIA H100.
 
 Where to start
 --------------
@@ -55,6 +70,7 @@ Where to start
 - **New users:** build the code (:doc:`building`), then work through the tutorials, starting with
   :doc:`tutorial_column`.
 - **Setting up your own case:** :doc:`case_setup` (from a YAML file), :doc:`howto` and the :doc:`inputs`.
+- **A flow that does not settle:** the unsteady recipe in :doc:`howto`, then :ref:`time-driver`.
 - **The model and the numerics:** the Mathematical model and Numerical method sections below.
 - **Accuracy and speed:** :doc:`results` and :doc:`scaling`.
 
