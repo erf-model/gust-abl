@@ -99,7 +99,7 @@ gust::Inputs parent_inputs (bool hill, bool periodic_y = false, int mgs = 7)
     gust::Inputs in;
     in.mesh.n_cell = amrex::IntVect(20, 16, 8);
     in.mesh.prob_lo = {-1000, 500, 0};
-    in.mesh.prob_hi = {1000, hill ? 2100.0 : 1780.0, 800};
+    in.mesh.prob_hi = {1000, hill ? amrex::Real(2100) : amrex::Real(1780), 800};
     in.mesh.is_periodic = {0, periodic_y ? 1 : 0, 0};
     in.mesh.max_grid_size = {mgs, mgs - 1};
     in.mesh.dz0 = 40;
