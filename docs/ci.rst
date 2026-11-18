@@ -52,6 +52,9 @@ by hand (``workflow_dispatch``), not on pull requests.
      - What it does
    * - Build documentation
      - ``make -C docs html`` with warnings as errors, and uploads the HTML as a workflow artifact.
+   * - Build PDF
+     - ``make -C docs latexpdf`` with the LaTeX packages of the deploy job below, and uploads ``gust.pdf`` as a
+       workflow artifact. A change that stops the PDF fails the pull request.
    * - Link check
      - ``make -C docs linkcheck``. It reaches third-party sites, so a failure can come from outside this
        repository.
