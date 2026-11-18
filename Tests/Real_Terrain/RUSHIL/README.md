@@ -12,7 +12,7 @@ attached.
 | `rushil.py` | `prepare` (the three terrain files, the inflow table and the station files from the ERCOFTAC data), `compare` (reversed-flow extent at 0.1 H, U rms against the tunnel), `plot` (speed-up planes and station profiles; with `--manning`, Meteodyn WT curves from a user-supplied digitized file). With `--mean`, `compare` and `plot` read the running time means `u_mean`, `v_mean` of an unsteady run (`../URANS_Averages/README.md`). |
 
 The deck carries the recommended GUST - CFD setting (`../WindNinja2019/README.md`) with
-`convection.hybrid_height = 292` m. `turb.max_geom_lscale = 100` m: with the default 30 m cap the near-ground
+`convection.hybrid_height = 292` m. `turb.max_geom_lscale = 100` m: with a 30 m cap (the default before November 2026) the near-ground
 speed-up of the tunnel profile falls 12 % over the 40 H fetch (flat-ground test); 100 m holds it within 4 % and
 keeps the Hill 3 bubble that an uncapped length shortens.
 

@@ -1220,10 +1220,16 @@ See :doc:`turbulence_model`. Read with the SIMPLEC stage only.
        −3.5987 and grows without bound as ``turb.Rt_min`` approaches it (:doc:`turbulence_model`).
    * - ``turb.max_geom_lscale``
      - 100 m
-     - Finite, > 0: the harmonic cap of :math:`l_g` (about :math:`\kappa \times 0.1\delta`, the :math:`l_g` at the
-       top of the surface layer, :math:`\delta` the boundary-layer depth);
-       also the cap of the inflow profile's length with ``bc.inflow_tke_length = closure``. The default was 30 m
-       (ERF's default) before November 2026; set ``turb.max_geom_lscale = 30`` for the earlier answers.
+     - Finite, > 0: the harmonic cap of :math:`l_g`, approached aloft (:math:`l_g` is half of it where
+       :math:`\kappa (d + z_0)` equals it, 244 m above the ground for 100 m). Read as
+       :math:`\kappa \times 0.1\delta`, the :math:`l_g` at the top of the surface layer of a boundary layer of depth
+       :math:`\delta`, 100 m corresponds to :math:`\delta` of about 2.4 km and 30 m to 0.7 km.
+       Also the cap of the inflow profile's length with ``bc.inflow_tke_length = closure``. The default was 30 m
+       (ERF's default) before November 2026; set ``turb.max_geom_lscale = 30`` for the earlier answers. The cap is
+       not stored in a checkpoint: a restart reads it from the deck, so a run started with the earlier default
+       needs ``turb.max_geom_lscale = 30`` in its deck to continue the same problem. With 100 m a neutral
+       geostrophic column without an inversion has a boundary layer about 2 km deep (10 m/s, f = 1e-4 1/s):
+       use a domain of 3 km or more, a capping inversion or ``bc.zhi = geostrophic``.
    * - ``turb.tke_floor``
      - ``0``
      - 0 (machine epsilon) or ≥ machine epsilon (m²/s²): lower bound on :math:`k`.

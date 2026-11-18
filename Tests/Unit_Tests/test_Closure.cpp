@@ -3,6 +3,7 @@
 // update; the analytic source Jacobian against finite differences; the inputs;
 // and also the logarithmic face mean, the residual with the closure,
 // relaxation with its checkpoint, frozen switches and the wall distance.
+#include "AblSetup.H"
 #include "Closure.H"
 #include "Diffusion.H"
 #include "ERF_RANSClosure.H"
@@ -160,6 +161,7 @@ TEST(Closure, DefaultGeomLengthCapIs100m)
     EXPECT_EQ(ClosureOptions{}.max_geom_lscale, 100);
     EXPECT_EQ(ClosureConstants{}.l_g_max, 100);
     EXPECT_EQ(gust::InflowProfileOptions{}.l_max, 100);
+    EXPECT_EQ(gust::AblSetupFacts{}.max_geom_lscale, 100);
     const ClosureConstants c = gust::closure_constants(ClosureOptions{});
     EXPECT_NEAR(static_cast<double>(cl::geom_length(amrex::Real(100), c.l_g_max)), 50.0, tol(1e-12, 1e-5));
     ClosureOptions o30;

@@ -54,6 +54,9 @@ The input file
    steady.residual_drop_orders    = 2
    turb.tke_floor = 1.e-6
 
+   # The cap of the geometric length (tutorial 1: 1e12)
+   turb.max_geom_lscale = 30.
+
 The pressure-gradient force of tutorial 1 is replaced by the geostrophic forcing. The deck sets
 ``turb.max_geom_lscale = 30`` (ERF's default, and GUST's before it became 100 m), and the line ``turb.face_mean``
 is removed, so the face averages are arithmetic.

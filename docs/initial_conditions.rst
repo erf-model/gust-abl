@@ -167,10 +167,11 @@ column allows, also those past its largest downward flux. :math:`\zeta` is taken
 almost nothing: its flux is the deck's gradient times a diffusivity at the floor. The Rayleigh layer on
 :math:`\theta` is therefore the column's heat source or sink, and a non-neutral column requires it
 (``bc.rayleigh_zdamp`` > 0 and ``theta`` in ``bc.rayleigh_fields``). The most stable column the deck allows (the
-smallest :math:`L`, the largest downward flux) depends on that layer's height and strength and on the wind. It is a
-property of the deck, not of the turbulence model. A request beyond it stops the run, naming the smallest
-:math:`L` (or the largest flux) reached. On the unit test's 64 m column (Rayleigh layer above 48 m) the smallest
-:math:`L` is 414 m; on a 120 m deck with the Bolund vertical grid the largest downward flux is −0.029 K m/s with the
+smallest :math:`L`, the largest downward flux) depends on that layer's height and strength, on the wind and on the closure's length cap
+``turb.max_geom_lscale``: on ``Tests/Canonical_RANS/Column_Target`` the smallest :math:`L` is below 500 m with a
+30 m cap and about 700 m with the default 100 m. A request beyond it stops the run, naming the smallest
+:math:`L` (or the largest flux) reached. The numbers that follow are for a 30 m cap. On the unit test's 64 m
+column (Rayleigh layer above 48 m) the smallest :math:`L` is 414 m; on a 120 m deck with the Bolund vertical grid the largest downward flux is −0.029 K m/s with the
 Rayleigh layer above 80 m and −0.022 K m/s above 100 m.
 
 The log prints the flux, :math:`L` and :math:`\theta_s` reached, and the column's total steps and columns. With
