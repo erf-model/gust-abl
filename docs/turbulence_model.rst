@@ -252,6 +252,7 @@ CTests, and their decks and scripts are not in the repository: the reference is 
        - −1.1 % (+0.5 %)
        - −2.6 % (+0.3 %)
 
+  100 m is the default of ``turb.max_geom_lscale`` (30 m before November 2026).
   With ``log_law`` :math:`e_a` is 3.1 to 3.5 times smaller at 100 m than at 30 m, as the cap's term, and so is the
   cut cell's deficit. With ``central`` the extra :math:`k` lowers the speed of the cell above by about 1 %; at
   30 m this offsets most of the cap's term, and at 100 m it exceeds it, so the cut cell is fast at
