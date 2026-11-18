@@ -4,6 +4,8 @@
 #include "Driver.H"
 #include "JointRecord.H"
 #include "JointRun.H"
+#include "NestDefect.H"
+#include "NestRelax.H"
 #include "Nests.H"
 
 #include <AMReX.H>
@@ -13,6 +15,7 @@
 #include <AMReX_Print.H>
 #include <AMReX_Utility.H>
 
+#include <array>
 #include <functional>
 #include <string>
 #include <vector>
@@ -114,11 +117,39 @@ void run ()
     // The CFL floors of the joint run's drivers, kept for its record. They are read here, right after the joint run:
     // a nest's member lives inside its run_domain, which has returned by the time chain(0) does.
     std::vector<amrex::Real> floors;
+    // The outer domain's feedback at the last exchange (S or the target q*), kept for the checkpoint as the floors are.
+    std::array<amrex::MultiFab, 5> last_feedback;
     std::function<void(std::size_t)> chain;
     chain = [&] (std::size_t i) {
         if (i == nests.nests.size()) {
-            joint_result = run_joint(members, members[0]->max_iterations, resume ? prior.exchanges : 0);
+            JointMember& P = *members[0];
+            const auto fields = [&P] { return P.relax != nullptr ? P.relax->feedback_fields() : P.defect->feedback_fields(); };
+            std::vector<amrex::Real> prior_window;
+            if (resume) {
+                // The stop test's window and the last feedback (JointRecord.H), when the record has them for this mode.
+                const std::string fbk = nest_feedback_name(nests.feedback);
+                if (prior.has_feedback && prior.feedback == fbk) {
+                    std::array<amrex::MultiFab, 5> f;
+                    read_joint_feedback(resumes[0].chk, fields(), f);
+                    const std::array<const amrex::MultiFab*, 5> pf{&f[0], &f[1], &f[2], &f[3], &f[4]};
+                    if (P.relax != nullptr) { P.relax->restore_previous(pf); } else { P.defect->restore_previous(pf); }
+                    prior_window = prior.window;
+                } else {
+                    amrex::Print() << "gust: io.restart = " << resumes[0].chk << ": "
+                                   << (prior.has_feedback ? "its joint record holds the feedback of nest.feedback = "
+                                                            + prior.feedback
+                                                          : std::string("its joint record (GUST_JOINT 1) holds no feedback"))
+                                   << ", so the joint stop test's window (steady.monitor_window exchanges) fills again: "
+                                      "the run may stop later than it would have without the restart\n";
+                }
+            }
+            joint_result = run_joint(members, P.max_iterations, resume ? prior.exchanges : 0, prior_window);
             for (const JointMember* j : members) { floors.push_back(j->cfl_floor); }
+            const auto f = fields();
+            for (std::size_t n = 0; n < 5; ++n) {
+                last_feedback[n].define(f[n]->boxArray(), f[n]->DistributionMap(), 1, 0);
+                amrex::MultiFab::Copy(last_feedback[n], *f[n], 0, 0, 1, 0);
+            }
             return;
         }
         const NestSpec& s = nests.nests[i];
@@ -158,10 +189,13 @@ void run ()
         rec.feedback = nest_feedback_name(nests.feedback);
         rec.exchanges = joint_result.exchanges;
         rec.outer_cfl_floor = floors.at(0);
+        rec.window = joint_result.window;
         for (std::size_t i = 0; i < nests.nests.size(); ++i) {
             rec.nests.push_back({nests.nests[i].name, floors.at(i + 1), nest_chks[i]});
         }
         write_joint_record(chk, rec);
+        write_joint_feedback(chk, {&last_feedback[0], &last_feedback[1], &last_feedback[2], &last_feedback[3],
+                                   &last_feedback[4]});
     }
     if (nests.active() && !outcome.steady && members.empty()) {
         amrex::Abort("gust: nest.names: the outer domain did not reach steady (steady.max_iterations, steady.residual_tol, "
@@ -174,10 +208,23 @@ void run ()
             if (!nest_outcomes[i].steady) { not_steady += "\n  nest." + nests.nests[i].name + " (last checkpoint " + nest_chks[i] + ")"; }
         }
         if (!outcome.steady) { not_steady += "\n  the outer domain (last checkpoint " + chk + ")"; }
+        // The blend is refused with io.restart (App.cpp): the restart then runs without it.
+        const std::string blend = amrex::ParmParse("convection").contains("hybrid_sigma_max")
+            ? " and without convection.hybrid_sigma_max (the blend is not in the checkpoint)" : "";
+        if (not_steady.empty() && joint_result.waiting_on_feedback) {
+            // Every domain's own verdict is steady, but the feedback between them had not settled (JointRun.H).
+            char what[300];
+            std::snprintf(what, sizeof(what), "last change %.3e, sum over the window %.3e",
+                          joint_result.feedback_change, joint_result.feedback_window);
+            amrex::Abort(std::string("gust: nest.feedback = ") + nest_feedback_name(nests.feedback)
+                         + ": the joint run did not reach steady: every domain is steady, but the "
+                         + (nests.feedback == NestFeedback::relax ? "relaxation's target" : "defect source")
+                         + " had not settled over steady.monitor_window exchanges to steady.monitor_rel_tol (" + what
+                         + ") within steady.max_iterations = " + std::to_string(joint_result.exchanges) + " exchanges; "
+                         "to go on, restart with io.restart = " + chk + " (its joint record names the nests' "
+                         "checkpoints) and a larger steady.max_iterations" + blend);
+        }
         if (!not_steady.empty()) {
-            // The blend is refused with io.restart (App.cpp): the restart then runs without it.
-            const std::string blend = amrex::ParmParse("convection").contains("hybrid_sigma_max")
-                ? " and without convection.hybrid_sigma_max (the blend is not in the checkpoint)" : "";
             amrex::Abort(std::string("gust: nest.feedback = ") + nest_feedback_name(nests.feedback)
                          + ": the joint run did not reach steady after " + std::to_string(joint_result.exchanges)
                          + " exchanges (steady.max_iterations, steady.residual_tol, steady.residual_drop_orders); "

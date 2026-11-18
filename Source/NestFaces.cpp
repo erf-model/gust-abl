@@ -281,8 +281,102 @@ std::vector<std::string> check_nest_run (const BoundaryInputs& bin, const Inputs
     return err;
 }
 
+namespace {
+
+//! follow_parent_levels' check of its levels, before Mesh's general check: the thinnest layer
+//! z(k+1) - z(k) over the valid nodes; at or below 0 (or not finite) an abort naming the nest, the node,
+//! the layer's thickness, the bound m - dh coth(H/s)/s and what to change (NestFaces.H).
+void check_joint_levels (const amrex::Geometry& geom, const amrex::MultiFab& z_phys_nd, const amrex::MultiFab& hp,
+                         const std::string& name, amrex::Real m, amrex::Real dh, amrex::Real H, amrex::Real s)
+{
+    const amrex::Box& dom = geom.Domain();
+    const int ilo = dom.smallEnd(0), jlo = dom.smallEnd(1), k0 = dom.smallEnd(2), kn = dom.bigEnd(2) + 1;
+    const amrex::Long nx = dom.length(0) + 1, ny = dom.length(1) + 1;
+    // 1. The thinnest layer (a NaN counts as -inf, so it is reported, not skipped).
+    amrex::ReduceOps<amrex::ReduceOpMin> min_op;
+    amrex::ReduceData<amrex::Real> min_data(min_op);
+    for (amrex::MFIter mfi(z_phys_nd, false); mfi.isValid(); ++mfi) {
+        amrex::Box b = mfi.validbox();
+        b.setBig(2, kn - 1);
+        const auto z = z_phys_nd.const_array(mfi);
+        min_op.eval(b, min_data, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept -> amrex::GpuTuple<amrex::Real>
+        {
+            const amrex::Real d = z(i, j, k + 1) - z(i, j, k);
+            return {d == d ? d : -std::numeric_limits<amrex::Real>::infinity()};
+        });
+    }
+    amrex::Real thin = amrex::get<0>(min_data.value(min_op));
+    amrex::ParallelDescriptor::ReduceRealMin(thin);
+    if (thin > 0) { return; }
+    // 2. Where: the first node (lowest z, then y, then x) with that layer, and its height and h - h_p. The heights
+    //    are compared before Mesh's OverrideSync; a tie to the last bit between two nodes may pick either.
+    amrex::ReduceOps<amrex::ReduceOpMin> at_op;
+    amrex::ReduceData<amrex::Long> at_data(at_op);
+    for (amrex::MFIter mfi(z_phys_nd, false); mfi.isValid(); ++mfi) {
+        amrex::Box b = mfi.validbox();
+        b.setBig(2, kn - 1);
+        const auto z = z_phys_nd.const_array(mfi);
+        at_op.eval(b, at_data, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept -> amrex::GpuTuple<amrex::Long>
+        {
+            const amrex::Real d = z(i, j, k + 1) - z(i, j, k);
+            const amrex::Real dd = d == d ? d : -std::numeric_limits<amrex::Real>::infinity();
+            return {dd <= thin ? (amrex::Long(k - k0) * ny + (j - jlo)) * nx + (i - ilo) : std::numeric_limits<amrex::Long>::max()};
+        });
+    }
+    amrex::Long at = amrex::get<0>(at_data.value(at_op));
+    amrex::ParallelDescriptor::ReduceLongMin(at);
+    const int i = ilo + static_cast<int>(at % nx), j = jlo + static_cast<int>((at / nx) % ny), k = k0 + static_cast<int>(at / (nx * ny));
+    amrex::ReduceOps<amrex::ReduceOpMax, amrex::ReduceOpMax> val_op;
+    amrex::ReduceData<amrex::Real, amrex::Real> val_data(val_op);
+    for (amrex::MFIter mfi(z_phys_nd, false); mfi.isValid(); ++mfi) {
+        const amrex::Box b(amrex::IntVect(i, j, k), amrex::IntVect(i, j, k), mfi.validbox().ixType());
+        if (!mfi.validbox().contains(b.smallEnd())) { continue; }
+        const auto z = z_phys_nd.const_array(mfi);
+        const auto h = hp.const_array(mfi);
+        val_op.eval(b, val_data, [=] AMREX_GPU_DEVICE (int ii, int jj, int kk) noexcept -> amrex::GpuTuple<amrex::Real, amrex::Real>
+        {
+            return {z(ii, jj, kk), z(ii, jj, k0) - h(ii, jj, k0)};
+        });
+    }
+    auto vals = val_data.value(val_op);
+    amrex::Real zk = amrex::get<0>(vals), d0 = amrex::get<1>(vals);
+    // The node is on some rank; the others hold ReduceOpMax's identity (lowest). A NaN may be lost in the max, so
+    // a layer that is not finite is reported as such below rather than by these numbers.
+    amrex::ParallelDescriptor::ReduceRealMax(zk);
+    amrex::ParallelDescriptor::ReduceRealMax(d0);
+    const auto plo = geom.ProbLoArray();
+    const auto dx = geom.CellSizeArray();
+    const double bound = static_cast<double>(m) - static_cast<double>(dh) / (std::tanh(static_cast<double>(H / s)) * static_cast<double>(s));
+    // A layer that is not finite (a NaN or infinite height) is named as such; its node's numbers mean nothing.
+    const bool finite = std::isfinite(static_cast<double>(thin)) && std::isfinite(static_cast<double>(zk))
+                        && std::isfinite(static_cast<double>(d0));
+    const double x = static_cast<double>(plo[0] + static_cast<amrex::Real>(i - ilo) * dx[0]);
+    const double y = static_cast<double>(plo[1] + static_cast<amrex::Real>(j - jlo) * dx[1]);
+    char where[400];
+    if (finite) {
+        std::snprintf(where, sizeof(where), "is %.4g m thick at x = %.6g m, y = %.6g m (lower node %.6g m high), where "
+                      "the nest's ground is %.4g m above the outer domain's", static_cast<double>(thin), x, y,
+                      static_cast<double>(zk), static_cast<double>(d0));
+    } else {
+        std::snprintf(where, sizeof(where), "is not finite (a NaN or infinite height) at x = %.6g m, y = %.6g m", x, y);
+    }
+    char line[1400];
+    std::snprintf(line, sizeof(line),
+                  "gust: %s: the levels that follow the outer domain's surfaces (nest.feedback = defect or relax) invert: "
+                  "the layer from level %d to %d %s. The levels stay increasing while "
+                  "m - dh coth(H/s)/s > 0; here m = %.4g (the outer surfaces' smallest slope), dh = %.4g m "
+                  "(max |h - h_outer|), H = %.4g m, s = %.4g m: %.4g. With s = 2 dh/m that needs dh below 0.91 m H "
+                  "(%.4g m). Raise mesh.prob_hi z, or refine the outer mesh (mesh.n_cell) so that its ground comes "
+                  "closer to the nest's, or run the nests one way (nest.feedback = none), where each keeps its own surfaces",
+                  name.c_str(), k - k0, k - k0 + 1, where, static_cast<double>(m), static_cast<double>(dh), static_cast<double>(H),
+                  static_cast<double>(s), bound, 0.91 * static_cast<double>(m) * static_cast<double>(H));
+    amrex::Abort(line);
+}
+
+} // namespace
+
 void follow_parent_levels (const NestParent& parent, const amrex::Geometry& geom, const amrex::Vector<amrex::Real>& zlevels,
-                           amrex::MultiFab& z_phys_nd)
+                           amrex::MultiFab& z_phys_nd, const std::string& name)
 {
     amrex::MultiFab hp(z_phys_nd.boxArray(), z_phys_nd.DistributionMap(), 1, amrex::IntVect(1, 1, 0));
     parent.interpolate_ground_smooth(hp);
@@ -348,6 +442,7 @@ void follow_parent_levels (const NestParent& parent, const amrex::Geometry& geom
     }
     amrex::Real moved = amrex::get<0>(reduce_data.value(reduce_op));
     amrex::ParallelDescriptor::ReduceRealMax(moved);
+    check_joint_levels(geom, z_phys_nd, hp, name, m, dh, H, s);
     char line[240];
     std::snprintf(line, sizeof(line), "gust: nest levels follow the parent's: max |h - h_parent| %.3e m, decay height %.3e m; "
                   "nodes moved by up to %.3e m\n", static_cast<double>(dh), static_cast<double>(s), static_cast<double>(moved));

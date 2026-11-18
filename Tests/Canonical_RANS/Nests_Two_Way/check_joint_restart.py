@@ -18,8 +18,9 @@ runs, each in its own directory under the current one:
 Checked:
 a. the straight run and the restart exit 0, the stopped run does not; the
    stopped run's message names the checkpoint, and its Joint record has the
-   feedback, M exchanges and one line per nest, in nest.names order, each
-   naming a checkpoint that exists;
+   feedback, M exchanges, the stop test's window and one line per nest, in
+   nest.names order, each naming a checkpoint that exists; the checkpoint
+   holds the last feedback field (joint_feedback_*);
 b. the restart logs "restarted after exchange M" and reaches steady after the
    straight run's number of exchanges, each domain after the same number of
    iterations over the run;
@@ -116,9 +117,15 @@ def main():
     with open(os.path.join("stopped", chk, "Joint")) as f:
         rec = f.read().split("\n")
     print("check_joint_restart: Joint record:\n" + "\n".join(rec))
-    if rec[:3] != ["GUST_JOINT 1", f"feedback {feedback}", f"exchanges {stop}"] or not rec[3].startswith("outer "):
+    if rec[:3] != ["GUST_JOINT 2", f"feedback {feedback}", f"exchanges {stop}"] or not rec[3].startswith("outer "):
         fail(f"the Joint record does not start with the version, feedback {feedback} and {stop} exchanges")
-    lines = [r.split() for r in rec[4:] if r]
+    win = rec[4].split()
+    if len(win) < 2 or win[0] != "window" or int(win[1]) != len(win) - 2 or int(win[1]) < 1:
+        fail("the Joint record's fifth line is not a window line with its changes")
+    for n in range(5):
+        if not os.path.isfile(os.path.join("stopped", chk, "Level_0", f"joint_feedback_{('u', 'v', 'w', 'theta', 'tke')[n]}_H")):
+            fail(f"the checkpoint {chk} holds no feedback field {n}")
+    lines = [r.split() for r in rec[5:] if r]
     if [ln[1] for ln in lines] != names or any(ln[0] != "nest" or len(ln) != 4 for ln in lines):
         fail(f"the Joint record's nest lines are not {names} in order")
     for ln in lines:

@@ -4,7 +4,9 @@
 
 #include <AMReX.H>
 #include <AMReX_ParallelDescriptor.H>
+#include <AMReX_PlotFileUtil.H>
 #include <AMReX_Utility.H>
+#include <AMReX_VisMF.H>
 
 #include <cmath>
 #include <cstdlib>
@@ -16,7 +18,13 @@ namespace gust {
 namespace {
 
 constexpr const char* kJointMagic = "GUST_JOINT";
-constexpr int kJointVersion = 1;
+constexpr int kJointVersion = 2;
+constexpr const char* kFeedbackNames[5] = {"u", "v", "w", "theta", "tke"};
+
+std::string feedback_file (const std::string& dir, int n)
+{
+    return amrex::MultiFabFileFullPrefix(0, dir, "Level_", std::string("joint_feedback_") + kFeedbackNames[n]);
+}
 
 std::string joint_file (const std::string& dir) { return dir + "/Joint"; }
 
@@ -39,7 +47,9 @@ void write_joint_record (const std::string& dir, const JointRecord& r)
         std::ofstream os(name);
         if (!os.good()) { amrex::FileOpenFailed(name); }
         os << kJointMagic << " " << kJointVersion << "\nfeedback " << r.feedback << "\nexchanges " << r.exchanges
-           << "\nouter " << hexfloat_canonical(static_cast<double>(r.outer_cfl_floor)) << "\n";
+           << "\nouter " << hexfloat_canonical(static_cast<double>(r.outer_cfl_floor)) << "\nwindow " << r.window.size();
+        for (const amrex::Real d : r.window) { os << " " << hexfloat_canonical(static_cast<double>(d)); }
+        os << "\n";
         for (const auto& n : r.nests) {
             os << "nest " << n.name << " " << hexfloat_canonical(static_cast<double>(n.cfl_floor)) << " " << n.chk << "\n";
         }
@@ -75,8 +85,8 @@ bool read_joint_record (const std::string& dir, JointRecord& r)
     std::string magic, key, floor;
     int version = 0;
     r = JointRecord{};
-    if (!(is >> magic >> version) || magic != kJointMagic || version != kJointVersion) {
-        amrex::Abort(bad + " (expected " + kJointMagic + " " + std::to_string(kJointVersion) + ")");
+    if (!(is >> magic >> version) || magic != kJointMagic || version < 1 || version > kJointVersion) {
+        amrex::Abort(bad + " (expected " + kJointMagic + " 1 or " + std::to_string(kJointVersion) + ")");
     }
     if (!(is >> key >> r.feedback) || key != "feedback" || (r.feedback != "defect" && r.feedback != "relax")) {
         amrex::Abort(bad + " (the feedback line)");
@@ -84,6 +94,16 @@ bool read_joint_record (const std::string& dir, JointRecord& r)
     if (!(is >> key >> r.exchanges) || key != "exchanges" || r.exchanges < 1) { amrex::Abort(bad + " (the exchanges line)"); }
     if (!(is >> key >> floor) || key != "outer" || !parse_floor(floor, r.outer_cfl_floor)) {
         amrex::Abort(bad + " (the outer line)");
+    }
+    if (version >= 2) {
+        // The window holds at most steady.monitor_window values; the cap only keeps a corrupt count from allocating.
+        long m = -1;
+        if (!(is >> key >> m) || key != "window" || m < 0 || m > 1000000) { amrex::Abort(bad + " (the window line)"); }
+        r.window.resize(static_cast<std::size_t>(m));
+        for (auto& d : r.window) {
+            if (!(is >> floor) || !parse_floor(floor, d)) { amrex::Abort(bad + " (the window line)"); }
+        }
+        r.has_feedback = true;
     }
     while (is >> key) {
         JointRecord::Nest n;
@@ -100,6 +120,31 @@ bool read_joint_record (const std::string& dir, JointRecord& r)
     }
     if (r.nests.empty()) { amrex::Abort(bad + " (no nest line)"); }
     return true;
+}
+
+void write_joint_feedback (const std::string& dir, const std::array<const amrex::MultiFab*, 5>& f)
+{
+    for (int n = 0; n < 5; ++n) { amrex::VisMF::Write(*f[static_cast<std::size_t>(n)], feedback_file(dir, n)); }
+}
+
+void read_joint_feedback (const std::string& dir, const std::array<const amrex::MultiFab*, 5>& like,
+                          std::array<amrex::MultiFab, 5>& out)
+{
+    for (int n = 0; n < 5; ++n) {
+        const auto i = static_cast<std::size_t>(n);
+        const std::string file = feedback_file(dir, n);
+        const std::string what = "gust: io.restart = " + dir + ": its joint record has a window, but the feedback field "
+                                 + std::string("joint_feedback_") + kFeedbackNames[n];
+        if (!amrex::VisMF::Exist(file)) { amrex::Abort(what + " is missing"); }
+        amrex::MultiFab src;   // defined from the file's own layout
+        amrex::VisMF::Read(src, file);
+        if (src.nComp() != 1 || src.ixType() != like[i]->ixType()) {
+            amrex::Abort(what + " has another index type or component count");
+        }
+        out[i].define(like[i]->boxArray(), like[i]->DistributionMap(), 1, 0);
+        out[i].setVal(0.0);
+        out[i].ParallelCopy(src, 0, 0, 1, 0, 0);
+    }
 }
 
 } // namespace gust

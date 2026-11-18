@@ -5,7 +5,9 @@
 
 #include <AMReX_ParallelDescriptor.H>
 
+#include <array>
 #include <cmath>
+#include <limits>
 #include <sstream>
 
 namespace gust {
@@ -80,6 +82,30 @@ void footprint_speed (const amrex::MultiFab& u, const amrex::MultiFab& v, const 
     }
 }
 
+//! {max |a - b|, max |a|} over the valid points where rate > 0 (a NaN counts as infinite), over all ranks.
+std::array<amrex::Real, 2> masked_max (const amrex::MultiFab& rate, const amrex::MultiFab& a, const amrex::MultiFab& b)
+{
+    amrex::ReduceOps<amrex::ReduceOpMax, amrex::ReduceOpMax> op;
+    amrex::ReduceData<amrex::Real, amrex::Real> data(op);
+    for (amrex::MFIter mfi(a, false); mfi.isValid(); ++mfi) {
+        const auto c = rate.const_array(mfi);
+        const auto aa = a.const_array(mfi);
+        const auto bb = b.const_array(mfi);
+        op.eval(mfi.validbox(), data, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept -> amrex::GpuTuple<amrex::Real, amrex::Real>
+        {
+            const amrex::Real inf = std::numeric_limits<amrex::Real>::infinity();
+            const bool on = c(i, j, k) > amrex::Real(0);
+            const amrex::Real d = std::abs(aa(i, j, k) - bb(i, j, k));
+            const amrex::Real m = std::abs(aa(i, j, k));
+            return {on ? (d == d ? d : inf) : amrex::Real(0), on ? (m == m ? m : inf) : amrex::Real(0)};
+        });
+    }
+    auto v = data.value(op);
+    amrex::Real r[2] = {amrex::get<0>(v), amrex::get<1>(v)};
+    amrex::ParallelDescriptor::ReduceRealMax(r, 2);
+    return {r[0], r[1]};
+}
+
 void add_source (const amrex::MultiFab& rate, const amrex::MultiFab& q, const amrex::MultiFab& target, amrex::MultiFab& R)
 {
     for (amrex::MFIter mfi(R, false); mfi.isValid(); ++mfi) {
@@ -146,11 +172,8 @@ NestRelax::NestRelax (const amrex::BoxArray& ba, const amrex::DistributionMappin
 void NestRelax::set (const State& qstar, const std::vector<DefectRegion>& regions)
 {
     const amrex::MultiFab* src[5] = {&qstar.u, &qstar.v, &qstar.w, &qstar.theta, &qstar.tke};
-    for (int n = 0; n < 5; ++n) {
-        amrex::MultiFab& t = m_target[static_cast<std::size_t>(n)];
-        require_layout("set", *src[n], t);
-        amrex::MultiFab::Copy(t, *src[n], 0, 0, 1, 0);
-    }
+    for (int n = 0; n < 5; ++n) { require_layout("set", *src[n], m_target[static_cast<std::size_t>(n)]); }
+    // The rates first (they depend on q* alone), so the change of the target is taken where c > 0.
     for (auto& r : m_rate) { r.setVal(0.0); }
     m_nests.clear();
     const auto dx = m_geom.CellSizeArray();
@@ -170,8 +193,31 @@ void NestRelax::set (const State& qstar, const std::vector<DefectRegion>& region
         for (auto& r : m_rate) { footprint_rate(r, g.footprint, face, n.rate); }
         m_nests.push_back(n);
     }
+    // The change of the target where c > 0 (the footprints, as before: they do not move), then the target.
+    const int ri[5] = {0, 1, 2, 3, 3};
+    std::array<amrex::Real, 5> big{};
+    for (int n = 0; n < 5; ++n) {
+        const auto d = masked_max(m_rate[static_cast<std::size_t>(ri[n])], *src[n], m_target[static_cast<std::size_t>(n)]);
+        m_change.change[static_cast<std::size_t>(n)] = d[0];
+        big[static_cast<std::size_t>(n)] = d[1];
+        amrex::MultiFab::Copy(m_target[static_cast<std::size_t>(n)], *src[n], 0, 0, 1, 0);
+    }
+    // One size for the three velocity components (their largest |q*|), none for theta (its floor, the jvp scale,
+    // sets the measure: |theta| itself is ~300 K), the largest k for k.
+    const amrex::Real U = amrex::max(big[0], amrex::max(big[1], big[2]));
+    m_change.size = {U, U, U, amrex::Real(0), big[4]};
+    m_change.first = !(m_active || m_have_previous);
     amrex::Gpu::streamSynchronize();
     m_active = true;
+}
+
+void NestRelax::restore_previous (const std::array<const amrex::MultiFab*, 5>& f)
+{
+    for (std::size_t n = 0; n < 5; ++n) {
+        require_layout("restore_previous", *f[n], m_target[n]);
+        amrex::MultiFab::Copy(m_target[n], *f[n], 0, 0, 1, 0);
+    }
+    m_have_previous = true;
 }
 
 void NestRelax::add_to_residual (const State& q, ResidualFields& R) const

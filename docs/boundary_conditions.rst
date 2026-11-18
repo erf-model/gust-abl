@@ -766,8 +766,14 @@ nest's ground, :math:`h_p = z_{p,0}`, :math:`\zeta_k` the z-levels, :math:`H` th
 outer domain's smaller horizontal cell size and :math:`m` the smallest slope :math:`\partial z_p / \partial \zeta`
 of the outer surfaces over the nest. The ground stays the nest's and the top is the outer domain's. The layers keep
 :math:`\partial z / \partial \zeta \ge m - \tfrac{m}{2}\coth(H/s)`, at least :math:`0.48\,m` when :math:`H \ge 2s`;
-a nest whose ground differs from the outer one's by a large fraction of :math:`H` can still invert cells, and the mesh
-check then stops the run. **Why:** the restriction takes
+a nest whose ground stands far above the outer one's can still invert them. With
+:math:`s = 2\max|h - h_p|/m` the bound :math:`m - \max|h - h_p| \coth(H/s)/s` is positive only while
+:math:`\max|h - h_p| < m H / (2\,\mathrm{atanh}(1/2)) \approx 0.91\, m H`; a larger :math:`s` (:math:`r\,\Delta x`)
+only helps. The bound is sufficient, not necessary, so the levels are checked layer by layer once they are set: a
+layer :math:`z_{k+1} - z_k \le 0` at a node stops the run with an error that names the nest (``nest.<name>``), the
+node's position, the layer's thickness, :math:`m`, :math:`\max|h - h_p|`, :math:`H`, :math:`s` and the bound, and
+suggests raising ``mesh.prob_hi`` z or refining the outer mesh. This check comes before the general mesh check, whose
+message names no nest. **Why:** the restriction takes
 :math:`w` from the vertical flux :math:`\Omega` summed over the nest faces. With the nest's own terrain-fitted
 surfaces its finer ground detail decays only as :math:`1 - \zeta/H` (BTF), and between the outer nodes the nest's
 surfaces aloft are not the outer domain's. The restricted :math:`\Omega` then carries the slope-velocity covariance
@@ -784,15 +790,49 @@ the CFL; with the pseudo-time step the SIMPLEC denominators and the Poisson coef
 correction grows in proportion. A floor at ``steady.cfl0`` instead kept the nest's step a ``cfl_max / cfl0`` fraction
 of the outer domain's, and the exchanges settled into a cycle that did not reach steady.
 
-**Stopping.** The run stops when every domain's driver is steady after the same exchange (each domain's ``steady.*``
-criteria, with :math:`S` and the faces as they are then), when one diverges, or after ``steady.max_iterations``
-exchanges. The joint run starts once the outer domain is steady, also when a nest's one-way run was not; GUST
-stops with an error after the joint run, naming every domain that is not steady. The log gives, for the first ten exchanges and then every tenth, the largest :math:`|S|` per equation and
-the largest change of a nest's face velocities.
+**Stopping.** The run is steady when every domain's driver is steady after the same exchange (each domain's ``steady.*``
+criteria, with :math:`S` and the faces as they are then) and the feedback has settled. Each exchange's change from the
+last,
+
+.. math::
+
+   \delta_n = \max_{q \in \{u, v, w, \theta, k\}} \frac{\max|F_q^{n} - F_q^{n-1}|}{\max(\sigma_q, \phi_q)},
+
+is tested over the outer domain's ``steady.monitor_window`` exchanges :math:`W` (one exchange is one iteration) as a
+monitor is over that many iterations (:ref:`convergence-criteria`):
+
+.. math::
+
+   \sum_{m=n-W+1}^{n} \delta_m \le \epsilon, \qquad
+   \frac{d_2\,\rho}{1 - \rho} \le \epsilon, \quad \rho = \frac{d_2}{d_1},
+
+with :math:`\epsilon` the outer domain's ``steady.monitor_rel_tol`` and :math:`d_1, d_2` the sums of :math:`\delta`
+over the window's two halves (the second test is skipped when both are below :math:`10^{-3}\epsilon`, and fails when
+:math:`\rho \ge 1`). Here :math:`n` is the exchange, :math:`F` the defect source :math:`S` (maxima over its region),
+:math:`\sigma_q` the largest :math:`|S_q^n|` and :math:`\phi_q` the outer domain's
+``steady.residual_tol / steady.monitor_rel_tol`` times the residual scale of :math:`q` (:math:`U^2/H`,
+:math:`U\theta_s/H`, :math:`U k_s/H`; :ref:`convergence-criteria`), so a change of ``steady.residual_tol`` times the
+scale passes at any size of :math:`S`. With ``nest.feedback = relax``, :math:`F` is the target :math:`q^*` where the
+rate is positive, :math:`\sigma` the largest :math:`|u^*|, |v^*|, |w^*|` for the three velocity components, 0 for
+:math:`\theta` and the largest :math:`k^*` for :math:`k`, and :math:`\phi` the fixed scales :math:`U`,
+:math:`\theta_s`, :math:`k_s` of :ref:`convergence-criteria` (10 m/s, 10 K, 0.1 m\ :sup:`2`/s\ :sup:`2`; not inputs), so :math:`\theta` is measured in kelvin, not
+relative to its ~300 K. :math:`\delta` is infinite at the first exchange, and an infinite :math:`\delta` empties the
+window. **Why:** :math:`S` is a constant of each step, so a domain's own verdict does not see how much :math:`S` moved
+between exchanges. The sum bounds the feedback's change over the window, as a monitor's change is bounded over its
+window; the extrapolation keeps a slow drift from passing on a small change per exchange. The floor :math:`\phi`
+keeps a source below what the residual test resolves (:math:`\theta` in a neutral run) from holding the run. The run
+also stops when one domain diverges, or after ``steady.max_iterations`` exchanges; when every domain was steady at the
+last exchange but the feedback had not settled, the log says so. The joint run starts once the outer domain is steady,
+also when a nest's one-way run was not; GUST stops with an error after the joint run, naming every domain that is not
+steady. The log gives, for the first ten exchanges and then every tenth, the largest :math:`|S|` per equation,
+:math:`\delta_n` (``S change``; ``target change`` with ``relax``) with the window's sum, and the largest change of a
+nest's face velocities.
 
 **Restart.** A joint run that stops after ``steady.max_iterations`` exchanges, not steady, writes every domain's
 plotfile and checkpoint, and a joint record, the file ``Joint``, in the outer domain's checkpoint. The record holds
-the feedback mode, the exchanges taken, each driver's CFL floor (above) and each nest's checkpoint. The error
+the feedback mode, the exchanges taken, each driver's CFL floor (above), the stop test's window of changes
+:math:`\delta_n` (above) and each nest's checkpoint; beside it the outer checkpoint holds the feedback of the last
+exchange (``Level_0/joint_feedback_*``: :math:`S` with ``defect``, the target :math:`q^*` with ``relax``). The error
 message names that checkpoint. To go on, rerun the same deck with ``io.restart`` set to it, without the ``init.*``
 keys, and with a larger ``steady.max_iterations``; the joint run counts its exchanges over the run, so the value is
 the total. Every domain then reads its checkpoint and its CFL floor and joins the joint run at once, with no one-way
@@ -816,6 +856,11 @@ iterations. The log says ``joint run: restarted after exchange N``.
 - ``steady.max_iterations`` also caps each nest's one-way run. A nest whose one-way run stops there without reaching
   steady joins the joint run as it is (the log notes it). A run stopped and restarted then repeats a straight run with
   the larger value only when the stop point is above every one-way run's iterations.
+- A restart restores the window and the last feedback, so its first exchange measures :math:`\delta_n` and tests
+  the window as the run without the restart does, and it stops after the same exchange. A record written before the
+  window was added (``GUST_JOINT 1``) still restarts, as does a restart that changes ``nest.feedback``; there the
+  window starts empty and is full again after ``steady.monitor_window`` exchanges (the log notes it), so the restart
+  never stops earlier than the run it continues and may stop later.
 - ``nest.feedback`` may change at a restart (the log notes it). ``steady.max_iterations`` at or below the recorded
   exchanges, a record that names other nests, and a record that cannot be read stop the run, naming
   ``io.restart``.

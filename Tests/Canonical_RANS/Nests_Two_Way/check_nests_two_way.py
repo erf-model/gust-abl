@@ -15,7 +15,10 @@ runs, each in its own directory under the current one:
 
 Checked:
 a. both runs exit 0; the joint log has the joint run's start line, the
-   largest |S| per exchange, and "joint run: steady";
+   largest |S| per exchange, and "joint run: steady"; on the last exchange's
+   line the feedback's change summed over steady.monitor_window exchanges
+   (the "(window ...)" value) is finite and at most MONITOR_REL_TOL, the
+   default steady.monitor_rel_tol the decks use (JointRun.H);
 b. the one-way plotfiles are written before the joint ones (two plotfiles
    each for the outer domain and the nest);
 c. against the reference (RMS of u over the nest, and over the outer cells
@@ -69,6 +72,8 @@ RELAX_NEST_RATIO = 0.5       # factor 1: nest error over the one-way one (u), me
 RELAX_OUTER_RATIO = 0.6      # factor 1: outer error outside the footprint over the one-way one (u), measured 0.35
 
 
+MONITOR_REL_TOL = 1.0e-3     # steady.monitor_rel_tol (default; the decks do not set it)
+
 def fail(msg):
     raise SystemExit("check_nests_two_way: " + msg)
 
@@ -114,6 +119,10 @@ def check(log, where, foots, r, nest_ratio, outer_ratio, factor=None):
                 r"^gust: joint +1: " + line, r"^gust: joint run: steady after \d+ exchanges"):
         if not re.search(pat, log, re.M):
             fail(f"{where}: the joint log has no line matching {pat!r}")
+    sums = re.findall(r"^gust: joint +\d+: .*?change \S+ \(window (\S+)\)", log, re.M)
+    if not sums or not float(sums[-1]) <= MONITOR_REL_TOL:
+        fail(f"{where}: the last exchange's feedback change over the window is {sums[-1:] or 'missing'}, "
+             f"not at most {MONITOR_REL_TOL}")
     # b.
     outer = plotfiles(where, "outer_plt")
     if len(outer) != 2:

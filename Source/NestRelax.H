@@ -97,6 +97,9 @@ public:
     //! where c > 0, inside the footprints) and the rates c of the regions'
     //! footprints (DefectRegion; a direction where inner spans the footprint
     //! has no faces). Sets the source active. Aborts if U is not finite.
+    //! Records the change of the target (change(): max |q*_new - q*_old|
+    //! where c > 0; size the largest |u*|, |v*|, |w*| there for each velocity
+    //! component, 0 for theta, the largest k* for k; first on the first set).
     void set (const State& qstar, const std::vector<DefectRegion>& regions);
 
     //! R += c (q - q*) for u, v, w, theta and k (nothing while inactive).
@@ -111,6 +114,16 @@ public:
     //! The target q* of eq.
     [[nodiscard]] const amrex::MultiFab& target (Equation eq) const;
     [[nodiscard]] const std::vector<Nest>& nests () const { return m_nests; }
+    //! The change of the target at the last set.
+    [[nodiscard]] const FeedbackChange& change () const { return m_change; }
+    //! The target q* of u, v, w, theta and k (a joint checkpoint stores them: JointRecord.H).
+    [[nodiscard]] std::array<const amrex::MultiFab*, 5> feedback_fields () const
+    {
+        return {&m_target[0], &m_target[1], &m_target[2], &m_target[3], &m_target[4]};
+    }
+    //! A joint restart: the target of the last exchange before the checkpoint (valid points), so that the
+    //! first set measures its change as the run without a restart does. The relaxation stays inactive until set.
+    void restore_previous (const std::array<const amrex::MultiFab*, 5>& f);
 
     //! max |q - q*| and its RMS over the points with c > 0 (each point once),
     //! for u, v, w, theta and k: 10 values, the maxima first. Zeros while
@@ -123,7 +136,9 @@ private:
     std::array<amrex::MultiFab, 5> m_target;   //!< u, v, w, theta, tke
     std::array<amrex::MultiFab, 4> m_rate;     //!< at XF, YF, ZF, CC
     std::vector<Nest> m_nests;
+    FeedbackChange m_change;
     bool m_active{false};
+    bool m_have_previous{false};
 };
 
 //! nest.feedback_factor's check: finite and > 0. Empty: no problem.

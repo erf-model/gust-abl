@@ -413,7 +413,8 @@ double owned_points (const amrex::MultiFab& mf, const amrex::Geometry& geom)
     return n;
 }
 
-//! The scales s_q of the scaled residual norms (u, v, w, p, theta, k), shared by stage_norms and the confidence.
+} // namespace
+
 void residual_scales (const JvpScales& s, amrex::Real H, amrex::Real scale[6])
 {
     const amrex::Real U = s.velocity;
@@ -422,7 +423,6 @@ void residual_scales (const JvpScales& s, amrex::Real H, amrex::Real scale[6])
     scale[4] = U * s.theta / H;
     scale[5] = U * s.tke / H;
 }
-} // namespace
 
 void stage_norms (const ResidualFields& Rf, const State& q, const SurfaceState* ss, const JvpScales& s, amrex::Real height,
                   const amrex::Geometry& geom, std::vector<amrex::Real>& res, std::vector<amrex::Real>& mon,

@@ -11,6 +11,7 @@
 
 #include <AMReX_Geometry.H>
 
+#include <array>
 #include <functional>
 #include <string>
 
@@ -48,6 +49,15 @@ struct JointMember
     NestDefect* defect{nullptr};
     //! The outer domain with nest.feedback = relax: the relaxation (NestRelax.H) in place of the defect source.
     NestRelax* relax{nullptr};
+    //! The outer domain: the joint run's stop also needs the feedback to have settled over the last feedback_window
+    //! exchanges (its steady.monitor_window; FeedbackWindow, NestDefect.H) to feedback_tol (its
+    //! steady.monitor_rel_tol), each exchange's change measured by relative_feedback_change with feedback_floor
+    //! (u, v, w, theta, k), the sizes below which a change counts absolutely: for the defect source
+    //! steady.residual_tol / steady.monitor_rel_tol times the residual scales (Simplec.H), so that a change of
+    //! residual_tol times the scale passes; for the relaxation the jvp scales (velocity, theta, tke).
+    amrex::Real feedback_tol{0};
+    int feedback_window{0};
+    std::array<amrex::Real, 5> feedback_floor{};
     // A nest: its parent's images and its faces.
     NestParent* parent{nullptr};
     NestFaces* faces{nullptr};

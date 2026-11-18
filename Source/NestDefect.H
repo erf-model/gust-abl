@@ -51,6 +51,7 @@
 #include "State.H"
 
 #include <array>
+#include <deque>
 #include <AMReX_Box.H>
 #include <AMReX_Geometry.H>
 #include <AMReX_MultiFab.H>
@@ -114,6 +115,47 @@ struct DefectRegion
 DefectRegion defect_region (const std::string& name, const amrex::IntVect& fine_cells, int r, const amrex::IntVect& offset,
                             const amrex::Box& dom_c, std::array<bool, 2> periodic = {false, false});
 
+//! How much a feedback changed at its last set (the defect source S, NestDefect::set, or the relaxation's
+//! target q*, NestRelax::set), per field u, v, w, theta, k: change = max |new - old| over the points the feedback
+//! acts on (a NaN counts as infinite), size = the new field's size there (each class says which). first: no
+//! earlier set to compare with. Every rank holds the same values.
+struct FeedbackChange
+{
+    bool first{true};
+    std::array<amrex::Real, 5> change{};
+    std::array<amrex::Real, 5> size{};
+};
+
+//! The joint run's measure of a feedback's change between two exchanges (JointRun.H): the largest over the fields
+//! of change / max(size, floor) (0 / 0 = 0, a positive change over 0 is infinite); infinite when c.first. floor:
+//! the size below which a change is measured absolutely (as SteadyCriterion's monitor scales).
+amrex::Real relative_feedback_change (const FeedbackChange& c, const std::array<amrex::Real, 5>& floor);
+
+//! The joint run's test that a feedback has settled (JointRun.H), on the per-exchange changes d_n of
+//! relative_feedback_change, as SteadyCriterion tests a monitor over steady.monitor_window iterations (one exchange
+//! is one iteration): settled when the window holds W changes, their sum (which bounds the feedback's relative
+//! change over the window) is at most tol, and Aitken's estimate of the change still to come, d2 rho / (1 - rho)
+//! with d1, d2 the sums over the window's two halves and rho = d2 / d1, is at most tol (skipped when both sums are
+//! below 1e-3 tol; refused when rho >= 1).
+class FeedbackWindow
+{
+public:
+    FeedbackWindow (int window, amrex::Real tol) : m_window(window), m_tol(tol) {}
+    //! Adds an exchange's change (infinite, NaN or negative empties the window: nothing before it counts).
+    void add (amrex::Real d);
+    //! The sum of the changes in the window (infinite until it holds W).
+    amrex::Real sum () const;
+    bool settled () const;
+    //! The changes in the window, oldest first (at most W; a joint checkpoint stores them).
+    [[nodiscard]] std::vector<amrex::Real> values () const { return {m_d.begin(), m_d.end()}; }
+    //! A joint restart: the window as values() gave it before the checkpoint (each added in order).
+    void seed (const std::vector<amrex::Real>& d) { for (const amrex::Real x : d) { add(x); } }
+private:
+    int m_window;
+    amrex::Real m_tol;
+    std::deque<amrex::Real> m_d;
+};
+
 class NestDefect
 {
 public:
@@ -122,7 +164,9 @@ public:
 
     //! S = R on the points of the regions' inner boxes (cells; faces from L to
     //! H + 1 along their normal), 0 elsewhere; R is the parent's residual at
-    //! q* without the source. Sets the source active.
+    //! q* without the source. Sets the source active. Records the change of
+    //! S (change(): max |S_new - S_old| over the inner boxes' points, size the
+    //! largest |S_new|; first on the first set).
     void set (const ResidualFields& R, const std::vector<DefectRegion>& regions);
 
     //! R -= S for u, v, w, theta and k (nothing while inactive).
@@ -132,10 +176,22 @@ public:
     //! The largest |S| of u, v, w, theta and k over the parent (after set).
     [[nodiscard]] std::vector<amrex::Real> max_norms () const;
     [[nodiscard]] const ResidualFields& source () const { return m_S; }
+    //! The change of S at the last set.
+    [[nodiscard]] const FeedbackChange& change () const { return m_change; }
+    //! S of u, v, w, theta and k (a joint checkpoint stores them: JointRecord.H).
+    [[nodiscard]] std::array<const amrex::MultiFab*, 5> feedback_fields () const
+    {
+        return {&m_S.u, &m_S.v, &m_S.w, &m_S.theta, &m_S.tke};
+    }
+    //! A joint restart: S of the last exchange before the checkpoint (valid points), so that the first set
+    //! measures its change as the run without a restart does. The source stays inactive until set.
+    void restore_previous (const std::array<const amrex::MultiFab*, 5>& f);
 
 private:
     ResidualFields m_S;
+    FeedbackChange m_change;
     bool m_active{false};
+    bool m_have_previous{false};
 };
 
 } // namespace gust

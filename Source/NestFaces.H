@@ -103,8 +103,15 @@ std::vector<std::string> check_nest_run (const BoundaryInputs& bin, const Inputs
 //! of z_phys_nd), h_p = z_p(0), zeta_k the z-levels, H the top level, r dx the
 //! parent's smaller horizontal cell size and m the smallest
 //! (z_p(k+1) - z_p(k)) / (zeta_{k+1} - zeta_k) over the nest. Then b(0) = 1
-//! (the nest's ground) and b(H) = 0 (the top), and dz/dzeta >= m - |h - h_p|
-//! coth(H / s) / s > 0. Aloft the nest's surfaces lie on the parent's (b
+//! (the nest's ground) and b(H) = 0 (the top), and dz/dzeta >= m - max|h - h_p|
+//! coth(H / s) / s (|b'| is largest at the ground). The bound is positive unless
+//! the nest's ground stands far above the parent's: with s = 2 max|h - h_p| / m
+//! it is m (1 - coth(x) / 2), x = m H / (2 max|h - h_p|), which needs
+//! max|h - h_p| < m H / (2 atanh(1/2)) = 0.91 m H; a larger s (r dx) only
+//! helps. It is a sufficient condition; the levels are checked exactly, layer
+//! by layer, after they are set: a layer z(k+1) - z(k) <= 0 (or not finite) at
+//! a valid node aborts, naming the nest (name, "nest.<name>"), the node, the
+//! thickness and the bound, before Mesh's general check of the cells. Aloft the nest's surfaces lie on the parent's (b
 //! falls by e every s), so the restriction of the vertical flux Omega
 //! (restrict_patch, NestDefect.H) is the parent's flux there; with the
 //! nest's own terrain-fitted surfaces the finer ground detail decays only
@@ -116,7 +123,8 @@ std::vector<std::string> check_nest_run (const BoundaryInputs& bin, const Inputs
 //! nodes from k = 0 to the top; the caller refills the ghost nodes. Prints
 //! one line with s and the largest change of a node (m).
 void follow_parent_levels (const NestParent& parent, const amrex::Geometry& geom,
-                           const amrex::Vector<amrex::Real>& zlevels, amrex::MultiFab& z_phys_nd);
+                           const amrex::Vector<amrex::Real>& zlevels, amrex::MultiFab& z_phys_nd,
+                           const std::string& name);
 
 void blend_nest_ground (const NestParent& parent, const BoundaryInputs& bin, amrex::Real width,
                         const amrex::Geometry& geom, amrex::MultiFab& z_phys_nd);

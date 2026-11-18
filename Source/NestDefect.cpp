@@ -5,7 +5,10 @@
 
 #include <AMReX_ParallelDescriptor.H>
 
+#include <algorithm>
 #include <array>
+#include <cmath>
+#include <limits>
 
 namespace gust {
 
@@ -111,6 +114,27 @@ void copy_in (const amrex::MultiFab& src, const amrex::Box& region, amrex::Multi
     }
 }
 
+//! max |src - dst| over the points of region (dst's valid points; a NaN counts as infinite), over all ranks.
+amrex::Real max_difference_in (const amrex::MultiFab& src, const amrex::Box& region, const amrex::MultiFab& dst)
+{
+    amrex::ReduceOps<amrex::ReduceOpMax> op;
+    amrex::ReduceData<amrex::Real> data(op);
+    for (amrex::MFIter mfi(dst, false); mfi.isValid(); ++mfi) {
+        const amrex::Box bx = mfi.validbox() & region;
+        if (!bx.ok()) { continue; }
+        const auto d = dst.const_array(mfi);
+        const auto s = src.const_array(mfi);
+        op.eval(bx, data, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept -> amrex::GpuTuple<amrex::Real>
+        {
+            const amrex::Real e = std::abs(s(i, j, k) - d(i, j, k));
+            return {e == e ? e : std::numeric_limits<amrex::Real>::infinity()};
+        });
+    }
+    amrex::Real m = amrex::get<0>(data.value(op));
+    amrex::ParallelDescriptor::ReduceRealMax(m);
+    return m;
+}
+
 void restrict_horizontal (const State& fine, const Mesh& mesh_f, int r, const amrex::IntVect& offset,
                           const Mesh& mesh_c, const amrex::Geometry& geom_c, State& coarse)
 {
@@ -198,6 +222,55 @@ void restrict_w (const State& fine, const Mesh& mesh_f, const amrex::Geometry& g
 
 } // namespace
 
+amrex::Real relative_feedback_change (const FeedbackChange& c, const std::array<amrex::Real, 5>& floor)
+{
+    const amrex::Real inf = std::numeric_limits<amrex::Real>::infinity();
+    if (c.first) { return inf; }
+    amrex::Real r = 0;
+    for (std::size_t n = 0; n < 5; ++n) {
+        const amrex::Real d = amrex::max(c.size[n], floor[n]);
+        const amrex::Real x = c.change[n];
+        // The quotient's denominator is never 0: clang evaluates it before the branch, and 0 / 0 raises FE_INVALID
+        // (trapped with amrex.fpe_trap_invalid). max(d, min) cannot fold back into d, as a guard d > 0 ? d : 1 does.
+        const amrex::Real den = amrex::max(d, std::numeric_limits<amrex::Real>::min());
+        const amrex::Real q = std::isnan(x) ? inf : d > 0 ? x / den : x > 0 ? inf : amrex::Real(0);
+        r = amrex::max(r, q);
+    }
+    return r;
+}
+
+void FeedbackWindow::add (amrex::Real d)
+{
+    if (!(d >= 0 && d < std::numeric_limits<amrex::Real>::infinity())) {
+        m_d.clear();
+        return;
+    }
+    m_d.push_back(d);
+    while (static_cast<int>(m_d.size()) > m_window) { m_d.pop_front(); }
+}
+
+amrex::Real FeedbackWindow::sum () const
+{
+    if (static_cast<int>(m_d.size()) < m_window) { return std::numeric_limits<amrex::Real>::infinity(); }
+    amrex::Real s = 0;
+    for (const amrex::Real d : m_d) { s += d; }
+    return s;
+}
+
+bool FeedbackWindow::settled () const
+{
+    if (!(sum() <= m_tol)) { return false; }
+    const std::size_t W = m_d.size();
+    const std::size_t half = W / 2;
+    amrex::Real d1 = 0, d2 = 0;
+    for (std::size_t n = W - 2 * half; n < W - half; ++n) { d1 += m_d[n]; }
+    for (std::size_t n = W - half; n < W; ++n) { d2 += m_d[n]; }
+    if (std::max(d1, d2) <= amrex::Real(1.0e-3) * m_tol) { return true; }
+    if (!(d2 < d1)) { return false; }
+    const amrex::Real rho = d2 / d1;
+    return d2 * rho / (1 - rho) <= m_tol;
+}
+
 void restrict_patches (const std::vector<NestImage>& nests, const Mesh& mesh_c, const amrex::Geometry& geom_c,
                        const std::function<void(State&)>& coarse_ghosts, State& coarse)
 {
@@ -256,10 +329,29 @@ void NestDefect::set (const ResidualFields& R, const std::vector<DefectRegion>& 
         if (r[n]->boxArray() != S[n]->boxArray() || r[n]->DistributionMap() != S[n]->DistributionMap()) {
             amrex::Abort("gust: NestDefect::set: the residual is not on the parent's layout");
         }
+        // The change from the S of the last set (zero outside the inner boxes, before and after).
+        amrex::Real ch = 0;
+        for (const auto& g : regions) { ch = amrex::max(ch, max_difference_in(*r[n], amrex::convert(g.inner, S[n]->ixType()), *S[n])); }
+        m_change.change[static_cast<std::size_t>(n)] = ch;
         S[n]->setVal(0.0);
         for (const auto& g : regions) { copy_in(*r[n], amrex::convert(g.inner, S[n]->ixType()), *S[n]); }
+        m_change.size[static_cast<std::size_t>(n)] = S[n]->norm0();
     }
+    m_change.first = !(m_active || m_have_previous);
     m_active = true;
+}
+
+void NestDefect::restore_previous (const std::array<const amrex::MultiFab*, 5>& f)
+{
+    amrex::MultiFab* dst[5] = {&m_S.u, &m_S.v, &m_S.w, &m_S.theta, &m_S.tke};
+    for (std::size_t n = 0; n < 5; ++n) {
+        amrex::MultiFab& d = *dst[n];
+        if (f[n]->boxArray() != d.boxArray() || f[n]->DistributionMap() != d.DistributionMap()) {
+            amrex::Abort("gust: NestDefect::restore_previous: the field is not on the parent's layout");
+        }
+        amrex::MultiFab::Copy(d, *f[n], 0, 0, 1, 0);
+    }
+    m_have_previous = true;
 }
 
 void NestDefect::add_to_residual (ResidualFields& R) const

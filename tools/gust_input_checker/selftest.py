@@ -58,6 +58,7 @@ PARENT = {"dirs": ("parent_chk",), "files": {"parent_chk/Header": "gust checkpoi
 TABLE = "0 0 0 300\n100 5 0 300\n800 10 0 300\n"
 NEST_A = "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 1200 900\n"
 JOINT = "GUST_JOINT 1\nfeedback %s\nexchanges %d\nouter 0x0p+0\nnest %s 0x0p+0 chk_a\n"
+JOINT2 = "GUST_JOINT 2\nfeedback %s\nexchanges %d\nouter 0x0p+0\nwindow %s\nnest %s 0x0p+0 chk_a\n"
 
 CASES = [
     # --- the bases themselves ---------------------------------------------------------------------------
@@ -374,8 +375,22 @@ CASES = [
      {"files": {"chk00010/Header": "x\n", "chk00010/Joint": JOINT % ("defect", 4, "a")}}),
     ("nests_joint_restart_version", "inflow", NEST_A + "nest.feedback = defect\nio.restart = chk00010\n",
      ["E io.restart nests"], [],
-     {"files": {"chk00010/Header": "x\n", "chk00010/Joint": "GUST_JOINT 2\nfeedback defect\nexchanges 4\n"
-                                                              "outer 0x0p+0\nnest a 0x0p+0 chk_a\n"}}),
+     {"files": {"chk00010/Header": "x\n", "chk00010/Joint": "GUST_JOINT 3\nfeedback defect\nexchanges 4\n"
+                                                              "outer 0x0p+0\nwindow 0\nnest a 0x0p+0 chk_a\n"}}),
+    # Version 2 (the joint stop test's window, Source/JointRecord.H): a good record reads, a missing or bad window
+    # line stops GUST.
+    ("nests_joint_restart_v2", "inflow", NEST_A + "nest.feedback = defect\nio.restart = chk00010\n",
+     [], ["E io.restart nests", "E nest.names"],
+     {"files": {"chk00010/Header": "x\n", "chk00010/Joint": JOINT2 % ("defect", 4, "2 0x1p-30 0x0p+0", "a"),
+                "chk_a/Header": "x\n"}}),
+    ("nests_joint_restart_v2_no_window", "inflow", NEST_A + "nest.feedback = defect\nio.restart = chk00010\n",
+     ["E io.restart nests"], [],
+     {"files": {"chk00010/Header": "x\n", "chk00010/Joint": (JOINT % ("defect", 4, "a"))
+                                                              .replace("GUST_JOINT 1", "GUST_JOINT 2"),
+                "chk_a/Header": "x\n"}}),
+    ("nests_joint_restart_v2_bad_window", "inflow", NEST_A + "nest.feedback = defect\nio.restart = chk00010\n",
+     ["E io.restart nests"], [],
+     {"files": {"chk00010/Header": "x\n", "chk00010/Joint": JOINT2 % ("defect", 4, "2 0x1p-30", "a")}}),
     ("nests_feedback_none_odd_boxes", "inflow", "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 1200 900\n"
      "nest.feedback = none\nmesh.max_grid_size = 7\n", [], ["E nest.feedback"]),
     ("nests_periodic_strip", "solve", "nest.names = a\nnest.a.lo = 0 0\nnest.a.hi = 1600 1500\n",

@@ -36,7 +36,8 @@ const char* status_name (SteadyStatus s)
 
 } // namespace
 
-JointResult run_joint (const std::vector<JointMember*>& members, int max_exchanges, int first_exchange)
+JointResult run_joint (const std::vector<JointMember*>& members, int max_exchanges, int first_exchange,
+                       const std::vector<amrex::Real>& prior_window)
 {
     if (first_exchange < 0 || first_exchange >= max_exchanges) {
         amrex::Abort("gust: run_joint: " + std::to_string(first_exchange) + " exchanges taken of at most "
@@ -80,6 +81,8 @@ JointResult run_joint (const std::vector<JointMember*>& members, int max_exchang
     }
     ResidualFields R;
     JointResult out;
+    FeedbackWindow window(P.feedback_window, P.feedback_tol);
+    window.seed(prior_window);
     const double t_all = amrex::second();
     if (first_exchange > 0) {
         amrex::Print() << "gust: joint run: restarted after exchange " << first_exchange << "\n";
@@ -105,6 +108,9 @@ JointResult run_joint (const std::vector<JointMember*>& members, int max_exchang
             P.residual_without_defect(qr, R);
             P.defect->set(R, regions);
         }
+        // The feedback's change from the last exchange (infinite at the first).
+        const amrex::Real fchange = relative_feedback_change(relax ? P.relax->change() : P.defect->change(), P.feedback_floor);
+        window.add(fchange);
         double tx = amrex::second() - t0;
         // 2. The outer domain's iteration.
         t0 = amrex::second();
@@ -139,22 +145,27 @@ JointResult run_joint (const std::vector<JointMember*>& members, int max_exchang
         amrex::ParallelDescriptor::ReduceRealMax(tx);
         out.exchange_seconds += tx;
         out.exchanges = it + 1;
-        const bool last = all_steady || diverged || it + 1 == max_exchanges;
+        out.feedback_change = static_cast<double>(fchange);
+        out.feedback_window = static_cast<double>(window.sum());
+        // Steady: every domain's verdict, and the feedback they were stepped with has settled over the window.
+        const bool settled = window.settled();
+        const bool last = (all_steady && settled) || diverged || it + 1 == max_exchanges;
         if (it < first_exchange + 10 || it % 10 == 9 || last) {
-            char line[400];
+            char line[512];
             if (relax) {
                 // The outer state after its step against the target of this exchange, where the rate is > 0.
                 const auto d = P.relax->differences(*P.state);
                 std::snprintf(line, sizeof(line), "gust: joint %5d: outer - nest under the nests: max u %.3e v %.3e "
                               "w %.3e theta %.3e k %.3e, RMS u %.3e v %.3e w %.3e theta %.3e k %.3e; face change %.3e m/s; "
-                              "outer %s", it + 1, double(d[0]), double(d[1]), double(d[2]), double(d[3]), double(d[4]),
-                              double(d[5]), double(d[6]), double(d[7]), double(d[8]), double(d[9]), double(change),
-                              status_name(P.verdict.status));
+                              "target change %.3e (window %.3e); outer %s", it + 1, double(d[0]), double(d[1]), double(d[2]), double(d[3]),
+                              double(d[4]), double(d[5]), double(d[6]), double(d[7]), double(d[8]), double(d[9]),
+                              double(change), double(fchange), double(window.sum()), status_name(P.verdict.status));
             } else {
                 const auto s = P.defect->max_norms();
-                std::snprintf(line, sizeof(line), "gust: joint %5d: max |S| u %.3e v %.3e w %.3e theta %.3e k %.3e; face "
-                              "change %.3e m/s; outer %s", it + 1, double(s[0]), double(s[1]), double(s[2]), double(s[3]),
-                              double(s[4]), double(change), status_name(P.verdict.status));
+                std::snprintf(line, sizeof(line), "gust: joint %5d: max |S| u %.3e v %.3e w %.3e theta %.3e k %.3e; S change "
+                              "%.3e (window %.3e); face change %.3e m/s; outer %s", it + 1, double(s[0]), double(s[1]),
+                              double(s[2]), double(s[3]), double(s[4]), double(fchange), double(window.sum()),
+                              double(change), status_name(P.verdict.status));
             }
             std::string text = line;
             for (std::size_t n = 1; n < members.size(); ++n) {
@@ -163,8 +174,10 @@ JointResult run_joint (const std::vector<JointMember*>& members, int max_exchang
             amrex::Print() << text << "\n";
         }
         if (diverged) { out.diverged = true; break; }
-        if (all_steady) { out.steady = true; break; }
+        if (all_steady && settled) { out.steady = true; break; }
+        out.waiting_on_feedback = all_steady;
     }
+    out.window = window.values();
     out.wall_seconds = amrex::second() - t_all;
     amrex::ParallelDescriptor::ReduceRealMax(out.wall_seconds);
     std::string per;
@@ -178,6 +191,14 @@ JointResult run_joint (const std::vector<JointMember*>& members, int max_exchang
                   out.diverged ? "diverged" : out.steady ? "steady" : "not steady", out.exchanges, out.wall_seconds,
                   out.exchange_seconds);
     amrex::Print() << line << per << "\n";
+    if (!out.steady && !out.diverged && out.waiting_on_feedback) {
+        char note[400];
+        std::snprintf(note, sizeof(note), "gust: joint run: every domain was steady at the last exchange, but the %s had "
+                      "not settled: last change %.3e, sum over steady.monitor_window = %d exchanges %.3e, "
+                      "steady.monitor_rel_tol = %.3e\n", relax ? "target" : "source S", out.feedback_change,
+                      P.feedback_window, out.feedback_window, double(P.feedback_tol));
+        amrex::Print() << note;
+    }
     return out;
 }
 
