@@ -5,6 +5,7 @@
 #include "JointRecord.H"
 #include "JointRun.H"
 #include "NestDefect.H"
+#include "NestInject.H"
 #include "NestRelax.H"
 #include "Nests.H"
 
@@ -43,7 +44,7 @@ void run ()
     OuterOutcome outcome;
     if (nests.active()) { outer.outcome = &outcome; }
     const bool joint = nests.active() && nests.feedback != NestFeedback::none;
-    // nest.feedback = defect or relax (JointRun.H): the outer domain, once steady, runs each nest inside its own run_domain
+    // nest.feedback = defect, relax or inject (JointRun.H): the outer domain, once steady, runs each nest inside its own run_domain
     // (DomainRole::joint), and the last nest runs the joint loop, so every domain stays in memory.
     std::vector<JointMember*> members;
     std::vector<OuterOutcome> nest_outcomes(nests.nests.size());
@@ -123,7 +124,10 @@ void run ()
     chain = [&] (std::size_t i) {
         if (i == nests.nests.size()) {
             JointMember& P = *members[0];
-            const auto fields = [&P] { return P.relax != nullptr ? P.relax->feedback_fields() : P.defect->feedback_fields(); };
+            const auto fields = [&P] {
+                return P.inject != nullptr ? P.inject->feedback_fields()
+                       : P.relax != nullptr ? P.relax->feedback_fields() : P.defect->feedback_fields();
+            };
             std::vector<amrex::Real> prior_window;
             if (resume) {
                 // The stop test's window and the last feedback (JointRecord.H), when the record has them for this mode.
@@ -132,7 +136,13 @@ void run ()
                     std::array<amrex::MultiFab, 5> f;
                     read_joint_feedback(resumes[0].chk, fields(), f);
                     const std::array<const amrex::MultiFab*, 5> pf{&f[0], &f[1], &f[2], &f[3], &f[4]};
-                    if (P.relax != nullptr) { P.relax->restore_previous(pf); } else { P.defect->restore_previous(pf); }
+                    if (P.inject != nullptr) {
+                        P.inject->restore_previous(pf);
+                    } else if (P.relax != nullptr) {
+                        P.relax->restore_previous(pf);
+                    } else {
+                        P.defect->restore_previous(pf);
+                    }
                     prior_window = prior.window;
                 } else {
                     amrex::Print() << "gust: io.restart = " << resumes[0].chk << ": "
@@ -218,7 +228,9 @@ void run ()
                           joint_result.feedback_change, joint_result.feedback_window);
             amrex::Abort(std::string("gust: nest.feedback = ") + nest_feedback_name(nests.feedback)
                          + ": the joint run did not reach steady: every domain is steady, but the "
-                         + (nests.feedback == NestFeedback::relax ? "relaxation's target" : "defect source")
+                         + (nests.feedback == NestFeedback::relax    ? "relaxation's target"
+                            : nests.feedback == NestFeedback::inject ? "injection's target"
+                                                                     : "defect source")
                          + " had not settled over steady.monitor_window exchanges to steady.monitor_rel_tol (" + what
                          + ") within steady.max_iterations = " + std::to_string(joint_result.exchanges) + " exchanges; "
                          "to go on, restart with io.restart = " + chk + " (its joint record names the nests' "

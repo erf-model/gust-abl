@@ -321,6 +321,29 @@ CASES = [
     ("nests_feedback_ok", "inflow", "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 1200 900\n"
      "nest.feedback = defect\n", [], ["E *"]),
     ("nests_feedback_value", "inflow", "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 1200 900\n"
+     "nest.feedback = average\n", ["E nest.feedback nests"], []),
+    ("nests_inject_ok", "inflow", "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 1200 900\n"
+     "nest.feedback = inject\n", [], ["E *"]),
+    ("nests_inject_factor", "inflow", "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 1200 900\n"
+     "nest.feedback = inject\nnest.feedback_factor = 4\n", ["E nest.feedback_factor nests"], []),
+    ("nests_inject_factor_ok", "inflow", "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 1200 900\n"
+     "nest.feedback = inject\nnest.feedback_factor = 0.25\n", [], ["E *"]),
+    ("nests_inject_factor_one", "inflow", "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 1200 900\n"
+     "nest.feedback = inject\nnest.feedback_factor = 1\n", [], ["E *"]),
+    ("nests_inject_factor_zero", "inflow", "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 1200 900\n"
+     "nest.feedback = inject\nnest.feedback_factor = 0\n", ["E nest.feedback_factor values"],
+     ["E nest.feedback_factor nests"]),
+    ("nests_inject_mlmg", "inflow", "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 1200 900\n"
+     "nest.feedback = inject\nsolver.poisson_backend = mlmg\n", ["E solver.poisson_backend nests"], []),
+    ("nests_relax_mlmg_ok", "inflow", "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 1200 900\n"
+     "nest.feedback = relax\nsolver.poisson_backend = mlmg\n", [], ["E solver.poisson_backend nests"]),
+    ("nests_inject_periodic", "inflow", "nest.names = a\nnest.a.lo = 400 0\nnest.a.hi = 1200 1600\n"
+     "nest.feedback = inject\n", ["E nest.feedback nests"], []),
+    ("nests_relax_periodic_ok", "inflow", "nest.names = a\nnest.a.lo = 400 0\nnest.a.hi = 1200 1600\n"
+     "nest.feedback = relax\n", [], ["E nest.feedback"]),
+    ("nests_inject_feedback_flux", "inflow", "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 1200 900\n"
+     "nest.feedback = inject\nnest.feedback_flux = nest\n", ["E nest.feedback_flux nests"], []),
+    ("nests_inject_narrow", "inflow", "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 800 900\n"
      "nest.feedback = inject\n", ["E nest.feedback nests"], []),
     ("nests_feedback_no_nests", "inflow", "nest.feedback = defect\n", ["E nest.feedback nests"], []),
     ("nests_feedback_named_feedback", "inflow", "nest.names = feedback\n", ["E nest.names nests"], []),
@@ -372,7 +395,7 @@ CASES = [
      {"files": {"chk00010/Header": "x\n", "chk00010/Joint": JOINT % ("relax", 4, "a")}}),
     ("nests_joint_restart_feedback", "inflow", NEST_A + "nest.feedback = defect\nio.restart = chk00010\n",
      ["E io.restart nests"], [],
-     {"files": {"chk00010/Header": "x\n", "chk00010/Joint": JOINT % ("inject", 4, "a"), "chk_a/Header": "x\n"}}),
+     {"files": {"chk00010/Header": "x\n", "chk00010/Joint": JOINT % ("none", 4, "a"), "chk_a/Header": "x\n"}}),
     ("nests_joint_restart_no_record", "inflow", NEST_A + "nest.feedback = relax\nio.restart = chk00010\n",
      [], ["E nest.feedback", "E nest.names"], {"files": {"chk00010/Header": "x\n"}}),
     ("nests_joint_restart_names", "inflow", NEST_A + "nest.feedback = defect\nio.restart = chk00010\n",

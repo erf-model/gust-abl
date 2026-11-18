@@ -6,6 +6,7 @@
 
 #include "BoundaryConditions.H"
 #include "Continuation.H"
+#include "NestInject.H"
 #include "Sequencing.H"
 #include "TransportTestHelpers.H"
 
@@ -33,6 +34,7 @@ struct HillRun
 {
     PCase c;
     gust::RunSetup s;
+    std::unique_ptr<gust::NestInject> inject;   // before ls, which points to it
     std::unique_ptr<gust::LevelSolver> ls;
     gust::State q;
     static constexpr double kPi = 3.14159265358979323846;
@@ -41,7 +43,8 @@ struct HillRun
     //! bit through the Poisson solve's rank partial sums); the default
     //! distribution otherwise.
     HillRun (double lapse, int nx, int nz, int max_grid, double ri_gate = 0, Limiter lim = Limiter::van_leer,
-             gust::StageKind stage = gust::StageKind::simplec, const amrex::DistributionMapping* rank_map = nullptr)
+             gust::StageKind stage = gust::StageKind::simplec, const amrex::DistributionMapping* rank_map = nullptr,
+             bool with_inject = false)
     {
         c.in.mesh.n_cell = amrex::IntVect(nx, 2, nz);
         c.in.mesh.prob_hi = {amrex::Real(Lx), amrex::Real(Ly), amrex::Real(H)};
@@ -79,8 +82,11 @@ struct HillRun
         s.newton.continuation = gust::continuation_options(s.sopt);
         s.newton.newton.gmres_restart = 200;
         gust::use_closure_constants(s.bin, s.surf, s.copt.Cmu0, s.copt.kappa, s.copt.max_geom_lscale);
+        // with_inject: the nests' injection (NestInject.H, inactive until set) in the level's residual.
+        if (with_inject) { inject = std::make_unique<gust::NestInject>(c.ba, c.dm, c.geom); }
         ls = std::make_unique<gust::LevelSolver>(s, c.mesh, c.geom, c.z, c.ba, c.dm, "",
-                                                      stage == gust::StageKind::simplec_newton);
+                                                      stage == gust::StageKind::simplec_newton, nullptr, nullptr, nullptr,
+                                                      nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, inject.get());
         q.define(c.ba, c.dm);
         amrex::MultiFab::Copy(q.z_phys_nd, c.z, 0, 0, 1, c.z.nGrow());
         gust::trtest::fill_loc(q.u, Loc::xface, c, [] (double, double, double z) {

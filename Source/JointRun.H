@@ -3,7 +3,8 @@
 
 // The joint two-level run (nest.feedback = defect; plan rev. 6 tracker,
 // PR-70; nest.feedback = relax, PR-71, takes NestRelax::set in place of
-// NestDefect::set in step 1, NestRelax.H). The outer domain and its nests have each run one way to steady
+// NestDefect::set in step 1, NestRelax.H; nest.feedback = inject, row N-114 item 2,
+// replaces the outer state on the source's region in step 1 instead, NestInject.H). The outer domain and its nests have each run one way to steady
 // (Nests.H) and stay in memory (Run.cpp holds every run_domain open through
 // DomainRole::joint). Then, each exchange:
 //

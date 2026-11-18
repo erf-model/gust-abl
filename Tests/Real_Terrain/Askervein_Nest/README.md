@@ -49,6 +49,11 @@ half-width 1000 m, one way and joint, one after another, with the recommended se
 ```bash
 python3 askervein_nest.py two_way -- mpiexec -n 4 <build>/gust inputs_askervein_domain
 ```
+`two_way relax inject` adds the joint runs with `nest.feedback = relax` (factor 1) and `nest.feedback = inject`
+(factor 0.5), and `keep` skips runs whose plotfiles are already there:
+```bash
+python3 askervein_nest.py two_way relax inject -- mpiexec -n 4 <build>/gust inputs_askervein_domain
+```
 
 ## Targets
 Fixed in this file before any run was compared with the reference. When they were set, the 40 m parent and the
@@ -119,6 +124,21 @@ Horizontal speed in the lowest 200 m: no nest cell differs from the 20 m run by 
 (largest 0.23 m/s one way, 0.14 m/s joint); outside the footprint 24 outer cells one way and 19 joint differ by more
 than 0.25 m/s, 1 by more than 0.5 m/s. 10 m speed at the masts, relative to the 20 m run: nest 0.04 % one way and
 0.11 % joint, outer domain 1.18 % and 1.05 % (RMS).
+
+With `relax inject` (same machine and setting; relax steady after 191 exchanges, inject after 2153):
+
+| Field | Nest, relax | Nest, inject | Outer, relax | Outer, inject |
+|---|---|---|---|---|
+| u | 3.53e-3 | 9.92e-3 | 3.75e-3 | 1.37e-2 |
+| v | 6.33e-3 | 3.45e-2 | 7.56e-3 | 2.46e-2 |
+| w | 1.54e-3 | 2.72e-3 | 2.50e-3 | 2.74e-3 |
+| k | 2.67e-3 | 4.00e-3 | 3.16e-3 | 4.06e-3 |
+
+Inject is the furthest of the four runs from the 20 m run in every field, nest and outer, except the nest's w (one
+way 2.87e-3), and takes 14 times the exchanges of `defect`. No nest cell differs by more than 0.25 m/s (largest 0.12 m/s relax, 0.15 m/s inject); outside
+the footprint 19 cells do with both. 10 m speed at the masts: nest 0.09 % (relax) and 0.22 % (inject), outer
+1.06 % and 1.06 % (RMS). The RMS of the speed-up against the observations on lines A and AA is 0.281 and 0.217
+(relax), 0.283 and 0.220 (inject) for the outer domain, against 0.281 and 0.217 for `defect`.
 
 ## CTest
 `rt_askervein_nest_study` (fixture `rt_askervein_nest_clean`; `nightly`, four ranks, double precision only): the

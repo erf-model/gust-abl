@@ -6,12 +6,12 @@
 // outer domain and every nest the CFL floor the joint run holds its driver to
 // (Driver::floor_cfl_at_current) and, for a nest, the checkpoint it wrote at
 // the same exchange. A restart from that checkpoint (io.restart with
-// nest.feedback = defect or relax) reads it, restarts every nest from its
+// nest.feedback = defect, relax or inject) reads it, restarts every nest from its
 // checkpoint and goes on with the exchanges (Run.cpp).
 //
 // <dir>/Joint, text:
 //   GUST_JOINT 2
-//   feedback <defect|relax>
+//   feedback <defect|relax|inject>
 //   exchanges <n>
 //   outer <cfl floor, hex float>
 //   window <m> <m hex floats>
@@ -20,7 +20,8 @@
 //
 // The window line (version 2) holds the joint stop test's last m <= steady.monitor_window changes of the feedback,
 // oldest first (FeedbackWindow, NestDefect.H), and beside the record the checkpoint holds the feedback of the last
-// exchange, Level_0/joint_feedback_{u,v,w,theta,tke} (S with defect, the target q* with relax). A restart restores
+// exchange, Level_0/joint_feedback_{u,v,w,theta,tke} (S with defect, the target q* with relax,
+// the injection's target with inject). A restart restores
 // both, so its first exchange measures the change and tests the window as the run without a restart does. A version
 // 1 record (no window line, no field) still reads: its restart starts with an empty window.
 
@@ -41,7 +42,7 @@ struct JointRecord
         amrex::Real cfl_floor{0};
         std::string chk;            //!< the nest's checkpoint at the same exchange
     };
-    std::string feedback;           //!< "defect" or "relax"
+    std::string feedback;           //!< "defect", "relax" or "inject"
     int exchanges{0};               //!< exchanges taken over the run, restarts included
     amrex::Real outer_cfl_floor{0};
     std::vector<Nest> nests;

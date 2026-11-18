@@ -7,6 +7,7 @@
 #include "Convection.H"
 #include "ImplicitOperator.H"
 #include "MassFlux.H"
+#include "NestInject.H"
 #include "Reductions.H"
 
 #include <AMReX_MultiFabUtil.H>
@@ -134,7 +135,8 @@ amrex::Real max_abs_masked (const amrex::MultiFab& f, const amrex::MultiFab& kee
 
 PressureCorrectionResult pressure_correction (State& q, const PredictorFields& d, PoissonSolver& solver, const PoissonBC& bc,
                                               amrex::Real alpha_p, const Mesh& mesh, const amrex::Geometry& geom,
-                                              SimplecWorkspace& w, const amrex::MultiFab* source, bool project_net_source)
+                                              SimplecWorkspace& w, const amrex::MultiFab* source, bool project_net_source,
+                                              const NestInject* inject)
 {
     const char* op = "pressure_correction";
     if (std::isnan(alpha_p) || !(alpha_p > 0 && alpha_p <= 1)) {
@@ -183,6 +185,10 @@ PressureCorrectionResult pressure_correction (State& q, const PredictorFields& d
     coeffs.y = &w.beta_y;
     coeffs.z = &w.beta_z;
     coeffs.precond_ratio = 1;
+    if (inject != nullptr) {
+        coeffs.held_fluid = &inject->fluid_mask();
+        coeffs.held_open = {&inject->open_mask(0), &inject->open_mask(1), &inject->open_mask(2)};
+    }
     w.phi.setVal(0.0);
     res.poisson = solver.solve(w.rhs, w.phi, coeffs, bc, &w.F);
     if (!project_net_source && res.poisson.singular && std::abs(res.poisson.removed_mean) > amrex::Real(1.0e-8) * speed * inv_h) {
@@ -550,9 +556,16 @@ void SimplecStage::iterate (State& q, const amrex::MultiFab& dtau)
     m_info.predictor = momentum_predictor(q, m_R, F, m_in, m_w.dtau_faces, m_mesh, m_geom, m_sweeps, m_pf, ss, cf, m_opt.rotation_relax,
                                           m_sweep, m_opt.w_vnn_cap, m_opt.w_vnn_cap_slope_margin,
                                           (m_in.canopy != nullptr || m_in.canopy_heat != nullptr) ? &m_canopy_rows : nullptr);
+    // nest.feedback = inject (NestInject.H): the injected points are data, held through the iteration (the
+    // sweeps move them through their couplings to the points around); the ghosts are filled below.
+    const bool held = m_in.inject != nullptr && m_in.inject->active();
+    if (held) { m_in.inject->hold(q, 3); }
     // 4. The pressure correction on u* (its ghosts refilled first).
     m_in.bc->fill_ghosts(q, m_in.surface, m_in.buoyancy, false, nullptr);
-    m_info.pressure = pressure_correction(q, m_pf, m_solver, m_pbc, m_opt.alpha_p, m_mesh, m_geom, m_w);
+    // With the injection the net divergence of the injected nests (theirs, to their own tolerance) is
+    // projected out: a closed outer domain cannot carry it.
+    m_info.pressure = pressure_correction(q, m_pf, m_solver, m_pbc, m_opt.alpha_p, m_mesh, m_geom, m_w, nullptr, held,
+                                          held ? m_in.inject : nullptr);
     // 5. theta and k. theta's convection is re-evaluated with the corrected
     // velocity's transport (the second half of the point-implicit buoyancy
     // pair, Predictor.H); its diffusion, k's residual and the closure's
@@ -592,6 +605,8 @@ void SimplecStage::iterate (State& q, const amrex::MultiFab& dtau)
     }
     m_info.tke = scalar_sweep(Equation::tke, q.tke, m_R.tke, F, m_z, m_in, dtau, m_mesh, m_geom, m_sweeps, m_tke_floor, ss, cf, m_w,
                               m_sweep);
+    // The injected points as they came in (the ghosts are filled at step 1 of the next iteration).
+    if (held) { m_in.inject->hold(q, 6); }
     // 6. The nu_t history.
     if (m_closure != nullptr) { m_closure->accept(m_cf); }
 }

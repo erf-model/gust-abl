@@ -487,6 +487,42 @@ TEST (MaskedPoisson, EnclosedBlockHasNoFluxThroughIt)
     }
 }
 
+// UT-5.2.6b: the enclosed block on a bump. The open z-faces beside the block read its cells (phi = 0) in their
+// terrain cross terms, so a constant is not a null vector of the masked operator: GMRES's phi is the solution, not
+// shifted by its mean (the shift left a residual of 2 % beside the block).
+TEST (MaskedPoisson, EnclosedBlockOnABumpSolvesItsSystem)
+{
+    for (const char* backend : {"gmres_fft", "gmres_mlmg"}) {
+        PCase c;
+        c.in.mesh.n_cell = amrex::IntVect(16, 16, 8);
+        c.in.mesh.prob_hi = {amrex::Real(160), amrex::Real(160), amrex::Real(80)};
+        c.in.mesh.is_periodic = {1, 1, 0};
+        c.in.mesh.max_grid_size = {8, 8};
+        c.in.terrain.smoothing = 0;
+        c.make([] (double x, double y) { return 6.0 * std::exp(-((x - 80) * (x - 80) + (y - 80) * (y - 80)) / 1600.0); });
+        const auto solid = [] (int i, int j, int k) { return i >= 5 && i < 9 && j >= 5 && j < 9 && k < 5; };
+        close_cells(c, solid);
+        gust::PoissonOptions opt;
+        opt.backend = backend;
+        gust::PoissonSolver s(c.mesh, c.geom, c.z, opt);
+        amrex::MultiFab rhs(c.ba, c.dm, 1, 0), phi(c.ba, c.dm, 1, 1);
+        gust::ptest::fill_cells(rhs, c, [] (double x, double y, double z) { return std::cos(kPi * x / 80) * std::sin(kPi * y / 40) + 0.01 * z; });
+        phi.setVal(0);
+        amrex::Array<amrex::MultiFab, 3> F;
+        F[0].define(c.mesh.ax.boxArray(), c.dm, 1, 0);
+        F[1].define(c.mesh.ay.boxArray(), c.dm, 1, 0);
+        F[2].define(c.mesh.az.boxArray(), c.dm, 1, 0);
+        gust::FaceCoeffs fc;
+        const gust::PoissonResult res = s.solve(rhs, phi, fc, periodic_xy_bc(), &F);
+        // The true residual (computed after the solve) at GMRES's tolerance.
+        EXPECT_LT(res.final_residual, gust::ptest::tol(1e-8, 1e-3) * res.initial_residual) << backend;
+        amrex::MultiFab div(c.ba, c.dm, 1, 0);
+        gust::face_divergence(c.mesh, c.geom, {&F[0], &F[1], &F[2]}, div);
+        amrex::MultiFab::Add(div, rhs, 0, 0, 1, 0);
+        EXPECT_LT(div.norm0(0, 0), gust::ptest::tol(1e-7, 1e-1) * rhs.norm0(0, 0)) << backend;
+    }
+}
+
 // UT-5.2.7: the preconditioner without the mask; the iterations are reported and bounded.
 TEST (MaskedPoisson, IterationsForZeroOneAndNineBuildings)
 {

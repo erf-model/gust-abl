@@ -1714,29 +1714,36 @@ the outer run's final forcing.
        2 outer cells inside each non-periodic outer face.
    * - ``nest.feedback``
      - ``none``
-     - ``none``, ``defect`` or ``relax``. ``none``: one way, the nests after the outer domain. ``defect``: after the
-       one-way runs, the outer domain and every nest iterate together in memory, the nests' faces taking the outer
-       field and the outer domain taking the nests' solution over their footprints through a defect source
-       (:ref:`two-way-nests`). ``relax``: the same joint run, with a relaxation of the outer domain towards the
-       nests' solution over their footprints in place of the defect source (:ref:`two-way-relax`). Given only with
-       ``nest.names`` (any value). ``defect`` and ``relax`` are refused with
+     - ``none``, ``defect``, ``relax`` or ``inject``. ``none``: one way, the nests after the outer domain.
+       ``defect``: after the one-way runs, the outer domain and every nest iterate together in memory, the nests'
+       faces taking the outer field and the outer domain taking the nests' solution over their footprints through
+       a defect source (:ref:`two-way-nests`). ``relax``: the same joint run, with a relaxation of the outer domain
+       towards the nests' solution over their footprints in place of the defect source (:ref:`two-way-relax`).
+       ``inject``: the same joint run, with the outer state moved towards the restricted nests over their
+       footprints at each exchange and held there as data through the outer iteration (:ref:`two-way-inject`).
+       Given only with ``nest.names`` (any value). ``defect``, ``relax`` and ``inject`` are refused with
        ``steady.stage = simplec_newton``, with ``u``, ``v`` or ``tke`` in
        ``bc.rayleigh_fields``, and when an odd ``mesh.max_grid_size`` splits a nest into boxes with an odd number of
        cells in x or y, or when a nest spans fewer than 5 outer cells in a non-periodic x or y (the source keeps 2
-       cells from each face). With ``bc.sponge_width`` > 0 the run prints a note: the nests have no side sponge.
+       cells from each face). ``inject`` is also refused with ``solver.poisson_backend = mlmg`` (its operator has no
+       held cells) and with a nest across a periodic x or y (the held region would cut the outer fluid in two).
+       With ``bc.sponge_width`` > 0 the run prints a note: the nests have no side sponge.
        With ``defect`` the one-way nest runs already use the joint run's coordinate surfaces, so they differ from
-       a ``none`` run's (the same holds for ``relax``). ``steady.max_iterations`` also caps the joint exchanges,
+       a ``none`` run's (the same holds for ``relax`` and ``inject``). ``steady.max_iterations`` also caps the joint exchanges,
        counted over the run; ``io.restart`` with a joint run's checkpoint continues the joint run
        (:ref:`two-way-nests`, Restart). The joint run is steady when every domain is steady and the feedback has
        settled over the outer domain's ``steady.monitor_window`` exchanges to its ``steady.monitor_rel_tol``;
        otherwise it stops with an error.
    * - ``nest.feedback_factor``
-     - 1
-     - Finite, > 0 (dimensionless): the relaxation's rate over the advection rate, :math:`f` in
-       :math:`c = w(s)\, f\, U / \Delta x`, :math:`U` the nest's mean horizontal speed and :math:`\Delta x` the
-       smaller of the outer :math:`\Delta x, \Delta y` (:ref:`two-way-relax`). Given only with ``nest.feedback = relax``, once.
-       A larger factor holds the outer domain closer to the nest under it, but does not by itself bring either
-       domain closer to a fine run (:ref:`two-way-relax`, Results).
+     - 1 (0.5 with ``inject``)
+     - Dimensionless; given only with ``nest.feedback = relax`` or ``inject``, once. With ``relax``: finite, > 0,
+       the relaxation's rate over the advection rate, :math:`f` in :math:`c = w(s)\, f\, U / \Delta x`, :math:`U`
+       the nest's mean horizontal speed and :math:`\Delta x` the smaller of the outer :math:`\Delta x, \Delta y`
+       (:ref:`two-way-relax`). A larger factor holds the outer domain closer to the nest under it, but does not by
+       itself bring either domain closer to a fine run (:ref:`two-way-relax`, Results). With ``inject``: finite,
+       > 0 and <= 1, the fraction :math:`\omega` of the way the outer state moves towards the restricted nests at
+       each exchange (:ref:`two-way-inject`); 1 replaces it fully. A smaller factor takes more exchanges to the same
+       state; 0.75 and 1 did not reach steady on the canonical hill (:ref:`two-way-inject`, Results).
    * - ``nest.feedback_flux``
      - ``outer``
      - ``outer`` or ``nest``. ``outer``: the outer row just outside each nest's source region keeps the outer

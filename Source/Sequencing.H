@@ -192,7 +192,7 @@ public:
                  const amrex::MultiFab* canopy_fine_detJ = nullptr, BuildingForcing* buildings = nullptr,
                  const BuildingTke* building_tke = nullptr, const BuildingTheta* building_theta = nullptr,
                  const TimeTerm* time = nullptr, const NestDefect* defect = nullptr,
-                 const NestRelax* relax = nullptr);
+                 const NestRelax* relax = nullptr, const NestInject* inject = nullptr);
     // res_in, the stage's copy of it and the driver's diffusivity point into
     // this object: it can be neither copied nor moved.
     LevelSolver (const LevelSolver&) = delete;

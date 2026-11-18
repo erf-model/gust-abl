@@ -1,6 +1,7 @@
 #include "Nests.H"
 
 #include "Forcing.H"
+#include "NestInject.H"
 #include "NestParent.H"
 #include "NestRelax.H"
 #include "SurfaceLayer.H"
@@ -43,7 +44,7 @@ std::string num (double x)
 
 const char* nest_feedback_name (NestFeedback f)
 {
-    return f == NestFeedback::defect ? "defect" : f == NestFeedback::relax ? "relax" : "none";
+    return f == NestFeedback::defect ? "defect" : f == NestFeedback::relax ? "relax" : f == NestFeedback::inject ? "inject" : "none";
 }
 
 NestOptions read_nest_options ()
@@ -55,14 +56,16 @@ NestOptions read_nest_options ()
     pp.queryarr("names", names);
     if (pp.countname("feedback") > 1) { opt.errors.emplace_back("nest.feedback is given more than once"); }
     std::string fb = "none";
-    if (pp.countval("feedback") > 1) { opt.errors.emplace_back("nest.feedback takes one value: none, defect or relax"); }
+    if (pp.countval("feedback") > 1) { opt.errors.emplace_back("nest.feedback takes one value: none, defect, relax or inject"); }
     pp.query("feedback", fb);
     if (fb == "defect") {
         opt.feedback = NestFeedback::defect;
     } else if (fb == "relax") {
         opt.feedback = NestFeedback::relax;
+    } else if (fb == "inject") {
+        opt.feedback = NestFeedback::inject;
     } else if (fb != "none") {
-        opt.errors.emplace_back("nest.feedback = '" + fb + "' is not none, defect or relax");
+        opt.errors.emplace_back("nest.feedback = '" + fb + "' is not none, defect, relax or inject");
     }
     if (pp.contains("feedback") && names.empty()) {
         opt.errors.emplace_back("nest.feedback = " + fb + " needs nest.names");
@@ -73,12 +76,15 @@ NestOptions read_nest_options ()
             opt.errors.emplace_back("nest.feedback_factor takes one value");
         } else {
             pp.get("feedback_factor", opt.feedback_factor);
-            const std::string e = check_feedback_factor(opt.feedback_factor);
+            const std::string e = opt.feedback == NestFeedback::inject ? check_inject_factor(opt.feedback_factor)
+                                                                       : check_feedback_factor(opt.feedback_factor);
             if (!e.empty()) { opt.errors.push_back(e); }
         }
-        if (opt.feedback != NestFeedback::relax) {
-            opt.errors.emplace_back("nest.feedback_factor has no effect without nest.feedback = relax");
+        if (opt.feedback != NestFeedback::relax && opt.feedback != NestFeedback::inject) {
+            opt.errors.emplace_back("nest.feedback_factor has no effect without nest.feedback = relax or inject");
         }
+    } else if (opt.feedback == NestFeedback::inject) {
+        opt.feedback_factor = kInjectFactorDefault;
     }
     if (pp.countname("feedback_flux") > 1) { opt.errors.emplace_back("nest.feedback_flux is given more than once"); }
     if (pp.contains("feedback_flux")) {

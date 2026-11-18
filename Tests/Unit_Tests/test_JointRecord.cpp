@@ -48,28 +48,31 @@ bool on_all_ranks (bool ok)
 
 TEST(JointRecord, RoundTripIsExactOnEveryRank)
 {
-    const ScopedDir d("ut_joint_record");
-    gust::JointRecord w;
-    w.feedback = "relax";
-    w.exchanges = 150;
-    // Not short decimals: a record printed with fewer digits than a hex float would not restore the floors exactly.
-    w.outer_cfl_floor = amrex::Real(1.0) / amrex::Real(3.0);
-    w.nests = {{"crest", amrex::Real(0.1), "outer_chk_crest00271"},
-               {"lee", amrex::Real(0), "runs/a b/outer_chk_lee00012"}};   // 0: no floor; a path with a space
-    // The stop test's window: values a short decimal would round, and a 0.
-    w.window = {amrex::Real(1.0) / amrex::Real(7.0), amrex::Real(0), amrex::Real(2.0e-9) / amrex::Real(3.0)};
-    gust::write_joint_record(d.name, w);
+    // Each joint feedback (nest.feedback = defect, relax, inject).
+    for (const char* fb : {"defect", "relax", "inject"}) {
+        const ScopedDir d(std::string("ut_joint_record_") + fb);
+        gust::JointRecord w;
+        w.feedback = fb;
+        w.exchanges = 150;
+        // Not short decimals: a record printed with fewer digits than a hex float would not restore the floors exactly.
+        w.outer_cfl_floor = amrex::Real(1.0) / amrex::Real(3.0);
+        w.nests = {{"crest", amrex::Real(0.1), "outer_chk_crest00271"},
+                   {"lee", amrex::Real(0), "runs/a b/outer_chk_lee00012"}};   // 0: no floor; a path with a space
+        // The stop test's window: values a short decimal would round, and a 0.
+        w.window = {amrex::Real(1.0) / amrex::Real(7.0), amrex::Real(0), amrex::Real(2.0e-9) / amrex::Real(3.0)};
+        gust::write_joint_record(d.name, w);
 
-    gust::JointRecord r;
-    const bool found = gust::read_joint_record(d.name, r);
-    bool same = found && r.feedback == w.feedback && r.exchanges == w.exchanges
-                && r.outer_cfl_floor == w.outer_cfl_floor && r.nests.size() == w.nests.size();
-    for (std::size_t n = 0; same && n < w.nests.size(); ++n) {
-        same = r.nests[n].name == w.nests[n].name && r.nests[n].cfl_floor == w.nests[n].cfl_floor
-               && r.nests[n].chk == w.nests[n].chk;
+        gust::JointRecord r;
+        const bool found = gust::read_joint_record(d.name, r);
+        bool same = found && r.feedback == w.feedback && r.exchanges == w.exchanges
+                    && r.outer_cfl_floor == w.outer_cfl_floor && r.nests.size() == w.nests.size();
+        for (std::size_t n = 0; same && n < w.nests.size(); ++n) {
+            same = r.nests[n].name == w.nests[n].name && r.nests[n].cfl_floor == w.nests[n].cfl_floor
+                   && r.nests[n].chk == w.nests[n].chk;
+        }
+        same = same && r.has_feedback && r.window == w.window;
+        EXPECT_TRUE(on_all_ranks(same));
     }
-    same = same && r.has_feedback && r.window == w.window;
-    EXPECT_TRUE(on_all_ranks(same));
 }
 
 TEST(JointRecord, VersionOneReadsWithoutAWindow)
@@ -118,7 +121,7 @@ TEST(JointRecord, MalformedRecordsAbort)
         head2 + "window 1 inf\nnest a 0x0p+0 chk\n",                                      // not finite
         head2 + "window -1\nnest a 0x0p+0 chk\n",                                         // a negative count
         head2 + "windows 0\nnest a 0x0p+0 chk\n",                                         // not a window line
-        "GUST_JOINT 1\nfeedback inject\nexchanges 4\nouter 0x1p-2\nnest a 0x0p+0 chk\n",   // no such feedback
+        "GUST_JOINT 1\nfeedback none\nexchanges 4\nouter 0x1p-2\nnest a 0x0p+0 chk\n",     // not a joint feedback
         "GUST_JOINT 1\nfeedback defect\nexchanges 0\nouter 0x1p-2\nnest a 0x0p+0 chk\n",   // no exchange taken
         "GUST_JOINT 1\nfeedback defect\nexchanges 4\nouter -0x1p-2\nnest a 0x0p+0 chk\n",  // a negative floor
         "GUST_JOINT 1\nfeedback defect\nexchanges 4\nouter nan\nnest a 0x0p+0 chk\n",      // not finite

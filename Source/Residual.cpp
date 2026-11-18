@@ -7,6 +7,7 @@
 #include "CanopyHeat.H"
 #include "NestDefect.H"
 #include "NestRelax.H"
+#include "NestInject.H"
 #include "TimeTerm.H"
 
 #include "Diffusion.H"
@@ -370,6 +371,9 @@ void residual (const State& q, const ResidualInputs& in, const Mesh& mesh, const
     if (in.buildings != nullptr && in.building_rows) { in.buildings->apply_rows(q.u, q.v, q.w, R.u, R.v, R.w); }
     if (in.building_tke != nullptr) { in.building_tke->apply_rows(q.tke, R.tke, building_k_row(in)); }
     if (in.building_theta != nullptr) { in.building_theta->apply_rows(q.theta, R.theta); }
+    // The nests' injected points are data of this iteration, not unknowns: their rows are zero, after every
+    // other term and row (NestInject.H).
+    if (in.inject != nullptr) { in.inject->zero_rows(R); }
 
     // A face shared by two boxes (or a periodic image) gets one value: the two
     // copies can differ in the last bits where a compiler contracts

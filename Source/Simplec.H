@@ -142,11 +142,16 @@ struct PressureCorrectionResult
 //! div(u) = source (to the solver's tolerance). project_net_source: in the
 //! singular case the net source the solver removes is projected out instead
 //! of aborting (a Krylov vector's continuity part has one; the linearized
-//! continuity rows cannot carry it either).
+//! continuity rows cannot carry it either). inject (nest.feedback = inject,
+//! NestInject.H; null: none): the injected cells chi_s and their faces are
+//! held out of the solve (FaceCoeffs::held_fluid, held_open): their rows are
+//! phi = 0, their faces carry no correction, and the ring cells beside chi_s
+//! see the injected boundary-face fluxes as given (a Dirichlet boundary of
+//! the outer solve).
 PressureCorrectionResult pressure_correction (State& q, const PredictorFields& d, PoissonSolver& solver, const PoissonBC& bc,
                                               amrex::Real alpha_p, const Mesh& mesh, const amrex::Geometry& geom,
                                               SimplecWorkspace& w, const amrex::MultiFab* source = nullptr,
-                                              bool project_net_source = false);
+                                              bool project_net_source = false, const NestInject* inject = nullptr);
 
 struct ScalarSweepResult
 {
