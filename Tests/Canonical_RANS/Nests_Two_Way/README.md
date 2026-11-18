@@ -21,6 +21,7 @@ the 50 m outer cells miss a part of the flow the 25 m nest resolves.
 | `inputs_abort` | `inputs_outer` without `mesh.max_grid_size` and `steady.stage`, for the abort tests. |
 | `check_nests_two_way.py` | Runs the uniform 25 m reference (the deck with 64 x 48 x 16 cells) and the joint run, and compares them (below). |
 | `check_joint_restart.py` | Runs a joint run straight, the same run stopped after `--stop` exchanges, and its restart from the joint record, and compares them byte for byte (Joint restart, below). |
+| `relax_factor_sweep.py` | Runs `nest.feedback = relax` at six factors on four nests and tabulates the errors and exchanges (Choice of the relaxation factor, below). |
 
 The nest `hill` covers outer cells 8 to 24 in x and 6 to 18 in y (`nest.hill.lo = 400 300`,
 `nest.hill.hi = 1200 900`): 32 x 24 x 16 cells of 25 m. The second joint run has two nests that touch at
@@ -132,6 +133,91 @@ Measured on 2 ranks (RMS of u, m/s):
 The outer domain follows the nest about six times more closely than with relax, as the added term intends. Both
 domains are slightly further from the fine run than with relax at f = 1, and further at f = 4: the coupling loop
 described above is unchanged. The bounds on the errors apply at f = 1 only.
+
+## Choice of the relaxation factor (`relax_factor_sweep.py`)
+Tracker row N-114, item 13. In PR-71 (#116) the hill alone suggested a factor below 1. `relax_factor_sweep.py`
+runs `nest.feedback = relax` at `nest.feedback_factor` = 0.1, 0.25, 0.5, 0.75, 1 and 2 on four nests, each beside
+its one-way run (`nest.feedback = none`), its defect run and its uniform fine run:
+
+| case | layout | ranks |
+|---|---|---|
+| hill | this case, the nest `hill` | 2 |
+| lee | this case, the nest `crest` alone ending at x = 900 m, on the lee slope (`--feedback-flux`, above) | 2 |
+| gorge | `Tests/Real_Terrain/Columbia_Gorge`, the decks `prepare` writes | 4 |
+| askervein | `Tests/Real_Terrain/Askervein_Nest`, the `two_way` layout (20 m nest of half-width 1000 m) | 4 |
+
+Every run uses the recommended setting (`docs/turbulence_model.rst`): `turb.realizability = 0.309`,
+`turb.nut_relax = 0.5`, `turb.max_geom_lscale = 100`, `convection.hybrid_sigma_max = 0.1` and
+`convection.hybrid_height` = 2.5 terrain heights. The Gorge and Askervein decks set it already; the script adds it
+to the hill and lee runs, so their numbers differ from the tables above, which use the deck as it is. The nest is
+compared with the fine run at its own cell heights (`tools/speed_difference.py`), the outer domain outside the
+footprint with the fine run's 2 x 2 means.
+
+```bash
+python3 relax_factor_sweep.py run --gust <build>/gust --work <dir>
+python3 relax_factor_sweep.py report --work <dir> --plot relax_factor_sweep.png
+```
+`run` takes `--cases` and `--factors` to run a part, and `--keep` to skip runs that have their verdict. `report`
+prints the table below and writes it to `<dir>/relax_factor_sweep.md` and `.csv`.
+
+Measured on macOS arm64 (AppleClang, double precision). Every run reached the steady verdict. RMS against the fine
+run (m/s; k in m^2/s^2); in brackets, u over the one-way run's u:
+
+| case | run | exchanges | nest u | nest v | nest w | nest k | outer u | outer v | outer w | outer k |
+|---|---|---|---|---|---|---|---|---|---|---|
+| hill | one way |  | 7.46e-03 | 5.13e-03 | 2.97e-03 | 9.94e-04 | 0.0131 | 5.31e-03 | 2.45e-03 | 4.09e-03 |
+| hill | defect | 195 | 2.24e-03 (0.30) | 1.60e-03 | 7.68e-04 | 6.47e-04 | 4.11e-03 (0.31) | 2.44e-03 | 1.56e-03 | 2.17e-03 |
+| hill | relax, f = 0.1 | 139 | 3.47e-03 (0.47) | 2.72e-03 | 1.27e-03 | 7.12e-04 | 7.18e-03 (0.55) | 3.53e-03 | 2.00e-03 | 3.15e-03 |
+| hill | relax, f = 0.25 | 138 | 2.19e-03 (0.29) | 1.83e-03 | 7.89e-04 | 6.35e-04 | 4.86e-03 (0.37) | 2.80e-03 | 1.83e-03 | 2.58e-03 |
+| hill | **relax, f = 0.5** | 146 | 2.58e-03 (0.35) | 1.75e-03 | 8.53e-04 | 6.46e-04 | 4.20e-03 (0.32) | 2.50e-03 | 1.70e-03 | 2.26e-03 |
+| hill | relax, f = 0.75 | 147 | 3.18e-03 (0.43) | 1.96e-03 | 9.42e-04 | 6.76e-04 | 4.20e-03 (0.32) | 2.46e-03 | 1.61e-03 | 2.13e-03 |
+| hill | relax, f = 1 | 151 | 3.79e-03 (0.51) | 2.25e-03 | 1.04e-03 | 7.12e-04 | 4.40e-03 (0.34) | 2.52e-03 | 1.57e-03 | 2.07e-03 |
+| hill | relax, f = 2 | 160 | 6.14e-03 (0.82) | 3.53e-03 | 1.49e-03 | 8.91e-04 | 5.86e-03 (0.45) | 3.09e-03 | 1.61e-03 | 2.00e-03 |
+| lee | one way |  | 6.66e-03 | 3.91e-03 | 3.67e-03 | 1.16e-03 | 0.0152 | 6.64e-03 | 3.54e-03 | 6.03e-03 |
+| lee | defect | 204 | 0.023 (3.46) | 0.0144 | 0.0155 | 5.44e-03 | 0.0448 (2.95) | 0.0115 | 6.52e-03 | 0.0101 |
+| lee | relax, f = 0.1 | 131 | 6.12e-03 (0.92) | 3.59e-03 | 3.55e-03 | 1.12e-03 | 0.0127 (0.84) | 6.17e-03 | 3.23e-03 | 6.02e-03 |
+| lee | relax, f = 0.25 | 137 | 5.71e-03 (0.86) | 3.35e-03 | 3.62e-03 | 1.09e-03 | 0.0105 (0.69) | 5.82e-03 | 3.12e-03 | 6.05e-03 |
+| lee | **relax, f = 0.5** | 145 | 5.85e-03 (0.88) | 3.49e-03 | 4.15e-03 | 1.21e-03 | 9.83e-03 (0.65) | 5.64e-03 | 3.26e-03 | 6.13e-03 |
+| lee | relax, f = 0.75 | 148 | 6.37e-03 (0.96) | 3.83e-03 | 4.75e-03 | 1.38e-03 | 0.0108 (0.71) | 5.62e-03 | 3.53e-03 | 6.20e-03 |
+| lee | relax, f = 1 | 148 | 6.91e-03 (1.04) | 4.16e-03 | 5.23e-03 | 1.52e-03 | 0.0119 (0.79) | 5.64e-03 | 3.84e-03 | 6.25e-03 |
+| lee | relax, f = 2 | 151 | 8.25e-03 (1.24) | 4.95e-03 | 6.22e-03 | 1.79e-03 | 0.0148 (0.98) | 5.85e-03 | 4.88e-03 | 6.30e-03 |
+| gorge | one way |  | 0.122 | 0.0331 | 0.0212 | 0.0278 | 0.102 | 0.0336 | 0.0256 | 0.0362 |
+| gorge | defect | 279 | 0.12 (0.98) | 0.0301 | 0.018 | 0.0308 | 0.0877 (0.86) | 0.031 | 0.0248 | 0.0297 |
+| gorge | relax, f = 0.1 | 212 | 0.121 (0.99) | 0.0291 | 0.0186 | 0.031 | 0.0909 (0.90) | 0.0323 | 0.0244 | 0.0317 |
+| gorge | relax, f = 0.25 | 163 | 0.121 (0.99) | 0.029 | 0.0185 | 0.0311 | 0.0893 (0.88) | 0.0318 | 0.0243 | 0.0306 |
+| gorge | **relax, f = 0.5** | 176 | 0.121 (0.99) | 0.029 | 0.0186 | 0.0314 | 0.0883 (0.87) | 0.0314 | 0.0244 | 0.0301 |
+| gorge | relax, f = 0.75 | 175 | 0.122 (1.00) | 0.0293 | 0.0189 | 0.0316 | 0.0881 (0.87) | 0.0313 | 0.0245 | 0.03 |
+| gorge | relax, f = 1 | 184 | 0.123 (1.01) | 0.0296 | 0.0191 | 0.0317 | 0.0882 (0.87) | 0.0313 | 0.0247 | 0.0299 |
+| gorge | relax, f = 2 | 242 | 0.127 (1.04) | 0.0314 | 0.0204 | 0.0323 | 0.09 (0.89) | 0.0316 | 0.0256 | 0.0302 |
+| askervein | one way |  | 3.37e-03 | 5.68e-03 | 2.87e-03 | 1.56e-03 | 4.62e-03 | 9.37e-03 | 2.57e-03 | 3.73e-03 |
+| askervein | defect | 156 | 3.37e-03 (1.00) | 6.03e-03 | 1.48e-03 | 2.76e-03 | 3.21e-03 (0.69) | 6.93e-03 | 2.51e-03 | 3.12e-03 |
+| askervein | relax, f = 0.1 | 87 | 2.81e-03 (0.83) | 4.74e-03 | 1.28e-03 | 2.61e-03 | 3.16e-03 (0.68) | 6.72e-03 | 2.44e-03 | 3.14e-03 |
+| askervein | relax, f = 0.25 | 113 | 2.85e-03 (0.85) | 4.77e-03 | 1.26e-03 | 2.61e-03 | 3.17e-03 (0.69) | 6.71e-03 | 2.44e-03 | 3.10e-03 |
+| askervein | **relax, f = 0.5** | 143 | 3.04e-03 (0.90) | 5.15e-03 | 1.34e-03 | 2.63e-03 | 3.32e-03 (0.72) | 6.91e-03 | 2.46e-03 | 3.10e-03 |
+| askervein | relax, f = 0.75 | 168 | 3.27e-03 (0.97) | 5.69e-03 | 1.44e-03 | 2.65e-03 | 3.52e-03 (0.76) | 7.20e-03 | 2.48e-03 | 3.13e-03 |
+| askervein | relax, f = 1 | 191 | 3.53e-03 (1.05) | 6.33e-03 | 1.54e-03 | 2.67e-03 | 3.75e-03 (0.81) | 7.56e-03 | 2.50e-03 | 3.16e-03 |
+| askervein | relax, f = 2 | 272 | 4.69e-03 (1.39) | 9.30e-03 | 1.96e-03 | 2.79e-03 | 4.96e-03 (1.07) | 9.52e-03 | 2.60e-03 | 3.34e-03 |
+
+The Gorge runs at f = 1 and with `defect`, and the Askervein runs at f = 1 and with `defect`, reproduce the
+exchanges and errors of their case READMEs.
+
+**What the sweep shows.**
+- f = 0.5 against f = 1: fewer exchanges on all four cases (146 against 151, 145 against 148, 176 against 184, 143
+  against 191). u over the nest is lower on all four (by 32, 15, 1 and 14 %); u over the outer domain outside the
+  footprint is lower on three and equal on the Gorge (0.0883 against 0.0882).
+- Not every field improves. On the hill, the outer domain's w and k outside the footprint are 8 and 9 % higher at
+  f = 0.5 than at 1 (1.70e-3 against 1.57e-3, 2.26e-3 against 2.07e-3). On the Gorge, k over the outer domain is
+  under 1 % higher.
+- f = 0.25 is closer still on the lee layout and on Askervein, but on the hill the outer u error is 0.37 of one way
+  (0.32 at f = 0.5). At f = 0.1 the hill's errors grow again (0.47 and 0.55 of one way) and the Gorge takes 212
+  exchanges.
+- Above f = 1 every case moves away from the fine run, and the Gorge and Askervein need 242 and 272 exchanges.
+- Relax at f = 0.5 against `defect`, u: closer on the lee layout (where `defect` is 3 times one way); on Askervein
+  closer over the nest (3.04e-3 against 3.37e-3) and further outside it (3.32e-3 against 3.21e-3); further on the
+  hill; within 2 % on the Gorge.
+
+On these four cases the table supports 0.5 over 1 as the default of `nest.feedback_factor` with relax. The relaxation's target has no nest pressure gradient (above); a target that carries one
+could move the best factor.
 
 ## Conservative faces (`--feedback-flux`)
 `check_nests_two_way.py --feedback-flux` (CTest `rt_nests_feedback_flux`, tracker N-114 item 1) runs the reference
