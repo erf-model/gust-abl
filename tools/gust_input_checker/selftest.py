@@ -481,6 +481,11 @@ CASES = [
      ["E turb.nut_relax_end turbulence"], []),
     ("nut_relax_end_ok", "solve", "turb.nut_relax = 0.5\nturb.nut_relax_end = 0.01\n", [],
      ["E turb.nut_relax_end"]),
+    ("shear_stencil_value", "solve", "turb.shear_stencil = foo\n", ["E turb.shear_stencil"], []),
+    ("shear_stencil_tucker", "solve", "turb.shear_stencil = log_law\nturb.wall_distance = tucker\n",
+     ["E turb.shear_stencil turbulence"], []),
+    ("shear_stencil_central", "solve", "turb.shear_stencil = central\nturb.wall_distance = tucker\n", [],
+     ["E turb.shear_stencil"]),
     # --- convection ---------------------------------------------------------------------------------------
     ("convection_blend_no_height", "solve", "turb.realizability = 0.309\nconvection.hybrid_sigma_max = 0.1\n",
      ["E convection.hybrid_height convection"], []),

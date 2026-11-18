@@ -178,6 +178,7 @@ turb.ri_gate real 1 0|>=1e-6&<=1
 turb.realizability real 1 0|>=0.01&<=10
 turb.face_mean arithmetic,logarithmic 1
 turb.wall_distance terrain_height,tucker 1
+turb.shear_stencil central,log_law 1
 convection.limiter van_leer,van_albada,upwind 1
 convection.smooth_eps_velocity real 1 >0
 convection.smooth_eps_theta real 1 >0

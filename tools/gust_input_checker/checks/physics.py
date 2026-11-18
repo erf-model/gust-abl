@@ -18,6 +18,8 @@ ERROR:
   turb.Rt_min not below turb.Rt_crit; the k-L keys and the options that need
   the closure with turb.closure = none; turb.frozen_switch without
   steady.stage = simplec_newton; turb.nut_relax_end with turb.nut_relax = 1 or with steady.stage = unsteady;
+  turb.shear_stencil = log_law (Source/Sequencing.cpp) without bc.zlo = surface_layer, with
+  turb.wall_distance = tucker or with buildings;
 - convection.* (Source/Convection.cpp, Source/App.cpp): every key without a
   stage; the blend's keys without convection.hybrid_sigma_max > 0; the blend
   without convection.hybrid_height, with the upwind limiter, with the Newton
@@ -272,7 +274,23 @@ class TurbulenceChecker(Checker):
             if c.unsteady and c.r("turb.nut_relax_end"):
                 self.error("turb.nut_relax_end", "GUST stops: turb.nut_relax_end is not supported with steady.stage = "
                                                  "unsteady.", "Remove turb.nut_relax_end.")
+            self._log_shear()
             self._lee()
+
+    def _log_shear(self):
+        c = self.ctx
+        if c.s("turb.shear_stencil") != "log_law":
+            return
+        stops = "GUST stops: turb.shear_stencil = log_law "
+        if c.buildings:
+            self.error("turb.shear_stencil", stops + "does not support buildings.",
+                       "Use turb.shear_stencil = central with buildings.")
+        if not c.surface_layer:
+            self.error("turb.shear_stencil", stops + "needs bc.zlo = surface_layer (the ground's roughness length).",
+                       "Use bc.zlo = surface_layer, or turb.shear_stencil = central.")
+        if c.s("turb.wall_distance") == "tucker":
+            self.error("turb.shear_stencil", stops + "needs turb.wall_distance = terrain_height.",
+                       "Use turb.wall_distance = terrain_height, or turb.shear_stencil = central.")
 
     def _laminar(self):
         c = self.ctx
