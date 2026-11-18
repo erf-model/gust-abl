@@ -108,6 +108,34 @@ it, follows. The exchanges grow with f for the same reason: the flow rate throug
 (the nest returns the flow rate it is given, the relaxation imposes it) whose gain tends to 1. The bounds on the
 errors therefore apply at f = 1 only.
 
+## Conservative faces (`--feedback-flux`)
+`check_nests_two_way.py --feedback-flux` (CTest `rt_nests_feedback_flux`, tracker N-114 item 1) runs the reference
+and three joint runs with `nest.feedback = defect`: the nest `crest` ending at x = 900 m, on the lee slope, with
+`nest.feedback_flux = outer` (`flux_outer/`, the defect source alone) and `= nest` (`flux_nest/`), and the nest
+`hill` with `= nest` (`flux_hill/`; `docs/boundary_conditions.rst`, Conservative faces). It requires:
+1. every run exits 0; the line `nest.feedback_flux = nest: ... first max |correction|` is in the two `nest`
+   logs, and their joint lines end with the ring's largest correction (`; ring max |C| u ...`); the `outer` log
+   has neither;
+2. on the crest nest, against the 25 m run, the RMS of u with `outer` at least 2.0 times the one-way one over the
+   nest; with `nest` at most 1.6 times over the nest and 1.25 times over the outer cells outside it, and at most 0.6
+   of the `outer` run's on both;
+3. on the hill, with `nest`, at most 1.6 and 1.25 times the one-way one.
+
+Measured on 2 ranks, the deck as it is (RMS against the 25 m run, m/s; in brackets the joint over the one-way
+value). The row "hill, outer" is the joint run of `rt_nests_two_way` (above), not a run of this script:
+
+| nest | `feedback_flux` | exchanges | nest u | nest w | nest k | outer u outside |
+|---|---|---|---|---|---|---|
+| crest to 900 m | outer | 206 | 2.37e-2 (3.31) | 1.62e-2 (4.02) | 5.41e-3 (4.47) | 4.55e-2 (2.74) |
+| crest to 900 m | **nest** | 207 | **8.74e-3 (1.22)** | 6.95e-3 (1.73) | 2.15e-3 (1.78) | **1.60e-2 (0.96)** |
+| hill | outer | 208 | 2.03e-3 (0.25) | 7.64e-4 (0.24) | 5.61e-4 (0.49) | 4.89e-3 (0.34) |
+| hill | nest | 209 | 2.10e-3 (0.26) | 6.32e-4 (0.20) | 5.60e-4 (0.49) | 4.76e-3 (0.33) |
+
+On the crest nest the faces cut the flow where it turns down the lee slope, and the defect source alone leaves the
+joint run 3.3 times worse in u than one way. The conservative faces bring u to 1.2 times one way on the nest and
+below it outside; w and k stay 1.7 to 1.8 times worse. On the hill, whose faces lie where the flow is level, u is
+3 % worse and w 17 % better. The other layouts of `docs/boundary_conditions.rst` are not in the test.
+
 ## Joint restart (`check_joint_restart.py`)
 A joint run that stops after `steady.max_iterations` exchanges writes a joint record (`Joint`) in the outer
 domain's last checkpoint and names that checkpoint in its error message (`docs/boundary_conditions.rst`, Two-way
@@ -149,3 +177,7 @@ two of them set on the command line (a key given twice stops the run).
 run. `abort_nests_feedback_factor`, `_factor_nan`, `_factor_unused` and `_relax_damping` check that
 `nest.feedback_factor = 0`, `nan`, a factor with `nest.feedback = defect`, and `relax` with a Rayleigh layer on u, v
 and k stop the run and name the key.
+
+`rt_nests_feedback_flux` (2 ranks, label `regression`; above): about 1.5 minutes on an Apple M-series laptop.
+`abort_nests_feedback_flux_value` and `_unused` check that `nest.feedback_flux = fine` and `nest` without
+`nest.feedback = defect` stop the run and name the key.

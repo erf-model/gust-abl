@@ -349,6 +349,13 @@ CASES = [
     ("nests_relax_factor_with_defect", "inflow", "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 1200 900\n"
      "nest.feedback = defect\nnest.feedback_factor = 2\n", ["E nest.feedback_factor nests"], []),
     ("nests_named_feedback_factor", "inflow", "nest.names = feedback_factor\n", ["E nest.names nests"], []),
+    ("nests_named_feedback_flux", "inflow", "nest.names = feedback_flux\n", ["E nest.names nests"], []),
+    ("nests_feedback_flux_ok", "inflow", "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 1200 900\n"
+     "nest.feedback = defect\nnest.feedback_flux = nest\n", [], ["E *"]),
+    ("nests_feedback_flux_value", "inflow", "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 1200 900\n"
+     "nest.feedback = defect\nnest.feedback_flux = fine\n", ["E nest.feedback_flux values"], []),
+    ("nests_feedback_flux_with_relax", "inflow", "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 1200 900\n"
+     "nest.feedback = relax\nnest.feedback_flux = nest\n", ["E nest.feedback_flux nests"], []),
     # A joint restart (io.restart with nest.feedback): the checkpoint's joint record is read as the run reads it; a
     # checkpoint without one restarts the outer domain alone. (init.first_guess of the base is reported on io.restart.)
     ("nests_joint_restart_ok", "inflow", NEST_A + "nest.feedback = defect\nio.restart = chk00010\n"

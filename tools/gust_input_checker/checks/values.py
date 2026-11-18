@@ -262,6 +262,7 @@ io.restart str 1
 nest.names str 1+
 nest.feedback none,defect,relax 1
 nest.feedback_factor real 1 >0
+nest.feedback_flux outer,nest 1
 nest.<name>.lo real 2
 nest.<name>.hi real 2
 """

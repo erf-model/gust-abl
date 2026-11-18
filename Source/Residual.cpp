@@ -247,11 +247,13 @@ void residual (const State& q, const ResidualInputs& in, const Mesh& mesh, const
     for (int c = 0; c < 3; ++c) {
         auto& Gc = w.Gc[static_cast<int>(velocity_loc(c))];
         convection(velocity_loc(c), *vel[c], Fp, in.momentum, mesh, geom, *Rm[c], Gc);
+        if (in.flux_probe != nullptr) { in.flux_probe->take(c, FluxPart::convective, Gc, nullptr); }
         if (tmp[c].empty()) { tmp[c].define(Rm[c]->boxArray(), Rm[c]->DistributionMap(), 1, 0); }
         if (in.hybrid_sigma != nullptr) {
             ConvectionOptions up = in.momentum;
             up.limiter = Limiter::upwind;
             convection(velocity_loc(c), *vel[c], Fp, up, mesh, geom, tmp[c], Gc);
+            if (in.flux_probe != nullptr) { in.flux_probe->take(c, FluxPart::convective_upwind, Gc, in.hybrid_sigma); }
             blend_towards_upwind(static_cast<int>(velocity_loc(c)), *in.hybrid_sigma, tmp[c], *Rm[c]);
         }
     }
@@ -288,6 +290,11 @@ void residual (const State& q, const ResidualInputs& in, const Mesh& mesh, const
         if (in.buildings == nullptr) { amrex::Abort("gust: residual: the buildings' theta terms (building_theta) need their wall law (buildings)"); }
         in.building_theta->close_fluxes({&mesh.open_fraction(0), &mesh.open_fraction(1), &mesh.open_fraction(2)}, Gt);
     }
+    if (in.flux_probe != nullptr) {
+        for (int c = 0; c < 3; ++c) { in.flux_probe->take(c, FluxPart::diffusive, Gm[c], nullptr); }
+        in.flux_probe->take(3, FluxPart::diffusive, Gt, nullptr);
+        in.flux_probe->take(4, FluxPart::diffusive, Gk, nullptr);
+    }
     for (int c = 0; c < 3; ++c) {
         flux_divergence(velocity_loc(c), Gm[c], mesh, geom, tmp[c]);
         amrex::MultiFab::Subtract(*Rm[c], tmp[c], 0, 0, 1, 0);
@@ -309,10 +316,12 @@ void residual (const State& q, const ResidualInputs& in, const Mesh& mesh, const
     if (d.empty()) { d.define(q.p.boxArray(), q.p.DistributionMap(), 1, 0); }
     auto& Gcc = w.Gc[static_cast<int>(Loc::cell)];
     convection(Loc::cell, q.theta, Fp, in.theta, mesh, geom, R.theta, Gcc);
+    if (in.flux_probe != nullptr) { in.flux_probe->take(3, FluxPart::convective, Gcc, nullptr); }
     if (in.hybrid_sigma != nullptr) {
         ConvectionOptions up = in.theta;
         up.limiter = Limiter::upwind;
         convection(Loc::cell, q.theta, Fp, up, mesh, geom, d, Gcc);
+        if (in.flux_probe != nullptr) { in.flux_probe->take(3, FluxPart::convective_upwind, Gcc, in.hybrid_sigma); }
         blend_towards_upwind(0, *in.hybrid_sigma, d, R.theta);
     }
     flux_divergence(Loc::cell, Gt, mesh, geom, d);
@@ -321,6 +330,7 @@ void residual (const State& q, const ResidualInputs& in, const Mesh& mesh, const
     kopt.limiter = Limiter::upwind;
     kopt.bounded = true;
     convection(Loc::cell, q.tke, Fp, kopt, mesh, geom, R.tke, Gcc);
+    if (in.flux_probe != nullptr) { in.flux_probe->take(4, FluxPart::convective, Gcc, nullptr); }
     flux_divergence(Loc::cell, Gk, mesh, geom, d);
     amrex::MultiFab::Subtract(R.tke, d, 0, 0, 1, 0);
     if (in.closure != nullptr) {

@@ -18,6 +18,7 @@
 #include "Initializer.H"
 #include "NestBuildings.H"
 #include "NestDefect.H"
+#include "NestFaceFlux.H"
 #include "NestRelax.H"
 #include "NestFaces.H"
 #include "NestParent.H"
@@ -807,11 +808,16 @@ std::string run_domain (const DomainRole& role)
         std::unique_ptr<NestDefect> defect;
         // nest.feedback = relax: the outer domain's relaxation towards its nests (NestRelax.H) in its place.
         std::unique_ptr<NestRelax> relax;
+        // nest.feedback_flux = nest: the nests' face fluxes on the rows just outside the source (NestFaceFlux.H).
+        std::unique_ptr<NestFaceFlux> face_flux;
         if (role.joint && nest == nullptr) {
             if (role.nests->feedback == NestFeedback::relax) {
                 relax = std::make_unique<NestRelax>(ba, dm, geom, role.nests->feedback_factor);
             } else {
                 defect = std::make_unique<NestDefect>(ba, dm);
+                if (role.nests->feedback_flux == NestFeedbackFlux::nest) {
+                    face_flux = std::make_unique<NestFaceFlux>(ba, dm, mesh, geom);
+                }
             }
         }
         LevelSolver level0(setup, mesh, geom, state.z_phys_nd, ba, dm, "", newton, nullptr,
@@ -1162,6 +1168,15 @@ std::string run_domain (const DomainRole& role)
                     m.feedback_floor = {js.velocity, js.velocity, js.velocity, js.theta, js.tke};
                 }
             }
+            if (face_flux) { m.face_flux = face_flux.get(); }
+            m.probed_residual = [&] (const State& q, ResidualFields& R, FluxProbe* probe) {
+                ResidualInputs fin = res_in;
+                fin.defect = nullptr;
+                fin.relax = nullptr;
+                fin.flux_probe = probe;
+                if (!simplec_stage.hybrid_sigma().empty()) { fin.hybrid_sigma = &simplec_stage.hybrid_sigma(); }
+                residual(q, fin, mesh, geom, R);
+            };
             if (nest != nullptr) {
                 m.parent = parent.get();
                 m.faces = nest_faces.get();

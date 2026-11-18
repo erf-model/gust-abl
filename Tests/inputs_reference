@@ -1029,11 +1029,11 @@
 # stays at the outer domain's centre, and the forcing is the outer run's final forcing.
 #
 # nest.names =    # none
-#     Names of the nests, each once: a letter, then letters, digits or _; not names, feedback or feedback_factor.
-#     With nests the outer deck needs steady.stage = simplec or simplec_newton and io.write_checkpoint = 1;
-#     buildings and simplec.theta = frozen are refused, and so is terrain.smoothing = 1 over terrain other than
-#     flat. The nests run only if the outer domain reaches steady; GUST stops with an error after the nests if one
-#     did not (with nest.feedback = defect or relax, after the joint run).
+#     Names of the nests, each once: a letter, then letters, digits or _; not names, feedback, feedback_factor or
+#     feedback_flux. With nests the outer deck needs steady.stage = simplec or simplec_newton and
+#     io.write_checkpoint = 1; buildings and simplec.theta = frozen are refused, and so is terrain.smoothing = 1
+#     over terrain other than flat. The nests run only if the outer domain reaches steady; GUST stops with an error
+#     after the nests if one did not (with nest.feedback = defect or relax, after the joint run).
 #
 # nest.<name>.lo =    # required
 #     Two finite values x y (m): the nest's low corner, on the outer cell faces, at least 2 outer cells inside each
@@ -1067,6 +1067,13 @@
 #     docs/boundary_conditions.rst). Given only with nest.feedback = relax, once. A larger factor holds the outer
 #     domain closer to the nest under it, but does not by itself bring either domain closer to a fine run
 #     (two-way-relax, docs/boundary_conditions.rst, Results).
+#
+# nest.feedback_flux = outer
+#     outer or nest. outer: the outer row just outside each nest's source region keeps the outer scheme's flux of
+#     the restricted nest state through the region's lateral faces. nest: that row takes the nests' own fluxes
+#     through those faces, summed over the nest faces (the conservative variant, Conservative faces,
+#     docs/boundary_conditions.rst); it costs one more nest residual per exchange. Given only with nest.feedback =
+#     defect, once.
 
 # ==================================================================================================================
 # refavg (reference-averaging tool)
