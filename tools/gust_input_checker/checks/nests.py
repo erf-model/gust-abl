@@ -59,13 +59,21 @@ def _floor(text):
     return v if math.isfinite(v) and v >= 0 else None
 
 
+JOINT_VERSION = 2   # Source/JointRecord.cpp kJointVersion; version 1 (no window line) still reads
+
+
 def read_joint_record(text):
     """(exchanges, [(name, chk), ...]) from a Joint file, or the reason it cannot be read, as Source/JointRecord.cpp
-    reads it: whitespace-separated head, then one nest per line, the checkpoint the rest of the line."""
+    reads it: whitespace-separated head, in version 2 a window line (its count, then that many changes), then one
+    nest per line, the checkpoint the rest of the line."""
     lines = [ln for ln in text.split("\n") if ln.strip()]
     head = " ".join(lines[:4]).split()
-    if head[:2] != ["GUST_JOINT", "1"]:
-        return "expected GUST_JOINT 1"
+    try:
+        version = int(head[1]) if len(head) >= 2 and head[0] == "GUST_JOINT" else 0
+    except ValueError:
+        version = 0
+    if not 1 <= version <= JOINT_VERSION:
+        return "expected GUST_JOINT 1 or %d" % JOINT_VERSION
     if len(head) < 4 or head[2] != "feedback" or head[3] not in ("defect", "relax"):
         return "the feedback line"
     try:
@@ -76,8 +84,18 @@ def read_joint_record(text):
         return "the exchanges line"
     if len(head) != 8 or head[6] != "outer" or _floor(head[7]) is None:
         return "the outer line"
+    first_nest = 4
+    if version >= 2:
+        win = lines[4].split() if len(lines) > 4 else []
+        try:
+            m = int(win[1]) if len(win) >= 2 and win[0] == "window" else -1
+        except ValueError:
+            m = -1
+        if not 0 <= m <= 1000000 or len(win) != m + 2 or any(_floor(d) is None for d in win[2:]):
+            return "the window line"
+        first_nest = 5
     nests = []
-    for ln in lines[4:]:
+    for ln in lines[first_nest:]:
         parts = ln.split(None, 3)
         if len(parts) < 3 or parts[0] != "nest" or _floor(parts[2]) is None:
             return "a nest line"
