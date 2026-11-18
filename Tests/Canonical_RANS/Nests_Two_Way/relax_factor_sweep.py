@@ -193,6 +193,10 @@ def measure(work, cases, factors):
         if ref is None:
             print(f"relax_factor_sweep: {c}: no reference plotfile; skipped")
             continue
+        vref = verdict(os.path.join(run_dir(work, s["ref"]), "ref.log"))
+        if not vref or vref[0] != "steady":   # a kept reference that did not reach steady is no reference
+            print(f"relax_factor_sweep: {c}: the reference is not steady ({vref}); skipped")
+            continue
         R = rd(ref)
         i0, j0, ni, nj = s["foot"]
         sl = (slice(2 * i0, 2 * (i0 + ni)), slice(2 * j0, 2 * (j0 + nj)))
@@ -279,7 +283,8 @@ def plot(rows, cases, path):
             ax[0].axhline(jt["exchanges"], color=col, ls=":", lw=1)
         for k, axis in (("nest_u", ax[1]), ("outer_u", ax[2])):
             if ow.get(k):
-                axis.plot(f, [r[k] / ow[k] for r in rx], "o-", color=col, label=c)
+                got = [r for r in rx if r.get(k) is not None]   # a steady run without its plotfiles has no error
+                axis.plot([r["factor"] for r in got], [r[k] / ow[k] for r in got], "o-", color=col, label=c)
                 if jt.get(k):
                     axis.axhline(jt[k] / ow[k], color=col, ls=":", lw=1)
     titles = ("Exchanges to steady (dotted: defect)", "Nest u RMS / one way (dotted: defect)",
