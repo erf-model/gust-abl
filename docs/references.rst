@@ -8,7 +8,8 @@ beat.
 
 .. note::
 
-   The reference runs need NLR's Kestrel and have not been run yet. Everything that can be tested without Kestrel
+   The archived reference runs need NLR's Kestrel and have not been run yet. One ERF run of Askervein was made
+   locally (:doc:`results`, Comparison with ERF). Everything that can be tested without Kestrel
    (the averaging, the archive format and its checks) is tested locally and in CI (:doc:`testing`).
 
 Pinned versions
@@ -26,7 +27,8 @@ Pinned versions
      - Role
    * - ERF
      - ``92410d57``
-     - Reference solutions; source of the files in ``extern_erf/``.
+     - Reference solutions; source of the files in ``extern_erf/`` (``extern_erf/EXTRACTED.md`` gives each file's
+       commit; the two canopy turbulence headers come from ``0a0230e6``).
    * - AMReX
      - ``347a3a2d``
      - The ``external/amrex`` submodule. The CTest ``versions_check`` fails if the two differ.

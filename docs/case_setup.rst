@@ -222,7 +222,7 @@ derived facts of the run, and independent checkers, each reporting findings of f
 A command-line key the deck already holds is an ERROR, as in GUST: the decks this tool writes hold
 ``steady.max_iterations``, so change it in the YAML file instead. Files named in a deck are looked up from the current
 directory, as GUST does: run the checker from the folder GUST will run in (``run.sh`` runs each deck from its own
-folder)). ``FILE = name`` lines are read in place from that folder, as AMReX does; a file that cannot be
+folder). ``FILE = name`` lines are read in place from that folder, as AMReX does; a file that cannot be
 opened, or that includes itself, is an ERROR.
 
 .. list-table::
@@ -375,5 +375,11 @@ Limits
 
 - Lateral faces are inflow, outflow, slip or periodic; one wind direction per run folder.
 - The tool writes the column first guess for the geostrophic drives only; the other drives start from the profile.
-- Nested patches are one level deep (a patch inside the parent, not inside another patch) and one-way.
+- Nested patches are one level deep (a patch inside the parent, not inside another patch) and one-way: each
+  patch is its own deck with ``nest`` faces. The tool does not write the nests of one run (``nest.names``) or a
+  two-way option (``nest.feedback``).
+- The tool writes steady decks (``steady.stage = simplec``). For the Newton stage or an unsteady run, change the
+  stage through ``gust_inputs`` and set ``model.lee_setting: none``, since both stages refuse the upwind blend of
+  the recommended setting; an unsteady deck also needs the ``unsteady.*`` keys and no steady-stop keys
+  (:doc:`howto`). ``tools/check_gust_inputs.py`` checks decks of every stage and with nests.
 - A terrain file must cover the domain and its margin; the tool refuses one with gaps rather than filling them.

@@ -6,12 +6,12 @@ Conventions
 
 - **Unit tests** use GoogleTest; each is named ``Suite.Test``. They are deterministic, finish in seconds on
   1–4 ranks, and run on every commit: ``ctest -L unit``.
-- **Regression tests** run the application and compare with stored gold plotfiles using
-  ``amrex_fcompare``. Their check scripts print *measured / target / tolerance / pass* rows.
-  ``ctest -L smoke`` runs the structural checks CI does on every pull request; ``ctest -L physics`` runs the
-  converged checks nightly on Kestrel.
-- **Performance tests** run nightly or weekly on Kestrel. They track iterations, wall time and
-  allocation-unit cost; a slowdown of more than 10 % fails.
+- **Regression tests** run the application and check the result: most with a script against pinned numbers, a
+  log or a gold file, a few with ``amrex_fcompare`` against a gold plotfile. The check scripts print
+  *measured / target / tolerance / pass* rows. ``ctest -L smoke`` runs the checks CI does on every pull request.
+  The longer converged runs carry the label ``regression`` alone or ``nightly``; no CI job or Kestrel script runs
+  them yet, so they are run by hand (``ctest -L regression``, ``ctest -L nightly``).
+- **Performance tests** (iterations, wall time and allocation-unit cost against a stored value) do not exist yet.
 - **Gold files** change only in a reviewed commit.
 
 Every test is first shown to fail on the bug it guards against, or on a one-line mutant of the code it covers.
@@ -2640,6 +2640,75 @@ Current tests
        bash 3.2 calls unbound unless spelled ``${extra[@]+…}``) and a rans case with exactly the expected
        arguments, and skips an unknown case; neither driver calls ``/usr/bin/time``. Eight one-line mutants each
        fail it.
+   * - ``rt_cylinder_re40_clean``, ``rt_cylinder_re40_run``, ``rt_cylinder_re40``
+     - The laminar cylinder (``Tests/Canonical_RANS/Cylinder_Laminar``, :doc:`buildings`): ``turb.closure = none``
+       at Re = 40 with 10 cells per diameter, steady on 2 ranks within 3000 iterations (about 2 minutes);
+       ``compare_cylinder.py`` then requires the drag coefficient in 1.68–1.72, the lift within ±0.01 and the wake
+       length in 1.93–2.00 diameters, bands pinned to this deck. Label ``regression``. The unsteady runs at Re = 40
+       and 100 are comparison runs, not CTests.
+   * - ``abort_laminar_nu_zero``, ``abort_laminar_kl_key``, ``abort_laminar_cross_checks``,
+       ``abort_laminar_other_options``
+     - The refusals of ``turb.closure = none`` (same folder), each naming its input: ``turb.nu_molecular = 0``; a
+       k–L key (``turb.Cmu0``, ``turb.face_mean``); ``bc.zlo = surface_layer``,
+       ``buildings.wall_form = fraction_stress`` and ``buildings.wall_tke = on``; ``canopy.type``,
+       ``init.first_guess = column`` and ``steady.stage = simplec_newton``.
+   * - ``abort_force_file_without_stage``, ``force_file_cube_clean``, ``force_file_cube_plain``,
+       ``force_file_cube_file``, ``force_file_cube_bit_identical``, ``force_file_cube_first``,
+       ``force_file_cube_stray_row``, ``force_file_cube_restart``, ``force_file_cube_restart_rows``,
+       ``force_file_cube_restart_no_file``, ``force_file_cube_restart_no_file_rows``,
+       ``force_file_cube_other_header``, ``abort_force_file_restart_header``
+     - ``buildings.force_file`` (:doc:`buildings`, Force on the buildings). Without a stage the key is refused.
+       On the cube of ``Tests/Canonical_RANS/Building_Cube`` as an unsteady run of four steps of 0.5 s on 2 ranks:
+       the run with the file and the run without it write the same plotfile; a restart at 1 s reproduces the
+       uninterrupted file and drops a row written past the checkpoint; a restart that finds no file starts one at
+       the checkpoint's time; a file with another header is refused. Label ``regression``; the
+       first is also ``smoke``.
+   * - ``abort_canopy_heat_inputs``, ``abort_canopy_heat_celsius``, ``abort_canopy_heat_frozen_unused``,
+       ``rt_canopy_heat``
+     - The leaves' heat exchange (:doc:`canopy`). The refusals name the input: ``canopy.heat = fixed`` without
+       ``canopy.leaf_theta``; a ``canopy.heat_frozen`` other than ``skip`` or ``blend``; a leaf temperature
+       outside 150–400 K (25, a value in Celsius); ``canopy.heat_frozen`` without ``simplec.theta = frozen``.
+       ``rt_canopy_heat`` (``Tests/Canonical_RANS/Forested_Escarpment``, ``check_canopy_heat.py``, about 2 minutes,
+       label ``regression``): with :math:`\theta` solved and leaves cooler than the air, :math:`\theta` stays
+       between the two and is the same on 2 and 4 ranks; with :math:`\theta` frozen, ``skip`` gives the frozen run
+       bit for bit and ``blend`` changes :math:`\theta` in the canopy only; a run continued from its checkpoint
+       equals the uninterrupted one. MPI builds only.
+   * - ``rt_column_target``, ``rt_column_target_mol``
+     - The column's target wind carried into the 3-D run (``Tests/Canonical_RANS/Column_Target``,
+       ``check_column_target.py``, ``init.column_target_*``): the 3-D wind at 10 m is the target of 8 m/s to
+       0.5 %; with a stable column (:math:`L` = 1000 m, ``bc.surface_stability = heat_flux``) the 3-D surface's
+       :math:`L` is 1000 m to 2 %. Label ``regression``.
+   * - ``abort_no_stage``, ``abort_stage_no_guess``, ``abort_newton_keys_no_stage``,
+       ``abort_inflow_tke_length_value``, ``abort_sequencing_overlap``
+     - Input checks. Without ``steady.stage`` the solver keys (forcing, convection, SIMPLEC, closure, driver,
+       ``io.turb_plot_file``, Newton keys) are refused as keys with no effect; ``steady.stage = simplec`` needs
+       a first guess; ``bc.inflow_tke_length`` takes ``closure`` or ``unbounded`` only; an LU-SGS overlap that
+       fits level 0's boxes but not a coarse level's stops, naming the level.
+   * - ``rt_sequencing_restart_first``, ``rt_sequencing_z0map``
+     - ``rt_sequencing_restart_first`` writes the checkpoint of three sequenced iterations that
+       ``rt_sequencing_restart`` continues. ``rt_sequencing_z0map``: on the two-level deck with a roughness map,
+       each level's logged minimum, maximum and geometric mean match the Python values to three significant digits; level 1 is the geometric
+       mean of level 0's 2 × 2 blocks.
+   * - ``rt_iteration_log_full``, ``rt_iteration_table_confidence``, ``abort_iteration_log_value``,
+       ``rt_iteration_table_columns``
+     - The iteration log (:doc:`output`). ``io.iteration_log = full`` writes the one-line form and no table
+       header; with ``steady.confidence`` a table row adds the confidence share and height; a value other than
+       ``table`` or ``full`` is refused. ``rt_iteration_table_columns`` (label ``regression``, about 15 s) pins
+       the first two rows of the flat neutral case's table, which fixes the column of each residual.
+   * - ``rt_case_setup_flat_sweep``, ``rt_case_setup_flat_nest``, ``rt_case_setup_column_target``,
+       ``rt_case_setup_column_axis``, ``rt_case_setup_hill``
+     - The case set-up tool end to end (``Tests/Infrastructure/Case_Setup``, :doc:`case_setup`): a YAML file
+       becomes a case folder, its decks pass the deck checker, ``run.sh`` runs GUST on 2 ranks, and the result
+       meets the closed forms the YAML file asks for. Not on Windows; registered only when the configure's Python
+       has PyYAML and numpy.
+   * - ``gust_input_checker_selftest``, ``gust_case_selftest``, ``gust_dem_selftest``, ``gust_window_selftest``
+     - The Python unit tests of the deck checker (standard library only), the case set-up tool, the terrain
+       download (on tiles made in the test, no network) and the case set-up window (offscreen; its window tests
+       skip without PySide6 and pyqtgraph). The last three need PyYAML and numpy. Label ``unit``.
+   * - ``rt_coriolis_repeat_clean``, ``rt_askervein_210_clean``, ``buildings_defaults_fraction_stress_clean``,
+       ``buildings_defaults_roof_stress_clean``, ``buildings_defaults_drag_clean``
+     - Fixtures: they empty the run directories of the tests they are set up for, so no check reads an earlier run's
+       output.
 
 In a build without MPI (``GUST_MPI=OFF``, as in the Windows CI job) every test runs on one rank, so
 ``unit_np2`` and ``unit_np4`` repeat ``unit_np1`` and ``smoke_restart_matches`` does not change the rank count.
@@ -4082,3 +4151,68 @@ GoogleTest suite
        within 1800–2199 iterations (1868 measured on 1, 2 and 4 ranks; SIMPLEC alone takes 2906).
        ``abort_newton_keys_no_newton_stage``: a Newton key and a
        switch key with ``steady.stage = simplec`` abort, naming the key.
+   * - ``AblSetup.*`` (17 tests)
+     - The named set-ups ``abl.drive`` and ``abl.theta`` (:ref:`named-setups`): every name of the input table is
+       read; bad names, repeated keys, extra values and deck values that contradict a name are refused, and after a
+       bad name only that is reported; the table of what each drive and each :math:`\theta` treatment needs and
+       refuses; the defaults a name gives (the geostrophic drives switch on the forcing, Couette uncaps the
+       length); a value the deck sets is kept; without the keys nothing is checked.
+   * - ``Buildings.*`` (13 tests)
+     - The building geometry (:doc:`buildings`): cell and face fractions of a box on flat ground are the exact
+       overlap; on a slope each column holds the map's volume from the local ground; wall masks and distances
+       equal hand values; the same bits on every box layout, across a periodic seam; bare columns hold nothing;
+       ERF's cube file and the two file formats; a void deck is open with a wall under the building; the
+       reference distance on stretched layers; round-off leaves solid cells solid; the checkpoint's hash
+       changes with the building inputs, and a checkpoint written without buildings is refused; files and inputs are checked.
+   * - ``BuildingLaw.*`` (3), ``BuildingForcing.*`` (4), ``BuildingSides.*`` (9)
+     - The buildings' momentum terms: the wall law returns :math:`u_*` of an exact log profile, with its blend
+       floor and with no reference cell; the sink, its diagonal and a closed face; part-covered walls and open
+       fluxes; the drag form has fixed rows only; a pocket under a lifted building is sealed. On the sides: the
+       log law's stress on both parallel components; edge and corner cells sum their walls; rates use the cell
+       size along each normal; partly blocked cells and a sloped roof's side; the viscous fluxes and couplings
+       through a side are closed; a block across a periodic seam; the restart hash follows the law.
+   * - ``BuildingTke.*`` (20 tests)
+     - The buildings' terms of the closure: the wall distance in wall cells is the fluid centroid's; the distance
+       to a block, to an L with a step, beside a step between two roofs and across a periodic seam equals the
+       closed form of the boxes; where the ground is nearer its distance is kept, and the length takes the nearer
+       wall's own roughness; wall cells relax to the law's value and solid cells to the floor; several walls give
+       the largest :math:`u_*` and the nearest distance; the diffusive flux of :math:`k` is closed on blocked
+       faces; the norm and the confidence leave solid cells out; the limiter zone (distance and building height,
+       ghost ring, restart hash); option defaults and refusals.
+   * - ``BuildingTheta.*`` (9 tests)
+     - The buildings' terms of :math:`\theta`: the walls' heat exchange equals the closed form of the form 7 law;
+       ambient walls exchange nothing at the reference profile; the implicit diagonal is the derivative of the
+       exchange; the diffusive flux is closed on blocked faces; the wall heat is the sum of the cells' exchange;
+       the norm and the confidence leave solid cells out; option defaults and refusals.
+   * - ``LeeWake.*`` (14 tests)
+     - The lee-wake additions (:doc:`turbulence_model`): the realizability cap is the minimum with its closed
+       form and comes before the relaxation; the blend towards upwind and the update of :math:`\sigma` against
+       its closed form, with its ghost cells at an open boundary; the residual blend limits, thresholds and
+       verdict flags; the confidence stop counts the converged cells; the relaxation ends below
+       ``turb.nut_relax_end`` and a restart restores that from the history; the range checks.
+   * - ``CanopyHeat.*`` (8 tests)
+     - The leaves' heat exchange: the leaf area density is the drag field with :math:`C_d = 1`, also from a map,
+       and the coarse levels keep each layer's integral; the exchange rate's pinned values and the source's closed
+       form; the residual and the diagonal; the frozen-:math:`\theta` blend; the option checks.
+   * - ``SurfaceRoughness.*`` (5 tests)
+     - The roughness map of ``bc.surface_z0_file``: a uniform map is the scalar :math:`z_0` bit for bit; water
+       and land each follow their own log law; the file is interpolated in :math:`\ln z_0`; coarse levels take
+       the geometric mean; the inputs are checked.
+   * - ``ResidualWorkspace.*`` (3 tests)
+     - The residual's persistent workspace: the wall state the ghost fill returns is the residual's own, bit for
+       bit; a workspace reused across states and layouts, poisoned with NaN before every call, gives the bits of
+       fresh fields, also in the Jacobian-vector product with the refill (in double precision; to a few ulps in
+       single).
+   * - ``NewtonSmoothness.FrozenCanopyCapNeedsTheSameAlpha``
+     - A checkpoint of frozen closure decisions records the canopy's length cap: a restart with another
+       ``canopy.length_alpha``, or without the canopy terms, is refused.
+   * - ``IO.CheckpointWithTheOldMagicRestarts``, ``IO.FileMagicTakesTheNewAndTheOldName``
+     - A checkpoint written before the rename to GUST (``ablsteady-checkpoint``) restarts bit for bit; the
+       readers take ``gust-<kind>`` and ``ablsteady-<kind>`` of the same kind and nothing else.
+   * - ``Simplec.HybridBlendReadsTheGroundDistance``, ``Simplec.ResidualScalesUseTheDepthOfTheLayers``
+     - The upwind blend reads the distance to the ground, not to the nearest building wall; the residual scales
+       use the depth of the stretched layers, not ``mesh.prob_hi``.
+   * - ``BoundaryFill.OutflowGhostCellsMirrorTheEdgeCells``, ``JointRecord.VersionOneReadsWithoutAWindow``,
+       ``MeshHierarchy.GroundStepWarningIsLevelZerosOnly``
+     - Outflow ghost cells over sloping ground, with periodic sides; a joint record of version 1 reads without a
+       window; the ground-step warning is level 0's only, and a coarse level's report keeps its number.

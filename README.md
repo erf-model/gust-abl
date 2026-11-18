@@ -6,6 +6,7 @@
 **GUST** (Grid-sequenced Unified Steady Terrain solver) computes steady wind fields over complex terrain. It is a
 steady Reynolds-averaged Navier–Stokes (RANS) solver for the atmospheric boundary layer, built on
 [AMReX](https://github.com/AMReX-Codes/amrex), and one code base builds for CPUs and GPUs (CUDA, HIP, SYCL).
+The same code also runs unsteady RANS, for flows that have no steady state.
 
 ## What it does
 
@@ -15,11 +16,19 @@ steady Reynolds-averaged Navier–Stokes (RANS) solver for the atmospheric bound
   local pseudo-time stepping with switched-evolution relaxation, and grid sequencing over coarser horizontal
   levels. An optional Jacobian-free Newton–Krylov stage (`steady.stage = simplec_newton`) finishes to tight
   tolerances.
-- **Physics.** The Axell–Liungman k–L turbulence closure, a Monin–Obukhov surface layer, buoyancy, Coriolis, and
-  inflow from a log law or a measured profile.
+- **Unsteady solver.** `steady.stage = unsteady` marches physical time in backward-Euler (BDF1) steps by dual
+  time stepping: each step is converged by the same SIMPLEC pseudo-time iteration. It keeps running means and
+  variances, writes probe time series, and restarts from a steady or an unsteady checkpoint.
+- **Physics.** The Axell–Liungman k–L turbulence closure (or laminar flow), a Monin–Obukhov surface layer,
+  buoyancy, Coriolis, and inflow from a log law or a measured profile.
+- **Forest canopies and buildings.** Canopy drag, turbulence and heat from a leaf-area-density field. Buildings
+  from a height map by immersed forcing with a wall law, and the force on them.
+- **Nests.** Finer meshes (refinement 2 2 1) inside the domain, named in the same input file by their corners.
+  One-way by default; four two-way options feed the nests back to the outer domain.
 - **Terrain.** A terrain-following mesh from an elevation file (`x y z` points or ERF's grid format), with
   stretched vertical layers for thin near-ground cells. The pressure equation uses a terrain-aware multigrid
-  solver that handles high cell aspect ratios.
+  solver that handles high cell aspect ratios. An immersed ground on a flat mesh
+  (`terrain.representation = immersed_forcing`) is available for flat ground only so far.
 - **A clear definition of steady.** Residuals must fall by a set number of orders and the monitored quantities
   must settle; the run says why it stopped. Restarts continue bit for bit on the same ranks and box layout.
 
@@ -88,7 +97,8 @@ the documentation.
 ## Documentation
 
 The full documentation is at <https://erf-model.github.io/gust-abl/>: building and running, every input with its
-range, the governing equations, discretization and solution algorithm, test cases and results. The sources are
+range, the governing equations, discretization and solution algorithm (steady and unsteady), canopies, buildings
+and nests, test cases and results. The sources are
 in [`docs/`](docs/), and the same pages as one PDF at <https://erf-model.github.io/gust-abl/gust.pdf>. To
 build them locally:
 

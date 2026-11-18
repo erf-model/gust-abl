@@ -393,7 +393,7 @@ Quick reference
      - Under-relaxation of :math:`\nu_t`
    * - ``turb.nut_relax_end``
      - ``0``
-     - Relative residual below which ``turb.nut_relax`` stops (0: never; recommended 0.01 with ``turb.nut_relax`` < 1)
+     - Relative residual below which ``turb.nut_relax`` stops (0: never; not part of the recommended setting)
    * - ``turb.frozen_switch``
      - ``1``
      - Freeze the k-floor decisions in the Newton stage
@@ -1094,7 +1094,7 @@ refuses buildings other than those of the run it continues.
      - Meaning and range
    * - ``buildings.type``
      - ``none``
-     - ``none`` or ``immersed_forcing``. Refused with a ``nest`` face.
+     - ``none`` or ``immersed_forcing``. Refused with ``nest.names``; a patch with ``nest`` faces keeps its buildings clear of them.
    * - ``buildings.file``
      - required when on
      - The height map, readable. Heights above the local ground (m), finite and ≥ 0. At least one building in the domain, none reaching the top layer, and in a periodic direction the map no wider than the domain.

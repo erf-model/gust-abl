@@ -34,7 +34,8 @@ with the viscous and turbulent stress
   the molecular and :math:`\nu_t'` the turbulent heat diffusivity.
 - :math:`\gamma_k = \nu_\mathrm{mol} + \nu_t/\sigma_k`: diffusivity of :math:`k`, with the Schmidt number
   :math:`\sigma_k` (``turb.sigma_k``, 1).
-- :math:`S_i`: momentum sources (below).
+- :math:`S_i`: momentum sources (below). A forest canopy adds drag, sources of :math:`k` and heat
+  (:doc:`canopy`); buildings add their wall stress and block the cells they fill (:doc:`buildings`).
 - :math:`P_s`, :math:`P_b`, :math:`\varepsilon`: shear production, buoyancy production and dissipation of :math:`k`
   (:doc:`turbulence_model`).
 
@@ -73,3 +74,20 @@ state :math:`q = (\mathbf u, p, \theta, k)`, a steady solution satisfies
 
 The solver drives :math:`R` to zero (:doc:`solution_algorithm`). The convergence criteria are given in
 :ref:`convergence-criteria`.
+
+Unsteady problem
+----------------
+
+With ``steady.stage = unsteady`` the transported equations of :eq:`rans` keep their time derivative,
+
+.. math::
+
+   \frac{\partial q}{\partial t} + R_q(q) = 0, \qquad q = u, v, w, \theta, k,
+
+where :math:`t` is the physical time and :math:`R_q` the steady residual of equation :math:`q` above. Continuity
+has no time term: :math:`\nabla\cdot\mathbf u = 0` holds at every time. The closure, the sources and the boundary
+conditions are those of the steady problem, so this is unsteady RANS with the same k–L model. Time is advanced by
+backward Euler, first order in the step :math:`\Delta t` (:ref:`physical-time-term`, :ref:`time-driver`). A flow
+with a stable steady state settles on it. A flow without one, such as a wake that sheds vortices, is followed in
+time, and its running mean and variance are kept (:ref:`unsteady-outputs`). Backward Euler damps oscillations, so
+the amplitude of an unsteady flow depends on the step.

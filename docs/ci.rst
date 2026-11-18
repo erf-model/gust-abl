@@ -114,7 +114,8 @@ Kestrel, and ``--dependency=singleton`` for batch jobs).
      - Branch or commit
    * - ``GUST_NIGHTLY_GPUS``
      - 4
-     - GPUs requested, 3 or 4 (the smoke tests use up to 3 ranks)
+     - GPUs requested, 3 or 4 (the smoke tests use up to 3 ranks, except ``rt_nest_faces_hill_np4`` and
+       ``rt_nest_shapes_cube_r4_np4``, which use 4)
    * - ``GUST_NIGHTLY_MAIL``
      - none
      - Mail address for a failed batch job
@@ -135,5 +136,5 @@ self-hosted runner on Kestrel would need the HPC center's approval. The cron lin
 
 Results are read on Kestrel (``status``) and are not reported to pull requests.
 
-The regression tests labelled ``physics`` (``ctest -L physics``) and the performance tests will run nightly on
-Kestrel CPU nodes and H100s once they exist.
+The longer regression tests (labels ``regression`` alone and ``nightly``) are not run by a workflow or a Kestrel
+script yet. Performance tests do not exist yet.

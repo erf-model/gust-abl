@@ -1,9 +1,10 @@
 # Canonical_RANS
 
 ## Purpose
-The SIMPLEC stage run to the steady verdict on the canonical RANS cases. The folder names follow ERF's
-`Exec/CanonicalTests/Canonical_RANS/`, and each case runs ERF's own check script (`extern_erf/`) on the
-turbulence plotfile where ERF has one.
+The canonical cases: the SIMPLEC stage run to the steady verdict, the unsteady stage, forest canopies, buildings
+and nests. The folders that ERF also has keep the names of ERF's `Exec/CanonicalTests/Canonical_RANS/`, and those
+cases run ERF's own check script (`extern_erf/`) on the turbulence plotfile. Each folder's `README.md` gives its
+set-up, expected results and the full list of its CTests.
 
 ## Cases
 | Folder | CTest | Description |
@@ -23,6 +24,24 @@ turbulence plotfile where ERF has one.
 | `Castro_Cube_Array` | `castro_cube_array_*` | A staggered cube array (one periodic tile) against the measurements of Castro et al. (2006), as Muñoz-Esparza et al. (2020) set it up. |
 | `Nest_Validation` | `rt_nest_validation_*` | One-way nesting against a uniform fine run of the whole domain over a 150 m hill: one nest at four patch sizes, a chain of three nests, hard faces against the relaxation zone. |
 | `Nest_Faces` | `rt_nest_faces_*`, `abort_nest_faces_*` | A patch at 2 2 1 with its four lateral faces from the parent run (`bc.* = nest`), on flat ground and over a hill, to steady on 1, 2 and 4 ranks; the relaxation zone, the ground blend and the restart record. |
+| `Nest_Shapes` | `rt_nest_shapes_*` | One-way nested patches at 2 2 1 around six canonical shapes against a uniform fine run of the whole domain; the cube runs are CTests. |
+| `Nests_One_Process` | `rt_nests_one_process`, `abort_nests_*` | Nests named in the outer deck (`nest.names`) and run in the same process; the refusals of misplaced nests. |
+| `Nests_Two_Way` | `rt_nests_two_way`, `rt_nests_joint_restart*` | Two-way nesting as a joint run (`nest.feedback = defect`, `relax`, `relax_consistent`, `inject`) and its restart. |
+| `Nests_Flat_ABL` | `rt_nests_flat_abl_*` | Nests on a flat, horizontally uniform boundary layer, neutral, buoyant and stable, one way and joint. |
+| `Nest_Placement_Runs` | (study) | Fifteen runs (three uniform references and twelve joint runs) behind the step rule of `tools/nest_placement.py`; not a CTest. |
+| `Canopy_Drag` | `rt_canopy_drag`, `rt_canopy_tke`, `rt_canopy_column` | The canopy's drag with each implicit diagonal, the canopy's k terms and the column first guess through two forest patches. |
+| `Homogeneous_Canopy` | `rt_homogeneous_canopy` | A horizontally uniform forest under a pressure gradient at LAI 2, 5 and 10 against published canopy relations. |
+| `Forest_Edge` | `rt_forest_edge` | A forest, clearing, forest pattern (the geometry of Dupont and Brunet 2008): the adjustment behind the leading edge. |
+| `Forested_Hill` | `rt_forested_hill` | A uniform canopy on a periodic train of cosine hills, in two geometries classified on the regime map of Poggi et al. (2008). |
+| `Forested_Escarpment` | `rt_forested_escarpment`, `rt_frozen_theta`, `rt_canopy_heat` | A dense canopy on a 200 m escarpment with an inflow face and grid sequencing; frozen theta; the leaves' heat exchange. |
+| `Building_Cube` | `building_cube_*`, `force_file_cube_*` | One block on flat ground in a log-law wind with each wall form; `buildings.force_file` in an unsteady run. |
+| `Building_Courtyard` | `building_courtyard_*` | A courtyard open to the wind: the wall law's speed in cells with two walls. |
+| `Building_Hill` | `building_hill_*` | One block on the windward flank of a 30 m ridge: the building's floor and roof follow the ground. |
+| `Cylinder_Laminar` | `rt_cylinder_re40`, `abort_laminar_*` | Laminar flow past a staircase cylinder (`turb.closure = none`): steady at Re 40 (CTest); the unsteady runs at Re 40 and 100 are comparison runs. |
+| `Column_Target` | `rt_column_target`, `rt_column_target_mol` | The column first guess's target wind carried into the 3-D run, neutral and stable. |
+| `Column_Marching` | (comparison case) | The time-marching column against ERF's near-1-D columns; not a CTest (unit tests `ColumnMarching.*`). |
+| `Aspect_Ratio_Hill_2D` | `rt_aspect_ratio_hill` | A 2-D ridge with first cells of dx/dz1 = 10 to 5000: how thin first cells change the convergence. |
+| `Outflow_Steep_Terrain` | `rt_outflow_steep_terrain_*` | A steep slope cut by an outflow face: steady with the default outflow transport, not with the old one. |
 | `Smooth_Plateau_2D` | (comparison case) | A 2-D plateau run in both codes; not a CTest. |
 
 The hill cases use `Supporting_Files/check_steady_hill.py` (shared by the 2-D and 3-D folders).

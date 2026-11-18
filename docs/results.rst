@@ -19,8 +19,11 @@ Summary of recommended settings
      - ``steady.sweep = lusgs``, 2 sweeps
      - `Line LU-SGS`_
    * - CFL cap
-     - ``steady.cfl_max = 16``
+     - ``steady.cfl_max = 8`` (the default with ``lusgs``); 16 on the 2-D hill LU-SGS decks
      - `Line LU-SGS`_
+   * - Terrain with separated lees
+     - ``turb.realizability = 0.309``, ``turb.nut_relax = 0.5`` and the near-ground upwind blend
+     - :doc:`turbulence_model`, Recommended setting
    * - Initial field, terrain with Coriolis
      - ``init.first_guess = column``
      - `Initial field: profile or column`_
@@ -210,7 +213,7 @@ steady.
 Time mean of the unsteady run against the steady run
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-*Setup.* Sub-phase 6.4a (beyond the plan). The same deck run twice: to the steady verdict, and with
+*Setup.* The same deck run twice: to the steady verdict, and with
 ``steady.stage = unsteady`` to 4800 s with the running means over 2400–4800 s. The unsteady run starts from the
 deck's first guess, not from the steady field, without grid sequencing; a step stops two orders below its first
 residual or at ``steady.residual_tol``, whichever comes first. The cases, the commands and the data credits are in
@@ -253,7 +256,7 @@ Against the wind tunnel, the Hill 5 time mean and the steady field have the same
 default closure, 0.214 m/s with the stalled setting), and neither shows reversed flow at 0.1 H. Against ERF's
 unsteady RANS on the Askervein lines A and AA, the time mean and the steady field give the same speeds to three
 decimals: within 4.31 % at the 26 masts up to 300 m past the hilltop, and 6.86 to 9.85 % slower at the four lee
-masts. The 5 % target of the test RT-6.4.4 is missed in the lee by both; the time average does not change that
+masts. The 5 % target for these masts is missed in the lee by both; the time average does not change that
 difference.
 
 On Hill 5 the time mean is further from the steady field than the last step is, because the averaging window
@@ -1094,7 +1097,7 @@ GMRES iterations over ten Newton steps on the column (Krylov tolerance 1e-2):
      - 647
      - **346**
 
-The defaults are provisional and will be tuned together with the Newton stage.
+The defaults are provisional until the Newton study on Askervein is run.
 
 Pseudo-transient continuation
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -1110,7 +1113,7 @@ The continuation (:doc:`solution_algorithm`) on the same hill (six uneven boxes)
      - Hill
      - Hill, :math:`u \times 3`
      - Column
-   * - **Defaults, GMRES(200)** (:math:`c` 1e-4, :math:`\beta` 0.5, :math:`p` 1, CFL cap 10, infinite :math:`\Delta\tau` at the cap)
+   * - **Defaults, GMRES(200)** (:math:`c` 1e-4, :math:`\beta` 0.5, :math:`p` 1, CFL cap 10 (the unit-test sweep's value; the application's ``steady.newton_cfl_max`` is 128), infinite :math:`\Delta\tau` at the cap)
      - **8, 976**
      - **8, 967**
      - **17, 510** (11 backtracks)

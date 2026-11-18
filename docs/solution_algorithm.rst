@@ -24,7 +24,9 @@ A *stage* chooses :math:`A` and the way :math:`\delta q` is computed. When :math
 whatever :math:`A` is. A cheaper or rougher :math:`A` changes how fast the iteration converges, not the answer.
 
 The production stage is SIMPLEC (``steady.stage = simplec``), optionally with grid sequencing (below).
-The Newton–Krylov stage (``steady.stage = simplec_newton``) finishes the run; multigrid is in development.
+The Newton–Krylov stage (``steady.stage = simplec_newton``) finishes the run. With ``steady.stage = unsteady``
+the same SIMPLEC iteration converges each physical time step of an unsteady run
+(`Physical time term (dual time stepping)`_, `Time driver`_).
 
 Local time step and CFL ramp
 ----------------------------
@@ -750,9 +752,11 @@ step converged.
 **Order.** Backward Euler is first order in :math:`\Delta t`: halving the step halves the time error
 (``TimeDriver.StokesFirstProblemFirstOrder``, Stokes' first problem against its erfc profile).
 
-**Not supported yet.** Grid sequencing, the Newton stage and the hybrid upwind blend (``convection.hybrid_sigma_max`` > 0:
-it follows the inner residual, so the operator would change within and between steps). A deck that asks for
-sequencing (``steady.sequencing = 1``) or the blend stops with a message.
+**Not supported yet.** Grid sequencing, the hybrid upwind blend (``convection.hybrid_sigma_max`` > 0:
+it follows the inner residual, so the operator would change within and between steps), ``turb.nut_relax_end`` > 0
+(for the same reason), nests (``nest.names``) and an immersed ground (``terrain.representation = immersed_forcing``).
+A deck that asks for one of these stops with a message. ``steady.probes_file`` is refused too;
+``unsteady.probes_file`` names the probes of an unsteady run.
 
 .. _unsteady-outputs:
 

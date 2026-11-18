@@ -54,7 +54,7 @@ An option outside its allowed values stops the configuration.
        with an error, and an external AMReX must have been built with FFT (``find_package`` asks for it).
    * - ``GUST_HYPRE``
      - ``OFF``
-     - AMReX with hypre, for the optional Newton–Krylov preconditioner (in development).
+     - AMReX with hypre. No solver in the current sources uses it.
    * - ``GUST_TESTING``
      - ``OFF``
      - ``AMReX_TESTING`` and assertions on, as in GPU CI. With assertions (or in a ``Debug`` build) the inner
