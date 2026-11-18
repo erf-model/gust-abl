@@ -43,3 +43,6 @@ steady.dtau_floor = 1
 
 io.plot_file = homogeneous_plt
 io.chk_file  = homogeneous_chk
+
+# The cap of the geometric length before the default became 100 m: keeps this test's answers.
+turb.max_geom_lscale = 30.

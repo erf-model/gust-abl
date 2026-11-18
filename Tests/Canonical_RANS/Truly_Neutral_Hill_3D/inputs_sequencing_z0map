@@ -57,3 +57,6 @@ io.write_plotfile     = 0
 terrain.idw_neighbors = 2
 terrain.idw_power     = 2.
 io.turb_plot_file     = z0map_turb
+
+# The cap of the geometric length before the default became 100 m: keeps this test's answers.
+turb.max_geom_lscale = 30.

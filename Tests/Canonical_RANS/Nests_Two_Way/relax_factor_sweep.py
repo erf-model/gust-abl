@@ -50,6 +50,8 @@ FIELDS = ("u", "v", "w", "tke")
 # The recommended setting (docs/turbulence_model.rst); the blend height is 2.5 terrain heights (100 m hill).
 RECOMMENDED_HILL = ["turb.realizability=0.309", "turb.nut_relax=0.5", "turb.max_geom_lscale=100.",
                     "convection.hybrid_sigma_max=0.1", "convection.hybrid_height=250."]
+# Keys of inputs_outer the runs give on the command line (a key given twice aborts).
+SET_BY_THE_RUNS = r"^(io\.(plot|chk)_file|turb\.max_geom_lscale)\s*=.*$"
 HILL_DECK = os.path.join(HERE, "inputs_outer")
 GORGE = os.path.join(ROOT, "Tests", "Real_Terrain", "Columbia_Gorge")
 ASKERVEIN = os.path.join(ROOT, "Tests", "Real_Terrain", "Askervein_Nest")
@@ -125,11 +127,11 @@ def run(a):
             text, n = re.subn(r"^mesh\.n_cell\s*=.*$", "mesh.n_cell = 64 48 16", text, flags=re.M)
             if n != 1:
                 raise SystemExit("relax_factor_sweep: inputs_outer has no single mesh.n_cell line")
-            text = re.sub(r"^io\.(plot|chk)_file\s*=.*$", "", text, flags=re.M)
+            text = re.sub(SET_BY_THE_RUNS, "", text, flags=re.M)
             with open(os.path.join(ref_dir, "inputs_ref"), "w") as fh:
                 fh.write(text)
-            with open(HILL_DECK) as fh:   # the deck's output names would be given twice
-                text = re.sub(r"^io\.(plot|chk)_file\s*=.*$", "", fh.read(), flags=re.M)
+            with open(HILL_DECK) as fh:   # the deck's output names and its cap would be given twice
+                text = re.sub(SET_BY_THE_RUNS, "", fh.read(), flags=re.M)
             deck = os.path.join(ref_dir, "inputs_outer")
             with open(deck, "w") as fh:
                 fh.write(text)
@@ -146,7 +148,9 @@ def run(a):
             base = mpi + ["inputs"] + spec["nest"]
         else:
             import askervein_nest as an
-            deck = os.path.join(ASKERVEIN, "inputs_askervein_domain")
+            os.makedirs(where, exist_ok=True)
+            deck = an.deck_without_cap(os.path.join(ASKERVEIN, "inputs_askervein_domain"),
+                                       os.path.join(where, "inputs_askervein_domain"))
             common = mpi + [deck, f"terrain.file={an.TERRAIN}", f"bc.inflow_file={an.INFLOW}"] + an.TWO_WAY
             out = (lambda t: [f"io.plot_file={t}_plt", f"io.chk_file={t}_chk"])
             launch(where, "ref", common + ["mesh.n_cell=300 300 18"] + out("ref"), a.keep, a.timeout)

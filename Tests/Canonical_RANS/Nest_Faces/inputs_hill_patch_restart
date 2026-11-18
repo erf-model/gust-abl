@@ -25,3 +25,6 @@ bc.zhi = slip_wall
 bc.surface_z0 = 0.1
 
 steady.stage = simplec
+
+# The cap of the geometric length before the default became 100 m: keeps this test's answers.
+turb.max_geom_lscale = 30.

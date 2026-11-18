@@ -60,3 +60,6 @@ unsteady.inner_drop_orders = 2
 unsteady.max_inner         = 60
 
 io.plot_file        = unsteady_hill2d_plt
+
+# The cap of the geometric length before the default became 100 m: keeps this test's answers.
+turb.max_geom_lscale = 30.

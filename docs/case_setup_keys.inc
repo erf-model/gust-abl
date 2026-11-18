@@ -374,7 +374,7 @@
    * - ``model.length_scale_cap``
      - m
      - auto
-     - turb.max_geom_lscale. auto: 100 m (1e6 with drive: couette), not GUST's 30 m: over a 40 H fetch the 30 m cap lets the near-ground wind fall 12 %, 100 m holds it within 4 % (Tests/Real_Terrain/RUSHIL/README.md). Accepts a number > 0, or auto.
+     - turb.max_geom_lscale. auto: 100 m, GUST's default (1e6 with drive: couette): over a 40 H fetch a 30 m cap lets the near-ground wind fall 12 %, 100 m holds it within 4 % (Tests/Real_Terrain/RUSHIL/README.md). Accepts a number > 0, or auto.
    * - ``model.tke_floor``
      - m2/s2
      - 1e-06

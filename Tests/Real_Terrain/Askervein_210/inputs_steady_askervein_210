@@ -10,7 +10,7 @@
 #     extern_erf/inflow_powerlaw.txt by tools/erf_inflow_table.py. Outflow
 #     through xhi and yhi, as ERF.
 #   * The surface layer with z0 = 0.03 m, a slip top, neutral (300 K), no
-#     Coriolis, ERF's closure defaults (max_geom_lscale 30 m, sigma_k 1).
+#     Coriolis, ERF's closure defaults (max_geom_lscale 30 m, set below; sigma_k 1).
 #   * Rayleigh damping of w in ERF's top 250 m (from 499 m, 0.2 1/s; ERF's
 #     sin^2 profile over the flat levels, here over the physical height).
 #   * First guess: the inflow profile with the mass-consistent projection of
@@ -57,3 +57,6 @@ steady.max_iterations          = 20000
 io.plot_file      = steady_askervein_210_plt
 io.turb_plot_file = steady_askervein_210_turb
 io.chk_file       = steady_askervein_210_chk
+
+# The cap of the geometric length before the default became 100 m: keeps this test's answers.
+turb.max_geom_lscale = 30.

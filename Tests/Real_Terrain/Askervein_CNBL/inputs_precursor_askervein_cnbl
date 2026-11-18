@@ -73,3 +73,6 @@ steady.max_iterations          = 20000
 io.plot_file      = precursor_askervein_cnbl_plt
 io.turb_plot_file = precursor_askervein_cnbl_turb
 io.chk_file       = precursor_askervein_cnbl_chk
+
+# The cap of the geometric length before the default became 100 m: keeps this test's answers.
+turb.max_geom_lscale = 30.

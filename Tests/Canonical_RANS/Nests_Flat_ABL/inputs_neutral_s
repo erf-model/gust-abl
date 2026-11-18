@@ -45,3 +45,6 @@ nest.damping = outer
 io.write_checkpoint = 1
 io.plot_file = outer_plt
 io.chk_file  = outer_chk
+
+# The cap of the geometric length before the default became 100 m: keeps this test's answers.
+turb.max_geom_lscale = 30.

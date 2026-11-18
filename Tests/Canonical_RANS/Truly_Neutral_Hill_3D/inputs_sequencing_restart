@@ -54,3 +54,6 @@ steady.monitor_rel_tol         = 1.e-10
 mesh.hierarchy_levels = 2
 steady.sequencing     = 1
 io.write_plotfile     = 0
+
+# The cap of the geometric length before the default became 100 m: keeps this test's answers.
+turb.max_geom_lscale = 30.

@@ -1512,6 +1512,9 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
                   FIXTURES_REQUIRED init_askervein
                   COMMAND ${FCOMPARE} --rel_tol 1e-8 init_askervein_plt00000
                           ${INIT_CASE}/Gold/init_askervein_plt00000)
+    # This run has no SIMPLEC stage, so it refuses turb.* and its inflow k takes the default cap of
+    # turb.max_geom_lscale. The gold was rewritten when the default became 100 m: tke changed (0.37 relative),
+    # the other fields agreed with the 30 m gold to 1e-15.
     # The hilltop speed-up over FastWindTerrain's bump for alpha_v =
     # 1, 0.7, 0.5, 0.3, 0.1 (five runs) against FastWindTerrain's own on the
     # same hill and profile (Gold/init_bump_trend.json: ranking, sign, spread).
@@ -2438,6 +2441,13 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
     gust_add_test(NAME rt_steady_neutral_flat NP 2 LABELS "regression"
                   PREFIX ${Python3_EXECUTABLE} ${FLAT_CASE}/check_steady_neutral.py --
                   COMMAND $<TARGET_FILE:gust> ${FLAT_CASE}/inputs_steady_neutral_flat ${GUST_TEST_AMREX_FLAGS})
+    # The default of turb.max_geom_lscale through the application (check_default_cap.py, three runs of 40
+    # iterations on the deck without its cap line): no key and 100 m are identical in every field, and 30 m
+    # (the default before November 2026) differs in tke by more than 1 % of the largest tke.
+    gust_add_test(NAME rt_default_geom_lscale NP 2 LABELS "regression"
+                  PREFIX ${Python3_EXECUTABLE} ${FLAT_CASE}/check_default_cap.py --
+                  COMMAND $<TARGET_FILE:gust> ${FLAT_CASE}/inputs_steady_neutral_flat ${GUST_TEST_AMREX_FLAGS})
+    set_tests_properties(rt_default_geom_lscale PROPERTIES ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
     # The w rows' VNN cap (simplec.w_vnn_cap = 16) on a flat
     # strip with a 0.7 m first cell (about 50 s on two ranks): the verdict
     # with and without the cap, at least 5 times fewer iterations with it,

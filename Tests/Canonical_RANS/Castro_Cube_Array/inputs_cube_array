@@ -54,3 +54,6 @@ solver.poisson_backend = gmres_fft
 
 io.plot_file = array_plt
 io.write_checkpoint = 0
+
+# The cap of the geometric length before the default became 100 m: keeps this test's answers.
+turb.max_geom_lscale = 30.

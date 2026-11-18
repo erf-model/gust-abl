@@ -34,3 +34,6 @@ forcing.gravity  = 0.
 steady.stage     = simplec
 steady.sweep     = zjacobi   # z-line Jacobi sweep (the CPU default is lusgs)
 steady.max_iterations = 1
+
+# The cap of the geometric length before the default became 100 m: keeps this test's answers.
+turb.max_geom_lscale = 30.

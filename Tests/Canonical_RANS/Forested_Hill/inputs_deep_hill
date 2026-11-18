@@ -35,3 +35,6 @@ steady.stage = simplec
 steady.dtau_floor = 1
 io.plot_file = hill_plt
 io.chk_file = hill_chk
+
+# The cap of the geometric length before the default became 100 m: keeps this test's answers.
+turb.max_geom_lscale = 30.

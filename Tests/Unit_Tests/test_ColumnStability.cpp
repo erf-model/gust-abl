@@ -48,6 +48,8 @@ struct Column
         in.mesh.max_grid_size = {4, 4};
         in.terrain.type = "flat";
         io.first_guess = InitOptions::FirstGuess::column;
+        copt.max_geom_lscale = 30;   // the default before it became 100 m: the pinned numbers below are for 30 m
+        bin.inflow.l_max = 30;
         so.stage = gust::StageKind::simplec;
         bin.face = {FaceType::periodic, FaceType::periodic, FaceType::surface_layer, FaceType::periodic,
                     FaceType::periodic, FaceType::slip_wall};

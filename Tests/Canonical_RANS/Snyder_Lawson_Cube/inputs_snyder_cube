@@ -44,3 +44,6 @@ steady.max_iterations = 3000
 
 io.plot_file = snyder_plt
 io.write_checkpoint = 0
+
+# The cap of the geometric length before the default became 100 m: keeps this test's answers.
+turb.max_geom_lscale = 30.
