@@ -39,7 +39,7 @@ The length scale starts from the geometric length
 
    l_g = \kappa\,(d + z_0),
 
-capped harmonically at ``turb.max_geom_lscale``. Here :math:`\kappa` is the von Kármán constant, :math:`d` the wall
+capped harmonically at ``turb.max_geom_lscale`` (100 m by default; 30 m, ERF's default, before November 2026). Here :math:`\kappa` is the von Kármán constant, :math:`d` the wall
 distance and :math:`z_0` the roughness length. Stratification modifies it:
 
 .. math::
@@ -453,7 +453,8 @@ frozen once the relative residual falls below ``convection.hybrid_freeze`` (afte
 on each grid level), so a converged state satisfies one fixed scheme. The blend is of the convection operators,
 not of the face fluxes: it is not conservative where :math:`\sigma` varies (in a 1-D test with :math:`\sigma` rising
 from 0 to 0.1 over a few cells, a net source of 0.2–0.4 % of the flux jump; mass is not affected). :math:`\sigma` is
-not checkpointed, so ``io.restart`` with the blend aborts.
+not checkpointed, so ``io.restart`` with the blend aborts. The blend also aborts with
+``steady.stage = simplec_newton`` and ``unsteady``.
 
 **Where it acts.** Because :math:`C_r` is at the equilibrium value, :math:`a` is 1.00–1.03 in an equilibrium surface
 layer, so :math:`\sigma` reaches :math:`\sigma_\mathrm{max}` over most of the near-ground layer below :math:`H_h`, on the
@@ -468,7 +469,7 @@ Recommended setting
 
 For terrain with separated lees: ``turb.realizability = 0.309``, ``turb.nut_relax = 0.5``,
 ``convection.hybrid_sigma_max = 0.1``, ``convection.hybrid_height`` = 2.5 terrain heights and
-``turb.max_geom_lscale = 100`` (on Big Southern Butte the length is uncapped with a moving lid, so that the inflow
+``turb.max_geom_lscale = 100`` (the default since November 2026; on Big Southern Butte the length is uncapped with a moving lid, so that the inflow
 does not drift over its 18.7 km fetch). ``turb.nut_relax_end`` (:ref:`nut-relax-end`) is not part of it. :math:`C_r = 0.309` is :math:`C_{\mu 0}^2` for the default ``turb.Cmu0``
 only. On the benchmarks (``Tests/Real_Terrain/WindNinja2019``, ``IshiharaZhou``,
 ``RUSHIL``) every case reaches the steady verdict with it:

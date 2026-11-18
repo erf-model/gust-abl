@@ -18,7 +18,7 @@
 # floor 2.4-2.6 orders below their reference while every residual is below
 # steady.residual_tol: the drop criterion is set to 2 orders. A k floor of
 # 1e-6 keeps round-off at the machine-epsilon floor from deciding the path
-# (docs/solver.rst). ERF's check_neutral.py --physics reads
+# (docs/solution_algorithm.rst). ERF's check_neutral.py --physics reads
 # io.turb_plot_file (Tests/Canonical_RANS/Neutral_ABL_Flat/check_steady_neutral.py).
 mesh.n_cell        = 8 8 64
 mesh.prob_hi       = 2560. 2560. 1000.
@@ -68,3 +68,6 @@ steady.max_iterations          = 20000
 io.plot_file      = steady_neutral_flat_plt
 io.turb_plot_file = steady_neutral_flat_turb
 io.chk_file       = steady_neutral_flat_chk
+
+# The cap of the geometric length before the default became 100 m: keeps this test's answers.
+turb.max_geom_lscale = 30.

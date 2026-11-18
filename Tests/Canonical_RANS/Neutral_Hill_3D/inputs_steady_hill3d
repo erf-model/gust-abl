@@ -53,7 +53,7 @@ steady.sweep                   = zjacobi   # z-line Jacobi sweep (the CPU defaul
 steady.cfl0                    = 1.
 steady.cfl_max                 = 4.
 steady.zline_sweeps            = 16
-simplec.rotation_relax         = 1.   # with the planar-mean split 1 converges in half the iterations of 0.3 (docs/solver.rst)
+simplec.rotation_relax         = 1.   # with the planar-mean split 1 converges in half the iterations of 0.3 (docs/solution_algorithm.rst)
 steady.residual_ref_iterations = 100
 steady.residual_drop_orders    = 2
 steady.max_iterations          = 20000
@@ -61,3 +61,6 @@ steady.max_iterations          = 20000
 io.plot_file      = steady_hill3d_plt
 io.turb_plot_file = steady_hill3d_turb
 io.chk_file       = steady_hill3d_chk
+
+# The cap of the geometric length before the default became 100 m: keeps this test's answers.
+turb.max_geom_lscale = 30.

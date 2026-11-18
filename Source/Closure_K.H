@@ -57,7 +57,7 @@ struct ClosureConstants
     amrex::Real inv_Cb_sq{amrex::Real(1) / (amrex::Real(0.35) * amrex::Real(0.35))};
     amrex::Real Rt_crit{-1};
     amrex::Real Rt_min{-3};
-    amrex::Real l_g_max{30};
+    amrex::Real l_g_max{100};
     amrex::Real tke_floor{std::numeric_limits<amrex::Real>::epsilon()};
     amrex::Real n2_eps{std::numeric_limits<amrex::Real>::epsilon()};   //!< |N^2| below this is neutral
 };

@@ -31,3 +31,6 @@ steady.max_iterations = 20
 io.plot_file      = abl_column_plt
 io.turb_plot_file = abl_column_turb
 io.chk_file       = abl_column_chk
+
+# The cap of the geometric length before the default became 100 m: keeps this test's answers.
+turb.max_geom_lscale = 30.

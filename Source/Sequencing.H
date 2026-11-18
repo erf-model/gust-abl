@@ -33,7 +33,7 @@
 //       right after a prolongation the monitors (largest face speed, mean k,
 //       mean u*) are already close to their limits and change by less than
 //       1 % over a window while the residuals have not dropped, so (b) ends
-//       a level before it has done its work (docs/solver.rst);
+//       a level before it has done its work (docs/solution_algorithm.rst);
 // or the strict criterion holds. A coarse level also stops at
 // steady.max_iterations of its own; its state is then prolonged as it is.
 // A coarse level that diverges aborts the run, naming the level.

@@ -48,7 +48,7 @@ steady.cfl0                    = 1.
 steady.cfl_max                 = 16.
 steady.zline_sweeps            = 2
 steady.sweep                   = lusgs
-simplec.rotation_relax         = 1.   # with the planar-mean split 1 converges in half the iterations of 0.3 (docs/solver.rst)
+simplec.rotation_relax         = 1.   # with the planar-mean split 1 converges in half the iterations of 0.3 (docs/solution_algorithm.rst)
 steady.residual_ref_iterations = 100
 steady.residual_drop_orders    = 2
 steady.max_iterations          = 20000
@@ -56,3 +56,6 @@ steady.max_iterations          = 20000
 io.plot_file      = steady_hill2d_column_plt
 io.turb_plot_file = steady_hill2d_column_turb
 io.chk_file       = steady_hill2d_column_chk
+
+# The cap of the geometric length before the default became 100 m: keeps this test's answers.
+turb.max_geom_lscale = 30.

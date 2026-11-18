@@ -213,7 +213,7 @@
 #
 # The wall model and the inflow profile's equilibrium k and ν_t use the turbulence model's turb.Cmu0 and turb.kappa,
 # and the inflow profile its turb.max_geom_lscale. Without the SIMPLEC stage (turb.* is then refused) they use the
-# defaults, 0.5562, 0.41 and 30 m.
+# defaults, 0.5562, 0.41 and 100 m.
 #
 # bc.xlo = periodic
 # bc.xhi = periodic
@@ -469,7 +469,7 @@
 # buildings other than those of the run it continues.
 #
 # buildings.type = none
-#     none or immersed_forcing. Refused with a nest face.
+#     none or immersed_forcing. Refused with nest.names; a patch with nest faces keeps its buildings clear of them.
 #
 # buildings.file =    # required when on
 #     The height map, readable. Heights above the local ground (m), finite and ≥ 0. At least one building in the
@@ -602,9 +602,16 @@
 #     Finite, < turb.Rt_crit and > −3.598: the smoothed R_t stays above it. c_μ has its pole at −3.5987 and grows
 #     without bound as turb.Rt_min approaches it (docs/turbulence_model.rst).
 #
-# turb.max_geom_lscale = 30    # m
-#     Finite, > 0: the harmonic cap of l_g (about κ × 0.1δ, the l_g at the top of the surface layer, δ the
-#     boundary-layer depth); also the cap of the inflow profile's length with bc.inflow_tke_length = closure.
+# turb.max_geom_lscale = 100    # m
+#     Finite, > 0: the harmonic cap of l_g, approached aloft (l_g is half of it where κ (d + z_0) equals it, 244 m
+#     above the ground for 100 m). Read as κ × 0.1δ, the l_g at the top of the surface layer of a boundary layer of
+#     depth δ, 100 m corresponds to δ of about 2.4 km and 30 m to 0.7 km. Also the cap of the inflow profile's
+#     length with bc.inflow_tke_length = closure. The default was 30 m (ERF's default) before November 2026; set
+#     turb.max_geom_lscale = 30 for the earlier answers. The cap is not stored in a checkpoint: a restart reads it
+#     from the deck, so a run started with the earlier default needs turb.max_geom_lscale = 30 in its deck to
+#     continue the same problem. With 100 m a neutral geostrophic column without an inversion has a boundary layer
+#     about 2 km deep (10 m/s, f = 1e-4 1/s): use a domain of 3 km or more, a capping inversion or bc.zhi =
+#     geostrophic.
 #
 # turb.tke_floor = 0
 #     0 (machine epsilon) or ≥ machine epsilon (m²/s²): lower bound on k.

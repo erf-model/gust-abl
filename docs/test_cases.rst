@@ -54,9 +54,13 @@ Steady cases
        compared with ERF's URANS on lines A and AA.
      - ``rt_askervein_210_erf_lines``, ``rt_askervein_210_level_history``
    * - 6
-     - Bolund, Perdigão
-     - A steep escarpment (Bolund) and a double ridge (Perdigão). Flow separation in the lee may prevent a steady
-       solution.
+     - Bolund, Big Southern Butte
+     - A steep escarpment (Bolund) and an isolated butte, with Askervein, against field measurements and the
+       WindNinja results of Wagenbrenner et al. (2019). Flow separation in the lee may prevent a steady solution.
+     - Comparison runs in ``Tests/Real_Terrain/WindNinja2019`` (not run by CTest)
+   * - 7
+     - Perdigão
+     - A double ridge.
      - Planned
 
 **Case 5b.** Case 5 keeps the potential temperature, gravity, Coriolis forcing at 57.2° N and the flat case's
@@ -64,6 +68,53 @@ sounding: an inversion from 700 m, 0.03 K/m above, the top raised to 1599 m and 
 inflow is the steady mean of a precursor column (``inputs_precursor_askervein_cnbl``), whose geostrophic wind turns
 the 10 m wind onto +x with :math:`u_* = 0.6` m/s, the inflow of case 5. The wind veers with height, so the flow enters
 through the west and north faces and leaves through the east and south faces. There is no ERF reference yet.
+
+Unsteady cases
+--------------
+
+The unsteady solver (``steady.stage = unsteady``, :ref:`time-driver`) is tested on these cases.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 50 25
+
+   * - Case
+     - What it tests
+     - Test
+   * - 2-D hill (``Unsteady_Hill_2D``)
+     - Ten steps of 60 s on 1, 2 and 4 ranks give the same steps and the same answer; a restart at a step boundary
+       continues bit for bit; averages and probes.
+     - ``rt_unsteady_hill2d`` (MPI builds)
+   * - Laminar cylinder (``Cylinder_Laminar``)
+     - At Re = 40 the unsteady run settles to the steady answer; at Re = 100 it sheds vortices
+       (:doc:`buildings`, Validation).
+     - Comparison runs. ``rt_cylinder_re40`` checks the steady run at Re = 40.
+   * - RUSHIL Hill 5 and Askervein with ERF's setup (``URANS_Averages``)
+     - The time mean of the unsteady run against the steady run of the same deck (:doc:`results`).
+     - Comparison runs; ``rt_urans_mean_option`` checks the readers
+
+Canopies, buildings, nests and immersed terrain
+-----------------------------------------------
+
+Each capability has its own cases, described on its page. Each case folder's ``README.md`` and :doc:`testing`
+give the CTest names.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 75
+
+   * - Capability
+     - Cases
+   * - Forest canopy (:doc:`canopy`)
+     - ``Canopy_Drag``, ``Homogeneous_Canopy``, ``Forest_Edge``, ``Forested_Hill``, ``Forested_Escarpment``
+   * - Buildings (:doc:`buildings`)
+     - ``Building_Cube``, ``Building_Courtyard``, ``Building_Hill``, ``Snyder_Lawson_Cube``,
+       ``Castro_Cube_Array``, ``Cylinder_Laminar``
+   * - Nests (:ref:`nests-one-run`, :ref:`two-way-nests`)
+     - ``Nest_Faces``, ``Nest_Validation``, ``Nest_Shapes``, ``Nests_One_Process``, ``Nests_Two_Way``,
+       ``Nests_Flat_ABL``, and ``Askervein_Nest`` and ``Columbia_Gorge`` on real terrain
+   * - Immersed terrain (:doc:`immersed_terrain`)
+     - ``Immersed_Column`` (case 1b above)
 
 Transient cases
 ---------------
@@ -91,6 +142,8 @@ Notes
   :math:`2\pi/f` (17.5 h at :math:`f = 10^{-4}` s\ :sup:`-1`) before it settles. Its ERF reference therefore runs
   48 h (:doc:`references`).
 - A case that may not be steady (case 6) is still run. If it does not meet the convergence criteria
-  (:ref:`convergence-criteria`), it is reported as not steady.
+  (:ref:`convergence-criteria`), it is reported as not steady. A steady run that stops at its iteration limit is not by
+  itself a sign of an unsteady flow (:doc:`results`). The unsteady solver can follow such a flow in time, from a
+  deck without grid sequencing and the upwind blend (:doc:`howto`).
 
 Results for these cases are in :doc:`results`.

@@ -43,3 +43,6 @@ turb.tke_floor = 1.e-6
 steady.stage          = simplec
 steady.sweep          = lusgs
 steady.max_iterations = 20000
+
+# The cap of the geometric length before the default became 100 m: keeps this test's answers.
+turb.max_geom_lscale = 30.

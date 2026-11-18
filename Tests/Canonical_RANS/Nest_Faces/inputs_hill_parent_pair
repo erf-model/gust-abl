@@ -29,3 +29,6 @@ bc.inflow_direction = 20.
 init.first_guess = profile
 
 steady.stage = simplec
+
+# The cap of the geometric length before the default became 100 m: keeps this test's answers.
+turb.max_geom_lscale = 30.

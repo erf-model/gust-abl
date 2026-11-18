@@ -237,8 +237,8 @@ SPEC = {
         "blend_height": Key("number", AUTO, "convection.hybrid_height. auto: 2.5 times the terrain's relief, "
                             "highest less lowest point in the domain, a regional slope included (no blend over flat "
                             "ground).", unit="m", lo=0.0, lo_open=True, words=(AUTO,)),
-        "length_scale_cap": Key("number", AUTO, "turb.max_geom_lscale. auto: 100 m (1e6 with drive: couette), "
-                                "not GUST's 30 m: over a 40 H fetch the 30 m cap lets the near-ground wind fall "
+        "length_scale_cap": Key("number", AUTO, "turb.max_geom_lscale. auto: 100 m, GUST's default (1e6 with drive: couette): "
+                                "over a 40 H fetch a 30 m cap lets the near-ground wind fall "
                                 "12 %, 100 m holds it within 4 % (Tests/Real_Terrain/RUSHIL/README.md).",
                                 unit="m", lo=0.0, lo_open=True, words=(AUTO,)),
         "tke_floor": Key("number", 1.0e-6, "turb.tke_floor; 0 is machine epsilon.", unit="m2/s2",

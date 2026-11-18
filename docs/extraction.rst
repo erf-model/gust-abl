@@ -15,8 +15,9 @@ file, its ERF source path, the ERF commit it was copied from, its status, and no
   the ERF file to the local file.
 
 Copied: the mesh and terrain-metric code (``ERF_GridUtils.H``, ``ERF_TerrainMetrics.{H,cpp}``,
-``ERF_ChopGrids.cpp`` and the small headers they include), ERF's Python plotfile reader for the check scripts, and
-the Askervein terrain file. ``ERF_TerrainMetrics.{H,cpp}`` are modified: the coordinate builders take the smoothing
+``ERF_ChopGrids.cpp`` and the small headers they include), ERF's Python plotfile reader, ERF's check scripts
+(``check_neutral.py``, ``check_hill.py``, ``check_hill3d.py``, ``rans_checks.py``), and the Askervein terrain file
+and power-law inflow file (``askervein.txt``, ``inflow_powerlaw.txt``). ``ERF_TerrainMetrics.{H,cpp}`` are modified: the coordinate builders take the smoothing
 choice and :math:`\gamma_m` as arguments instead of reading ERF's inputs, return the number of STF levels capped,
 and lose the refined-level (AMR) paths, which GUST does not use. BTF no longer rewrites the ground layer: ERF
 writes :math:`h\,z_\mathrm{top}/z_\mathrm{top}` there (within 1 ulp of :math:`h`) while other GPU threads read the
@@ -42,6 +43,11 @@ Copied unchanged for the surface layer: ``ERF_MOSTUtils.H``, whose ``similarity_
 stability functions (:doc:`boundary_conditions`). ERF's MOST kernels (``ERF_MOSTStress.H``, ``ERF_MOSTAverage.cpp``) are not
 copied: they are tied to ERF's state layout and plane averaging, and ``Source/SurfaceLayer.cpp`` follows their
 formulas per column. The reference-height lookup fix ERF#3982 is already in the pinned ERF.
+
+Copied unchanged for the closure: ``ERF_RANSClosure.H``, the reference the closure kernels are compared with bit
+for bit (``Closure.KernelsMatchErfBitForBit``, :doc:`turbulence_model`), and ``ERF_CanopyTurbulence.H`` and
+``ERF_CanopyTurbStruct.H`` for the canopy's length cap (``canopy.length_alpha``); these two come from a later ERF
+commit, recorded in the manifest.
 
 Copied unchanged for the forest canopy: ``ERF_ForestUtils.H``, whose ``validate_laimax`` checks ``canopy.laimax``
 and the laimax of type 2 lines in ``canopy.file`` (:doc:`canopy`). ERF's ``ERF_ForestDrag.cpp`` is not copied: it

@@ -4,6 +4,7 @@ Terrain-following coordinates
 Over hills the ground is not flat, so a regular box-shaped grid does not fit it. GUST uses a
 terrain-following mesh instead: the grid lines run parallel to the ground near the surface and become flat
 higher up. The grid is still regular in computational space, which keeps the solver simple and fast.
+An alternative in progress keeps a flat mesh and represents the ground by immersed forcing (:doc:`immersed_terrain`).
 
 A uniform computational grid :math:`(\xi, \eta, \zeta)` is mapped to physical space :math:`(x, y, z(\xi, \eta,
 \zeta))`. Only the heights follow the ground; the horizontal coordinates are not distorted. The mapping code is
