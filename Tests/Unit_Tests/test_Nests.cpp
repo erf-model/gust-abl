@@ -277,7 +277,7 @@ TEST (Nests, BoundaryInputsFromTheOuterDeck)
     bin.nest_relax_width = 3;
     bin.nest_relax_factor = 0.5;
     bin.given = {"bc.xlo"};
-    gust::apply_nest_boundary_inputs("plt_chk_final", amrex::Array<int, 3>{0, 0, 0}, bin);
+    gust::apply_nest_boundary_inputs("plt_chk_final", amrex::Array<int, 3>{0, 0, 0}, false, bin);
     for (int d = 0; d < 2; ++d) {
         EXPECT_EQ(bin.face[amrex::Orientation(d, amrex::Orientation::low)], gust::FaceType::nest);
         EXPECT_EQ(bin.face[amrex::Orientation(d, amrex::Orientation::high)], gust::FaceType::nest);
@@ -289,15 +289,24 @@ TEST (Nests, BoundaryInputsFromTheOuterDeck)
     EXPECT_EQ(bin.sponge_strength, 0);
     const std::array<bool, 5> fields{false, false, true, true, false};
     EXPECT_EQ(bin.rayleigh_fields, fields);
+    EXPECT_FALSE(bin.rayleigh_from_outer);
     EXPECT_EQ(bin.nest_relax_width, 0);
     EXPECT_EQ(bin.nest_relax_factor, 1);
     EXPECT_TRUE(bin.given.empty());
     // A nest periodic in y keeps periodic faces there.
     gust::BoundaryInputs per;
-    gust::apply_nest_boundary_inputs("c", amrex::Array<int, 3>{0, 1, 0}, per);
+    gust::apply_nest_boundary_inputs("c", amrex::Array<int, 3>{0, 1, 0}, false, per);
     EXPECT_EQ(per.face[amrex::Orientation(0, amrex::Orientation::low)], gust::FaceType::nest);
     EXPECT_EQ(per.face[amrex::Orientation(1, amrex::Orientation::low)], gust::FaceType::periodic);
     EXPECT_EQ(per.face[amrex::Orientation(1, amrex::Orientation::high)], gust::FaceType::periodic);
+    // nest.damping = outer: the outer deck's Rayleigh fields as they are, and the nest-face check lets them pass.
+    gust::BoundaryInputs od;
+    od.rayleigh_fields = {true, true, true, false, true};
+    gust::apply_nest_boundary_inputs("c", amrex::Array<int, 3>{0, 0, 0}, true, od);
+    const std::array<bool, 5> kept{true, true, true, false, true};
+    EXPECT_EQ(od.rayleigh_fields, kept);
+    EXPECT_TRUE(od.rayleigh_from_outer);
+    EXPECT_EQ(od.sponge_width, 0);
 }
 
 // A nest off the centre of the outer domain keeps the outer domain's hill

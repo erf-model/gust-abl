@@ -1034,7 +1034,8 @@ mesh (one box, dx the smaller spacing); the test now uses four boxes with dy < d
 The one-line mutants of ``simplec.theta = frozen`` (``Source/Simplec.cpp``, ``Source/Residual.cpp``,
 ``Source/Predictor.cpp``, ``Source/Sequencing.cpp``, ``Source/App.cpp``, ``Source/BoundaryConditions.cpp``) by
 ``tools/frozen_theta_mutants.py`` (macOS arm64, AppleClang): F1–F7 and F16–F19 against ``FrozenTheta.*`` on two ranks
-with the unit-test flags, F8–F15 and F20–F23 against the CTests ``rt_frozen_theta`` and ``abort_simplec_theta_*``
+with the unit-test flags, F8–F15 and F20–F23 against the CTests ``rt_frozen_theta``, ``abort_simplec_theta_*`` and
+``rt_nests_flat_abl_buoyant``
 (the wiring of the application, which the unit tests do not reach). All 23 are killed.
 
 .. list-table::
@@ -1067,7 +1068,7 @@ with the unit-test flags, F8–F15 and F20–F23 against the CTests ``rt_frozen_
      - ``StageRefusesMismatchedResidualInputs``
    * - F8
      - The residual inputs keep the momentum buoyancy with frozen θ
-     - ``rt_frozen_theta`` (the stage refuses the run)
+     - ``rt_frozen_theta`` (the stage refuses the run), ``rt_nests_flat_abl_buoyant``
    * - F9
      - The coarsest level not reset
      - ``rt_frozen_theta`` (no logged range for level 2)
@@ -1079,7 +1080,7 @@ with the unit-test flags, F8–F15 and F20–F23 against the CTests ``rt_frozen_
      - ``rt_frozen_theta`` (no logged range for level 0; θ is the prolonged field)
    * - F12
      - θ from the sounding by absolute height, not by height above the ground
-     - ``rt_frozen_theta`` (θ against the sounding)
+     - ``rt_frozen_theta`` (θ against the sounding), ``rt_nests_flat_abl_buoyant``
    * - F13
      - Frozen accepted without grid sequencing
      - ``abort_simplec_theta_no_sequencing``
@@ -1102,8 +1103,8 @@ with the unit-test flags, F8–F15 and F20–F23 against the CTests ``rt_frozen_
      - The extension's slope halved
      - ``GroundGhostsExtendTheFirstTwoCells``
    * - F20
-     - Frozen accepted with a stratified column first guess
-     - ``abort_simplec_theta_column``
+     - θ frozen at the inflow profile's θ, not the stratified column's
+     - ``rt_nests_flat_abl_buoyant`` (outer domain against the column)
    * - F21
      - The turbulence plotfile's ``R_theta`` not zeroed
      - ``rt_frozen_theta``
@@ -1767,10 +1768,11 @@ Current tests
        The range test also refuses ``steady.sequencing_cfl_start = previous`` with ``steady.sequencing_hold = 1``,
        and the unused test the two keys without sequencing.
    * - ``abort_simplec_theta_value``, ``abort_simplec_theta_newton``, ``abort_simplec_theta_restart``,
-       ``abort_simplec_theta_column``, ``abort_simplec_theta_no_sequencing``
+       ``abort_simplec_theta_no_sequencing``
      - ``simplec.theta = fixed`` is refused, naming the key; ``frozen`` is refused with ``steady.stage =
-       simplec_newton``, with ``io.restart``, with a stratified column first guess (the column-target deck with
-       ``init.column_mol = 1000``) and without grid sequencing, each naming the reason.
+       simplec_newton``, with ``io.restart`` and without grid sequencing, each naming the reason. Frozen θ with a
+       stratified column first guess and with nests runs in ``rt_nests_flat_abl_buoyant`` and
+       ``rt_nests_flat_abl_neutral``.
    * - ``abort_sequencing_hold_value``, ``abort_sequencing_cfl_start_value``
      - ``steady.sequencing_hold = 2`` and ``steady.sequencing_cfl_start = last``: each refused, naming its input.
    * - ``rt_sequencing_hold_kept``, ``rt_sequencing_hold_released``, ``rt_sequencing_cfl_previous``
@@ -1937,10 +1939,10 @@ Current tests
        fails this if the hill is centred on the nest), and the nest's u averaged to the outer cells is within a pinned
        bound of the outer u. The Rayleigh layer checks that a nest keeps it on w and theta only.
    * - ``abort_nests_misaligned``, ``_margin``, ``_overlap``, ``_missing_corner``, ``_unknown_key``, ``_no_checkpoint``,
-       ``_stage``, ``_frozen``, ``_layout_before_outer``
+       ``_stage``, ``_layout_before_outer``
      - A nest corner off the 50 m outer cell faces, 1 outer cell from ``xlo``, two nests sharing outer cells, a missing
-       ``nest.<name>.hi``, an unknown ``nest.<name>.*`` key, ``io.write_checkpoint = 0``, ``steady.stage = none``,
-       ``simplec.theta = frozen``, and a nest whose narrowest box is narrower than ``steady.line_overlap``: each stops
+       ``nest.<name>.hi``, an unknown ``nest.<name>.*`` key, ``io.write_checkpoint = 0``, ``steady.stage = none``
+       and a nest whose narrowest box is narrower than ``steady.line_overlap``: each stops
        the run before the outer domain starts, naming the key.
    * - ``abort_nests_outer_not_steady``
      - The outer domain stopped at ``steady.max_iterations = 3``: GUST stops after the outer run, names its last
@@ -1979,6 +1981,32 @@ Current tests
        (``ring max |C|``). On the crest nest, the ``outer`` run's u RMS against the 25 m run is at least 2.0 times
        the one-way one (measured 3.31); the ``nest`` run's is at most 1.6 times over the nest (1.22) and 1.25 times
        over the outer cells outside it (0.96), and at most 0.6 of the ``outer`` run's (0.37 and 0.35). The hill keeps the same two bounds (0.26 and 0.33).
+   * - ``rt_nests_flat_abl_neutral``, ``rt_nests_flat_abl_buoyant``, ``rt_nests_flat_abl_stable``,
+       ``rt_nests_flat_abl_stable_joint``
+     - Nests on a flat, horizontally uniform ABL (``Tests/Canonical_RANS/Nests_Flat_ABL``, ``check_nests_flat_abl.py``;
+       beyond the plan), on two ranks with the GPU-CI flags: the doubly periodic outer domain starts from its steady
+       column and a nest at 2 2 1 covers its middle. Neutral (Churchfield S) and buoyant (Churchfield B) freeze θ at
+       the column's and damp u, v and w towards the column's table with ``nest.damping = outer``; stable (GABLS1,
+       fixed surface flux) solves θ and damps w and θ only. The neutral and buoyant tests run one way then jointly
+       (``nest.feedback = defect``), ``_stable`` one way only and ``_stable_joint`` (label ``nightly``, about
+       7 minutes) both. Each requires the steady lines (outer, nest, joint); each domain horizontally uniform in u,
+       v and k, to 1e-6 for neutral and buoyant and to 1e-4 for stable on the levels whose mean k is above 1e-4 of
+       the largest (above them k is about 0, u and v are not damped, and the joint run leaves a neutral roll of
+       4.0e-4 m/s, printed but not bounded); the outer level means within 0.3 m/s, 10 % of the largest k and
+       0.02 K of the column's; and the nest's level means within 1e-6 m/s (neutral, buoyant) or 2e-4 m/s
+       (stable), 1e-4 of the largest k and 1e-5 K of the outer domain's (measured at most 6.5e-5 m/s, stable
+       joint; 1.1e-7 m/s for neutral and buoyant). Mutants: θ frozen at the sounding in place of the column (the
+       buoyant test, θ 5.1 K and u 1.46 m/s off the column) and the nests' layer cut back to w and θ with
+       ``nest.damping = outer`` (the neutral joint run is not steady after 10000 exchanges; the buoyant nest has
+       rolls of 4.5e-3 m/s).
+   * - ``abort_nests_damping_value``, ``_two_values``, ``_twice``, ``_no_names``, ``_no_effect``
+     - ``nest.damping = all``; ``= outer w_theta``; given twice; without ``nest.names``; ``outer`` with
+       ``bc.rayleigh_fields = w`` (no layer on u, v or k): each stops the run before the outer domain starts,
+       naming ``nest.damping``. Each is killed by removing its check.
+   * - ``abort_nests_canopy_heat_blend``
+     - ``nest.names`` with ``simplec.theta = frozen`` and ``canopy.heat_frozen = blend`` (forested escarpment): a
+       nest would blend the outer domain's blended θ again. The run stops before the outer domain starts. Killed by
+       removing the check.
    * - ``abort_nests_feedback_flux_value``, ``_unused``
      - ``nest.feedback_flux = fine``; ``nest`` without ``nest.feedback = defect``: each stops the run before the outer
        domain starts, naming ``nest.feedback_flux``.

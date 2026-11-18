@@ -864,7 +864,8 @@ iterations. The log says ``joint run: restarted after exchange N``.
   never stops earlier than the run it continues and may stop later.
 - ``nest.feedback`` may change at a restart (the log notes it). ``nest.feedback_flux`` is not in the record and may
   change at a restart without a note: the ring correction is formed again at every exchange, so nothing of it is
-  restored. ``steady.max_iterations`` at or below the recorded
+  restored. ``nest.damping`` is not in the record either; the deck must keep it, since it sets the nests' Rayleigh
+  layer and so the joint fixed point. ``steady.max_iterations`` at or below the recorded
   exchanges, a record that names other nests, and a record that cannot be read stop the run, naming
   ``io.restart``.
 - A checkpoint without a record, such as the outer domain's when its one-way run did not reach steady, restarts that
@@ -875,15 +876,40 @@ iterations. The log says ``joint run: restarted after exchange N``.
   joint nest's checkpoint does not restart as a stand-alone patch with ``bc.nest_parent``: its nest-face record
   leaves out the parent's step and content, which change at every exchange, so the check against a parent fails.
 
-**Damping.** A nest damps only :math:`w` and :math:`\theta` (above). Over each footprint the joint run carries the
-nests' equations, so an outer Rayleigh term on :math:`u, v` or :math:`k` would act outside the footprints and not
-inside them: a jump in the forcing at each footprint's edge above ``bc.rayleigh_zdamp``. ``nest.feedback = defect``
-(and ``relax``) therefore needs ``bc.rayleigh_fields = w`` or ``w theta``, and stops with an error otherwise. A nest has no side
+**Damping.** By default a nest damps only :math:`w` and :math:`\theta` (above). Over each footprint the joint run
+carries the nests' equations, so an outer Rayleigh term on :math:`u, v` or :math:`k` would act outside the footprints
+and not inside them: a jump in the forcing at each footprint's edge above ``bc.rayleigh_zdamp``.
+``nest.feedback = defect`` (and ``relax``) therefore needs ``bc.rayleigh_fields = w`` or ``w theta``, and stops with an
+error otherwise, unless ``nest.damping = outer``: the nests then keep the outer deck's ``bc.rayleigh_fields`` and damp
+:math:`u, v` and :math:`k` towards the same ``bc.inflow_*`` profile as the outer domain, so the forcing is the same on
+both sides of each footprint's edge. On a flat, horizontally uniform ABL with an inversion
+(``Tests/Canonical_RANS/Nests_Flat_ABL``, below) the joint run needs it: with the nests damping :math:`w` and
+:math:`\theta` only, rolls grow in the nest below the inversion (4.5e-3 m/s departures from uniform in the buoyant
+case) or the joint run does not reach steady (neutral case, 10000 exchanges). A nest has no side
 sponge either: with ``bc.sponge_width > 0`` the run prints a note, and the nests are best placed outside the sponge.
 Nor does a nest of ``nest.names`` have a relaxation zone or a ground blend (Nest faces, above):
 each nest's ``bc.nest_relax_width`` is 0 (``Source/Nests.cpp``), and ``bc.nest_relax_width`` or
 ``terrain.nest_blend_width`` in the outer deck stops the run, since the outer domain has no ``nest`` face. A joint
 nest's ground is its own up to the faces, and its coordinate surfaces follow the outer domain's aloft (above).
+
+**Flat ABL.** ``Tests/Canonical_RANS/Nests_Flat_ABL`` (beyond the plan) checks the nests where the answer is known: on
+a doubly periodic flat outer domain that starts from its steady column, the steady state is the column, the same at
+every :math:`(x, y)`, and a nest at 2 2 1 must return the outer domain's level means. Three decks: neutral (case S
+of Moeng and Sullivan 1994, as rerun by Churchfield et al. 2010), buoyant (case B) and stable (the set-up of GABLS1,
+Beare et al. 2006, with a fixed surface flux of -0.0025 K m/s). S and B freeze :math:`\theta` at the column's
+(``simplec.theta = frozen``; with :math:`\theta` solved, entrainment at the inversion warms the mixed layer and the
+case has no steady state) and damp :math:`u, v` and :math:`w` towards the column's table from below the inversion (450 m and 700 m) with
+``nest.damping = outer``. The stable deck solves :math:`\theta` and damps :math:`w` and :math:`\theta` only. On two
+ranks the nest's level means are the outer domain's to 1.1e-7 m/s (S), 2e-8 m/s (B) and 3.2e-5 m/s (stable) one
+way, and to 8.5e-10, 6e-10 and 6.5e-5 m/s after the joint run. In the stable case the outer domain's own stop
+(``steady.residual_tol = 5e-5``) leaves its mean 0.066 m/s (near 316 m) and 0.013 K from the state it reaches
+alone after 20000 iterations; the joint run, which iterates on, moves it by the same amounts. The joint stable run
+also leaves a roll in :math:`u` aloft, where :math:`k` is about 0 and :math:`u` and :math:`v` are not damped (4.0e-4
+m/s from uniform in both domains; the outer domain alone stays uniform to 2e-6): a :math:`u(y)` in geostrophic
+balance is a neutral mode there, and its size depends on the iteration history. The outer domain's level means
+differ from the column's by up to 0.15 m/s (S), 0.005 m/s (B) and 0.09 m/s (stable): the column and the 3-D stage
+do not discretize the capped, stratified column alike. The case's ``README.md`` has the
+details.
 
 .. _conservative-faces:
 

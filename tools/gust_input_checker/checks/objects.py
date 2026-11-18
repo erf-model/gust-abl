@@ -115,6 +115,10 @@ class CanopyChecker(Checker):
                            % leaf, "Give the leaf temperature in kelvin.")
             if c.solve and not c.theta_frozen:
                 self.no_effect("canopy.heat_frozen", "without simplec.theta = frozen (theta is solved)")
+            elif c.theta_frozen and c.s("canopy.heat_frozen") == "blend" and self.given("nest.names"):
+                self.error("nest.names", "GUST stops: nest.names is not supported with simplec.theta = frozen and "
+                                         "canopy.heat_frozen = blend (a nest would blend the outer domain's blended "
+                                         "theta again).", "Set canopy.heat_frozen = skip, or remove the nests.")
         if kind == "patches":
             if not c.s("canopy.file"):
                 self.error("canopy.file", "GUST stops: canopy.type = patches needs canopy.file.",

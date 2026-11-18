@@ -373,6 +373,19 @@ CASES = [
      "nest.feedback = defect\nnest.feedback_factor = 2\n", ["E nest.feedback_factor nests"], []),
     ("nests_named_feedback_factor", "inflow", "nest.names = feedback_factor\n", ["E nest.names nests"], []),
     ("nests_named_feedback_flux", "inflow", "nest.names = feedback_flux\n", ["E nest.names nests"], []),
+    # nest.damping: its values, its need of nest.names and of a layer on u, v or tke; outer lifts the joint run's
+    # limit on bc.rayleigh_fields.
+    ("nests_named_damping", "inflow", "nest.names = damping\n", ["E nest.names nests"], []),
+    ("nests_damping_value", "inflow", NEST_A + "nest.damping = all\n", ["E nest.damping values"], []),
+    ("nests_damping_no_names", "inflow", "nest.damping = outer\n", ["E nest.damping nests"], []),
+    ("nests_damping_no_effect", "inflow", NEST_A + "nest.damping = outer\nbc.rayleigh_zdamp = 300\n"
+     "bc.rayleigh_dampcoef = 0.1\nbc.rayleigh_fields = w\n", ["E nest.damping nests"], []),
+    ("nests_damping_outer_joint", "inflow", NEST_A + "nest.feedback = defect\nnest.damping = outer\n"
+     "bc.rayleigh_zdamp = 300\nbc.rayleigh_dampcoef = 0.1\nbc.rayleigh_fields = u v w\n", [],
+     ["E nest.feedback", "E nest.damping"]),
+    ("nests_damping_default_joint", "inflow", NEST_A + "nest.feedback = defect\n"
+     "bc.rayleigh_zdamp = 300\nbc.rayleigh_dampcoef = 0.1\nbc.rayleigh_fields = u v w\n",
+     ["E nest.feedback nests"], []),
     ("nests_feedback_flux_ok", "inflow", "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 1200 900\n"
      "nest.feedback = defect\nnest.feedback_flux = nest\n", [], ["E *"]),
     ("nests_feedback_flux_value", "inflow", "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 1200 900\n"
