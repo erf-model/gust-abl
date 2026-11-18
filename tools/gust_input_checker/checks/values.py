@@ -50,6 +50,9 @@ terrain.idw_neighbors int 1 >=1
 terrain.idw_power real 1 >0
 terrain.hierarchy_passes int 1 >=0&<=64
 terrain.nest_blend_width real 1 >=0
+terrain.representation body_fitted,immersed_forcing 1
+terrain.flat_height real 1 >0
+terrain.small_volfrac real 1 >=1e-4&<0.5
 init.first_guess none,profile,column,nest 1
 init.projection flag 1
 init.alpha_h real 1 >0

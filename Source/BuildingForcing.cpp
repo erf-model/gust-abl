@@ -30,6 +30,9 @@ void BuildingForcing::build (const Buildings& b, const BuildingsOptions& opt, co
     m_wall_form = opt.wall_form;
     m_rate.define(b.beta().boxArray(), b.beta().DistributionMap(), kNumBuildingRates, 1);
     m_rate.setVal(0.0);
+    m_immersed_ground = opt.immersed_ground;
+    m_spacing.clear();   // a rebuild without an immersed ground keeps no spacing
+    if (m_immersed_ground && wall_law()) { make_centroid_spacing(); }
     // The weight of each face in a cell's speed: 0 on a fixed row with buildings.wall_speed =
     // open_faces, else 1. A fixed row is a blocked face (fraction 1), but for w on the ground,
     // which is the boundary conditions' row (its value follows the slope). One ghost layer:
@@ -51,10 +54,11 @@ void BuildingForcing::build (const Buildings& b, const BuildingsOptions& opt, co
         wt.FillBoundary(geom.periodicity());
     }
     // The wall cells whose fluid centroid is within 10 z0 of a wall with the law: there the
-    // law reads the speed as at 10 z0, so the stress does not follow the distance.
+    // law reads the speed as at 10 z0, so the stress does not follow the distance. An immersed
+    // ground has no floor (form7_ustar2_exact): none is counted.
     m_wall_cells = 0;
     m_below_floor = 0;
-    if (wall_law()) {
+    if (wall_law() && !opt.immersed_ground) {
         const int bits = side_law() ? (kWallRoof | kWallUnder | kWallXlo | kWallXhi | kWallYlo | kWallYhi) : (kWallRoof | kWallUnder);
         const int n0 = side_law() ? kWallD1x : kWallD1z;
         const amrex::Real floor = amrex::Real(10) * m_z0;
@@ -85,25 +89,45 @@ void BuildingForcing::build (const Buildings& b, const BuildingsOptions& opt, co
     }
 }
 
-void BuildingForcing::update (const amrex::MultiFab& u, const amrex::MultiFab& v, const amrex::MultiFab& w)
+namespace {
+
+//! The law at the 10 z0 floor (buildings) and at the exact distances (an immersed ground).
+struct FlooredLaw {
+    AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE static amrex::Real ustar2 (amrex::Real a, amrex::Real b, amrex::Real beta, amrex::Real d1,
+                                                                    amrex::Real d2, amrex::Real z0, amrex::Real kappa) noexcept
+    { return form7_ustar2(a, b, beta, d1, d2, z0, kappa); }
+    AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE static void heat (amrex::Real us2, amrex::Real beta, amrex::Real d1, amrex::Real d2,
+                                                           amrex::Real z0, amrex::Real kappa, amrex::Real& o, amrex::Real& r) noexcept
+    { form7_heat_velocities(us2, beta, d1, d2, z0, kappa, o, r); }
+};
+struct ExactLaw {
+    AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE static amrex::Real ustar2 (amrex::Real a, amrex::Real b, amrex::Real beta, amrex::Real d1,
+                                                                    amrex::Real d2, amrex::Real z0, amrex::Real kappa) noexcept
+    { return form7_ustar2_exact(a, b, beta, d1, d2, z0, kappa); }
+    AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE static void heat (amrex::Real us2, amrex::Real beta, amrex::Real d1, amrex::Real d2,
+                                                           amrex::Real z0, amrex::Real kappa, amrex::Real& o, amrex::Real& r) noexcept
+    { form7_heat_velocities_exact(us2, beta, d1, d2, z0, kappa, o, r); }
+};
+
+//! The rates of roofs and undersides, on u and v, with the law LAW (each law its own kernel).
+template <typename LAW>
+void roof_rates (const Buildings& b, const std::array<amrex::MultiFab, 3>& weight, const amrex::MultiFab& detJ,
+                 const amrex::Geometry& geom, const amrex::MultiFab& u, const amrex::MultiFab& v, amrex::Real z0,
+                 amrex::Real kappa, amrex::Real umin, amrex::MultiFab& rate_mf)
 {
-    if (!wall_law()) { return; }
-    const amrex::Real z0 = m_z0, kappa = amrex::Real(0.41), umin = kBuildingMinSpeed;
-    const amrex::Real dzeta = m_geom.CellSize(2);
-    const amrex::MultiFab& bz = m_b->beta_face(2);
-    m_rate.setVal(0.0);
-    // Roofs and undersides: on u and v.
-    for (amrex::MFIter mfi(m_rate, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
-        const auto r = m_rate.array(mfi);
+    const amrex::Real dzeta = geom.CellSize(2);
+    const amrex::MultiFab& bz = b.beta_face(2);
+    for (amrex::MFIter mfi(rate_mf, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
+        const auto r = rate_mf.array(mfi);
         const auto uu = u.const_array(mfi);
         const auto vv = v.const_array(mfi);
-        const auto beta = m_b->beta().const_array(mfi);
-        const auto wx = m_weight[0].const_array(mfi);
-        const auto wy = m_weight[1].const_array(mfi);
-        const auto wl = m_b->wall().const_array(mfi);
+        const auto beta = b.beta().const_array(mfi);
+        const auto wx = weight[0].const_array(mfi);
+        const auto wy = weight[1].const_array(mfi);
+        const auto wl = b.wall().const_array(mfi);
         const auto fz = bz.const_array(mfi);
-        const auto J = m_detJ->const_array(mfi);
-        const int klo = m_geom.Domain().smallEnd(2), khi = m_geom.Domain().bigEnd(2);
+        const auto J = detJ.const_array(mfi);
+        const int klo = geom.Domain().smallEnd(2), khi = geom.Domain().bigEnd(2);
         amrex::ParallelFor(mfi.tilebox(), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
         {
             const int mask = static_cast<int>(wl(i, j, k, kWallMask));
@@ -120,21 +144,21 @@ void BuildingForcing::update (const amrex::MultiFab& u, const amrex::MultiFab& v
             amrex::Real rate = 0, top = 0, heat_own = 0, heat_ref = 0, ho = 0, hr = 0;
             if ((mask & kWallRoof) != 0) {
                 const amrex::Real ref = k < khi ? speed(k + 1) : amrex::Real(0);
-                const amrex::Real us2 = form7_ustar2(own, ref, beta(i, j, k), d1, d2, z0, kappa);
+                const amrex::Real us2 = LAW::ustar2(own, ref, beta(i, j, k), d1, d2, z0, kappa);
                 const amrex::Real area = wall_area_fraction(fz(i, j, k), fz(i, j, k + 1), beta(i, j, k));
                 rate += area * us2 * inv;
                 top = amrex::max(top, us2);
-                form7_heat_velocities(us2, beta(i, j, k), d1, d2, z0, kappa, ho, hr);
+                LAW::heat(us2, beta(i, j, k), d1, d2, z0, kappa, ho, hr);
                 heat_own += area * ho * inv_dn;
                 heat_ref += area * hr * inv_dn;
             }
             if ((mask & kWallUnder) != 0) {
                 const amrex::Real ref = k > klo ? speed(k - 1) : amrex::Real(0);
-                const amrex::Real us2 = form7_ustar2(own, ref, beta(i, j, k), d1, d2, z0, kappa);
+                const amrex::Real us2 = LAW::ustar2(own, ref, beta(i, j, k), d1, d2, z0, kappa);
                 const amrex::Real area = wall_area_fraction(fz(i, j, k + 1), fz(i, j, k), beta(i, j, k));
                 rate += area * us2 * inv;
                 top = amrex::max(top, us2);
-                form7_heat_velocities(us2, beta(i, j, k), d1, d2, z0, kappa, ho, hr);
+                LAW::heat(us2, beta(i, j, k), d1, d2, z0, kappa, ho, hr);
                 heat_own += area * ho * inv_dn;
                 heat_ref += area * hr * inv_dn;
             }
@@ -144,6 +168,21 @@ void BuildingForcing::update (const amrex::MultiFab& u, const amrex::MultiFab& v
             r(i, j, k, kBuildingHeatOwn) = heat_own;
             r(i, j, k, kBuildingHeatRefZ) = heat_ref;
         });
+    }
+}
+
+}   // namespace
+
+void BuildingForcing::update (const amrex::MultiFab& u, const amrex::MultiFab& v, const amrex::MultiFab& w)
+{
+    if (!wall_law()) { return; }
+    const amrex::Real z0 = m_z0, kappa = amrex::Real(0.41), umin = kBuildingMinSpeed;
+    m_rate.setVal(0.0);
+    // Roofs and undersides: on u and v.
+    if (m_immersed_ground) {
+        roof_rates<ExactLaw>(*m_b, m_weight, *m_detJ, m_geom, u, v, z0, kappa, umin, m_rate);
+    } else {
+        roof_rates<FlooredLaw>(*m_b, m_weight, *m_detJ, m_geom, u, v, z0, kappa, umin, m_rate);
     }
     if (side_law()) {
         // Sides normal to x: on v and w. The reference cell is the next one out along x. Only a
@@ -292,6 +331,49 @@ void BuildingForcing::close_viscous_fluxes (const amrex::Array<const amrex::Mult
             }
         }
     }
+    if (!m_spacing.empty()) {
+        // An immersed ground: u and v across the top face of a roof cell, over the distance between the
+        // two cells' fluid centroids (make_centroid_spacing). The face at k lies on the roof cell k - 1.
+        for (int c = 0; c < 2; ++c) {
+            const int di = (c == 0) ? 1 : 0, dj = (c == 1) ? 1 : 0;
+            amrex::MultiFab& Gcz = G[static_cast<std::size_t>(c)][2];
+            for (amrex::MFIter mfi(Gcz, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
+                const auto g = Gcz.array(mfi);
+                const auto sp = m_spacing.const_array(mfi);
+                amrex::ParallelFor(mfi.tilebox(), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+                {
+                    g(i, j, k) *= amrex::Real(0.5) * (sp(i - di, j - dj, k - 1) + sp(i, j, k - 1));
+                });
+            }
+        }
+    }
+}
+
+void BuildingForcing::make_centroid_spacing ()
+{
+    // s = (cell-centre spacing) / (d2 - d1) on a roof cell with a reference cell above, else 1:
+    //   d2 - d1 = (1 - beta) Delta_n / 2 + Delta_ref / 2,  spacing = Delta_n / 2 + Delta_ref / 2,
+    // so s >= 1, and s = 1 where beta = 0. On the cells and their ghost layer (wall() has one: periodic
+    // images, else the nearest domain column; below and above the domain no bits, so s = 1).
+    const amrex::MultiFab& wall = m_b->wall();
+    m_spacing.define(wall.boxArray(), wall.DistributionMap(), 1, 1);
+    m_spacing.setVal(1.0);
+    const amrex::Real dzeta = m_geom.CellSize(2);
+    const amrex::Box gdom = amrex::grow(m_geom.Domain(), 2, 1);
+    for (amrex::MFIter mfi(m_spacing, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
+        const amrex::Box bx = mfi.growntilebox(1) & amrex::grow(gdom, amrex::IntVect(1, 1, -1));
+        const auto sp = m_spacing.array(mfi);
+        const auto wl = wall.const_array(mfi);
+        const auto J = m_detJ->const_array(mfi);
+        amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+        {
+            const int mask = static_cast<int>(wl(i, j, k, kWallMask));
+            const amrex::Real d1 = wl(i, j, k, kWallD1z), d2 = wl(i, j, k, kWallD2z);
+            if ((mask & kWallRoof) == 0 || !(d2 > d1)) { return; }
+            const amrex::Real centres = amrex::Real(0.5) * (J(i, j, k) + J(i, j, k + 1)) * dzeta;
+            sp(i, j, k) = centres / (d2 - d1);
+        });
+    }
 }
 
 void BuildingForcing::apply_rows (const amrex::MultiFab& u, const amrex::MultiFab& v, const amrex::MultiFab& w, amrex::MultiFab& Ru,
@@ -342,6 +424,22 @@ void BuildingForcing::add_to_implicit (int c, const amrex::Array<const amrex::Mu
                 {
                     a(i, j, k, lo) *= amrex::Real(0.5) * (o(i - di, j - dj, k - dk) + o(i, j, k));
                     a(i, j, k, hi) *= amrex::Real(0.5) * (o(i - di + ei, j - dj + ej, k - dk + ek) + o(i + ei, j + ej, k + ek));
+                });
+            }
+        }
+        if (!m_spacing.empty() && c < 2) {
+            // The centroid spacing of close_viscous_fluxes: the couplings across a roof cell's top face grow by
+            // s >= 1, and a_P by the same amount, so a_P = sum a_nb still holds.
+            for (amrex::MFIter mfi(A, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
+                const auto a = A.array(mfi);
+                const auto sp = m_spacing.const_array(mfi);
+                amrex::ParallelFor(mfi.tilebox(), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+                {
+                    const amrex::Real sb = amrex::Real(0.5) * (sp(i - di, j - dj, k - 1) + sp(i, j, k - 1));
+                    const amrex::Real st = amrex::Real(0.5) * (sp(i - di, j - dj, k) + sp(i, j, k));
+                    a(i, j, k, coef_P) += (sb - 1) * a(i, j, k, coef_ZM) + (st - 1) * a(i, j, k, coef_ZP);
+                    a(i, j, k, coef_ZM) *= sb;
+                    a(i, j, k, coef_ZP) *= st;
                 });
             }
         }

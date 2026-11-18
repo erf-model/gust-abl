@@ -409,9 +409,17 @@ void Buildings::build (const BuildingsOptions& opt, const amrex::Geometry& geom,
                        const amrex::BoxArray& cell_ba, const amrex::DistributionMapping& dm)
 {
     if (!opt.active()) { amrex::Abort("gust: Buildings::build needs buildings.type = immersed_forcing"); }
-    m_active = true;
+    build_from_map(opt, read_building_map(opt.file, opt.format), "buildings.file = " + opt.file, geom, z_nd, cell_ba, dm);
     m_hash = hash_inputs(opt);
-    const BuildingHeightMap map = read_building_map(opt.file, opt.format);
+}
+
+void Buildings::build_from_map (const BuildingsOptions& opt, const BuildingHeightMap& map, const std::string& where,
+                                const amrex::Geometry& geom, const amrex::MultiFab& z_nd, const amrex::BoxArray& cell_ba,
+                                const amrex::DistributionMapping& dm)
+{
+    if (!opt.active()) { amrex::Abort("gust: Buildings::build_from_map needs an active type"); }
+    m_active = true;
+    m_hash.clear();
     const double lx = geom.isPeriodic(0) ? static_cast<double>(geom.ProbLength(0)) : 0.0;
     const double ly = geom.isPeriodic(1) ? static_cast<double>(geom.ProbLength(1)) : 0.0;
     for (int n = 0; n < cell_ba.size(); ++n) {
@@ -424,14 +432,14 @@ void Buildings::build (const BuildingsOptions& opt, const amrex::Geometry& geom,
         const std::vector<double>& e = d == 0 ? map.xe : map.ye;
         const double l = d == 0 ? lx : ly;
         if (l > 0 && e.back() - e.front() > l * (1 + 1e-12)) {
-            amrex::Abort("gust: buildings.file = " + opt.file + ": the tiles span " + std::to_string(e.back() - e.front())
+            amrex::Abort("gust: " + where + ": the tiles span " + std::to_string(e.back() - e.front())
                          + " m in " + (d == 0 ? "x" : "y") + ", wider than the periodic domain (" + std::to_string(l)
                          + " m; a file listing both x = 0 and x = L holds the seam twice)");
         }
         // Only the nearest images are searched.
         const double plo_d = static_cast<double>(geom.ProbLo(d));
         if (l > 0 && (e.front() < plo_d - l || e.back() > plo_d + 2 * l)) {
-            amrex::Abort("gust: buildings.file = " + opt.file + ": the tiles lie more than one period from the domain in "
+            amrex::Abort("gust: " + where + ": the tiles lie more than one period from the domain in "
                          + (d == 0 ? "x" : "y"));
         }
     }
@@ -485,10 +493,10 @@ void Buildings::build (const BuildingsOptions& opt, const amrex::Geometry& geom,
     amrex::ParallelDescriptor::ReduceRealMax(any);
     amrex::ParallelDescriptor::ReduceRealMax(top);
     if (!(any > 0)) {
-        amrex::Abort("gust: buildings.file = " + opt.file + ": no building lies in the domain (above buildings.small_volfrac)");
+        amrex::Abort("gust: " + where + ": no building lies in the domain (above buildings.small_volfrac)");
     }
     if (top > 0) {
-        amrex::Abort("gust: buildings.file = " + opt.file + ": a building reaches the top layer of the mesh; "
+        amrex::Abort("gust: " + where + ": a building reaches the top layer of the mesh; "
                      "raise the top of the domain or lower the building");
     }
 
@@ -652,7 +660,7 @@ std::string Buildings::summary (const amrex::MultiFab& detJ, const amrex::Geomet
 
 void Buildings::write_checkpoint (const std::string& dir) const
 {
-    if (m_active && amrex::ParallelDescriptor::IOProcessor()) {
+    if (m_active && !m_hash.empty() && amrex::ParallelDescriptor::IOProcessor()) {
         const std::string name = buildings_checkpoint_file(dir);
         std::ofstream os(name);
         if (!os.good()) { amrex::FileOpenFailed(name); }

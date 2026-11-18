@@ -256,3 +256,59 @@ TEST (Inputs, ParmParseEntriesSeeUsedAndUnused)
 }
 
 } // namespace
+
+// terrain.representation = immersed_forcing (ImmersedTerrain.H): a valid flat periodic deck passes;
+// each check names its input. The checks that need other namespaces are check_immersed_terrain's
+// (test_ImmersedTerrain.cpp).
+TEST (Inputs, ImmersedTerrainChecksNameTheInput)
+{
+    auto immersed = [] () {
+        auto in = valid_inputs();
+        in.mesh.is_periodic = {1, 1, 0};
+        in.terrain.representation = "immersed_forcing";
+        in.terrain.flat_height = 10;
+        return in;
+    };
+    EXPECT_TRUE(gust::validate(immersed()).empty());
+    struct Case { const char* key; void (*mutate)(gust::Inputs&); };
+    const Case cases[] = {
+        {"terrain.representation must be body_fitted or immersed_forcing", [] (gust::Inputs& in) { in.terrain.representation = "immersed"; }},
+        {"needs terrain.type = flat", [] (gust::Inputs& in) {
+             in.terrain.type = "agnesi"; in.terrain.hill_height = 50; in.terrain.hill_half_width = 100; }},
+        {"terrain.flat_height must be finite and > 0", [] (gust::Inputs& in) { in.terrain.flat_height = 0; }},
+        {"terrain.flat_height must be finite and > 0", [] (gust::Inputs& in) {
+             in.terrain.flat_height = std::numeric_limits<amrex::Real>::quiet_NaN(); }},
+        {"terrain.flat_height must be below mesh.prob_hi z", [] (gust::Inputs& in) { in.terrain.flat_height = 800; }},
+        {"terrain.small_volfrac must be >= 1e-4 and < 0.5", [] (gust::Inputs& in) { in.terrain.small_volfrac = amrex::Real(0.5); }},
+        {"terrain.small_volfrac must be >= 1e-4 and < 0.5", [] (gust::Inputs& in) { in.terrain.small_volfrac = 0; }},
+        {"terrain.smoothing has no effect with terrain.representation = immersed_forcing", [] (gust::Inputs& in) {
+             in.terrain.given.emplace_back("smoothing"); }},
+        {"terrain.nest_blend_width has no effect with terrain.representation", [] (gust::Inputs& in) {
+             in.terrain.given.emplace_back("nest_blend_width"); }},
+        {"needs mesh.hierarchy_levels = 1", [] (gust::Inputs& in) { in.mesh.hierarchy_levels = 2; }},
+        {"needs mesh.is_periodic = 1 1 0", [] (gust::Inputs& in) { in.mesh.is_periodic[1] = 0; }},
+        {"terrain.flat_height has no effect unless terrain.representation = immersed_forcing", [] (gust::Inputs& in) {
+             in.terrain.representation = "body_fitted"; in.terrain.given.emplace_back("flat_height"); }},
+        {"terrain.small_volfrac has no effect unless", [] (gust::Inputs& in) {
+             in.terrain.representation = "body_fitted"; in.terrain.given.emplace_back("small_volfrac"); }},
+    };
+    for (const auto& c : cases) {
+        auto in = immersed();
+        c.mutate(in);
+        const auto err = gust::validate(in);
+        EXPECT_EQ(err.size(), 1u) << c.key;
+        EXPECT_TRUE(any_mentions(err, c.key)) << c.key;
+    }
+}
+
+// The three keys are read from an inputs file.
+TEST (Inputs, ParsesTheImmersedTerrainKeys)
+{
+    ScopedKeys guard{{{"terrain", "representation"}, {"terrain", "flat_height"}, {"terrain", "small_volfrac"}}};
+    add_inputs_text("terrain.representation = immersed_forcing\nterrain.flat_height = 12.5\nterrain.small_volfrac = 0.01\n");
+    const auto in = gust::parse_inputs();
+    EXPECT_EQ(in.terrain.representation, "immersed_forcing");
+    EXPECT_EQ(in.terrain.flat_height, amrex::Real(12.5));
+    EXPECT_EQ(in.terrain.small_volfrac, amrex::Real(0.01));
+    EXPECT_EQ(in.terrain.given.size(), 3u);
+}

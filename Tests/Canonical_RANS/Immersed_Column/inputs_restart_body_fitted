@@ -1,0 +1,31 @@
+# Restart from inputs_immersed_ground's checkpoint with a body-fitted ground: refused.
+mesh.n_cell        = 4 4 67
+mesh.prob_hi       = 2560. 2560. 1046.875
+mesh.is_periodic   = 1 1 0
+mesh.max_grid_size = 2 4
+
+terrain.type = flat
+
+bc.zlo = surface_layer
+bc.zhi = slip_wall
+bc.surface_z0 = 0.1
+bc.theta_profile_z = 0.
+bc.theta_profile   = 300.
+bc.inflow_profile  = log_law
+bc.inflow_ustar    = 0.25
+bc.inflow_z0       = 0.1
+bc.inflow_direction = 0.
+
+turb.max_geom_lscale = 1.0e12
+turb.face_mean       = logarithmic
+
+forcing.pressure_gradient = 1.225e-4 0. 0.
+
+steady.stage          = simplec
+steady.sweep          = zjacobi
+steady.max_iterations = 1
+solver.poisson_backend = gmres_fft
+
+io.restart          = immersed_ground_chk00001
+io.write_plotfile   = 0
+io.write_checkpoint = 0

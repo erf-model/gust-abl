@@ -141,6 +141,20 @@ void check_inputs (const char* op, const ResidualInputs& in)
     if (!err.empty()) { amrex::Abort(std::string("gust: ") + op + ": ResidualInputs: " + err); }
 }
 
+// R += open * T on R's valid faces: a body force T, per unit volume of the whole control volume,
+// acting on the open part of each face (an immersed ground, BuildingForcing::immersed_ground). The
+// open fraction 1 - beta_face stands for the fluid fraction of the face's control volume.
+void add_on_open_part (const amrex::MultiFab& T, const amrex::MultiFab& open, amrex::MultiFab& R)
+{
+    for (amrex::MFIter mfi(R, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
+        const amrex::Box bx = mfi.tilebox();
+        const auto r = R.array(mfi);
+        const auto t = T.const_array(mfi);
+        const auto o = open.const_array(mfi);
+        amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept { r(i, j, k) += o(i, j, k) * t(i, j, k); });
+    }
+}
+
 // Over the owned points of q (shared faces once): sum of |(q - offset) / s|,
 // sum of (v / s)^2 and the number of points, per box, written to slots
 // (3 per box: box_sums[3 * box + c]). One thread per (i, j) column adds its
@@ -305,9 +319,18 @@ void residual (const State& q, const ResidualInputs& in, const Mesh& mesh, const
     amrex::MultiFab& theta_ref = w.theta_ref;
     if (theta_ref.empty()) { theta_ref.define(q.p.boxArray(), q.p.DistributionMap(), 1, 1); }
     fill_theta_ref(in.theta_ref, z, theta_ref);
-    if (in.buoyancy_in_momentum) { subtract_buoyancy(q.theta, theta_ref, in.buoyancy, mesh, R.w); }
-    subtract_coriolis(q.u, q.v, q.w, in.coriolis, mesh, R.u, R.v, R.w);
-    subtract_pressure_gradient(in.pressure_gradient, mesh, R.u, R.v, R.w);
+    if (in.buildings != nullptr && in.buildings->immersed_ground()) {
+        // An immersed ground: the body forces act on the fluid part of each control volume only.
+        for (int c = 0; c < 3; ++c) { tmp[c].setVal(0); }
+        if (in.buoyancy_in_momentum) { subtract_buoyancy(q.theta, theta_ref, in.buoyancy, mesh, tmp[2]); }
+        subtract_coriolis(q.u, q.v, q.w, in.coriolis, mesh, tmp[0], tmp[1], tmp[2]);
+        subtract_pressure_gradient(in.pressure_gradient, mesh, tmp[0], tmp[1], tmp[2]);
+        for (int c = 0; c < 3; ++c) { add_on_open_part(tmp[c], mesh.open_fraction(c), *Rm[c]); }
+    } else {
+        if (in.buoyancy_in_momentum) { subtract_buoyancy(q.theta, theta_ref, in.buoyancy, mesh, R.w); }
+        subtract_coriolis(q.u, q.v, q.w, in.coriolis, mesh, R.u, R.v, R.w);
+        subtract_pressure_gradient(in.pressure_gradient, mesh, R.u, R.v, R.w);
+    }
 
     // Continuity.
     velocity_divergence(q.u, q.v, q.w, z, mesh, geom, R.p, w.omega);

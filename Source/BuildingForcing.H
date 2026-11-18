@@ -30,6 +30,13 @@
 //   through the blocked part of a wall's face is closed, in the residual and in the
 //   implicit rows. r stays out of the local pseudo-time step and goes into a_P
 //   (its derivative with r frozen; the fixed point does not depend on it).
+// - an immersed ground (terrain.representation = immersed_forcing, ImmersedTerrain.H): the law at the
+//   exact distances, in ln((d + z0) / z0) with no floor (form7_ustar2_exact); the viscous flux
+//   of u and v across the top face of a roof cell spans the distance between the two cells' fluid
+//   centroids, d2 - d1, not the cell-centre spacing: G *= s, s = spacing / (d2 - d1) >= 1, in the
+//   residual and in the implicit couplings (a_P gains the same, so a_P = sum a_nb holds). With the
+//   cell-centre spacing the cut cell read too slow and the cell above too fast, by up to 5 % of the
+//   log law in the Neutral_Column (docs/immersed_terrain.rst). Buildings keep the cell-centre spacing.
 // - buildings.wall_form = roof_stress: the law on roofs and undersides alone, the sides
 //   with their fixed rows and viscous fluxes to the zero velocity (the form before the
 //   sides had the law).
@@ -58,6 +65,22 @@ amrex::Real form7_ustar2 (amrex::Real u_own, amrex::Real u_ref, amrex::Real beta
     const amrex::Real own = kappa * u_own / std::log(amrex::max(d1, floor) / z0);
     if (d2 <= amrex::Real(0)) { return own * own; }
     const amrex::Real ref = kappa * u_ref / std::log(amrex::max(d2, floor) / z0);
+    return (amrex::Real(1) - beta) * own * own + beta * ref * ref;
+}
+
+//! The wall law of one cell of an immersed ground (terrain.representation = immersed_forcing): the
+//! MOST form at the exact distances, neutral (psi_m = 0), as the body-fitted surface layer has it
+//! (SurfaceLayer.cpp, ln((d + z0) / z0)):
+//!   u*_x = kappa U_x / ln((d_x + z0) / z0),  u*^2 = (1 - beta) u*_own^2 + beta u*_ref^2,
+//! with no floor on d1 or d2: ln((d + z0) / z0) > 0 for every d > 0, and the cut cell's d1 >= the
+//! smallest open fraction times Delta_n / 2 (terrain.small_volfrac).
+AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
+amrex::Real form7_ustar2_exact (amrex::Real u_own, amrex::Real u_ref, amrex::Real beta, amrex::Real d1, amrex::Real d2,
+                                amrex::Real z0, amrex::Real kappa) noexcept
+{
+    const amrex::Real own = kappa * u_own / std::log((d1 + z0) / z0);
+    if (d2 <= amrex::Real(0)) { return own * own; }
+    const amrex::Real ref = kappa * u_ref / std::log((d2 + z0) / z0);
     return (amrex::Real(1) - beta) * own * own + beta * ref * ref;
 }
 
@@ -93,6 +116,19 @@ void form7_heat_velocities (amrex::Real us2, amrex::Real beta, amrex::Real d1, a
     // exactly: BuildingTheta reads no reference cell there.
     own *= amrex::Real(1) - beta;
     ref = beta * c / std::log(amrex::max(d2, floor) / z0);
+}
+
+//! form7_heat_velocities at the exact distances of an immersed ground (form7_ustar2_exact).
+AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
+void form7_heat_velocities_exact (amrex::Real us2, amrex::Real beta, amrex::Real d1, amrex::Real d2, amrex::Real z0,
+                                  amrex::Real kappa, amrex::Real& own, amrex::Real& ref) noexcept
+{
+    const amrex::Real c = kappa * std::sqrt(us2);
+    own = c / std::log((d1 + z0) / z0);
+    ref = 0;
+    if (d2 <= amrex::Real(0)) { return; }
+    own *= amrex::Real(1) - beta;
+    ref = beta * c / std::log((d2 + z0) / z0);
 }
 
 //! The mean of a velocity component over a cell's two faces, with the faces' weights (1, or 0 on
@@ -158,6 +194,16 @@ public:
     void add_to_implicit (int c, const amrex::Array<const amrex::MultiFab*, AMREX_SPACEDIM>& open, amrex::MultiFab& A) const;
     //! mask = 1 on the blocked faces of component c as well.
     void add_fixed_rows (int c, amrex::MultiFab& mask) const;
+    //! An immersed ground (BuildingsOptions::immersed_ground): the residual's body forces act on the open
+    //! part of each face (Residual.cpp), and u, v diffuse across a roof cell's top face over the distance
+    //! between the fluid centroids (centroid_spacing()).
+    [[nodiscard]] bool immersed_ground () const { return m_immersed_ground; }
+    //! The buildings' geometry of the last build (null before).
+    [[nodiscard]] const Buildings* geometry () const { return m_b; }
+    //! s = (cell-centre spacing) / (d2 - d1) at the roof cells, 1 elsewhere (one ghost layer); empty
+    //! without an immersed ground. Public because it launches device kernels.
+    [[nodiscard]] const amrex::MultiFab& centroid_spacing () const { return m_spacing; }
+    void make_centroid_spacing ();
 
 private:
     const Buildings* m_b{nullptr};
@@ -168,6 +214,8 @@ private:
     amrex::Long m_wall_cells{0}, m_below_floor{0};
     amrex::Real m_z0{0.1};
     BuildingWallForm m_wall_form{BuildingWallForm::fraction_stress};
+    bool m_immersed_ground{false};
+    amrex::MultiFab m_spacing;
 };
 
 //! How many fluid cells have no open path to the largest-index region. Aborts are

@@ -42,6 +42,7 @@ add_executable(unit_tests
     Unit_Tests/test_SurfaceLayer.cpp
     Unit_Tests/test_SurfaceRoughness.cpp
     Unit_Tests/test_BuildingForcing.cpp
+    Unit_Tests/test_ImmersedTerrain.cpp
     Unit_Tests/test_BuildingLoads.cpp
     Unit_Tests/test_BuildingTheta.cpp
     Unit_Tests/test_BuildingTke.cpp
@@ -179,6 +180,7 @@ set(NEST_SHAPES_CASE    ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Nest_Shapes)
 set(ASKERVEIN_NEST_CASE ${CMAKE_CURRENT_SOURCE_DIR}/Real_Terrain/Askervein_Nest)
 set(COLUMN_CASE         ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Neutral_Column)
 set(FLAT_CASE           ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Neutral_ABL_Flat)
+set(IMMERSED_COLUMN_CASE ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Immersed_Column)
 set(THIN_CELL_CASE      ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Thin_Cell_Flat)
 set(CANOPY_DRAG_CASE    ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Canopy_Drag)
 set(ESCARPMENT_CASE     ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Forested_Escarpment)
@@ -860,6 +862,50 @@ gust_add_test(NAME abort_buildings_mlmg NP 1 LABELS "regression;smoke"
               PREFIX ${EXPECT_ABORT} "solver\\.poisson_backend = mlmg cannot solve with buildings" --
               COMMAND $<TARGET_FILE:gust> ${BUILDING_CUBE_CASE}/inputs_cube buildings.file=${BUILDING_CUBE_CASE}/cube.txt
                       solver.poisson_backend=mlmg ${GUST_TEST_AMREX_FLAGS})
+
+# --- The immersed ground (ImmersedTerrain.H): plotfile, restart, refusals ----
+set(IMMERSED_GROUND_CASE ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Immersed_Column)
+set(IMMERSED_GROUND_DIR ${CMAKE_CURRENT_BINARY_DIR}/run/immersed_ground)
+add_test(NAME immersed_ground_clean
+         COMMAND ${Python3_EXECUTABLE} -c
+                 "import shutil, os, sys; shutil.rmtree(sys.argv[1], ignore_errors=True); os.makedirs(sys.argv[1])"
+                 ${IMMERSED_GROUND_DIR})
+set_tests_properties(immersed_ground_clean PROPERTIES LABELS "regression;smoke" FIXTURES_SETUP immersed_ground_clean)
+gust_add_test(NAME immersed_ground_run NP 2 LABELS "regression;smoke" RUN_DIR ${IMMERSED_GROUND_DIR}
+              FIXTURES_REQUIRED immersed_ground_clean FIXTURES_SETUP immersed_ground
+              PREFIX ${EXPECT_ABORT} --success "gust: immersed terrain \\(terrain\\.representation = immersed_forcing" --
+              COMMAND $<TARGET_FILE:gust> ${IMMERSED_GROUND_CASE}/inputs_immersed_ground terrain.flat_height=42.1875
+                      ${GUST_TEST_AMREX_FLAGS})
+# The same ground on another layout and three ranks: accepted.
+gust_add_test(NAME immersed_ground_restart NP 3 LABELS "regression;smoke" RUN_DIR ${IMMERSED_GROUND_DIR}
+              FIXTURES_REQUIRED immersed_ground
+              PREFIX ${EXPECT_ABORT} --success "restarted from immersed_ground_chk00001 at step 1" --
+              COMMAND $<TARGET_FILE:gust> ${IMMERSED_GROUND_CASE}/inputs_immersed_restart terrain.flat_height=42.1875
+                      ${GUST_TEST_AMREX_FLAGS})
+# A changed ground, and the other representation, are refused.
+gust_add_test(NAME abort_immersed_restart_changed NP 1 LABELS "regression;smoke" RUN_DIR ${IMMERSED_GROUND_DIR}
+              FIXTURES_REQUIRED immersed_ground
+              PREFIX ${EXPECT_ABORT} "io\\.restart = immersed_ground_chk00001: terrain\\.flat_height, terrain\\.small_volfrac or bc\\.surface_z0 differ" --
+              COMMAND $<TARGET_FILE:gust> ${IMMERSED_GROUND_CASE}/inputs_immersed_restart terrain.flat_height=43.
+                      io.write_plotfile=0 ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_immersed_restart_body_fitted NP 1 LABELS "regression;smoke" RUN_DIR ${IMMERSED_GROUND_DIR}
+              FIXTURES_REQUIRED immersed_ground
+              PREFIX ${EXPECT_ABORT} "io\\.restart = immersed_ground_chk00001: the checkpoint's ground is immersed" --
+              COMMAND $<TARGET_FILE:gust> ${IMMERSED_GROUND_CASE}/inputs_restart_body_fitted ${GUST_TEST_AMREX_FLAGS})
+# The ground inside the mesh's first layer, a combination the ground does not support (with no stage
+# too), and a surface key with no effect are refused.
+gust_add_test(NAME abort_immersed_first_layer NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT} "terrain\\.flat_height must lie between the top of the mesh's first layer" --
+              COMMAND $<TARGET_FILE:gust> ${IMMERSED_GROUND_CASE}/inputs_immersed_ground terrain.flat_height=7.8125
+                      ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_immersed_buildings NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT} "terrain\\.representation = immersed_forcing cannot be combined with buildings\\.type" --
+              COMMAND $<TARGET_FILE:gust> ${IMMERSED_GROUND_CASE}/inputs_immersed_ground terrain.flat_height=42.1875
+                      buildings.type=immersed_forcing buildings.file=${BUILDING_CUBE_CASE}/cube.txt ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_immersed_surface_zref NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT} "bc\\.surface_zref has no effect with terrain\\.representation = immersed_forcing" --
+              COMMAND $<TARGET_FILE:gust> ${IMMERSED_GROUND_CASE}/inputs_immersed_column terrain.flat_height=42.1875
+                      bc.surface_zref=20. ${GUST_TEST_AMREX_FLAGS})
 
 # --- The canopy's drag field (Canopy.H): plotfile, restart, refusals ---------
 set(CANOPY_DIR ${CMAKE_CURRENT_BINARY_DIR}/run/canopy)
@@ -2102,6 +2148,24 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
                   PREFIX ${Python3_EXECUTABLE} ${COLUMN_CASE}/check_steady_column.py
                          --ustar 0.35 --z0 0.1 --force 1.225e-4 --height 1000 --dz 15.625 --orders 6 --
                   COMMAND $<TARGET_FILE:gust> ${COLUMN_CASE}/inputs_steady_column ${GUST_TEST_AMREX_FLAGS})
+    # The column with the ground immersed (terrain.representation = immersed_forcing) in layer
+    # k = 2 with solid fraction f: the exact wall stress u*^2 = F D (1e-5), the solid layers at
+    # rest, the cells above within 1 % / 2.5 % of the log law, the cut cell at most a measured
+    # margin above the log law at its centroid (README.md). f = 0 also runs the body-fitted column
+    # of the fluid's height and matches it to 1e-6 (the old-vs-new check). About 30 s each on two
+    # ranks. f = 0.99 does not reach the steady verdict (README.md, Not covered).
+    gust_add_test(NAME rt_immersed_column_f0 NP 2 LABELS "regression"
+                  PREFIX ${Python3_EXECUTABLE} ${IMMERSED_COLUMN_CASE}/check_immersed_column.py --f 0 --cut-max 0.1
+                         --body-fitted ${IMMERSED_COLUMN_CASE}/inputs_body_fitted_column --
+                  COMMAND $<TARGET_FILE:gust> ${IMMERSED_COLUMN_CASE}/inputs_immersed_column ${GUST_TEST_AMREX_FLAGS})
+    foreach(_case "0.3;1" "0.7;2.5" "0.9;6.5")
+        list(GET _case 0 _f)
+        list(GET _case 1 _cut)
+        string(REPLACE "." "" _tag ${_f})
+        gust_add_test(NAME rt_immersed_column_f${_tag} NP 2 LABELS "regression"
+                      PREFIX ${Python3_EXECUTABLE} ${IMMERSED_COLUMN_CASE}/check_immersed_column.py --f ${_f} --cut-max ${_cut} --
+                      COMMAND $<TARGET_FILE:gust> ${IMMERSED_COLUMN_CASE}/inputs_immersed_column ${GUST_TEST_AMREX_FLAGS})
+    endforeach()
     # The iteration table's columns (io.iteration_log = table) on the flat ABL,
     # whose second row has all six residuals non-zero and distinct: the row
     # pins which residual sits in which column (u, v, w, tke, theta, p), the

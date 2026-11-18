@@ -363,6 +363,23 @@ void BuildingTke::build (const Buildings& b, const BuildingForcing& law, const B
             w(i, j, k, kHb) = bhb;
         });
     }
+    // An immersed ground (terrain.representation = immersed_forcing): a wall cell's distance is its
+    // fluid centroid's, d1, exact, as in its wall law (form7_ustar2_exact), not floored at z0_b.
+    if (opt.immersed_ground) {
+        for (amrex::MFIter mfi(work[0], amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
+            const auto w = work[0].array(mfi);
+            const auto wl = b.wall().const_array(mfi);
+            amrex::ParallelFor(mfi.tilebox(), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+            {
+                if (static_cast<int>(wl(i, j, k, kWallMask)) == 0) { return; }
+                amrex::Real d1 = kBuildingFar;
+                for (int n = kWallD1x; n <= kWallD1z; n += 2) {
+                    if (wl(i, j, k, n) > amrex::Real(0)) { d1 = amrex::min(d1, wl(i, j, k, n)); }
+                }
+                w(i, j, k, kD) = d1;
+            });
+        }
+    }
     // Pass each cell's nearest wall to its neighbours until no distance falls.
     m_passes = 0;
     int cur = 0;

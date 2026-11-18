@@ -1275,6 +1275,67 @@ unit-test flags by ``tools/unsteady_output_mutants.py`` (macOS arm64, AppleClang
      - A restart without a probe file reported as kept (no first row)
      - ``ProbeFileOnRestart``
 
+The one-line mutants of the immersed ground (``Source/BuildingForcing.H``, ``Source/BuildingForcing.cpp``,
+``Source/ImmersedStrain.cpp``, ``Source/Residual.cpp``, ``Source/ImmersedTerrain.cpp`` and ``Source/Inputs.cpp``),
+each run against ``ImmersedTerrain.*`` and ``Inputs.ImmersedTerrain*`` on one rank, with a rebuild from the restored
+sources between two mutants (macOS arm64, AppleClang). All 9 are killed.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 6 50 44
+
+   * - Mutant
+     - Change
+     - Failing tests
+   * - IT1
+     - The floor of 10 :math:`z_0` put back in the exact wall law
+     - ``ExactLawReturnsTheLogProfilesUstar``; CTest ``rt_immersed_column_f09``
+   * - IT2
+     - The spacing :math:`s` set to 1
+     - ``CentroidSpacingAcrossTheCutCellsTopFace``
+   * - IT3
+     - :math:`s` left out of the viscous fluxes
+     - ``CentroidSpacingAcrossTheCutCellsTopFace``
+   * - IT4
+     - The diagonal not raised with the couplings
+     - ``CentroidSpacingAcrossTheCutCellsTopFace``
+   * - IT5
+     - The strain ratio :math:`R` set to 1
+     - ``StrainCorrectionFollowsTheFlatGround``
+   * - IT6
+     - The body forces on the whole face
+     - ``BodyForcesActOnTheOpenPart``; CTest ``rt_immersed_column_f07``
+   * - IT7
+     - The restart hash without ``terrain.flat_height``
+     - ``RestartRecordRefusesAChangedGround``
+   * - IT8
+     - The refusal of ``solver.poisson_backend = mlmg`` dropped
+     - ``RefusesWhatItDoesNotSupport``
+   * - IT9
+     - The check of ``mesh.is_periodic`` dropped
+     - ``Inputs.ImmersedTerrainChecksNameTheInput``
+   * - IT10
+     - A restart with another ground accepted
+     - CTest ``abort_immersed_restart_changed``
+   * - IT11
+     - A body-fitted restart from an immersed checkpoint accepted
+     - CTest ``abort_immersed_restart_body_fitted``
+   * - IT12
+     - The ground's record not written to the checkpoint
+     - CTest ``immersed_ground_restart``
+   * - IT13
+     - A ground inside the first layer accepted
+     - CTest ``abort_immersed_first_layer``
+   * - IT14
+     - ``bc.surface_zref`` not reported as given
+     - CTest ``abort_immersed_surface_zref``
+   * - IT15
+     - The refusal of ``buildings.type`` dropped
+     - CTest ``abort_immersed_buildings``
+
+IT1 to IT9 were run with a scripted pass over the sources (each change, a rebuild, the named tests, the file
+restored and touched), and IT10 to IT15 the same way against the CTests; the scripts are not in the repository.
+
 The one-line mutants of the force on the buildings and the laminar closure (``Source/BuildingLoads.cpp``,
 ``Source/Residual.cpp`` and ``Source/Closure.cpp``), each run against ``BuildingLoads.*`` and ``Closure.Laminar*`` on
 two ranks with the unit-test flags by ``tools/building_loads_mutants.py`` (macOS arm64, AppleClang). All 9 are killed.
@@ -1620,6 +1681,19 @@ Current tests
      - The named set-ups (``Tests/Infrastructure/Abl_Setup``, :ref:`named-setups`): a column under
        ``abl.drive = geostrophic_column`` equals the deck with the keys written out at zero tolerance; the neutral
        column under ``pressure_driven`` reaches :math:`u_*^2 = F H`; decks that contradict a name stop, naming the input.
+   * - ``rt_immersed_column_f0``, ``rt_immersed_column_f03``, ``rt_immersed_column_f07``, ``rt_immersed_column_f09``
+     - The neutral column with the ground immersed in a flat mesh (``Tests/Canonical_RANS/Immersed_Column``,
+       :doc:`immersed_terrain`), at cut-cell solid fractions 0, 0.3, 0.7 and 0.9 on two ranks: the steady verdict,
+       identical columns, :math:`u_*^2` of the wall law at the exact distances equal to :math:`F D` to 1e-5, zero
+       speed in the solid layers, and the three cells above the cut cell within 1 % and 2.5 % of the log law. At 0
+       the column equals the body-fitted column of 65 layers to 1e-6 in :math:`u` and :math:`k`. Double precision only.
+   * - ``immersed_ground_clean``, ``immersed_ground_run``, ``immersed_ground_restart``,
+       ``abort_immersed_restart_changed``, ``abort_immersed_restart_body_fitted``, ``abort_immersed_first_layer``,
+       ``abort_immersed_buildings``, ``abort_immersed_surface_zref``
+     - The immersed ground in the application (same folder): one iteration of the column on 2 ranks writes a
+       checkpoint with the ground's record; a restart on another box layout and 3 ranks accepts it; a restart with
+       another ``terrain.flat_height``, or with a body-fitted ground, stops naming ``io.restart``; a ground inside
+       the mesh's first layer, ``buildings.type`` and ``bc.surface_zref`` stop naming the input.
    * - ``canopy_clean``, ``canopy_run``, ``canopy_column_integrals``, ``canopy_check_detects_change``,
        ``canopy_restart``, ``canopy_restart_matches``
      - The canopy's drag field (``Tests/Infrastructure/Canopy_Field``): four ERF-format patches on a stretched,
@@ -2493,6 +2567,20 @@ GoogleTest suite
 
    * - GoogleTest
      - Check
+   * - ``ImmersedTerrain.ExactLawReturnsTheLogProfilesUstar``, ``ImmersedTerrain.CentroidSpacingAcrossTheCutCellsTopFace``,
+       ``ImmersedTerrain.StrainCorrectionFollowsTheFlatGround``, ``ImmersedTerrain.BodyForcesActOnTheOpenPart``,
+       ``ImmersedTerrain.RefusesWhatItDoesNotSupport``, ``ImmersedTerrain.RestartRecordRefusesAChangedGround``
+     - The immersed ground (:doc:`immersed_terrain`): the wall law at the exact distances returns :math:`u_*` of a
+       log profile, also below 10 :math:`z_0`; the spacing :math:`s` at a cut cell of solid fraction 0.7, in the
+       viscous flux and in the implicit rows, with the diagonal equal to the sum of the couplings, on boxes of 4
+       and of 2 cells; the strain correction is the identity at solid fraction 0 and gives
+       :math:`R\,u_*/(\kappa (d_2 + z_0))` on a log profile at 0.3, 0.7 and 0.9; a body force on the cut cell's
+       faces is the open fraction times the force and zero on solid faces; each refusal names its input; the
+       restart record changes with ``terrain.flat_height``, ``terrain.small_volfrac`` and ``bc.surface_z0`` and
+       refuses a changed ground and a changed representation.
+   * - ``Inputs.ImmersedTerrainChecksNameTheInput``, ``Inputs.ParsesTheImmersedTerrainKeys``
+     - The three ``terrain`` keys of the immersed ground are read, and each of their range checks and refusals names
+       its input.
    * - ``Reference.ArchiveRoundTripVerifies``, ``Reference.DamagedArchivesAreRefused``
      - A reference archive written, verified and loaded: fields bit-identical to the average, metadata and field
        statistics unchanged; a changed byte, a missing file, an extra file, edited AU, and data changed together

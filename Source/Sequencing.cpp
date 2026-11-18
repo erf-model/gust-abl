@@ -287,6 +287,11 @@ LevelSolver::LevelSolver (const RunSetup& s, const Mesh& mesh, const amrex::Geom
                            << " cells, partly in " << building_tke->zone_cells() - building_tke->zone_off_cells() << "\n";
         }
     }
+    if (buildings != nullptr && buildings->immersed_ground()) {
+        // The closure's shear next to an immersed ground follows the body-fitted ground's first cell.
+        immersed_strain = std::make_unique<ImmersedStrain>(*buildings, surf.z0);
+        closure.set_strain_correction(immersed_strain.get());
+    }
     res_in = residual_inputs(s, closure, dist, bc, surf);
     res_in.buildings = buildings;
     res_in.building_tke = building_tke;

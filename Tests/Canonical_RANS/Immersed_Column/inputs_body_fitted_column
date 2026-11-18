@@ -1,0 +1,42 @@
+# The body-fitted reference of the immersed column at f = 0: the column of Neutral_Column with
+# 65 layers of 15.625 m (1015.625 m), the height of the immersed column's fluid when the ground lies
+# on the face k = 2. Its cells are the immersed column's cells k >= 2. The other inputs are those
+# of inputs_immersed_column (solver.poisson_backend = gmres_fft too, so that both runs use the same
+# Poisson solve). Tests/Canonical_RANS/Immersed_Column/check_immersed_column.py --body-fitted.
+mesh.n_cell        = 4 4 65
+mesh.prob_hi       = 2560. 2560. 1015.625
+mesh.is_periodic   = 1 1 0
+mesh.max_grid_size = 4 4
+
+terrain.type = flat
+
+bc.zlo = surface_layer
+bc.zhi = slip_wall
+bc.surface_z0 = 0.1
+bc.theta_profile_z = 0.
+bc.theta_profile   = 300.
+bc.inflow_profile  = log_law
+bc.inflow_ustar    = 0.25
+bc.inflow_z0       = 0.1
+bc.inflow_direction = 0.
+
+init.first_guess = profile
+
+turb.max_geom_lscale = 1.0e12
+turb.face_mean       = logarithmic
+
+forcing.pressure_gradient = 1.225e-4 0. 0.
+
+steady.stage                = simplec
+steady.sweep                = zjacobi   # z-line Jacobi sweep (the CPU default is lusgs)
+steady.cfl0                 = 1.
+steady.cfl_max              = 50.
+steady.max_iterations       = 6000
+steady.residual_drop_orders = 6
+steady.residual_tol         = 1.e-8
+
+solver.poisson_backend = gmres_fft
+
+io.plot_file      = body_fitted_column_plt
+io.turb_plot_file = body_fitted_column_turb
+io.chk_file       = body_fitted_column_chk

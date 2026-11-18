@@ -21,6 +21,8 @@ set(GUST_SOURCES
     Convection.cpp
     Diffusion.cpp
     ImplicitOperator.cpp
+    ImmersedStrain.cpp
+    ImmersedTerrain.cpp
     MassFlux.cpp
     Forcing.cpp
     Residual.cpp

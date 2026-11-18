@@ -22,6 +22,11 @@ Steady cases
      - Wall model, turbulence model and vertical diffusion. The log law and the equilibrium :math:`k` are known
        exactly.
      - ``rt_steady_column``
+   * - 1b
+     - 1-D neutral column, immersed ground
+     - The same column on a flat mesh with the ground inside a layer (:doc:`immersed_terrain`): the wall stress
+       balances the force for solid fractions 0, 0.3, 0.7 and 0.9, and at 0 the column repeats the body-fitted one.
+     - ``rt_immersed_column_f0``, ``_f03``, ``_f07``, ``_f09``
    * - 2
      - Flat 3-D periodic (ERF ``Neutral_ABL_Flat``)
      - Horizontal directions, pressure, Coriolis forcing.
