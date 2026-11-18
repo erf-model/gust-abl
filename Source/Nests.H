@@ -17,6 +17,9 @@
 //   nest.feedback_flux = outer | nest the flux the outer cells just outside
 //                                     the defect source take through its
 //                                     lateral faces (defect only; NestFaceFlux.H)
+//   nest.damping   = w_theta | outer  the nests' Rayleigh layer: on w and
+//                                     theta only (default), or the outer
+//                                     deck's on every field it names
 //
 // Everything else is the outer domain's: the deck's physics, closure,
 // solver and terrain keys, and these derived settings:
@@ -26,7 +29,8 @@
 //   * faces: bc.xlo, bc.xhi, bc.ylo and bc.yhi = nest (periodic where the
 //     nest is), ground and top as the outer domain's; bc.nest_parent = the
 //     outer run's final checkpoint; no sponge, and a Rayleigh layer on w and
-//     theta only (apply_nest_boundary_inputs);
+//     theta only, or with nest.damping = outer the outer deck's
+//     (apply_nest_boundary_inputs);
 //   * terrain: the outer deck's; a terrain.type = agnesi hill stays at the
 //     outer domain's centre (TerrainInputs::hill_centre, set from the parent);
 //   * forcing: the outer run's (forcing.ug, forcing.vg, the horizontal
@@ -95,6 +99,10 @@ enum class NestFeedback { none, defect, relax, inject };
 //! through the defect source's lateral faces, NestFaceFlux.H; nest.feedback = defect only).
 enum class NestFeedbackFlux { outer, nest };
 
+//! nest.damping: w_theta (the default: the nests' Rayleigh layer damps w and theta only) or outer (the outer deck's
+//! layer on every field bc.rayleigh_fields names, towards the bc.inflow_* profile the outer domain relaxes to).
+enum class NestDamping { w_theta, outer };
+
 //! The value of nest.feedback as the deck gives it.
 const char* nest_feedback_name (NestFeedback f);
 
@@ -107,12 +115,14 @@ struct NestOptions
     amrex::Real feedback_factor{1};
     //! nest.feedback_flux (nest.feedback = defect only).
     NestFeedbackFlux feedback_flux{NestFeedbackFlux::outer};
+    //! nest.damping.
+    NestDamping damping{NestDamping::w_theta};
     //! Value-count and name problems found while reading.
     std::vector<std::string> errors;
     [[nodiscard]] bool active () const { return !nests.empty(); }
 };
 
-//! Read nest.names, nest.feedback, nest.feedback_factor, nest.feedback_flux and each nest's nest.<name>.lo and
+//! Read nest.names, nest.feedback, nest.feedback_factor, nest.feedback_flux, nest.damping and each nest's nest.<name>.lo and
 //! nest.<name>.hi. No placement checks (check_nests).
 NestOptions read_nest_options ();
 
@@ -142,10 +152,14 @@ void apply_nest_inputs (const NestSpec& nest, Inputs& in);
 //! nest with parent the checkpoint parent_chk (periodic in a direction where
 //! the nest's mesh, periodic, is); no sponge (it relaxes
 //! towards the inflow profile, and a nest has no inflow face); a Rayleigh
-//! layer damps w and theta only (u, v and k would relax towards the inflow
-//! profile, not the parent); the relaxation zone off; the "given" record
-//! cleared (the outer domain's checks cover the deck).
-void apply_nest_boundary_inputs (const std::string& parent_chk, const amrex::Array<int, 3>& periodic, BoundaryInputs& bin);
+//! layer on w and theta only (u, v and k would relax towards the inflow
+//! profile, not the parent), or with outer_damping (nest.damping = outer)
+//! the outer deck's layer on every field it names (rayleigh_from_outer: the
+//! parent is damped the same way, towards the same bc.inflow_* profile, over
+//! the footprint); the relaxation zone off; the "given" record cleared (the
+//! outer domain's checks cover the deck).
+void apply_nest_boundary_inputs (const std::string& parent_chk, const amrex::Array<int, 3>& periodic, bool outer_damping,
+                                 BoundaryInputs& bin);
 
 //! What the outer domain's run hands its nests: whether it reached steady, and
 //! the forcing and surface heat flux it ran with (a column first guess with

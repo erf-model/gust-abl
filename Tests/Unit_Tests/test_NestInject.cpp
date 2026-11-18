@@ -99,7 +99,7 @@ gust::Inputs parent_inputs (bool hill, bool periodic_y = false, int mgs = 7)
     gust::Inputs in;
     in.mesh.n_cell = amrex::IntVect(20, 16, 8);
     in.mesh.prob_lo = {-1000, 500, 0};
-    in.mesh.prob_hi = {1000, hill ? 2100.0 : 1780.0, 800};
+    in.mesh.prob_hi = {1000, hill ? amrex::Real(2100) : amrex::Real(1780), 800};
     in.mesh.is_periodic = {0, periodic_y ? 1 : 0, 0};
     in.mesh.max_grid_size = {mgs, mgs - 1};
     in.mesh.dz0 = 40;
@@ -553,12 +553,13 @@ TEST(NestInject, ResidualRowsOnTheHill)   // UT-I.3
         }
         EXPECT_EQ(wrong, 0) << names[n] << ": R is not 0 on the inner points and unchanged elsewhere";
         EXPECT_GT(on_pts, 0) << names[n];
-        // v is 0 on this 2-D hill (its rows are UT-I.2's); the others must have a residual to zero.
-        // p: the divergence is exactly 0 in the cells away from the slopes, and their count depends on the
-        // compiler's contraction of a*b + c (60 of 144 with clang), so a quarter is asked for there.
-        if (n != 1) {
-            EXPECT_GT(nonzero_before, n == 3 ? on_pts / 4 : on_pts / 2)
-                << names[n] << ": the residual was mostly 0 there: vacuous";
+        // v is 0 on this 2-D hill (its rows are UT-I.2's); the others must have a residual to zero. The
+        // continuity residual of this field is round-off, and how many of its cells are exactly 0 depends on
+        // the compiler (60 of 144 nonzero under clang with -ffp-exception-behavior=maytrap), so p needs one.
+        if (n == 3) {
+            EXPECT_GT(nonzero_before, 0) << names[n] << ": the residual was 0 there: vacuous";
+        } else if (n != 1) {
+            EXPECT_GT(nonzero_before, on_pts / 2) << names[n] << ": the residual was mostly 0 there: vacuous";
         }
         if (n == 5) { EXPECT_GT(ground, 0) << "no wall-k row with a residual on the inner box: vacuous"; }
     }
@@ -734,7 +735,7 @@ TEST(NestInject, PoissonHeldCellsAreData)
         amrex::ParallelDescriptor::ReduceRealSum(vol);
         const double mean = sum / vol;
         EXPECT_NEAR(res.removed_mean, mean, 1e-9) << backend << ": the mean removed is not the fluid cells' mean";
-        amrex::Long held_phi = 0, fluid_bad = 0, held_flux = 0;
+        amrex::Long held_phi = 0, fluid_bad = 0, held_flux = 0;   // ReduceLongSum takes amrex::Long (MSVC)
         double worst = 0;
         for (amrex::MFIter mfi(phi, false); mfi.isValid(); ++mfi) {
             const auto p = phi.const_array(mfi);

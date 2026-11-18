@@ -266,6 +266,7 @@ nest.names str 1+
 nest.feedback none,defect,relax,inject 1
 nest.feedback_factor real 1 >0
 nest.feedback_flux outer,nest 1
+nest.damping w_theta,outer 1
 nest.<name>.lo real 2
 nest.<name>.hi real 2
 """

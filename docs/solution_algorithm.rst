@@ -232,9 +232,10 @@ apply the form on flat terrain with a constant :math:`N`.
 
 **Limits.** Refused with ``steady.stage = simplec_newton`` (the Newton stage solves :math:`\theta`), with
 ``io.restart`` (the checkpoint holds no record of the option), without grid sequencing (``steady.sequencing = 1``
-and ``mesh.hierarchy_levels`` > 1: the levels set :math:`\theta`), and with a stratified column first guess
-(``init.first_guess = column`` with a non-neutral ``init.column_stability``, whose evolved :math:`\theta` the frozen
-field would replace). With :math:`\theta` frozen, the inputs that act only on the :math:`\theta` equation have no
+and ``mesh.hierarchy_levels`` > 1 in the outer domain: the levels set :math:`\theta`; a nest of ``nest.names`` holds
+the outer domain's :math:`\theta`, interpolated). With a stratified column first guess (``init.first_guess = column``
+with a non-neutral ``init.column_stability``) the frozen field is the column's evolved :math:`\theta`, not the inflow
+profile's (``Tests/Canonical_RANS/Nests_Flat_ABL``). With :math:`\theta` frozen, the inputs that act only on the :math:`\theta` equation have no
 effect: a Rayleigh layer or sponge on ``theta`` (``bc.rayleigh_fields``) and the :math:`\theta` gradient through the
 top (``bc.zhi_theta_grad``); ``bc.surface_heat_flux`` still sets the surface layer's stability but adds no heat. A
 checkpoint written with ``frozen`` can be restarted without it; the restart then solves :math:`\theta` from the frozen

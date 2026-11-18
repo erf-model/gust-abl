@@ -1,0 +1,49 @@
+# Flat-ABL nest test, buoyant (rt_nests_flat_abl_buoyant): case B of Moeng and Sullivan (1994) as rerun by Churchfield et
+# al. (2010): geostrophic wind 10 m/s, f = 1.028e-4 1/s, surface heat flux 0.24 K m/s, theta 300 K to 937 m, +8 K
+# over the next 167 m, then 0.003 K/m. z0 = 0.16 m (the papers give u* = 0.56 m/s, not z0). 5 km x 5 km x 2 km,
+# 16 x 16 x 64 cells, periodic in x and y. The column needs a heat sink for the surface flux: the Rayleigh layer on
+# theta, which starts at 700 m, inside the mixed layer (above the inversion the column has no steady state). With
+# theta solved in 3-D the unstable column overturns into resolved convection, so theta is frozen at the column's
+# (simplec.theta = frozen, which needs grid sequencing over two levels): the closure keeps the column's N^2 and
+# the momentum equations carry no buoyancy. The layer also damps u and v towards the column's own table
+# (column_buoyant_b.dat: this deck's column with the layer on w and theta only); without it, rolls grow above
+# 700 m (README.md). nest.damping = outer gives the nest the same layer. The nest covers the middle 8 x 8 outer
+# cells. nest.feedback is given on the command line (check_nests_flat_abl.py): none or defect.
+mesh.n_cell          = 16 16 64
+mesh.prob_hi         = 5000. 5000. 2000.
+mesh.is_periodic     = 1 1 0
+mesh.max_grid_size   = 8 8
+mesh.hierarchy_levels = 2
+terrain.type = flat
+bc.zlo = surface_layer
+bc.zhi = slip_wall
+bc.surface_z0        = 0.16
+bc.surface_stability = heat_flux
+bc.surface_heat_flux = 0.24
+bc.theta_profile_z = 0.   937. 1104. 2000.
+bc.theta_profile   = 300. 300. 308.  310.688
+bc.zhi_theta_grad  = 0.003
+bc.rayleigh_zdamp    = 700.
+bc.rayleigh_dampcoef = 0.2
+bc.rayleigh_fields   = u v w theta
+bc.inflow_profile = file
+bc.inflow_file    = column_buoyant_b.dat
+init.first_guess      = column
+init.column_stability = heat_flux
+forcing.coriolis        = 1
+forcing.latitude        = 90.
+forcing.rotation_period = 122241.93
+forcing.geostrophic     = 1
+forcing.ug              = 10.
+forcing.vg              = 0.
+forcing.theta0          = 300.
+steady.stage      = simplec
+steady.sequencing = 1
+simplec.theta     = frozen
+nest.names   = mid
+nest.mid.lo  = 1250. 1250.
+nest.mid.hi  = 3750. 3750.
+nest.damping = outer
+io.write_checkpoint = 1
+io.plot_file = outer_plt
+io.chk_file  = outer_chk

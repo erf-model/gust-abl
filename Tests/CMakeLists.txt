@@ -975,6 +975,13 @@ gust_add_test(NAME abort_canopy_heat_frozen_unused NP 1 LABELS "regression;smoke
                      "canopy\\.heat_frozen has no effect without simplec\\.theta = frozen" --
               COMMAND $<TARGET_FILE:gust> ${ESCARPMENT_CASE}/inputs_forested_escarpment init.first_guess=profile
                       canopy.heat=fixed canopy.leaf_theta=302 canopy.heat_frozen=blend ${GUST_TEST_AMREX_FLAGS})
+# A nest with frozen theta and the leaves' blend: the nest would blend the outer domain's blended theta again.
+gust_add_test(NAME abort_nests_canopy_heat_blend NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT}
+                     "nest\\.names is not supported with simplec\\.theta = frozen and canopy\\.heat_frozen = blend" --
+              COMMAND $<TARGET_FILE:gust> ${ESCARPMENT_CASE}/inputs_frozen_theta simplec.theta=frozen
+                      init.first_guess=profile canopy.heat=fixed canopy.leaf_theta=302 canopy.heat_frozen=blend
+                      nest.names=a "nest.a.lo=2000 0" "nest.a.hi=3000 200" ${GUST_TEST_AMREX_FLAGS})
 
 # --- The named set-ups abl.drive and abl.theta (AblSetup.H) --------------------
 # A name adds no physics: the named run equals the deck with the keys written
@@ -1140,8 +1147,8 @@ gust_add_test(NAME abort_ri_gate_range NP 1 LABELS "regression;smoke"
               COMMAND $<TARGET_FILE:gust> ${HILL3D_NEUTRAL_CASE}/inputs_steady_hill3d_neutral
                       turb.ri_gate=2 ${GUST_TEST_AMREX_FLAGS})
 # simplec.theta: a bad value aborts naming the key; frozen aborts with the
-# Newton stage, with a restart, with a stratified column first guess and
-# without grid sequencing.
+# Newton stage, with a restart and without grid sequencing. Frozen with a
+# stratified column first guess and with nests runs in rt_nests_flat_abl_*.
 gust_add_test(NAME abort_simplec_theta_value NP 1 LABELS "regression;smoke"
               PREFIX ${EXPECT_ABORT} "simplec\\.theta = fixed: must be solve or frozen" --
               COMMAND $<TARGET_FILE:gust> ${HILL3D_NEUTRAL_CASE}/inputs_steady_hill3d_neutral
@@ -1154,10 +1161,6 @@ gust_add_test(NAME abort_simplec_theta_restart NP 1 LABELS "regression;smoke"
               PREFIX ${EXPECT_ABORT} "simplec\\.theta = frozen is not supported with io\\.restart" --
               COMMAND $<TARGET_FILE:gust> ${HILL3D_NEUTRAL_CASE}/inputs_sequencing_restart simplec.theta=frozen
                       io.restart=seq_chk00003 ${GUST_TEST_AMREX_FLAGS})
-gust_add_test(NAME abort_simplec_theta_column NP 1 LABELS "regression;smoke"
-              PREFIX ${EXPECT_ABORT} "simplec\\.theta = frozen is not supported with a stratified column first guess" --
-              COMMAND $<TARGET_FILE:gust> ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Column_Target/inputs_column_target
-                      init.column_mol=1000 bc.surface_stability=heat_flux simplec.theta=frozen ${GUST_TEST_AMREX_FLAGS})
 gust_add_test(NAME abort_simplec_theta_no_sequencing NP 1 LABELS "regression;smoke"
               PREFIX ${EXPECT_ABORT} "simplec\\.theta = frozen needs grid sequencing" --
               COMMAND $<TARGET_FILE:gust> ${HILL3D_NEUTRAL_CASE}/inputs_steady_hill3d_neutral simplec.theta=frozen
@@ -1768,9 +1771,6 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
                   PREFIX ${EXPECT_ABORT} "nest\\.names needs steady\\.stage = simplec or simplec_newton" --
                   COMMAND $<TARGET_FILE:gust> ${CMAKE_CURRENT_SOURCE_DIR}/Discretization/Boundary_Fluxes/inputs_bc_neutral_flat
                           nest.names=a "nest.a.lo=640 640" "nest.a.hi=1280 1280" ${GUST_TEST_AMREX_FLAGS})
-    gust_add_test(NAME abort_nests_frozen NP 1 LABELS "regression;smoke"
-                  PREFIX ${EXPECT_ABORT} "nest\\.names is not supported with simplec\\.theta = frozen" --
-                  COMMAND ${NESTS_OUTER} ${NESTS_A} simplec.theta=frozen ${GUST_TEST_AMREX_FLAGS})
     # STF (terrain.smoothing = 1, the default) over a hill: a nest's heights above the ground would differ from the
     # outer domain's at its faces.
     gust_add_test(NAME abort_nests_stf NP 1 LABELS "regression;smoke"
@@ -1842,6 +1842,44 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
     gust_add_test(NAME rt_nests_joint_restart_inject NP 2 LABELS "regression"
                   PREFIX ${Python3_EXECUTABLE} ${NESTS2_CASE}/check_joint_restart.py --inject --stop 150 --
                   COMMAND ${NESTS2_OUTER} ${GUST_TEST_AMREX_FLAGS})
+    # Nests on a flat, horizontally uniform ABL (Nests_Flat_ABL): the doubly periodic outer domain starts from the
+    # steady column, and the nest, one way and joint (nest.feedback = defect), must return the outer domain's level
+    # means. Neutral (Churchfield S) and buoyant (Churchfield B) freeze theta at the column's and damp u, v, w and
+    # theta towards the column's table in the outer domain and the nest (nest.damping = outer). Stable (GABLS1)
+    # solves theta and damps w and theta only; its joint run takes about 7 minutes (nightly). README.md has the
+    # measured values.
+    if(GUST_PYTHON_NUMPY)
+        set(NFA_CASE ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Nests_Flat_ABL)
+        set(NFA_CHECK ${Python3_EXECUTABLE} ${NFA_CASE}/check_nests_flat_abl.py)
+        gust_add_test(NAME rt_nests_flat_abl_neutral NP 2 LABELS "regression"
+                      PREFIX ${NFA_CHECK} --
+                      COMMAND $<TARGET_FILE:gust> ${NFA_CASE}/inputs_neutral_s ${GUST_TEST_AMREX_FLAGS})
+        gust_add_test(NAME rt_nests_flat_abl_buoyant NP 2 LABELS "regression"
+                      PREFIX ${NFA_CHECK} --
+                      COMMAND $<TARGET_FILE:gust> ${NFA_CASE}/inputs_buoyant_b ${GUST_TEST_AMREX_FLAGS})
+        gust_add_test(NAME rt_nests_flat_abl_stable NP 2 LABELS "regression"
+                      PREFIX ${NFA_CHECK} --one-way --
+                      COMMAND $<TARGET_FILE:gust> ${NFA_CASE}/inputs_stable_gabls1 ${GUST_TEST_AMREX_FLAGS})
+        gust_add_test(NAME rt_nests_flat_abl_stable_joint NP 2 LABELS "nightly"
+                      PREFIX ${NFA_CHECK} --
+                      COMMAND $<TARGET_FILE:gust> ${NFA_CASE}/inputs_stable_gabls1 ${GUST_TEST_AMREX_FLAGS})
+    endif()
+    # nest.damping: one of w_theta or outer, once, with nest.names; outer needs a layer on u, v or tke.
+    gust_add_test(NAME abort_nests_damping_value NP 1 LABELS "regression;smoke"
+                  PREFIX ${EXPECT_ABORT} "nest\\.damping = 'all' is not w_theta or outer" --
+                  COMMAND ${NESTS_OUTER} ${NESTS_A} nest.damping=all ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME abort_nests_damping_two_values NP 1 LABELS "regression;smoke"
+                  PREFIX ${EXPECT_ABORT} "nest\\.damping takes one value: w_theta or outer" --
+                  COMMAND ${NESTS_OUTER} ${NESTS_A} "nest.damping=outer w_theta" ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME abort_nests_damping_twice NP 1 LABELS "regression;smoke"
+                  PREFIX ${EXPECT_ABORT} "nest\\.damping is given more than once" --
+                  COMMAND ${NESTS_OUTER} ${NESTS_A} nest.damping=outer nest.damping=outer ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME abort_nests_damping_no_names NP 1 LABELS "regression;smoke"
+                  PREFIX ${EXPECT_ABORT} "nest\\.damping needs nest\\.names" --
+                  COMMAND ${NESTS_OUTER} nest.damping=outer ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME abort_nests_damping_no_effect NP 1 LABELS "regression;smoke"
+                  PREFIX ${EXPECT_ABORT} "nest\\.damping = outer has no effect without a Rayleigh layer on u, v or tke" --
+                  COMMAND ${NESTS_OUTER} ${NESTS_A} bc.rayleigh_fields=w nest.damping=outer ${GUST_TEST_AMREX_FLAGS})
     gust_add_test(NAME abort_nests_feedback_value NP 1 LABELS "regression;smoke"
                   PREFIX ${EXPECT_ABORT} "nest\\.feedback = 'average' is not none, defect, relax or inject" --
                   COMMAND ${NESTS_OUTER} ${NESTS_A} nest.feedback=average ${GUST_TEST_AMREX_FLAGS})

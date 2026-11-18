@@ -1,0 +1,45 @@
+# Flat-ABL nest test, stable (rt_nests_flat_abl_stable, rt_nests_flat_abl_stable_joint): the set-up of GABLS1
+# (Beare et al. 2006): geostrophic wind 8 m/s, f = 1.39e-4 1/s, z0 = 0.1 m, theta 265 K to 100 m, then 0.01 K/m,
+# theta0 263.5 K. GABLS1 cools the surface by 0.25 K/h and has no steady state; here the surface carries a fixed
+# flux of -0.0025 K m/s, which the Rayleigh layer on theta above 200 m supplies. With u and v damped too, a column
+# of this deck carries at most about -2.6e-3 K m/s (README.md); the flux is close to that limit, and the case is
+# weakly stable (L about 950 m, against 100-150 m in GABLS1). 400 m cube, 16 x 16 x 64 cells,
+# periodic in x and y. The steady column is the first guess; the nest covers the middle 8 x 8 outer cells.
+# theta is solved and the layer damps w and theta only (no column table, unlike the neutral and buoyant decks):
+# with u and v also damped towards the column's table, the column's surface flux has a maximum near -2.6e-3 K m/s
+# and the table's surface theta lies past it, where the column's search for the surface theta does not look
+# (README.md). The column start is already near the steady state, so the stop needs no drop of the residuals
+# (steady.residual_drop_orders = 0); the residuals must still fall below steady.residual_tol.
+mesh.n_cell        = 16 16 64
+mesh.prob_hi       = 400. 400. 400.
+mesh.is_periodic   = 1 1 0
+mesh.max_grid_size = 8 8
+terrain.type = flat
+bc.zlo = surface_layer
+bc.zhi = slip_wall
+bc.surface_z0        = 0.1
+bc.surface_stability = heat_flux
+bc.surface_heat_flux = -0.0025
+bc.theta_profile_z = 0.   100. 400.
+bc.theta_profile   = 265. 265. 268.
+bc.zhi_theta_grad  = 0.01
+bc.rayleigh_zdamp    = 200.
+bc.rayleigh_dampcoef = 0.2
+bc.rayleigh_fields   = w theta
+init.first_guess      = column
+init.column_stability = heat_flux
+forcing.coriolis        = 1
+forcing.latitude        = 90.
+forcing.rotation_period = 90405.6
+forcing.geostrophic     = 1
+forcing.ug              = 8.
+forcing.vg              = 0.
+forcing.theta0          = 263.5
+steady.stage = simplec
+steady.residual_drop_orders = 0
+nest.names   = mid
+nest.mid.lo  = 100. 100.
+nest.mid.hi  = 300. 300.
+io.write_checkpoint = 1
+io.plot_file = outer_plt
+io.chk_file  = outer_chk

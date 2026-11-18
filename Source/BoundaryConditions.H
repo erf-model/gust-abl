@@ -156,6 +156,11 @@ struct BoundaryInputs
     //! bc.nest_ratio: the patch's refinement of the parent in x and y
     //! (NestParent.H; 2, 4, 8 or 16; z: 1). Checked by check_nest_run.
     int nest_ratio{2};
+    //! A nest of nest.names (apply_nest_boundary_inputs): its Rayleigh layer is
+    //! the outer deck's, which damps the parent the same way over the
+    //! footprint, so u, v and k may be damped with nest faces (towards the
+    //! bc.inflow_* profile both share). Not an input.
+    bool rayleigh_from_outer{false};
 };
 
 //! Whether a lateral face is a nest face.

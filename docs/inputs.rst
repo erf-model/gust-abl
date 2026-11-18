@@ -886,7 +886,9 @@ types, the inflow profile and the sounding; the other keys act in the SIMPLEC st
    * - ``bc.rayleigh_fields``
      - ``u v w theta tke``
      - One or more of ``u v w theta tke``; needs ``bc.rayleigh_zdamp`` > 0. With a ``nest`` face and no ``inflow``
-       face only ``w`` and ``theta`` (u, v and k relax towards the ``bc.inflow_*`` profile, not the parent).
+       face only ``w`` and ``theta`` (u, v and k relax towards the ``bc.inflow_*`` profile, not the parent). The
+       nests of ``nest.names`` damp ``w`` and ``theta`` only unless ``nest.damping = outer``, which keeps this list
+       in the nests too.
    * - ``bc.rayleigh_height``
      - ``absolute``
      - ``absolute`` or ``above_ground``: the height used for the layer's coefficient and for θ's reference
@@ -1072,7 +1074,8 @@ inputs then change the answer, not only the path; a checkpoint of fully frozen c
      - ``skip`` or ``blend``; ``canopy.heat = fixed`` with ``simplec.theta = frozen`` only (refused otherwise).
        ``skip``: the leaf heat is left out, with a warning. ``blend``: in the canopy :math:`\theta` is set each
        iteration to :math:`\theta_f + w(\theta_l - \theta_f)`, :math:`w = \lambda k/(\varepsilon + \lambda k)`, from
-       the frozen :math:`\theta_f` (:doc:`canopy`).
+       the frozen :math:`\theta_f` (:doc:`canopy`). ``blend`` is refused with ``nest.names``: a nest would blend
+       the outer domain's blended :math:`\theta` again.
 
 ``buildings``
 -------------
@@ -1620,12 +1623,13 @@ See :doc:`solution_algorithm`. Read with ``steady.stage = simplec`` or ``simplec
    * - ``simplec.theta``
      - ``solve``
      - ``solve`` or ``frozen``. ``frozen``: θ is the inflow profile's θ by height above the ground on every sequenced
-       level and is not solved (in a canopy with ``canopy.heat_frozen = blend``, blended towards the leaves' θ,
+       level (the steady column's θ with ``init.first_guess = column`` and a non-neutral ``init.column_stability``)
+       and is not solved (in a canopy with ``canopy.heat_frozen = blend``, blended towards the leaves' θ,
        :doc:`canopy`); the momentum equations carry no buoyancy force, the closure keeps :math:`N^2`
        (:doc:`solution_algorithm`, prescribed potential temperature). Needs grid sequencing (``steady.sequencing = 1``,
-       ``mesh.hierarchy_levels`` > 1); refused with ``steady.stage = simplec_newton``, with ``io.restart`` and with
-       ``init.first_guess = column`` and a non-neutral ``init.column_stability``. With ``frozen``, ``theta`` in
-       ``bc.rayleigh_fields`` and ``bc.zhi_theta_grad`` have no effect.
+       ``mesh.hierarchy_levels`` > 1) in the outer domain; a nest of ``nest.names`` holds the θ it starts from (the
+       outer domain's, interpolated). Refused with ``steady.stage = simplec_newton`` and with ``io.restart``. With
+       ``frozen``, ``theta`` in ``bc.rayleigh_fields`` and ``bc.zhi_theta_grad`` have no effect.
 
 ``solver``
 ----------
@@ -1728,9 +1732,9 @@ the outer run's final forcing.
      - Range and meaning
    * - ``nest.names``
      - none
-     - Names of the nests, each once: a letter, then letters, digits or ``_``; not ``names``, ``feedback``, ``feedback_factor`` or ``feedback_flux``. With nests the outer
-       deck needs ``steady.stage = simplec`` or ``simplec_newton`` and ``io.write_checkpoint = 1``; buildings and
-       ``simplec.theta = frozen`` are refused, and so is ``terrain.smoothing = 1`` over terrain other than ``flat``.
+     - Names of the nests, each once: a letter, then letters, digits or ``_``; not ``names``, ``feedback``, ``feedback_factor``, ``feedback_flux`` or ``damping``. With nests the outer
+       deck needs ``steady.stage = simplec`` or ``simplec_newton`` and ``io.write_checkpoint = 1``; buildings are
+       refused, and so is ``terrain.smoothing = 1`` over terrain other than ``flat``.
        The nests run only if the outer domain reaches steady; GUST stops with an error after the nests if one did
        not (with ``nest.feedback = defect`` or ``relax``, after the joint run).
    * - ``nest.<name>.lo``
@@ -1753,7 +1757,7 @@ the outer run's final forcing.
        footprints at each exchange and held there as data through the outer iteration (:ref:`two-way-inject`).
        Given only with ``nest.names`` (any value). ``defect``, ``relax`` and ``inject`` are refused with
        ``steady.stage = simplec_newton``, with ``u``, ``v`` or ``tke`` in
-       ``bc.rayleigh_fields``, and when an odd ``mesh.max_grid_size`` splits a nest into boxes with an odd number of
+       ``bc.rayleigh_fields`` (unless ``nest.damping = outer``), and when an odd ``mesh.max_grid_size`` splits a nest into boxes with an odd number of
        cells in x or y, or when a nest spans fewer than 5 outer cells in a non-periodic x or y (the source keeps 2
        cells from each face). ``inject`` is also refused with ``solver.poisson_backend = mlmg`` (its operator has no
        held cells) and with a nest across a periodic x or y (the held region would cut the outer fluid in two).
@@ -1781,6 +1785,15 @@ the outer run's final forcing.
        nests' own fluxes through those faces, summed over the nest faces (the conservative variant,
        :ref:`Conservative faces <conservative-faces>`); it costs one more nest residual per exchange. Given only with
        ``nest.feedback = defect``, once.
+   * - ``nest.damping``
+     - ``w_theta``
+     - ``w_theta`` or ``outer``. ``w_theta``: the nests' Rayleigh layer damps w and θ only, whatever
+       ``bc.rayleigh_fields`` names. ``outer``: the nests keep the outer deck's ``bc.rayleigh_fields``, so the layer
+       damps u, v and k towards the ``bc.inflow_*`` profile in the nests as in the outer domain over their footprints
+       (a flat, horizontally uniform ABL with a column table, ``Tests/Canonical_RANS/Nests_Flat_ABL``). Given only
+       with ``nest.names``, once, with one value; ``outer`` is refused without a layer on u, v or tke
+       (``bc.rayleigh_zdamp`` > 0, ``bc.rayleigh_dampcoef`` > 0 and ``u``, ``v`` or ``tke`` in
+       ``bc.rayleigh_fields``). Tested on flat ground only.
 
 ``refavg`` (reference-averaging tool)
 -------------------------------------
