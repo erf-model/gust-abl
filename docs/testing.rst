@@ -2087,7 +2087,10 @@ Current tests
        the factor; the outer domain minus the restricted nest under the nest (the log's last RMS of u) falls with the
        factor, and at 16 is at most 0.35 of its value at 1 (measured 0.19); at factor 1 the nest's u RMS against the
        25 m run is at most 0.5 of the one-way one (0.41) and the outer domain's outside the footprint at most 0.6
-       (0.35). About 2 minutes on an Apple M-series laptop, most of it the factor-16 run (508 exchanges).
+       (0.35). Old against new default (tracker N-114 item 13): a run without the key names 0.5 on its start line,
+       and its nest u RMS is at most 0.8 of the factor-1 run's (measured 0.694) and its outer one at most 1.05
+       (1.00). About 50 s alone on an Apple M-series laptop (about 2 minutes under ``ctest -j 4``), most of it the
+       factor-16 run (508 exchanges).
    * - ``rt_nests_relax_consistent``
      - Pressure-consistent relaxation (``check_nests_two_way.py --relax-consistent``; tracker N-114, item 12,
        ``nest.feedback = relax_consistent``), old against new: the ``rt_nests_relax`` hill with the nest ``hill``, the
@@ -2163,9 +2166,9 @@ Current tests
        straight run's exchanges with each domain's iterations over the run equal, and the last plotfile and
        checkpoint of every domain (state, node heights, closure history, nest faces, joint record; not the driver
        record's wall times) are byte for byte the straight run's. The nests ``crest`` and ``lee`` with the defect
-       source on 3 ranks (254 exchanges); the nest ``hill`` with the relaxation on 2 ranks, stopped after 140 (160),
-       with ``relax_consistent`` on 2 ranks, stopped after 140 (169; the added term is rebuilt from :math:`q^*`), and
-       with the injection on 2 ranks, stopped after 150 (344). With the full injection after the joint loop also
+       source on 3 ranks (254 exchanges); the nest ``hill`` with the relaxation on 2 ranks, stopped after 140 (158, at
+       the default factor 0.5), with ``relax_consistent`` on 2 ranks, stopped after 140 (169; the added term is rebuilt
+       from :math:`q^*`), and with the injection on 2 ranks, stopped after 150 (344). With the full injection after the joint loop also
        applied to a run stopped before steady, the inject restart is steady one exchange early, and fails.
        Mutants: with AMReX's default rank order for a joint nest's boxes (which follows each rank's memory in use)
        the relax test fails (the nest's plotfile differs; the 3-rank defect test passes by chance); without the

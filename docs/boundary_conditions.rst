@@ -847,6 +847,9 @@ iterations. The log says ``joint run: restarted after exchange N``.
 - The record names each nest's checkpoint as written, relative to the directory the run started in. Restart from
   the same directory: a recorded checkpoint that is not there stops the run before anything runs, naming
   ``io.restart`` and the missing paths.
+- ``nest.feedback_factor`` is not in the record: the restart takes the deck's value or the default. A relax run
+  stopped before tracker N-114 item 13 (default 1) without the key restarts unchanged only with
+  ``nest.feedback_factor = 1``.
 - ``convection.hybrid_sigma_max`` (the blend) is refused with ``io.restart``, as for any restart: the blend is not
   in the checkpoint. A joint run with the blend therefore restarts without it, and its error message says so.
 - On the same number of ranks a restart continues the run bit for bit: the regression ``rt_nests_joint_restart``
@@ -1133,7 +1136,7 @@ domain takes one iteration of
 
 for :math:`u, v, w, \theta` and :math:`k`, with
 
-- :math:`f`: ``nest.feedback_factor`` (default 1);
+- :math:`f`: ``nest.feedback_factor`` (default 0.5; see The default, below);
 - :math:`U`: the mean over the footprint's cells of the horizontal speed of :math:`I q_f`,
   :math:`\sqrt{u_c^2 + v_c^2}` with :math:`u_c, v_c` the means of the cell's two faces; one value per nest, set at
   each exchange and printed at the first;
@@ -1199,11 +1202,11 @@ and the outer domain outside the footprint against the uniform 25 m run:
      - 1.33e-2
      - 2.32e-3
      - 5.90e-3
-   * - ``relax``, :math:`f` = 0.5
-     - 154
+   * - ``relax``, :math:`f` = 0.5 (default)
+     - 158
      - 1.07e-2
-     - 2.34e-3
-     - 5.10e-3
+     - 2.35e-3
+     - 5.02e-3
    * - ``relax``, :math:`f` = 1
      - 160
      - 8.04e-3
@@ -1224,6 +1227,8 @@ and the outer domain outside the footprint against the uniform 25 m run:
      - 1.50e-3
      - 3.27e-2
      - 2.94e-2
+
+The rows at :math:`f` = 0.25 and 2 are from PR-71 (#116); the others are from the code of tracker N-114 item 13.
 
 The difference between the two domains under the nest falls with :math:`f`, from about :math:`f^{-0.3}` at small
 :math:`f` to :math:`f^{-0.6}` at :math:`f \ge 1`, rather than :math:`1/f`: the nest it is measured against changes
@@ -1284,12 +1289,25 @@ way (0.128 against 0.125). The footprint :math:`w` is 0.045 at :math:`f = 0.5` (
 At :math:`f = 4` every region moves away from the fine run and the exchanges grow, as on the hill.
 
 **The default.** :math:`f = 1` is the rate argument above: the relaxation as strong as the outer cell's own
-advection. On this hill :math:`f` = 0.25 to 0.5 gave a nest closer to the fine run (2.3e-3 against 3.4e-3) at a
-similar outer error, and a larger outer-minus-nest difference; one hill does not settle a default, so it stays at 1.
+advection, and was the default until tracker N-114 item 13. A sweep of :math:`f` = 0.1, 0.25, 0.5, 0.75, 1 and 2
+on four nests (the hill, the lee-face nest, the Columbia Gorge and Askervein, with the recommended setting;
+``Tests/Canonical_RANS/Nests_Two_Way/README.md``, Choice of the relaxation factor) had every run steady. At
+:math:`f = 0.5` the nest's :math:`u` was as close to the fine run as at 1 or closer on all four (0.35 against 0.51 of
+the one-way error on the hill, 0.88 against 1.04 on the lee nest, 0.90 against 1.05 on Askervein, 0.99 against 1.01
+on the Gorge), the outer :math:`u` as close or closer, and Askervein took 143 exchanges against 191 (the other
+three differ by less than the run-to-run spread of about 5 %). The costs: on the hill the outer :math:`w` and
+:math:`k` outside the footprint are 8 to 9 % further from the fine run than at 1. At 0.25 the errors are
+similar on average, but on the hill the outer :math:`u` is 0.37 of the one-way error (0.32 at 0.5) and the outer
+:math:`k` 14 % further than at 1; at 0.1 the hill's errors grow and the Gorge takes 212 exchanges. The default is 0.5; ``nest.feedback_factor = 1`` keeps the old answer (``rt_nests_relax`` runs both).
+The relaxation's target has no nest pressure gradient (above); a target that carries one could move the best
+factor.
 
 **Limits.**
 
 - At a finite factor the outer domain under a nest differs from the restricted nest by :math:`O(R_c/c)` (the table).
+- Some fields stay further from the fine run than one way at every factor: on the lee-face nest :math:`w` and
+  :math:`k` over the nest (1.13 and 1.05 of one way at :math:`f = 0.5`, 1.43 and 1.31 at 1), on Askervein :math:`k`
+  over the nest (1.69; 1.77 with ``defect``).
 - A large factor slows the joint run: at :math:`f = 16` it took 508 exchanges, against 160 at :math:`f = 1`. The
   cause is the coupling loop's gain tending to 1 (above), not stiff rows: :math:`c` on the diagonal damps each outer
   step more as :math:`f` grows.
@@ -1315,6 +1333,8 @@ iteration of
 with :math:`c`, :math:`w(s)` and :math:`q^*` as for ``relax`` and :math:`R_c(q^*)` the outer residual of the
 restricted nests, evaluated as for ``defect`` (the same function, with the defect and relaxation sources left out),
 for :math:`u, v, w, \theta` and :math:`k`.
+Its ``nest.feedback_factor`` defaults to 1, not to ``relax``'s 0.5: the sweep behind ``relax``'s default
+(:ref:`two-way-relax`, The default) did not cover ``relax_consistent``.
 
 **What it changes.** At :math:`q_c = q^*` the left side is :math:`(1 - w)\,R_c(q^*)`: zero where :math:`w = 1`.
 Pointwise, the restricted nests then satisfy the outer momentum, :math:`\theta` and :math:`k` rows there at every

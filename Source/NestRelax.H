@@ -14,7 +14,7 @@
 // for u, v, w, theta and k, with
 //   R_c    the parent's residual (Residual.H);
 //   q_c    the parent's state; q* its target, fixed between exchanges;
-//   f      nest.feedback_factor (dimensionless, > 0; default 1);
+//   f      nest.feedback_factor (dimensionless, > 0; default 0.5, Nests.H);
 //   U      the mean over the footprint's cells of the horizontal speed of
 //          I q_f, sqrt(u_c^2 + v_c^2) with u_c, v_c the means of the two
 //          faces of the cell (one value per nest, set at each exchange);

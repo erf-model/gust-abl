@@ -1813,6 +1813,8 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
         # nest.feedback_factor = 1, 4 and 16 beside the defect run; the parent - restricted nest difference under the
         # nest must fall with the factor (at 16 at most 0.35 of its value at 1), and at factor 1 the nest and outer
         # errors against the 25 m run at most 0.5 and 0.6 of the one-way ones (README.md has the measured values).
+        # Old against new default (N-114 item 13): a run without the factor uses 0.5; its nest and outer errors at
+        # most 0.8 and 1.05 of the factor-1 run's.
         gust_add_test(NAME rt_nests_relax NP 2 LABELS "regression"
                       PREFIX ${Python3_EXECUTABLE} ${NESTS2_CASE}/check_nests_two_way.py --relax --
                       COMMAND ${NESTS2_OUTER} ${GUST_TEST_AMREX_FLAGS})

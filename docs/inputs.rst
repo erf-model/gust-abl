@@ -1774,13 +1774,14 @@ the outer run's final forcing.
        settled over the outer domain's ``steady.monitor_window`` exchanges to its ``steady.monitor_rel_tol``;
        otherwise it stops with an error.
    * - ``nest.feedback_factor``
-     - 1 (0.5 with ``inject``)
+     - 0.5 (1 with ``relax_consistent``)
      - Dimensionless; given only with ``nest.feedback = relax``, ``relax_consistent`` or ``inject``, once. With
        ``relax`` and ``relax_consistent``: finite, > 0,
        the relaxation's rate over the advection rate, :math:`f` in :math:`c = w(s)\, f\, U / \Delta x`, :math:`U`
        the nest's mean horizontal speed and :math:`\Delta x` the smaller of the outer :math:`\Delta x, \Delta y`
        (:ref:`two-way-relax`). With ``relax`` a larger factor holds the outer domain closer to the nest under it, but
-       does not by itself bring either domain closer to a fine run (:ref:`two-way-relax`, Results). With
+       does not by itself bring either domain closer to a fine run (:ref:`two-way-relax`, Results); its default was 1
+       before tracker N-114 item 13, and ``nest.feedback_factor = 1`` keeps that answer. With
        ``relax_consistent`` the restricted nests satisfy the outer rows where the weight is 1 at any factor; the factor
        sets the rate on the margin and the iteration (:ref:`two-way-relax-consistent`). With ``inject``: finite,
        > 0 and <= 1, the fraction :math:`\omega` of the way the outer state moves towards the restricted nests at
