@@ -830,7 +830,9 @@ nest's face velocities.
 
 **Restart.** A joint run that stops after ``steady.max_iterations`` exchanges, not steady, writes every domain's
 plotfile and checkpoint, and a joint record, the file ``Joint``, in the outer domain's checkpoint. The record holds
-the feedback mode, the exchanges taken, each driver's CFL floor (above) and each nest's checkpoint. The error
+the feedback mode, the exchanges taken, each driver's CFL floor (above), the stop test's window of changes
+:math:`\delta_n` (above) and each nest's checkpoint; beside it the outer checkpoint holds the feedback of the last
+exchange (``Level_0/joint_feedback_*``: :math:`S` with ``defect``, the target :math:`q^*` with ``relax``). The error
 message names that checkpoint. To go on, rerun the same deck with ``io.restart`` set to it, without the ``init.*``
 keys, and with a larger ``steady.max_iterations``; the joint run counts its exchanges over the run, so the value is
 the total. Every domain then reads its checkpoint and its CFL floor and joins the joint run at once, with no one-way
@@ -854,10 +856,11 @@ iterations. The log says ``joint run: restarted after exchange N``.
 - ``steady.max_iterations`` also caps each nest's one-way run. A nest whose one-way run stops there without reaching
   steady joins the joint run as it is (the log notes it). A run stopped and restarted then repeats a straight run with
   the larger value only when the stop point is above every one-way run's iterations.
-- The record does not hold the feedback's earlier values, so the window of changes :math:`\delta_n` (above) starts
-  empty at a restart and is full again after ``steady.monitor_window`` exchanges. A restart therefore never stops
-  earlier than the run it continues; it stops later only when the feedback test is the last to pass within those
-  first exchanges.
+- A restart restores the window and the last feedback, so its first exchange measures :math:`\delta_n` and tests
+  the window as the run without the restart does, and it stops after the same exchange. A record written before the
+  window was added (``GUST_JOINT 1``) still restarts, as does a restart that changes ``nest.feedback``; there the
+  window starts empty and is full again after ``steady.monitor_window`` exchanges (the log notes it), so the restart
+  never stops earlier than the run it continues and may stop later.
 - ``nest.feedback`` may change at a restart (the log notes it). ``steady.max_iterations`` at or below the recorded
   exchanges, a record that names other nests, and a record that cannot be read stop the run, naming
   ``io.restart``.

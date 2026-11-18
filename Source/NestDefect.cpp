@@ -337,8 +337,21 @@ void NestDefect::set (const ResidualFields& R, const std::vector<DefectRegion>& 
         for (const auto& g : regions) { copy_in(*r[n], amrex::convert(g.inner, S[n]->ixType()), *S[n]); }
         m_change.size[static_cast<std::size_t>(n)] = S[n]->norm0();
     }
-    m_change.first = !m_active;
+    m_change.first = !(m_active || m_have_previous);
     m_active = true;
+}
+
+void NestDefect::restore_previous (const std::array<const amrex::MultiFab*, 5>& f)
+{
+    amrex::MultiFab* dst[5] = {&m_S.u, &m_S.v, &m_S.w, &m_S.theta, &m_S.tke};
+    for (std::size_t n = 0; n < 5; ++n) {
+        amrex::MultiFab& d = *dst[n];
+        if (f[n]->boxArray() != d.boxArray() || f[n]->DistributionMap() != d.DistributionMap()) {
+            amrex::Abort("gust: NestDefect::restore_previous: the field is not on the parent's layout");
+        }
+        amrex::MultiFab::Copy(d, *f[n], 0, 0, 1, 0);
+    }
+    m_have_previous = true;
 }
 
 void NestDefect::add_to_residual (ResidualFields& R) const

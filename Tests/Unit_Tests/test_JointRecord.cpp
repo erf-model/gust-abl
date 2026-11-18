@@ -56,6 +56,8 @@ TEST(JointRecord, RoundTripIsExactOnEveryRank)
     w.outer_cfl_floor = amrex::Real(1.0) / amrex::Real(3.0);
     w.nests = {{"crest", amrex::Real(0.1), "outer_chk_crest00271"},
                {"lee", amrex::Real(0), "runs/a b/outer_chk_lee00012"}};   // 0: no floor; a path with a space
+    // The stop test's window: values a short decimal would round, and a 0.
+    w.window = {amrex::Real(1.0) / amrex::Real(7.0), amrex::Real(0), amrex::Real(2.0e-9) / amrex::Real(3.0)};
     gust::write_joint_record(d.name, w);
 
     gust::JointRecord r;
@@ -66,7 +68,20 @@ TEST(JointRecord, RoundTripIsExactOnEveryRank)
         same = r.nests[n].name == w.nests[n].name && r.nests[n].cfl_floor == w.nests[n].cfl_floor
                && r.nests[n].chk == w.nests[n].chk;
     }
+    same = same && r.has_feedback && r.window == w.window;
     EXPECT_TRUE(on_all_ranks(same));
+}
+
+TEST(JointRecord, VersionOneReadsWithoutAWindow)
+{
+    // A record from before the window line (GUST_JOINT 1): it reads, with no window and no feedback field.
+    const ScopedDir d("ut_joint_record_v1");
+    write_text(d.name, "GUST_JOINT 1\nfeedback relax\nexchanges 7\nouter 0x1p-2\nnest a 0x0p+0 chk_a00010\n");
+    gust::JointRecord r;
+    r.window = {amrex::Real(1)};
+    r.has_feedback = true;
+    EXPECT_TRUE(on_all_ranks(gust::read_joint_record(d.name, r) && !r.has_feedback && r.window.empty()
+                             && r.nests.size() == 1 && r.nests[0].chk == "chk_a00010"));
 }
 
 TEST(JointRecord, NoFileIsNotAJointCheckpoint)
@@ -93,8 +108,16 @@ TEST(JointRecord, MalformedRecordsAbort)
 {
     const ScopedDir d("ut_joint_record_bad");
     const std::string head = "GUST_JOINT 1\nfeedback defect\nexchanges 4\nouter 0x1p-2\n";
+    const std::string head2 = "GUST_JOINT 2\nfeedback defect\nexchanges 4\nouter 0x1p-2\n";
     const std::string bad[] = {
-        "GUST_JOINT 2\nfeedback defect\nexchanges 4\nouter 0x1p-2\nnest a 0x0p+0 chk\n",   // another version
+        "GUST_JOINT 3\nfeedback defect\nexchanges 4\nouter 0x1p-2\nnest a 0x0p+0 chk\n",   // another version
+        "GUST_JOINT 0\nfeedback defect\nexchanges 4\nouter 0x1p-2\nnest a 0x0p+0 chk\n",   // no such version
+        head2 + "nest a 0x0p+0 chk\n",                                                    // version 2, no window line
+        head2 + "window 2 0x1p-30\nnest a 0x0p+0 chk\n",                                  // fewer values than counted
+        head2 + "window 1 -0x1p-30\nnest a 0x0p+0 chk\n",                                 // a negative change
+        head2 + "window 1 inf\nnest a 0x0p+0 chk\n",                                      // not finite
+        head2 + "window -1\nnest a 0x0p+0 chk\n",                                         // a negative count
+        head2 + "windows 0\nnest a 0x0p+0 chk\n",                                         // not a window line
         "GUST_JOINT 1\nfeedback inject\nexchanges 4\nouter 0x1p-2\nnest a 0x0p+0 chk\n",   // no such feedback
         "GUST_JOINT 1\nfeedback defect\nexchanges 0\nouter 0x1p-2\nnest a 0x0p+0 chk\n",   // no exchange taken
         "GUST_JOINT 1\nfeedback defect\nexchanges 4\nouter -0x1p-2\nnest a 0x0p+0 chk\n",  // a negative floor
@@ -115,4 +138,10 @@ TEST(JointRecord, MalformedRecordsAbort)
     write_text(d.name, head + "nest a 0x0p+0 chk\n");
     gust::JointRecord r;
     EXPECT_TRUE(on_all_ranks(gust::read_joint_record(d.name, r) && r.nests.size() == 1 && r.outer_cfl_floor == 0.25));
+    // Version 2 with an empty window and with two changes reads.
+    write_text(d.name, head2 + "window 0\nnest a 0x0p+0 chk\n");
+    EXPECT_TRUE(on_all_ranks(gust::read_joint_record(d.name, r) && r.has_feedback && r.window.empty()));
+    write_text(d.name, head2 + "window 2 0x1p-30 0x0p+0\nnest a 0x0p+0 chk\n");
+    EXPECT_TRUE(on_all_ranks(gust::read_joint_record(d.name, r) && r.window.size() == 2
+                             && r.window[0] == amrex::Real(0x1p-30) && r.window[1] == 0 && r.nests.size() == 1));
 }

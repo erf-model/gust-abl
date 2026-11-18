@@ -206,9 +206,18 @@ void NestRelax::set (const State& qstar, const std::vector<DefectRegion>& region
     // sets the measure: |theta| itself is ~300 K), the largest k for k.
     const amrex::Real U = amrex::max(big[0], amrex::max(big[1], big[2]));
     m_change.size = {U, U, U, amrex::Real(0), big[4]};
-    m_change.first = !m_active;
+    m_change.first = !(m_active || m_have_previous);
     amrex::Gpu::streamSynchronize();
     m_active = true;
+}
+
+void NestRelax::restore_previous (const std::array<const amrex::MultiFab*, 5>& f)
+{
+    for (std::size_t n = 0; n < 5; ++n) {
+        require_layout("restore_previous", *f[n], m_target[n]);
+        amrex::MultiFab::Copy(m_target[n], *f[n], 0, 0, 1, 0);
+    }
+    m_have_previous = true;
 }
 
 void NestRelax::add_to_residual (const State& q, ResidualFields& R) const

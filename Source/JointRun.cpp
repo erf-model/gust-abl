@@ -36,7 +36,8 @@ const char* status_name (SteadyStatus s)
 
 } // namespace
 
-JointResult run_joint (const std::vector<JointMember*>& members, int max_exchanges, int first_exchange)
+JointResult run_joint (const std::vector<JointMember*>& members, int max_exchanges, int first_exchange,
+                       const std::vector<amrex::Real>& prior_window)
 {
     if (first_exchange < 0 || first_exchange >= max_exchanges) {
         amrex::Abort("gust: run_joint: " + std::to_string(first_exchange) + " exchanges taken of at most "
@@ -81,6 +82,7 @@ JointResult run_joint (const std::vector<JointMember*>& members, int max_exchang
     ResidualFields R;
     JointResult out;
     FeedbackWindow window(P.feedback_window, P.feedback_tol);
+    window.seed(prior_window);
     const double t_all = amrex::second();
     if (first_exchange > 0) {
         amrex::Print() << "gust: joint run: restarted after exchange " << first_exchange << "\n";
@@ -175,6 +177,7 @@ JointResult run_joint (const std::vector<JointMember*>& members, int max_exchang
         if (all_steady && settled) { out.steady = true; break; }
         out.waiting_on_feedback = all_steady;
     }
+    out.window = window.values();
     out.wall_seconds = amrex::second() - t_all;
     amrex::ParallelDescriptor::ReduceRealMax(out.wall_seconds);
     std::string per;

@@ -146,6 +146,10 @@ public:
     //! The sum of the changes in the window (infinite until it holds W).
     amrex::Real sum () const;
     bool settled () const;
+    //! The changes in the window, oldest first (at most W; a joint checkpoint stores them).
+    [[nodiscard]] std::vector<amrex::Real> values () const { return {m_d.begin(), m_d.end()}; }
+    //! A joint restart: the window as values() gave it before the checkpoint (each added in order).
+    void seed (const std::vector<amrex::Real>& d) { for (const amrex::Real x : d) { add(x); } }
 private:
     int m_window;
     amrex::Real m_tol;
@@ -174,11 +178,20 @@ public:
     [[nodiscard]] const ResidualFields& source () const { return m_S; }
     //! The change of S at the last set.
     [[nodiscard]] const FeedbackChange& change () const { return m_change; }
+    //! S of u, v, w, theta and k (a joint checkpoint stores them: JointRecord.H).
+    [[nodiscard]] std::array<const amrex::MultiFab*, 5> feedback_fields () const
+    {
+        return {&m_S.u, &m_S.v, &m_S.w, &m_S.theta, &m_S.tke};
+    }
+    //! A joint restart: S of the last exchange before the checkpoint (valid points), so that the first set
+    //! measures its change as the run without a restart does. The source stays inactive until set.
+    void restore_previous (const std::array<const amrex::MultiFab*, 5>& f);
 
 private:
     ResidualFields m_S;
     FeedbackChange m_change;
     bool m_active{false};
+    bool m_have_previous{false};
 };
 
 } // namespace gust

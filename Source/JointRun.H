@@ -33,9 +33,9 @@
 // exchanges; this test does. The run also stops when one domain diverges,
 // or after steady.max_iterations exchanges over the run. A restart from the
 // outer domain's last checkpoint goes on with the exchanges (JointRecord.H;
-// first_exchange the exchanges its record counts); the window starts empty
-// there and fills again over steady.monitor_window exchanges, since the
-// feedback's earlier values are not in the record. A line per exchange (the first
+// first_exchange the exchanges its record counts) with the window and the
+// last feedback the record and checkpoint hold, so it stops after the same
+// exchange as the run without a restart. A line per exchange (the first
 // ten, then every tenth) gives the largest |S| per equation (relax: the
 // differences under the nests), the feedback's change and the largest change
 // of a nest's face velocities.
@@ -58,12 +58,15 @@ struct JointResult
     bool waiting_on_feedback{false};
     double feedback_change{0};    //!< the last exchange's relative change of the feedback
     double feedback_window{0};    //!< the sum of the changes over the window (infinite until it is full)
+    std::vector<amrex::Real> window;   //!< the window's changes at the end, oldest first (for the joint record)
 };
 
 //! Run the exchanges: members[0] is the outer domain (with its defect source),
 //! the others its nests (with their parent images and faces); first_exchange: the exchanges an earlier run took
-//! (a joint restart; 0: none), so this run takes at most max_exchanges - first_exchange.
-JointResult run_joint (const std::vector<JointMember*>& members, int max_exchanges, int first_exchange = 0);
+//! (a joint restart; 0: none), so this run takes at most max_exchanges - first_exchange; prior_window: a joint
+//! restart's window from its record (JointRecord.H; empty: none), the outer domain's feedback already restored.
+JointResult run_joint (const std::vector<JointMember*>& members, int max_exchanges, int first_exchange = 0,
+                       const std::vector<amrex::Real>& prior_window = {});
 
 } // namespace gust
 
