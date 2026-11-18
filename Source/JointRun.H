@@ -42,6 +42,7 @@
 
 #include "Domain.H"
 
+#include <string>
 #include <vector>
 
 namespace gust {
@@ -67,6 +68,13 @@ struct JointResult
 //! restart's window from its record (JointRecord.H; empty: none), the outer domain's feedback already restored.
 JointResult run_joint (const std::vector<JointMember*>& members, int max_exchanges, int first_exchange = 0,
                        const std::vector<amrex::Real>& prior_window = {});
+
+//! The widest domain name the joint run's log lines print (characters).
+constexpr int kJointLogNameWidth = 24;
+
+//! name as the joint run's log lines print it: as it is up to kJointLogNameWidth characters; a longer one keeps its
+//! first 12 and last 9 characters around "..." (kJointLogNameWidth in all), so a suffix of up to 9 characters stays readable.
+std::string joint_log_name (const std::string& name);
 
 } // namespace gust
 

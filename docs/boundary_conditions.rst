@@ -826,7 +826,8 @@ last exchange but the feedback had not settled, the log says so. The joint run s
 also when a nest's one-way run was not; GUST stops with an error after the joint run, naming every domain that is not
 steady. The log gives, for the first ten exchanges and then every tenth, the largest :math:`|S|` per equation,
 :math:`\delta_n` (``S change``; ``target change`` with ``relax``) with the window's sum, and the largest change of a
-nest's face velocities.
+nest's face velocities. A domain name longer than 24 characters shows in these lines as its first 12 and last 9 characters
+around ``...``; the per-domain steady line after the run gives it in full.
 
 **Restart.** A joint run that stops after ``steady.max_iterations`` exchanges, not steady, writes every domain's
 plotfile and checkpoint, and a joint record, the file ``Joint``, in the outer domain's checkpoint. The record holds

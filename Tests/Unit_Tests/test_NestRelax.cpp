@@ -29,6 +29,13 @@
 //     c = 0, and outside is not counted), the sizes (one velocity scale, 0 for
 //     theta, the largest k), against values computed here; first on the
 //     first set only.
+//   Boxes outside every footprint (tracker row N-114, item 14, beyond the
+//     plan): on 4 x 4-cell boxes with two small footprints, the source and
+//     the diagonal reach every point where the closed-form rate is > 0 (the
+//     boxes B's margin alone reaches among them) and leave every other point
+//     bit for bit; 12 of the 20 boxes hold no footprint point. The test
+//     shows no box with a footprint point is skipped; the saving itself is
+//     not visible in values.
 #include "HillTestHelpers.H"
 #include "ImplicitOperator.H"
 #include "Inputs.H"
@@ -666,4 +673,90 @@ TEST(NestRelax, ChangeOfTheTargetBetweenTwoSets)
         EXPECT_DOUBLE_EQ(static_cast<double>(S.change().size[n]), want[c]) << "field " << c;
     }
     EXPECT_GT(U, 1.0);
+}
+
+TEST(NestRelax, BoxesOutsideEveryFootprintAreSkippedExactly)   // tracker row N-114, item 14, beyond the plan
+{
+    // 4 x 4-cell boxes (5 x 4 of them); A over cells 1-6 x 1-6, B over 13-17 x 9-13. add_to_residual and
+    // add_to_implicit skip a box with no point of a footprint: every point where the closed-form rate is > 0 still
+    // gains it (in every box that touches a footprint, among them the boxes B's margin alone reaches), and every
+    // other point keeps its value bit for bit.
+    Parent p(false, 4, 4);
+    const amrex::Box dom = p.geom.Domain();
+    const gust::DefectRegion a = gust::defect_region("nest.a", amrex::IntVect(12, 12, 8), 2, amrex::IntVect(1, 1, 0), dom);
+    const gust::DefectRegion b = gust::defect_region("nest.b", amrex::IntVect(10, 10, 8), 2, amrex::IntVect(13, 9, 0), dom);
+    const std::vector<gust::DefectRegion> regions{a, b};
+    // The cell boxes: those that touch a footprint, those that touch B's footprint but not its inner box (the
+    // margin), and the others (skipped).
+    long touch = 0, margin_only = 0, skipped = 0;
+    for (int m = 0; m < p.ba.size(); ++m) {
+        const amrex::Box& bx = p.ba[m];
+        const bool t = bx.intersects(a.footprint) || bx.intersects(b.footprint);
+        touch += t ? 1 : 0;
+        skipped += t ? 0 : 1;
+        margin_only += (bx.intersects(b.footprint) && !bx.intersects(b.inner)) ? 1 : 0;
+    }
+    ASSERT_EQ(touch, 8);
+    ASSERT_EQ(skipped, 12);
+    ASSERT_EQ(margin_only, 3);
+
+    gust::State qstar;
+    qstar.define(p.ba, p.dm);
+    fill_state(p, qstar, 1);
+    fill_state(p, p.q, 0);
+    gust::NestRelax S(p.ba, p.dm, p.geom, amrex::Real(kFactor));
+    S.set(qstar, regions);
+    const std::vector<double> c0{static_cast<double>(S.nests()[0].rate), static_cast<double>(S.nests()[1].rate)};
+    constexpr double r0 = 1.5, a0 = 2.0;
+    gust::ResidualFields R;
+    R.define(p.ba, p.dm);
+    for (auto& f : R.fields()) { f.mf->setVal(r0); }
+    S.add_to_residual(p.q, R);
+    const amrex::MultiFab* rf[5] = {&R.u, &R.v, &R.w, &R.theta, &R.tke};
+    const Equation eqs[5] = {Equation::u, Equation::v, Equation::w, Equation::theta, Equation::tke};
+    const char* names[5] = {"u", "v", "w", "theta", "tke"};
+    for (int n = 0; n < 5; ++n) {
+        const amrex::IndexType t = rf[n]->ixType();
+        amrex::MultiFab A(rf[n]->boxArray(), rf[n]->DistributionMap(), gust::n_implicit_coefs, 0);
+        A.setVal(a0);
+        S.add_to_implicit(eqs[n], A);
+        long on = 0, off_changed = 0, on_missed = 0, other_coef = 0;
+        double err_r = 0, err_a = 0;
+        for (amrex::MFIter mfi(A, false); mfi.isValid(); ++mfi) {
+            const amrex::Box bx = mfi.validbox();
+            amrex::FArrayBox hr(bx, 1, amrex::The_Pinned_Arena()), ha(bx, gust::n_implicit_coefs, amrex::The_Pinned_Arena());
+            hr.copy<amrex::RunOn::Device>((*rf[n])[mfi], bx);
+            ha.copy<amrex::RunOn::Device>(A[mfi], bx, 0, bx, 0, gust::n_implicit_coefs);
+            amrex::Gpu::streamSynchronize();
+            amrex::LoopOnCpu(bx, [&] (int i, int j, int k) {
+                const amrex::IntVect iv(i, j, k);
+                const double e = expect_rate(p, regions, c0, t, i, j);
+                const double vr = static_cast<double>(hr(iv)), va = static_cast<double>(ha(iv, gust::coef_P));
+                for (int c = 1; c < gust::n_implicit_coefs; ++c) { if (ha(iv, c) != amrex::Real(a0)) { ++other_coef; } }
+                if (e == 0) {
+                    if (hr(iv) != amrex::Real(r0) || ha(iv, gust::coef_P) != amrex::Real(a0)) { ++off_changed; }
+                    return;
+                }
+                ++on;
+                if (hr(iv) == amrex::Real(r0) || ha(iv, gust::coef_P) == amrex::Real(a0)) { ++on_missed; }
+                const double x = pos(p.geom, t, i, 0), y = pos(p.geom, t, j, 1);
+                const double qa = field(x, y, k, n, 0), qb = field(x, y, k, n, 1);
+                err_r = std::max(err_r, std::abs(vr - r0 - e * (qa - qb)) / (r0 + e * (std::abs(qa) + std::abs(qb))));
+                err_a = std::max(err_a, std::abs(va - a0 - e) / (a0 + e));
+            });
+        }
+        auto comm = amrex::ParallelDescriptor::Communicator();
+        amrex::ParallelAllReduce::Sum(on, comm);
+        amrex::ParallelAllReduce::Sum(off_changed, comm);
+        amrex::ParallelAllReduce::Sum(on_missed, comm);
+        amrex::ParallelAllReduce::Sum(other_coef, comm);
+        amrex::ParallelAllReduce::Max(err_r, comm);
+        amrex::ParallelAllReduce::Max(err_a, comm);
+        EXPECT_GT(on, 0) << names[n];
+        EXPECT_EQ(on_missed, 0) << names[n] << ": a point with c > 0 lost its source (its box was skipped)";
+        EXPECT_EQ(off_changed, 0) << names[n] << ": a point with c = 0 changed";
+        EXPECT_EQ(other_coef, 0) << names[n] << ": an off-diagonal coefficient changed";
+        EXPECT_LT(err_r, kTol) << names[n] << ": R is not R0 + c (q - q*)";
+        EXPECT_LT(err_a, kTol) << names[n] << ": A_P is not A0 + c";
+    }
 }

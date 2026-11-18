@@ -103,6 +103,8 @@ public:
     void set (const State& qstar, const std::vector<DefectRegion>& regions);
 
     //! R += c (q - q*) for u, v, w, theta and k (nothing while inactive).
+    //! A box with no point of a footprint (c = 0 at all its points) is
+    //! skipped, here and in add_to_implicit.
     void add_to_residual (const State& q, ResidualFields& R) const;
     //! A(coef_P) += c for eq's rows (nothing while inactive).
     void add_to_implicit (Equation eq, amrex::MultiFab& A) const;
@@ -136,6 +138,7 @@ private:
     std::array<amrex::MultiFab, 5> m_target;   //!< u, v, w, theta, tke
     std::array<amrex::MultiFab, 4> m_rate;     //!< at XF, YF, ZF, CC
     std::vector<Nest> m_nests;
+    std::vector<amrex::Box> m_footprints;   //!< the regions' footprints at the last set (cells)
     FeedbackChange m_change;
     bool m_active{false};
     bool m_have_previous{false};

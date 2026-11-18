@@ -49,7 +49,9 @@ void footprint_rate (amrex::MultiFab& rate, const amrex::Box& fp, const std::arr
     const amrex::Real invM = amrex::Real(1) / M;
     for (amrex::MFIter mfi(rate, false); mfi.isValid(); ++mfi) {
         const amrex::Box bx = mfi.validbox() & pb;
-        if (!bx.ok()) { continue; }
+        // Only the footprint's points are written: w(s) alone can be > 0 just outside it across a direction with no
+        // faces (the + M shift), so c = 0 outside the footprint rests on this box, as touches_footprint assumes.
+        if (!bx.ok()) { continue; }   // a box outside the footprint keeps its rate
         const auto c = rate.array(mfi);
         amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
         {
@@ -69,7 +71,7 @@ void footprint_speed (const amrex::MultiFab& u, const amrex::MultiFab& v, const 
     spd.setVal(0.0);
     for (amrex::MFIter mfi(spd, false); mfi.isValid(); ++mfi) {
         const amrex::Box bx = mfi.validbox() & fp;
-        if (!bx.ok()) { continue; }
+        if (!bx.ok()) { continue; }   // a box outside the footprint stays 0
         const auto s = spd.array(mfi);
         const auto uu = u.const_array(mfi);
         const auto vv = v.const_array(mfi);
@@ -106,9 +108,21 @@ std::array<amrex::Real, 2> masked_max (const amrex::MultiFab& rate, const amrex:
     return {r[0], r[1]};
 }
 
-void add_source (const amrex::MultiFab& rate, const amrex::MultiFab& q, const amrex::MultiFab& target, amrex::MultiFab& R)
+//! Whether the valid box vb (of any index type) holds a point of one of the footprints fps (cells, converted to vb's
+//! type). The rate is 0 at every point of a box that does not, so the source and its diagonal skip it.
+bool touches_footprint (const std::vector<amrex::Box>& fps, const amrex::Box& vb)
+{
+    for (const amrex::Box& fp : fps) {
+        if (amrex::convert(fp, vb.ixType()).intersects(vb)) { return true; }
+    }
+    return false;
+}
+
+void add_source (const std::vector<amrex::Box>& fps, const amrex::MultiFab& rate, const amrex::MultiFab& q,
+                 const amrex::MultiFab& target, amrex::MultiFab& R)
 {
     for (amrex::MFIter mfi(R, false); mfi.isValid(); ++mfi) {
+        if (!touches_footprint(fps, mfi.validbox())) { continue; }
         const auto r = R.array(mfi);
         const auto c = rate.const_array(mfi);
         const auto a = q.const_array(mfi);
@@ -120,9 +134,10 @@ void add_source (const amrex::MultiFab& rate, const amrex::MultiFab& q, const am
     }
 }
 
-void add_diagonal (const amrex::MultiFab& rate, amrex::MultiFab& A)
+void add_diagonal (const std::vector<amrex::Box>& fps, const amrex::MultiFab& rate, amrex::MultiFab& A)
 {
     for (amrex::MFIter mfi(A, false); mfi.isValid(); ++mfi) {
+        if (!touches_footprint(fps, mfi.validbox())) { continue; }
         const auto a = A.array(mfi);
         const auto c = rate.const_array(mfi);
         amrex::ParallelFor(mfi.validbox(), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
@@ -176,6 +191,7 @@ void NestRelax::set (const State& qstar, const std::vector<DefectRegion>& region
     // The rates first (they depend on q* alone), so the change of the target is taken where c > 0.
     for (auto& r : m_rate) { r.setVal(0.0); }
     m_nests.clear();
+    m_footprints.clear();
     const auto dx = m_geom.CellSizeArray();
     const amrex::Real dxh = amrex::min(dx[0], dx[1]);
     amrex::MultiFab spd(m_rate[3].boxArray(), m_rate[3].DistributionMap(), 1, 0);
@@ -192,6 +208,7 @@ void NestRelax::set (const State& qstar, const std::vector<DefectRegion>& region
         const std::array<bool, 2> face{g.inner.length(0) != g.footprint.length(0), g.inner.length(1) != g.footprint.length(1)};
         for (auto& r : m_rate) { footprint_rate(r, g.footprint, face, n.rate); }
         m_nests.push_back(n);
+        m_footprints.push_back(g.footprint);
     }
     // The change of the target where c > 0 (the footprints, as before: they do not move), then the target.
     const int ri[5] = {0, 1, 2, 3, 3};
@@ -230,7 +247,7 @@ void NestRelax::add_to_residual (const State& q, ResidualFields& R) const
         const amrex::MultiFab& t = m_target[static_cast<std::size_t>(n)];
         require_layout("add_to_residual", *rf[n], t);
         require_layout("add_to_residual", *qf[n], t);
-        add_source(m_rate[static_cast<std::size_t>(ri[n])], *qf[n], t, *rf[n]);
+        add_source(m_footprints, m_rate[static_cast<std::size_t>(ri[n])], *qf[n], t, *rf[n]);
     }
 }
 
@@ -241,7 +258,7 @@ void NestRelax::add_to_implicit (Equation eq, amrex::MultiFab& A) const
     require_layout("add_to_implicit", A, t);
     if (A.nComp() != n_implicit_coefs) { amrex::Abort("gust: NestRelax::add_to_implicit: A must hold the implicit coefficients"); }
     const Loc loc[5] = {Loc::xface, Loc::yface, Loc::zface, Loc::cell, Loc::cell};
-    add_diagonal(rate(loc[target_index(eq)]), A);
+    add_diagonal(m_footprints, rate(loc[target_index(eq)]), A);
 }
 
 const amrex::MultiFab& NestRelax::rate (Loc loc) const { return m_rate[static_cast<std::size_t>(rate_index(loc))]; }
