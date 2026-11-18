@@ -8,7 +8,8 @@ F1-F7 and F16-F19 run against FrozenTheta.* by the shared runner
 tools/mutants.py (two ranks, the unit-test flags). F8-F15 and F20-F23 change the
 wiring of the application, which
 the unit tests do not reach: each rebuilds gust and runs the CTests
-rt_frozen_theta and abort_simplec_theta_* (about a minute each). The table is
+rt_frozen_theta, abort_simplec_theta_* and rt_nests_flat_abl_buoyant (about a
+minute each). The table is
 in docs/testing.rst.
 
     python3 tools/frozen_theta_mutants.py BUILD_DIR [F1 F9 ...]
@@ -49,23 +50,23 @@ APP = [
  ("F8", "the residual inputs keep the momentum buoyancy with frozen theta", Q,
   "    r.buoyancy_in_momentum = !s.simplec.theta_frozen;\n", ""),
  ("F9", "the coarsest level not reset", Q,
-  "            print_initializer(r, iopt, setup.popt, label);\n            reset_frozen_theta(h, l, setup, iopt, ls.bc.profile(), *ql);\n",
+  "            print_initializer(r, iopt, setup.popt, label);\n            reset_frozen_theta(h, l, setup, iopt, frozen_source(ls), *ql, frozen_name);\n",
   "            print_initializer(r, iopt, setup.popt, label);\n"),
  ("F10", "a prolonged coarse level not reset", Q,
-  "            s.prolonged = true;\n            reset_frozen_theta(h, l, setup, iopt, ls.bc.profile(), *ql);\n",
+  "            s.prolonged = true;\n            reset_frozen_theta(h, l, setup, iopt, frozen_source(ls), *ql, frozen_name);\n",
   "            s.prolonged = true;\n"),
  ("F11", "level 0 not reset", Q,
-  "    reset_frozen_theta(h, 0, setup, iopt, finest.bc.profile(), q);\n", ""),
+  "    reset_frozen_theta(h, 0, setup, iopt, frozen_source(finest), q, frozen_name);\n", ""),
  ("F12", "theta from the sounding by absolute height, not by height above the ground", Q,
   "&inflow, true);", "&inflow, false);"),
  ("F13", "frozen accepted without grid sequencing", A,
-  "if (simplec.theta_frozen && !(sequencing && in.mesh.hierarchy_levels > 1)) {", "if (false) {"),
+  "if (simplec.theta_frozen && nest == nullptr && !(sequencing && in.mesh.hierarchy_levels > 1)) {", "if (false) {"),
  ("F14", "frozen accepted with the Newton stage", A,
   "if (newton && simplec.theta_frozen) {", "if (false) {"),
  ("F15", "frozen accepted with a restart", A,
   "if (simplec.theta_frozen && !in.io.restart.empty()) {", "if (false) {"),
- ("F20", "frozen accepted with a stratified column first guess", A,
-  "if (simplec.theta_frozen && column_sets_theta(iopt, surf)) {", "if (false) {"),
+ ("F20", "theta frozen at the sounding, not at the stratified column", Q,
+  "return frozen_column ? *column : ls.bc.profile();", "return ls.bc.profile();"),
  ("F21", "the turbulence plotfile's R_theta not zeroed", A,
   "if (simplec.theta_frozen) { R.theta.setVal(0); }", ""),
  ("F22", "the frozen theta read at the floored height (init.z_agl_min)", Q,
@@ -73,7 +74,7 @@ APP = [
  ("F23", "the levels do not extend theta below the ground", Q,
   "    bc.set_theta_ground_extension(s.simplec.theta_frozen);\n", ""),
 ]
-CTESTS = "rt_frozen_theta|abort_simplec_theta"
+CTESTS = "rt_frozen_theta|abort_simplec_theta|rt_nests_flat_abl_buoyant"
 
 
 def ctest(build):

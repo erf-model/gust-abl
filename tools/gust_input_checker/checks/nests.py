@@ -4,15 +4,16 @@ ERROR (each is an abort of Source/Nests.cpp read_nest_options and
 check_nests, or of Source/App.cpp before the outer domain starts):
 
 - nest.names: a name that is not an identifier (a letter, then letters,
-  digits or '_') or is 'names', 'feedback', 'feedback_factor' or
-  'feedback_flux'; a name
-  given twice;
+  digits or '_') or is 'names', 'feedback', 'feedback_factor',
+  'feedback_flux' or 'damping'; a name given twice;
 - nest.feedback other than none, defect, relax or inject, or without
   nest.names; nest.feedback_factor without nest.feedback = relax or inject
   (its range is in `values`; with inject also <= 1); nest.feedback_flux
-  without nest.feedback = defect (its values are in `values`); with defect,
-  relax or inject: steady.stage = simplec_newton, bc.rayleigh_fields with
-  u, v or tke, an odd mesh.max_grid_size that splits a nest into boxes
+  without nest.feedback = defect (its values are in `values`); nest.damping
+  without nest.names, or = outer without a Rayleigh layer on u, v or tke (its
+  values are in `values`); with defect, relax or inject: steady.stage =
+  simplec_newton, bc.rayleigh_fields with u, v or tke (unless nest.damping =
+  outer), an odd mesh.max_grid_size that splits a nest into boxes
   with an odd number of cells in x or y, or a nest spanning fewer than
   2 DEFECT_MARGIN + 1 outer cells in a non-periodic x or y; with inject:
   solver.poisson_backend = mlmg, or a nest across a periodic x or y
@@ -30,8 +31,8 @@ check_nests, or of Source/App.cpp before the outer domain starts):
   outer face; a nest over the whole outer domain in x and y (both periodic);
   two nests sharing outer cells (touching is allowed);
 - with nests: steady.stage other than simplec or simplec_newton,
-  io.write_checkpoint = 0, buildings, simplec.theta = frozen,
-  terrain.smoothing = 1 (the default) with terrain other than flat;
+  io.write_checkpoint = 0, buildings, simplec.theta = frozen with
+  canopy.heat_frozen = blend (the `objects` checker), terrain.smoothing = 1 (the default) with terrain other than flat;
 - steady.line_overlap above a nest's narrowest box width in x and y (the nest
   mesh cut by mesh.max_grid_size; Source/App.cpp checks each nest's layout
   before the outer domain starts).
@@ -134,10 +135,10 @@ class NestsChecker(Checker):
         names = c.tokens("nest.names") if self.given("nest.names") else []
         valid = []
         for n in names:
-            if not _NAME.match(n) or n in ("names", "feedback", "feedback_factor", "feedback_flux"):
+            if not _NAME.match(n) or n in ("names", "feedback", "feedback_factor", "feedback_flux", "damping"):
                 self.error("nest.names", "GUST stops: nest.names: '%s' is not a nest name (a letter, then letters, "
-                                         "digits or '_'; not 'names', 'feedback', 'feedback_factor' or "
-                                         "'feedback_flux')." % n,
+                                         "digits or '_'; not 'names', 'feedback', 'feedback_factor', "
+                                         "'feedback_flux' or 'damping')." % n,
                            "Rename the nest.")
             elif n in valid:
                 self.error("nest.names", "GUST stops: nest.names: '%s' is named more than once." % n,
@@ -149,7 +150,8 @@ class NestsChecker(Checker):
             if len(parts) == 3 and parts[1] not in valid:
                 self.error(key, "GUST stops: unknown input '%s': '%s' is not in nest.names." % (key, parts[1]),
                            "Add the name to nest.names, or remove the key.")
-        defect = self._feedback(names)
+        outer_damping = self._damping(names)
+        defect = self._feedback(names, outer_damping)
         if not names:
             return
         self._outer()
@@ -185,7 +187,24 @@ class NestsChecker(Checker):
                               % (n, RATIO * (span[1] - span[0]), RATIO * (span[3] - span[2]),
                                  c.n_cell[2], c.dx / RATIO, c.dy / RATIO))
 
-    def _feedback(self, names):
+    def _damping(self, names):
+        """nest.damping (Source/Nests.cpp, Source/App.cpp); whether the nests keep the outer deck's layer (outer)."""
+        c = self.ctx
+        if not self.given("nest.damping"):
+            return False
+        if not names:
+            self.error("nest.damping", "GUST stops: nest.damping needs nest.names.",
+                       "Name the nests, or remove nest.damping.")
+            return False
+        if c.s("nest.damping") != "outer":
+            return False
+        if not any(c.rayleigh_damps(f) for f in ("u", "v", "tke")):
+            self.error("nest.damping", "GUST stops: nest.damping = outer has no effect without a Rayleigh layer on u, "
+                                       "v or tke (bc.rayleigh_zdamp > 0, bc.rayleigh_dampcoef > 0, "
+                                       "bc.rayleigh_fields).", "Remove nest.damping, or damp u, v or tke.")
+        return True
+
+    def _feedback(self, names, outer_damping=False):
         """nest.feedback (Source/Nests.cpp, Source/App.cpp); the value for a joint run (defect, relax or inject), else
         None."""
         c = self.ctx
@@ -224,9 +243,11 @@ class NestsChecker(Checker):
                        "Use gmres_mlmg (the default) or gmres_fft.")
         if c.restart:
             self._joint_record(names)
-        if c.positive("bc.rayleigh_zdamp") and any(c.rayleigh_field(f) for f in ("u", "v", "tke")):
+        if not outer_damping and c.positive("bc.rayleigh_zdamp") \
+                and any(c.rayleigh_field(f) for f in ("u", "v", "tke")):
             self.error("nest.feedback", "GUST stops: nest.feedback = %s needs bc.rayleigh_fields without u, v and "
-                                        "tke (the nests damp w and theta only)." % fb, "Set bc.rayleigh_fields = w theta.")
+                                        "tke (the nests damp w and theta only), or nest.damping = outer." % fb,
+                       "Set bc.rayleigh_fields = w theta, or nest.damping = outer.")
         if c.positive("bc.sponge_width"):
             self.warn("nest.feedback", "nest.feedback = %s with bc.sponge_width > 0: the nests have no side sponge, "
                                        "so over a footprint inside the sponge the joint run does not damp." % fb,
@@ -311,9 +332,6 @@ class NestsChecker(Checker):
         if c.s("buildings.type") not in ("", "none"):
             self.error("nest.names", "GUST stops: nest.names is not supported with buildings.type yet.",
                        "Remove the buildings or the nests.")
-        if c.theta_frozen:
-            self.error("nest.names", "GUST stops: nest.names is not supported with simplec.theta = frozen (it needs "
-                                     "grid sequencing, which a nest does not run).", "Solve theta, or remove the nests.")
 
     def _layout(self, n, span):
         """steady.line_overlap against the nest's narrowest box (the outer deck's _overlap_layout on the nest mesh)."""

@@ -341,7 +341,8 @@ what a patch must have (``Source/Nests.H``):
 - the faces: ``bc.xlo``, ``bc.xhi``, ``bc.ylo`` and ``bc.yhi = nest`` (``periodic`` where the nest is periodic), with
   ``bc.nest_parent`` the outer run's last checkpoint; the ground and the top as the outer domain's; no side sponge; the
   outer deck's Rayleigh layer without u, v and k (on those it would relax towards the inflow profile, not the outer
-  field), so with the default ``bc.rayleigh_fields`` a layer on w and theta; no relaxation zone;
+  field), so with the default ``bc.rayleigh_fields`` a layer on w and theta; with ``nest.damping = outer`` the outer
+  deck's layer as it is; no relaxation zone;
 - the start: ``init.first_guess = nest``; the outer deck's ``init.projection``, ``init.alpha_h`` and ``init.alpha_v``
   also apply to each nest's correction, while its other ``init.*`` keys and ``io.column_guess_file`` set up the outer
   first guess only; no grid sequencing; no ``steady.probes_file`` and no ``io.restart``;
@@ -368,7 +369,8 @@ its box layout (for example ``steady.line_overlap`` against its narrowest box) a
 before the outer domain starts, so a fault in a nest stops the run before any work is done.
 
 With nests the outer deck needs ``steady.stage = simplec`` or ``simplec_newton`` and ``io.write_checkpoint = 1``.
-Buildings and ``simplec.theta = frozen`` are refused.
+Buildings are refused. With ``simplec.theta = frozen`` each nest holds the θ it starts from, the outer domain's
+interpolated.
 
 A nest's result is that of the same patch run on its own: ``Tests/Canonical_RANS/Nests_One_Process`` compares the two
 bit for bit, and the outer domain with and without nests. It also checks that each nest's ground equals the outer
@@ -381,7 +383,7 @@ Limits of this one-way form:
   :ref:`two-way-relax`).
 - Two nests that touch each take the outer values on their shared face, but each corrects its own net flux, so their
   normal velocities there differ.
-- The outer Rayleigh layer damps u and v (relaxing towards the inflow profile); a nest's damps w and theta only. Near
+- The outer Rayleigh layer damps u and v (relaxing towards the inflow profile); a nest's damps w and theta only, unless ``nest.damping = outer``. Near
   the top the nest's u and v may therefore differ from the outer domain's.
 - A nest's convergence is measured against its own first residuals, not the outer domain's. A nest starts close to
   its steady state, so ``steady.residual_drop_orders`` may take longer to reach than ``steady.residual_tol``.

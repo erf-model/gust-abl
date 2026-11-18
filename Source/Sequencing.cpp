@@ -355,15 +355,16 @@ IterationLog iteration_log (const std::string& name)
 
 namespace {
 
-//! simplec.theta = frozen: level l's theta set to the inflow profile's theta by
-//! height above that level's ground (the stratified-column path of the first
+//! simplec.theta = frozen: level l's theta set to the inflow profile's theta
+//! (or, when it sets theta, the stratified column's: sequence_coarse_levels
+//! passes it as inflow) by height above that level's ground (the stratified-column path of the first
 //! guess, Initializer.H), in place of the sounding (coarsest level) or the
 //! prolonged field, so every level holds the same prescribed stratification.
 //! The profile is read at the unfloored height (init.z_agl_min = 0), as the
 //! inflow face's ghost cells read it, and without O'Brien (only theta is kept).
 //! Logs the level's frozen theta range and mean (valid cells).
 void reset_frozen_theta (const MeshHierarchy& h, int l, const RunSetup& setup, const InitOptions& iopt,
-                         const InflowProfile& inflow, State& q)
+                         const InflowProfile& inflow, State& q, const char* source)
 {
     if (!setup.simplec.theta_frozen) { return; }
     InitOptions topt = iopt;
@@ -377,8 +378,8 @@ void reset_frozen_theta (const MeshHierarchy& h, int l, const RunSetup& setup, c
     const amrex::Real tmin = q.theta.min(0), tmax = q.theta.max(0);
     const double tmean = static_cast<double>(q.theta.sum(0)) / static_cast<double>(h.boxArray(l).numPts());
     char line[200];
-    std::snprintf(line, sizeof(line), "gust: level %d: theta frozen at the inflow profile's theta by height above the ground: "
-                  "min %.15e, max %.15e, mean %.15e K", l, static_cast<double>(tmin), static_cast<double>(tmax), tmean);
+    std::snprintf(line, sizeof(line), "gust: level %d: theta frozen at the %s's theta by height above the ground: "
+                  "min %.15e, max %.15e, mean %.15e K", l, source, static_cast<double>(tmin), static_cast<double>(tmax), tmean);
     amrex::Print() << line << "\n";
 }
 
@@ -514,6 +515,13 @@ std::vector<LevelSummary> sequence_coarse_levels (const MeshHierarchy& h, const 
 {
     const int L = h.num_levels();
     if (L < 2) { amrex::Abort("gust: sequence_coarse_levels needs mesh.hierarchy_levels >= 2"); }
+    // simplec.theta = frozen holds theta at the stratified column's (by height above the ground) when the column
+    // sets theta (ColumnGuess.H column_sets_theta), else at the inflow profile's.
+    const bool frozen_column = column != nullptr && column_sets_theta(iopt, setup.surf);
+    auto frozen_source = [&] (const LevelSolver& ls) -> const InflowProfile& {
+        return frozen_column ? *column : ls.bc.profile();
+    };
+    const char* frozen_name = frozen_column ? "stratified column" : "inflow profile";
     std::vector<LevelSummary> out;
     std::unique_ptr<State> coarse;   // the state of level l + 1, once solved
     std::vector<amrex::Real> ref;    // the coarsest level's residual references
@@ -536,13 +544,13 @@ std::vector<LevelSummary> sequence_coarse_levels (const MeshHierarchy& h, const 
             const InitResult r = initialize_state(iopt, setup.bin, setup.popt, h.mesh(l), h.geom(l), *ql, nullptr,
                                                   setup.fopt.coriolis, column, column_sets_theta(iopt, setup.surf));
             print_initializer(r, iopt, setup.popt, label);
-            reset_frozen_theta(h, l, setup, iopt, ls.bc.profile(), *ql);
+            reset_frozen_theta(h, l, setup, iopt, frozen_source(ls), *ql, frozen_name);
         } else {
             const auto poisson = h.make_poisson(l, setup.popt);
             s.prolong = prolong_state(h, l + 1, *coarse, l, *ql, ls.bc, ls.surface(), setup.fopt.buoyancy, *poisson,
                                       setup.copt.tke_floor);
             s.prolonged = true;
-            reset_frozen_theta(h, l, setup, iopt, ls.bc.profile(), *ql);
+            reset_frozen_theta(h, l, setup, iopt, frozen_source(ls), *ql, frozen_name);
         }
         coarse.reset();
         Driver& driver = ls.driver();
@@ -597,7 +605,7 @@ std::vector<LevelSummary> sequence_coarse_levels (const MeshHierarchy& h, const 
         s0.prolong = prolong_state(h, 1, *coarse, 0, q, finest.bc, finest.surface(), setup.fopt.buoyancy, poisson,
                                    setup.copt.tke_floor);
     }
-    reset_frozen_theta(h, 0, setup, iopt, finest.bc.profile(), q);
+    reset_frozen_theta(h, 0, setup, iopt, frozen_source(finest), q, frozen_name);
     s0.prolonged = true;
     start_seeded(finest.driver(), ref, seq, cfl_prev);
     out.push_back(s0);

@@ -103,11 +103,27 @@ NestOptions read_nest_options ()
             opt.errors.emplace_back("nest.feedback_flux has no effect without nest.feedback = defect");
         }
     }
+    if (pp.countname("damping") > 1) { opt.errors.emplace_back("nest.damping is given more than once"); }
+    if (pp.contains("damping")) {
+        std::string dm;
+        if (pp.countval("damping") != 1) {
+            opt.errors.emplace_back("nest.damping takes one value: w_theta or outer");
+        } else {
+            pp.get("damping", dm);
+            if (dm == "outer") {
+                opt.damping = NestDamping::outer;
+            } else if (dm != "w_theta") {
+                opt.errors.emplace_back("nest.damping = '" + dm + "' is not w_theta or outer");
+            }
+        }
+        if (names.empty()) { opt.errors.emplace_back("nest.damping needs nest.names"); }
+    }
     for (std::size_t i = 0; i < names.size(); ++i) {
         const std::string& n = names[i];
-        if (!is_identifier(n) || n == "names" || n == "feedback" || n == "feedback_factor" || n == "feedback_flux") {
+        if (!is_identifier(n) || n == "names" || n == "feedback" || n == "feedback_factor" || n == "feedback_flux"
+            || n == "damping") {
             opt.errors.emplace_back("nest.names: '" + n + "' is not a nest name (a letter, then letters, digits or '_'; "
-                                    "not 'names', 'feedback', 'feedback_factor' or 'feedback_flux')");
+                                    "not 'names', 'feedback', 'feedback_factor', 'feedback_flux' or 'damping')");
             continue;
         }
         if (std::find(names.begin(), names.begin() + static_cast<std::ptrdiff_t>(i), n) != names.begin() + static_cast<std::ptrdiff_t>(i)) {
@@ -238,7 +254,8 @@ void apply_nest_inputs (const NestSpec& nest, Inputs& in)
     in.terrain.given.clear();
 }
 
-void apply_nest_boundary_inputs (const std::string& parent_chk, const amrex::Array<int, 3>& periodic, BoundaryInputs& bin)
+void apply_nest_boundary_inputs (const std::string& parent_chk, const amrex::Array<int, 3>& periodic, bool outer_damping,
+                                 BoundaryInputs& bin)
 {
     for (int d = 0; d < 2; ++d) {
         const FaceType f = (periodic[d] != 0) ? FaceType::periodic : FaceType::nest;
@@ -248,10 +265,15 @@ void apply_nest_boundary_inputs (const std::string& parent_chk, const amrex::Arr
     bin.nest_parent = parent_chk;
     bin.sponge_width = 0;
     bin.sponge_strength = 0;
-    // rayleigh_fields: u v w theta tke.
-    bin.rayleigh_fields[0] = false;
-    bin.rayleigh_fields[1] = false;
-    bin.rayleigh_fields[4] = false;
+    // rayleigh_fields: u v w theta tke. nest.damping = outer keeps the outer deck's layer on every field it names
+    // (the parent is damped the same way over the footprint); else w and theta only.
+    if (outer_damping) {
+        bin.rayleigh_from_outer = true;
+    } else {
+        bin.rayleigh_fields[0] = false;
+        bin.rayleigh_fields[1] = false;
+        bin.rayleigh_fields[4] = false;
+    }
     bin.nest_relax_width = 0;
     bin.nest_relax_factor = 1;
     bin.nest_ratio = kNestRatio;   // nests refine the outer cells 2 2 1 (nest_mesh)

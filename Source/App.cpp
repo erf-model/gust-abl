@@ -121,7 +121,10 @@ std::string run_domain (const DomainRole& role)
     bool surface_layer = false;
     if (initialize || solve) {
         bin = read_boundary_inputs();
-        if (nest != nullptr) { apply_nest_boundary_inputs(role.parent_chk, in.mesh.is_periodic, bin); }
+        if (nest != nullptr) {
+            apply_nest_boundary_inputs(role.parent_chk, in.mesh.is_periodic,
+                                       read_nest_options().damping == NestDamping::outer, bin);
+        }
         // The first guess uses the profile on any geometry; a restart keeps
         // the deck of the run it continues, inflow keys included.
         // A nest's first guess is its parent's field, not the profile.
@@ -165,11 +168,6 @@ std::string run_domain (const DomainRole& role)
         }
         if (simplec.theta_frozen && !in.io.restart.empty()) {
             err.emplace_back("simplec.theta = frozen is not supported with io.restart (theta is held at the first guess)");
-        }
-        if (simplec.theta_frozen && column_sets_theta(iopt, surf)) {
-            err.emplace_back("simplec.theta = frozen is not supported with a stratified column first guess "
-                             "(init.first_guess = column, init.column_stability): the frozen theta is the inflow "
-                             "profile's and would replace the column's");
         }
         if (newton) {
             newton_opt = read_newton_stage_options(sopt, copt);
@@ -348,6 +346,19 @@ std::string run_domain (const DomainRole& role)
     if (role.nests != nullptr) {
         for (const auto& e : role.nests->errors) { err.push_back(e); }
         for (auto& e : check_nests(*role.nests, in.mesh)) { err.push_back(std::move(e)); }
+        if (role.nests->damping == NestDamping::outer
+            && !(bin.rayleigh_zdamp > 0 && bin.rayleigh_dampcoef > 0
+                 && (bin.rayleigh_fields[0] || bin.rayleigh_fields[1] || bin.rayleigh_fields[4]))) {
+            err.emplace_back("nest.damping = outer has no effect without a Rayleigh layer on u, v or tke (bc.rayleigh_zdamp > 0, "
+                             "bc.rayleigh_dampcoef > 0, bc.rayleigh_fields)");
+        }
+        // A nest's frozen theta is the parent's, already blended towards the leaves; the nest's stage would blend it
+        // again (Simplec.cpp, canopy.heat_frozen = blend takes the theta of its first iteration as the frozen field).
+        if (simplec.theta_frozen && canopy_opt.active() && canopy_opt.heat.on()
+            && canopy_opt.heat.frozen == CanopyFrozenHeat::blend) {
+            err.emplace_back("nest.names is not supported with simplec.theta = frozen and canopy.heat_frozen = blend (a "
+                             "nest would blend the outer domain's blended theta again)");
+        }
         if (!solve || unsteady) {
             err.emplace_back("nest.names needs steady.stage = simplec or simplec_newton (each nest starts from the outer "
                              "domain's steady state)");
@@ -403,22 +414,20 @@ std::string run_domain (const DomainRole& role)
                     }
                 }
             }
-            // A nest damps w and theta only (Nests.cpp). Over each footprint the source carries the nest's
-            // equations, so an outer Rayleigh term on u, v or k would act outside the footprints and not inside:
-            // a jump in the forcing at the footprint's edge above bc.rayleigh_zdamp.
-            if (bin.rayleigh_zdamp > 0 && (bin.rayleigh_fields[0] || bin.rayleigh_fields[1] || bin.rayleigh_fields[4])) {
+            // The nests damp w and theta only unless nest.damping = outer (Nests.cpp). Over each footprint the
+            // source carries the nest's equations, so an outer Rayleigh term on u, v or k the nests do not have would
+            // act outside the footprints and not inside: a jump in the forcing at the footprint's edge above
+            // bc.rayleigh_zdamp.
+            if (role.nests->damping != NestDamping::outer && bin.rayleigh_zdamp > 0
+                && (bin.rayleigh_fields[0] || bin.rayleigh_fields[1] || bin.rayleigh_fields[4])) {
                 err.push_back(fbk + " needs bc.rayleigh_fields without u, v and tke (the nests damp w "
-                              "and theta only): use bc.rayleigh_fields = w or w theta");
+                              "and theta only): use bc.rayleigh_fields = w or w theta, or nest.damping = outer");
             }
             if (bin.sponge_width > 0) {
                 amrex::Print() << "gust: note: " << fbk << " with bc.sponge_width > 0: the nests have no side "
                                   "sponge, so over a nest's footprint inside the sponge the joint run does not damp "
                                   "(place the nests outside bc.sponge_width)\n";
             }
-        }
-        if (simplec.theta_frozen) {
-            err.emplace_back("nest.names is not supported with simplec.theta = frozen (it needs grid sequencing, which a "
-                             "nest does not run)");
         }
     }
     const std::string invalid = nest != nullptr ? "gust: invalid inputs for nest." + nest->name + " (the outer deck with "
@@ -447,9 +456,11 @@ std::string run_domain (const DomainRole& role)
     const amrex::BoxArray ba = hierarchy_box_array(in.mesh);
     // Grid sequencing runs the coarse levels on a fresh start only.
     const bool sequencing = solve && seq.enabled && in.io.restart.empty();
-    if (simplec.theta_frozen && !(sequencing && in.mesh.hierarchy_levels > 1)) {
+    // A nest holds theta at its start, the parent's frozen theta interpolated (init.first_guess = nest).
+    if (simplec.theta_frozen && nest == nullptr && !(sequencing && in.mesh.hierarchy_levels > 1)) {
         amrex::Abort(invalid + "\n  simplec.theta = frozen needs grid sequencing (steady.sequencing = 1, "
-                     "mesh.hierarchy_levels > 1): the frozen theta is set from the inflow profile on the sequenced levels");
+                     "mesh.hierarchy_levels > 1): the frozen theta is set from the inflow profile (or the stratified "
+                     "column) on the sequenced levels");
     }
     if (solve && sopt.sweep == SweepKind::lusgs) {
         // The overlap against the layout (LineSweeps.H), before any work;
@@ -1171,6 +1182,8 @@ std::string run_domain (const DomainRole& role)
                     fin.defect = nullptr;
                     if (!simplec_stage.hybrid_sigma().empty()) { fin.hybrid_sigma = &simplec_stage.hybrid_sigma(); }
                     residual(q, fin, mesh, geom, R);
+                    // theta is data with simplec.theta = frozen: no theta source, and no theta in the feedback change.
+                    if (simplec.theta_frozen) { R.theta.setVal(0); }
                 };
             }
             if (relax) { m.relax = relax.get(); }

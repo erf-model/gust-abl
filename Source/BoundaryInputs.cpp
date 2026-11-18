@@ -311,10 +311,11 @@ std::vector<std::string> check_boundary_inputs (const BoundaryInputs& in, const 
                 }
             }
         }
-        // The damping layers relax u, v and k towards the bc.inflow_* profile, not the parent.
+        // The damping layers relax u, v and k towards the bc.inflow_* profile, not the parent; a nest of nest.names
+        // shares the outer deck's layer, which damps the parent the same way (rayleigh_from_outer).
         if (!any_inflow) {
             const auto& rf = in.rayleigh_fields;
-            if (in.rayleigh_zdamp > 0 && (rf[0] || rf[1] || rf[4])) {
+            if (in.rayleigh_zdamp > 0 && (rf[0] || rf[1] || rf[4]) && !in.rayleigh_from_outer) {
                 err.emplace_back("bc.rayleigh_fields: with a nest face and no inflow face the Rayleigh layer may damp w and theta "
                                  "only (bc.rayleigh_fields = w, or w theta): u, v and tke would relax towards the bc.inflow_* "
                                  "profile, not the parent");
