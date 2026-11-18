@@ -260,7 +260,7 @@ io.iteration_log table,full 1
 io.column_guess_file str 1
 io.restart str 1
 nest.names str 1+
-nest.feedback none,defect,relax,inject 1
+nest.feedback none,defect,relax,relax_consistent,inject 1
 nest.feedback_factor real 1 >0
 nest.feedback_flux outer,nest 1
 nest.damping w_theta,outer 1

@@ -7,11 +7,12 @@
 //   nest.names     = nest1 nest2      names of the nests (identifiers)
 //   nest.nest1.lo  = x y              the nest's low corner (m)
 //   nest.nest1.hi  = x y              its high corner (m)
-//   nest.feedback  = none | defect | relax | inject
+//   nest.feedback  = none | defect | relax | relax_consistent | inject
 //                                     one way (default), or the joint run
 //                                     with the defect source, the relaxation
-//                                     or the injection
-//   nest.feedback_factor = 1          the relaxation's factor (relax), or the
+//                                     (plain or consistent) or the injection
+//   nest.feedback_factor = 1          the relaxation's factor (relax and
+//                                     relax_consistent), or the
 //                                     injection's fraction per exchange
 //                                     (inject; default 0.5, at most 1)
 //   nest.feedback_flux = outer | nest the flux the outer cells just outside
@@ -59,6 +60,11 @@
 // place of the defect source; nest.feedback_factor (default 1, finite and
 // > 0) scales its rate.
 //
+// nest.feedback = relax_consistent (NestRelax.H): the relaxation with the
+// residual of its target, weighted by the relaxation's weight, taken from the
+// source as well, so the target satisfies the outer rows where the weight is
+// 1 (the parent's pressure there mostly follows the nests'); same factor.
+//
 // nest.feedback_flux = nest (NestFaceFlux.H; defect only): the outer cells
 // just outside the defect source's region take the nests' own fluxes through
 // its lateral faces (summed over the nest faces) in place of the outer
@@ -91,9 +97,10 @@ struct NestSpec
 };
 
 //! nest.feedback: none (one way, the default), defect (the joint run with the defect source, NestDefect.H,
-//! JointRun.H), relax (the joint run with the relaxation, NestRelax.H) or inject (the joint run with the
-//! injection, NestInject.H).
-enum class NestFeedback { none, defect, relax, inject };
+//! JointRun.H), relax (the joint run with the relaxation, NestRelax.H), relax_consistent (the relaxation with
+//! the weighted residual of its target, NestRelax.H, so that the target solves the relaxed equations where the
+//! weight is 1) or inject (the joint run with the injection, NestInject.H).
+enum class NestFeedback { none, defect, relax, relax_consistent, inject };
 
 //! nest.feedback_flux: outer (the default: the outer scheme's fluxes) or nest (the nests' own summed face fluxes
 //! through the defect source's lateral faces, NestFaceFlux.H; nest.feedback = defect only).
@@ -110,7 +117,7 @@ struct NestOptions
 {
     std::vector<NestSpec> nests;
     NestFeedback feedback{NestFeedback::none};
-    //! nest.feedback_factor: relax's factor (finite, > 0; default 1) or inject's fraction (finite, > 0 and <= 1;
+    //! nest.feedback_factor: relax's and relax_consistent's factor (finite, > 0; default 1) or inject's fraction (finite, > 0 and <= 1;
     //! default kInjectFactorDefault); not given with other feedbacks.
     amrex::Real feedback_factor{1};
     //! nest.feedback_flux (nest.feedback = defect only).

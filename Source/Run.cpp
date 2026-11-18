@@ -44,7 +44,7 @@ void run ()
     OuterOutcome outcome;
     if (nests.active()) { outer.outcome = &outcome; }
     const bool joint = nests.active() && nests.feedback != NestFeedback::none;
-    // nest.feedback = defect, relax or inject (JointRun.H): the outer domain, once steady, runs each nest inside its own run_domain
+    // nest.feedback = defect, relax, relax_consistent or inject (JointRun.H): the outer domain, once steady, runs each nest inside its own run_domain
     // (DomainRole::joint), and the last nest runs the joint loop, so every domain stays in memory.
     std::vector<JointMember*> members;
     std::vector<OuterOutcome> nest_outcomes(nests.nests.size());
@@ -228,7 +228,8 @@ void run ()
                           joint_result.feedback_change, joint_result.feedback_window);
             amrex::Abort(std::string("gust: nest.feedback = ") + nest_feedback_name(nests.feedback)
                          + ": the joint run did not reach steady: every domain is steady, but the "
-                         + (nests.feedback == NestFeedback::relax    ? "relaxation's target"
+                         + (nests.feedback == NestFeedback::relax || nests.feedback == NestFeedback::relax_consistent
+                                                                     ? "relaxation's target"
                             : nests.feedback == NestFeedback::inject ? "injection's target"
                                                                      : "defect source")
                          + " had not settled over steady.monitor_window exchanges to steady.monitor_rel_tol (" + what

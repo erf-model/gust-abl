@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """A joint run stopped and restarted continues bit for bit (tracker N-114, item 3).
 
-    check_joint_restart.py [--relax | --inject] --stop M -- COMMAND [ARGS ...]
+    check_joint_restart.py [--relax | --relax-consistent | --inject] --stop M -- COMMAND [ARGS ...]
 
 COMMAND runs the outer deck (an argument ending in inputs_outer). The script
 runs, each in its own directory under the current one:
 
 1. straight/: COMMAND with the nests crest and lee and nest.feedback = defect
-              (with --relax or --inject: the nest hill and nest.feedback = relax
-              or inject), to the steady verdict;
+              (with --relax, --relax-consistent or --inject: the nest hill and
+              nest.feedback = relax, relax_consistent or inject), to the steady
+              verdict;
 2. stopped/:  the same with steady.max_iterations = M: the joint run stops
               after M exchanges, not steady, and names the checkpoint to
               restart from;
@@ -90,21 +91,22 @@ def counts(log):
 
 def main():
     if "--" not in sys.argv:
-        fail("usage: check_joint_restart.py [--relax | --inject] --stop M -- COMMAND [ARGS ...]")
+        fail("usage: check_joint_restart.py [--relax | --relax-consistent | --inject] --stop M -- COMMAND [ARGS ...]")
     opts = sys.argv[1:sys.argv.index("--")]
     cmd = sys.argv[sys.argv.index("--") + 1:]
     relax = "--relax" in opts
+    consistent = "--relax-consistent" in opts
     inject = "--inject" in opts
-    if relax and inject:
-        fail("--relax and --inject are separate runs")
+    if relax + consistent + inject > 1:
+        fail("--relax, --relax-consistent and --inject are separate runs")
     if "--stop" not in opts or opts.index("--stop") + 1 >= len(opts):
         fail("--stop M is required")
     stop = int(opts[opts.index("--stop") + 1])
     decks = [i for i, a in enumerate(cmd) if a.endswith("inputs_outer")]
     if len(decks) != 1:
         fail("COMMAND must name the deck inputs_outer once")
-    feedback = "relax" if relax else "inject" if inject else "defect"
-    nests = (NEST if relax or inject else NESTS2) + [f"nest.feedback={feedback}"]
+    feedback = "relax" if relax else "relax_consistent" if consistent else "inject" if inject else "defect"
+    nests = (NEST if relax or consistent or inject else NESTS2) + [f"nest.feedback={feedback}"]
     names = nests[0].split("=", 1)[1].split()
 
     log = run(cmd + nests, "straight", True)

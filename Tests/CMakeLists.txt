@@ -72,6 +72,7 @@ add_executable(unit_tests
     Unit_Tests/test_NestDefect.cpp
     Unit_Tests/test_NestFaceFlux.cpp
     Unit_Tests/test_NestRelax.cpp
+    Unit_Tests/test_NestRelaxConsistent.cpp
     Unit_Tests/test_NestInject.cpp
     Unit_Tests/test_NestFaces.cpp
     Unit_Tests/test_NestParent.cpp
@@ -1782,16 +1783,26 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
         gust_add_test(NAME rt_nests_inject NP 2 LABELS "regression"
                       PREFIX ${Python3_EXECUTABLE} ${NESTS2_CASE}/check_nests_two_way.py --inject --
                       COMMAND ${NESTS2_OUTER} ${GUST_TEST_AMREX_FLAGS})
+        # Pressure-consistent relaxation (tracker N-114, item 12, nest.feedback = relax_consistent) on the same hill,
+        # old against new: relax at factor 1 and relax_consistent at 1 and 4. At factor 1 the parent - restricted
+        # nest difference under the nest is pinned against relax's and falls from 1 to 4; the nest and outer errors
+        # against the 25 m run are pinned against the one-way ones (README.md has the measured values).
+        gust_add_test(NAME rt_nests_relax_consistent NP 2 LABELS "regression"
+                      PREFIX ${Python3_EXECUTABLE} ${NESTS2_CASE}/check_nests_two_way.py --relax-consistent --
+                      COMMAND ${NESTS2_OUTER} ${GUST_TEST_AMREX_FLAGS})
     endif()
     # A joint run stopped after 150 exchanges (steady.max_iterations) and restarted from the joint record its
     # message names (tracker N-114, item 3): the restart is steady after the straight run's exchanges, and the last
     # plotfiles and checkpoints are byte for byte the straight run's. The two nests on 3 ranks with the defect
-    # source; the nest hill on 2 ranks with the relaxation and with the injection.
+    # source; the nest hill on 2 ranks with the relaxation (relax and relax_consistent) and with the injection.
     gust_add_test(NAME rt_nests_joint_restart NP 3 LABELS "regression;smoke"
                   PREFIX ${Python3_EXECUTABLE} ${NESTS2_CASE}/check_joint_restart.py --stop 150 --
                   COMMAND ${NESTS2_OUTER} ${GUST_TEST_AMREX_FLAGS})
     gust_add_test(NAME rt_nests_joint_restart_relax NP 2 LABELS "regression"
                   PREFIX ${Python3_EXECUTABLE} ${NESTS2_CASE}/check_joint_restart.py --relax --stop 140 --
+                  COMMAND ${NESTS2_OUTER} ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME rt_nests_joint_restart_relax_consistent NP 2 LABELS "regression"
+                  PREFIX ${Python3_EXECUTABLE} ${NESTS2_CASE}/check_joint_restart.py --relax-consistent --stop 140 --
                   COMMAND ${NESTS2_OUTER} ${GUST_TEST_AMREX_FLAGS})
     gust_add_test(NAME rt_nests_joint_restart_inject NP 2 LABELS "regression"
                   PREFIX ${Python3_EXECUTABLE} ${NESTS2_CASE}/check_joint_restart.py --inject --stop 150 --
@@ -1835,7 +1846,7 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
                   PREFIX ${EXPECT_ABORT} "nest\\.damping = outer has no effect without a Rayleigh layer on u, v or tke" --
                   COMMAND ${NESTS_OUTER} ${NESTS_A} bc.rayleigh_fields=w nest.damping=outer ${GUST_TEST_AMREX_FLAGS})
     gust_add_test(NAME abort_nests_feedback_value NP 1 LABELS "regression;smoke"
-                  PREFIX ${EXPECT_ABORT} "nest\\.feedback = 'average' is not none, defect, relax or inject" --
+                  PREFIX ${EXPECT_ABORT} "nest\\.feedback = 'average' is not none, defect, relax, relax_consistent or inject" --
                   COMMAND ${NESTS_OUTER} ${NESTS_A} nest.feedback=average ${GUST_TEST_AMREX_FLAGS})
     gust_add_test(NAME abort_nests_feedback_factor NP 1 LABELS "regression;smoke"
                   PREFIX ${EXPECT_ABORT} "nest\\.feedback_factor = 0: must be finite and > 0" --
@@ -1844,7 +1855,7 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
                   PREFIX ${EXPECT_ABORT} "nest\\.feedback_factor = nan: must be finite and > 0" --
                   COMMAND ${NESTS_OUTER} ${NESTS_A} nest.feedback=relax nest.feedback_factor=nan ${GUST_TEST_AMREX_FLAGS})
     gust_add_test(NAME abort_nests_feedback_factor_unused NP 1 LABELS "regression;smoke"
-                  PREFIX ${EXPECT_ABORT} "nest\\.feedback_factor has no effect without nest\\.feedback = relax or inject" --
+                  PREFIX ${EXPECT_ABORT} "nest\\.feedback_factor has no effect without nest\\.feedback = relax, relax_consistent or inject" --
                   COMMAND ${NESTS_OUTER} ${NESTS_A} nest.feedback=defect nest.feedback_factor=2 ${GUST_TEST_AMREX_FLAGS})
     gust_add_test(NAME abort_nests_feedback_flux_value NP 1 LABELS "regression;smoke"
                   PREFIX ${EXPECT_ABORT} "nest\\.feedback_flux = 'fine' is not outer or nest" --
@@ -1852,6 +1863,16 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
     gust_add_test(NAME abort_nests_feedback_flux_unused NP 1 LABELS "regression;smoke"
                   PREFIX ${EXPECT_ABORT} "nest\\.feedback_flux has no effect without nest\\.feedback = defect" --
                   COMMAND ${NESTS_OUTER} ${NESTS_A} nest.feedback_flux=nest ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME abort_nests_relax_consistent_feedback_flux NP 1 LABELS "regression;smoke"
+                  PREFIX ${EXPECT_ABORT} "nest\\.feedback_flux has no effect without nest\\.feedback = defect"
+                         "!is not none, defect, relax" --
+                  COMMAND ${NESTS_OUTER} ${NESTS_A} nest.feedback=relax_consistent nest.feedback_flux=nest
+                          ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME abort_nests_relax_consistent_factor NP 1 LABELS "regression;smoke"
+                  PREFIX ${EXPECT_ABORT} "nest\\.feedback_factor = -1: must be finite and > 0"
+                         "!is not none, defect, relax" --
+                  COMMAND ${NESTS_OUTER} ${NESTS_A} nest.feedback=relax_consistent nest.feedback_factor=-1
+                          ${GUST_TEST_AMREX_FLAGS})
     gust_add_test(NAME abort_nests_inject_factor NP 1 LABELS "regression;smoke"
                   PREFIX ${EXPECT_ABORT} "nest\\.feedback_factor = 2 with nest\\.feedback = inject: must be finite, > 0 and <= 1" --
                   COMMAND ${NESTS_OUTER} ${NESTS_A} nest.feedback=inject nest.feedback_factor=2 ${GUST_TEST_AMREX_FLAGS})

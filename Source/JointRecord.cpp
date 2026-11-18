@@ -89,7 +89,7 @@ bool read_joint_record (const std::string& dir, JointRecord& r)
         amrex::Abort(bad + " (expected " + kJointMagic + " 1 or " + std::to_string(kJointVersion) + ")");
     }
     if (!(is >> key >> r.feedback) || key != "feedback"
-        || (r.feedback != "defect" && r.feedback != "relax" && r.feedback != "inject")) {
+        || (r.feedback != "defect" && r.feedback != "relax" && r.feedback != "relax_consistent" && r.feedback != "inject")) {
         amrex::Abort(bad + " (the feedback line)");
     }
     if (!(is >> key >> r.exchanges) || key != "exchanges" || r.exchanges < 1) { amrex::Abort(bad + " (the exchanges line)"); }

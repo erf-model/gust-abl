@@ -79,11 +79,13 @@ JointResult run_joint (const std::vector<JointMember*>& members, int max_exchang
                        << "; the outer state moves that fraction of the way to the restricted nests from "
                        << kDefectMargin << " outer cells inside each nest's faces, held there through its iteration\n";
     } else if (relax) {
-        amrex::Print() << "gust: joint run (nest.feedback = relax, nest.feedback_factor = " << P.relax->factor()
+        amrex::Print() << "gust: joint run (nest.feedback = " << (P.relax->consistent() ? "relax_consistent" : "relax")
+                       << ", nest.feedback_factor = " << P.relax->factor()
                        << "): the outer domain and " << members.size() - 1 << " nest(s) exchange every iteration, up to "
                        << max_exchanges << " exchanges" << (first_exchange > 0 ? " over the run" : "")
                        << "; the relaxation's weight rises from 0 on each nest's faces to 1 "
-                       << kDefectMargin << " outer cells inside them\n";
+                       << kDefectMargin << " outer cells inside them"
+                       << (P.relax->consistent() ? ", with the weighted residual of the target" : "") << "\n";
     } else {
         amrex::Print() << "gust: joint run (nest.feedback = defect): the outer domain and " << members.size() - 1
                        << " nest(s) exchange every iteration, up to " << max_exchanges << " exchanges"
@@ -121,7 +123,15 @@ JointResult run_joint (const std::vector<JointMember*>& members, int max_exchang
             P.inject->inject(qr, *P.state);
             P.fill_ghosts(*P.state);
         } else if (relax) {
-            P.relax->set(qr, regions);
+            if (P.relax->consistent()) {
+                // R_c(q*) once per exchange, as for the defect source: the target and its weighted residual (NestRelax.H).
+                // The order of an exchange (target, outer step, nest faces from the new outer, nest steps) is required:
+                // stepping the domains together from the same old states can make this loop diverge (NestRelax.H).
+                P.residual_without_defect(qr, R);
+                P.relax->set(qr, regions, R);
+            } else {
+                P.relax->set(qr, regions);
+            }
             if (it == first_exchange) {
                 for (const auto& n : P.relax->nests()) {
                     char line[200];

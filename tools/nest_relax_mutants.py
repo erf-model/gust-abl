@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
 The one-line mutants of the two-way nests' relaxation source
-(Source/NestRelax.cpp, nest.feedback = relax): the rate, the target and the
-implicit diagonal.
+(Source/NestRelax.cpp, nest.feedback = relax and relax_consistent): the rate,
+the target, the implicit diagonal and relax_consistent's added term.
 
-Run against the NestRelax.* unit tests by the shared runner tools/mutants.py
+Run against the NestRelax.* and NestRelaxConsistent.* unit tests by the shared runner tools/mutants.py
 (two ranks, the unit-test flags). The table is in docs/testing.rst.
 
-    python3 tools/nest_relax_mutants.py BUILD_DIR [X1 X4 ...]
+    python3 tools/nest_relax_mutants.py BUILD_DIR [X1 X4 C1 ...]
 """
 import mutants
 
@@ -45,9 +45,20 @@ M = [
  ("X13", "the boxes that touch a footprint skipped", F,
   "if (!touches_footprint(fps, mfi.validbox())) { continue; }\n        const auto r = R.array(mfi);",
   "if (touches_footprint(fps, mfi.validbox())) { continue; }\n        const auto r = R.array(mfi);"),
+ # relax_consistent's added term s = w R_c(q*) (tracker N-114, item 12)
+ ("C1", "the added term with the wrong sign", F, "(a(i, j, k) - p(i, j, k)) - s(i, j, k);",
+  "(a(i, j, k) - p(i, j, k)) + s(i, j, k);"),
+ ("C2", "the added term left out", F, "(a(i, j, k) - p(i, j, k)) - s(i, j, k);", "(a(i, j, k) - p(i, j, k));"),
+ ("C3", "the residual not weighted", F, "? ww(i, j, k) * rr(i, j, k) :", "? rr(i, j, k) :"),
+ ("C4", "the residual weighted by w squared", F, "? ww(i, j, k) * rr(i, j, k) :",
+  "? ww(i, j, k) * ww(i, j, k) * rr(i, j, k) :"),
+ ("C5", "the weight from a footprint one cell wider", F,
+  "for (auto& w : wt) { footprint_rate(w, g.footprint, face, amrex::Real(1)); }",
+  "for (auto& w : wt) { footprint_rate(w, amrex::grow(g.footprint, amrex::IntVect(AMREX_D_DECL(1, 1, 0))), face, "
+  "amrex::Real(1)); }"),
 ]
 EQUIVALENT = set()
 
 
 if __name__ == "__main__":
-    mutants.run(M, "NestRelax.*", EQUIVALENT, __doc__)
+    mutants.run(M, "NestRelax.*:NestRelaxConsistent.*", EQUIVALENT, __doc__)

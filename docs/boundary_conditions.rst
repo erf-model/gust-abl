@@ -1299,6 +1299,175 @@ similar outer error, and a larger outer-minus-nest difference; one hill does not
 - The limits of ``defect`` that concern the joint run (no restart, no probe rows after the one-way run,
   ``simplec_newton`` refused, :math:`\nu_t` relaxation) hold for ``relax`` too.
 
+.. _two-way-relax-consistent:
+
+Pressure-consistent relaxation (``nest.feedback = relax_consistent``)
+---------------------------------------------------------------------
+
+``nest.feedback = relax_consistent`` is ``relax`` (:ref:`two-way-relax`: the same joint run, rate, weight, margin,
+kernels' form and refusals) with the outer residual of the target taken out of the source. The outer domain takes one
+iteration of
+
+.. math::
+
+   R_c(q_c) + c\,(q_c - q^*) - w(s)\, R_c(q^*) = 0,
+
+with :math:`c`, :math:`w(s)` and :math:`q^*` as for ``relax`` and :math:`R_c(q^*)` the outer residual of the
+restricted nests, evaluated as for ``defect`` (the same function, with the defect and relaxation sources left out),
+for :math:`u, v, w, \theta` and :math:`k`.
+
+**What it changes.** At :math:`q_c = q^*` the left side is :math:`(1 - w)\,R_c(q^*)`: zero where :math:`w = 1`.
+Pointwise, the restricted nests then satisfy the outer momentum, :math:`\theta` and :math:`k` rows there at every
+factor, pressure gradient included; with ``relax`` the fixed point is :math:`q_c - q^* = -R_c(q_c)/c` instead. On the
+margin (:math:`0 < w < 1`) a fraction :math:`(1 - w)` of :math:`R_c(q^*)` remains, so :math:`q_c` differs from
+:math:`q^*` on the margin and, much less, on the rows with :math:`w = 1` that read it. In a 1-D linear model (Pressel
+review) the largest :math:`|q_c - q^*|` where :math:`w = 1` is :math:`5\times10^{-6}` at :math:`f = 1`, against
+:math:`1.4\times10^{-2}` with ``relax`` and :math:`1.7\times10^{-4}` with ``defect``. The outer pressure under a nest
+mostly follows the nest's: in a 2-D Stokes model the range of :math:`p - p^*` over the inner box is 0.03 to 0.04 (model units),
+against 0.18 with ``relax`` and 0.20 with no feedback. The rest is set at the margin and does
+not decay inward (the pressure is elliptic and continuity has no source).
+
+**Why a value of** ``nest.feedback``: the term changes what the joint run's fixed point is, as the choice between
+``defect`` and ``relax`` does; it is not a parameter of the relaxation's strength. A separate switch would read with
+``defect``, ``inject`` and ``none``, where it has no meaning, and would need its own refusals.
+``nest.feedback_factor`` keeps its meaning (:math:`f` in :math:`c`), and ``nest.feedback_flux = nest`` is refused, as
+with ``relax``.
+
+**Implementation.** :math:`w R_c(q^*)` is a constant of the outer iteration: it is formed once per exchange, when
+:math:`q^*` is set, and subtracted in each residual evaluation by its own kernel (``Source/NestRelax.cpp``). The
+diagonal is that of ``relax`` (the term does not depend on :math:`q_c`), so the pseudo-time iteration's amplification
+factor with :math:`q^*` held is unchanged. The exchange loop's gain is not: in the 1-D model its spectral radius is
+0.12 against 0.05 with ``relax`` at :math:`f = 0.25`, 0.20 against 0.13 at :math:`f = 1` and 0.45 against 0.43 at
+:math:`f = 16`. The loop is stable with the domains stepped in turn, as the joint run does (target, outer step, nest
+faces from the new outer, nest steps); stepped together from the same old states it can diverge at low cell Péclet
+numbers, so that order is required. The cost is one more outer residual evaluation per exchange. The weights are cached at the first
+exchange; the footprints may not change during the run. A restart rebuilds the term from :math:`q^*`. The log's
+start line says ``with the weighted residual of the target``.
+
+**Results.** On the canonical hill (``check_nests_two_way.py --relax-consistent``; the pinned deck, 50 m / 25 m,
+2 ranks), RMS of :math:`u` in m/s as in :ref:`two-way-relax`:
+
+.. list-table::
+   :header-rows: 1
+
+   * - Run
+     - Exchanges
+     - Outer − nest
+     - Nest
+     - Outer, outside the footprint
+   * - One way
+     -
+     -
+     - 8.23e-3
+     - 1.44e-2
+   * - ``defect``
+     - 208
+     -
+     - **2.03e-3**
+     - **4.89e-3**
+   * - ``relax``, :math:`f` = 1
+     - 160
+     - 8.04e-3
+     - 3.38e-3
+     - 5.03e-3
+   * - ``relax_consistent``, :math:`f` = 1
+     - 169
+     - 1.32e-3
+     - 4.24e-3
+     - 5.18e-3
+   * - ``relax_consistent``, :math:`f` = 4
+     - 174
+     - 1.22e-3
+     - 1.07e-2
+     - 1.01e-2
+
+The outer domain under the nest is about six times closer to the restricted nest than with ``relax`` at the same
+factor, as the fixed point predicts. Both domains are slightly further from the fine run than with ``relax`` at
+:math:`f = 1` (mean nest :math:`u` error :math:`+2.3\times10^{-3}` m/s), and further again at :math:`f = 4`
+(:math:`+6.5\times10^{-3}` m/s): the coupling loop of :ref:`two-way-relax` (the nest returns the flow rate it is
+given) is not changed by the term, and holding the outer domain to the nest more exactly lets the pair drift together.
+
+On the Columbia Gorge (``Tests/Real_Terrain/Columbia_Gorge``, 4 ranks) and Askervein
+(``Tests/Real_Terrain/Askervein_Nest``, the ``two_way`` layout, 4 ranks), both with the recommended setting, RMS of
+:math:`u` (m/s) against each case's uniform fine run (the nest's cells everywhere; the Gorge's reference, one-way
+and ``defect`` runs are those of tracker N-114, item 13):
+
+.. list-table::
+   :header-rows: 1
+
+   * - Case
+     - Run
+     - Exchanges
+     - Outer − nest
+     - Nest
+     - Outer, outside the footprint
+   * - Gorge
+     - one way
+     -
+     -
+     - 0.122
+     - 0.102
+   * - Gorge
+     - ``defect``
+     - 279
+     -
+     - **0.120**
+     - **0.088**
+   * - Gorge
+     - ``relax``, :math:`f` = 1
+     - 184
+     - 4.25e-2
+     - 0.123
+     - 0.088
+   * - Gorge
+     - ``relax_consistent``, :math:`f` = 1
+     - 198
+     - **1.42e-2**
+     - 0.121
+     - 0.091
+   * - Askervein
+     - one way
+     -
+     -
+     - 3.37e-3
+     - 4.62e-3
+   * - Askervein
+     - ``defect``
+     - 156
+     -
+     - **3.37e-3**
+     - **3.21e-3**
+   * - Askervein
+     - ``relax``, :math:`f` = 1
+     - 191
+     - 6.48e-3
+     - 3.53e-3
+     - 3.75e-3
+   * - Askervein
+     - ``relax_consistent``, :math:`f` = 1
+     - 235
+     - **1.31e-3**
+     - 4.02e-3
+     - 3.74e-3
+
+The outer domain follows the nest three times (Gorge) and five times (Askervein) more closely than with ``relax``.
+Against the fine run the changes are small and of both signs: on the Gorge the nest is slightly closer (0.121
+against 0.123) and the outer domain slightly further (0.091 against 0.088); on Askervein the nest is further
+(4.02e-3 against 3.53e-3, 1.19 times one way) and the outer domain the same. The joint run takes 8 % (Gorge) and
+23 % (Askervein) more exchanges than ``relax``, fewer than ``defect`` on the Gorge and more on Askervein.
+
+**Limits.**
+
+- The target satisfies the outer rows only where :math:`w = 1`; on the margin :math:`(1 - w) R_c(q^*)` remains,
+  and the pressure under the nest keeps part of the outer domain's.
+- The joint run's order of steps is required (above).
+- It does not bring either domain consistently closer to a fine run than ``relax`` (hill, Gorge, Askervein);
+  ``defect`` remains closest on all three.
+- One more outer residual evaluation per exchange.
+- The footprints are fixed for the run (an abort names the change).
+- The limits of ``relax`` (two touching nests, :math:`\nu_t` relaxation, no probe rows after the one-way run,
+  ``simplec_newton`` refused) hold too.
+
 .. _two-way-inject:
 
 Two-way nests by injection (``nest.feedback = inject``)

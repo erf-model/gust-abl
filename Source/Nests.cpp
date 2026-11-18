@@ -44,7 +44,11 @@ std::string num (double x)
 
 const char* nest_feedback_name (NestFeedback f)
 {
-    return f == NestFeedback::defect ? "defect" : f == NestFeedback::relax ? "relax" : f == NestFeedback::inject ? "inject" : "none";
+    return f == NestFeedback::defect             ? "defect"
+           : f == NestFeedback::relax            ? "relax"
+           : f == NestFeedback::relax_consistent ? "relax_consistent"
+           : f == NestFeedback::inject           ? "inject"
+                                                 : "none";
 }
 
 NestOptions read_nest_options ()
@@ -56,16 +60,18 @@ NestOptions read_nest_options ()
     pp.queryarr("names", names);
     if (pp.countname("feedback") > 1) { opt.errors.emplace_back("nest.feedback is given more than once"); }
     std::string fb = "none";
-    if (pp.countval("feedback") > 1) { opt.errors.emplace_back("nest.feedback takes one value: none, defect, relax or inject"); }
+    if (pp.countval("feedback") > 1) { opt.errors.emplace_back("nest.feedback takes one value: none, defect, relax, relax_consistent or inject"); }
     pp.query("feedback", fb);
     if (fb == "defect") {
         opt.feedback = NestFeedback::defect;
     } else if (fb == "relax") {
         opt.feedback = NestFeedback::relax;
+    } else if (fb == "relax_consistent") {
+        opt.feedback = NestFeedback::relax_consistent;
     } else if (fb == "inject") {
         opt.feedback = NestFeedback::inject;
     } else if (fb != "none") {
-        opt.errors.emplace_back("nest.feedback = '" + fb + "' is not none, defect, relax or inject");
+        opt.errors.emplace_back("nest.feedback = '" + fb + "' is not none, defect, relax, relax_consistent or inject");
     }
     if (pp.contains("feedback") && names.empty()) {
         opt.errors.emplace_back("nest.feedback = " + fb + " needs nest.names");
@@ -80,8 +86,10 @@ NestOptions read_nest_options ()
                                                                        : check_feedback_factor(opt.feedback_factor);
             if (!e.empty()) { opt.errors.push_back(e); }
         }
-        if (opt.feedback != NestFeedback::relax && opt.feedback != NestFeedback::inject) {
-            opt.errors.emplace_back("nest.feedback_factor has no effect without nest.feedback = relax or inject");
+        if (opt.feedback != NestFeedback::relax && opt.feedback != NestFeedback::relax_consistent
+            && opt.feedback != NestFeedback::inject) {
+            opt.errors.emplace_back("nest.feedback_factor has no effect without nest.feedback = relax, relax_consistent "
+                                    "or inject");
         }
     } else if (opt.feedback == NestFeedback::inject) {
         opt.feedback_factor = kInjectFactorDefault;
