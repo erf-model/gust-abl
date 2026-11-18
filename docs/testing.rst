@@ -631,7 +631,7 @@ AppleClang). All 11 are killed (D11 came with N-114 item 8).
 
 The one-line mutants of the two-way nests' relaxation source (``Source/NestRelax.cpp``), each run against
 ``NestRelax.*`` on two ranks with the unit-test flags by ``tools/nest_relax_mutants.py`` (macOS arm64, AppleClang).
-All 10 are killed.
+All 13 are killed.
 
 .. list-table::
    :header-rows: 1
@@ -642,16 +642,16 @@ All 10 are killed.
      - Failing tests
    * - X1
      - The source with the wrong sign
-     - ``DiagonalIsTheDerivativeOfTheSource``, ``FootprintOnAPeriodicSeam``, ``PeriodicSpanHasNoFaces``, ``ResidualGainsTheSourceOnTheFootprintRows``, ``SourceIsItsClosedFormOnUnevenBoxes``
+     - ``BoxesOutsideEveryFootprintAreSkippedExactly``, ``DiagonalIsTheDerivativeOfTheSource``, ``FootprintOnAPeriodicSeam``, ``PeriodicSpanHasNoFaces``, ``ResidualGainsTheSourceOnTheFootprintRows``, ``SourceIsItsClosedFormOnUnevenBoxes``
    * - X2
      - k left out of the source
-     - ``DiagonalIsTheDerivativeOfTheSource``, ``FootprintOnAPeriodicSeam``, ``PeriodicSpanHasNoFaces``, ``ResidualGainsTheSourceOnTheFootprintRows``, ``SourceIsItsClosedFormOnUnevenBoxes``
+     - ``BoxesOutsideEveryFootprintAreSkippedExactly``, ``DiagonalIsTheDerivativeOfTheSource``, ``FootprintOnAPeriodicSeam``, ``PeriodicSpanHasNoFaces``, ``ResidualGainsTheSourceOnTheFootprintRows``, ``SourceIsItsClosedFormOnUnevenBoxes``
    * - X3
      - A margin of three parent cells
-     - ``FootprintOnAPeriodicSeam``, ``PeriodicSpanHasNoFaces``, ``SourceIsItsClosedFormOnUnevenBoxes``
+     - ``BoxesOutsideEveryFootprintAreSkippedExactly``, ``FootprintOnAPeriodicSeam``, ``PeriodicSpanHasNoFaces``, ``SourceIsItsClosedFormOnUnevenBoxes``
    * - X4
      - Cells measured from the face like face points
-     - ``DiagonalIsTheDerivativeOfTheSource``, ``FootprintOnAPeriodicSeam``, ``PeriodicSpanHasNoFaces``, ``ResidualGainsTheSourceOnTheFootprintRows``, ``SourceIsItsClosedFormOnUnevenBoxes``
+     - ``BoxesOutsideEveryFootprintAreSkippedExactly``, ``DiagonalIsTheDerivativeOfTheSource``, ``FootprintOnAPeriodicSeam``, ``PeriodicSpanHasNoFaces``, ``ResidualGainsTheSourceOnTheFootprintRows``, ``SourceIsItsClosedFormOnUnevenBoxes``
    * - X5
      - Faces also across a periodic span
      - ``PeriodicSpanHasNoFaces``
@@ -660,7 +660,7 @@ All 10 are killed.
      - ``SourceIsItsClosedFormOnUnevenBoxes``
    * - X7
      - The rate floored at 0.1 of its full value
-     - ``FootprintOnAPeriodicSeam``, ``PeriodicSpanHasNoFaces``, ``SourceIsItsClosedFormOnUnevenBoxes``
+     - ``BoxesOutsideEveryFootprintAreSkippedExactly``, ``ChangeOfTheTargetBetweenTwoSets``, ``FootprintOnAPeriodicSeam``, ``PeriodicSpanHasNoFaces``, ``SourceIsItsClosedFormOnUnevenBoxes``
    * - X8
      - :math:`U` from :math:`|u|` alone
      - ``FootprintOnAPeriodicSeam``, ``PeriodicSpanHasNoFaces``, ``SourceIsItsClosedFormOnUnevenBoxes``
@@ -669,7 +669,16 @@ All 10 are killed.
      - ``FootprintOnAPeriodicSeam``, ``PeriodicSpanHasNoFaces``, ``SourceIsItsClosedFormOnUnevenBoxes``
    * - X10
      - No diagonal
-     - ``DiagonalIsTheDerivativeOfTheSource``
+     - ``BoxesOutsideEveryFootprintAreSkippedExactly``, ``DiagonalIsTheDerivativeOfTheSource``
+   * - X11
+     - Only the first footprint's boxes kept by the box skip
+     - ``BoxesOutsideEveryFootprintAreSkippedExactly``, ``SourceIsItsClosedFormOnUnevenBoxes``
+   * - X12
+     - Boxes kept by the inner box, not the footprint
+     - ``BoxesOutsideEveryFootprintAreSkippedExactly``, ``DiagonalIsTheDerivativeOfTheSource``, ``FootprintOnAPeriodicSeam``, ``PeriodicSpanHasNoFaces``, ``ResidualGainsTheSourceOnTheFootprintRows``, ``SourceIsItsClosedFormOnUnevenBoxes``
+   * - X13
+     - The source skips the boxes that touch a footprint
+     - ``BoxesOutsideEveryFootprintAreSkippedExactly``, ``DiagonalIsTheDerivativeOfTheSource``, ``FootprintOnAPeriodicSeam``, ``PeriodicSpanHasNoFaces``, ``ResidualGainsTheSourceOnTheFootprintRows``, ``SourceIsItsClosedFormOnUnevenBoxes``
 
 By hand against ``rt_nests_relax``: k left out of the source (X2 in the application) leaves the nest's u error at
 :math:`f = 16` at 3.26e-2 against 3.27e-2, so the test does not detect it; the unit tests do.
@@ -3469,6 +3478,16 @@ GoogleTest suite
    * - ``NestRelax.FactorCheckNamesTheKey``
      - ``check_feedback_factor`` accepts 1 and 16 and refuses 0, −1, NaN and infinity, naming
        ``nest.feedback_factor``.
+   * - ``NestRelax.BoxesOutsideEveryFootprintAreSkippedExactly`` (tracker N-114, item 14, beyond the plan)
+     - Two small footprints on boxes of 4 × 4 cells (12 of the 20 boxes hold no footprint point, 3 are reached by
+       one footprint's margin alone): with :math:`R` and :math:`A` preset, every point where the closed-form rate is
+       positive gains :math:`c(q - q^*)` and :math:`c` on the diagonal, every other point and every off-diagonal
+       coefficient keeps its value bit for bit; on 1, 2 and 4 ranks. Mutants X11 to X13 fail it. It checks that no
+       box with a footprint point is skipped; the cost saving itself is not visible in values.
+   * - ``JointRun.LogNamesAreTruncatedToTheColumnWidth`` (tracker N-114, item 14, beyond the plan)
+     - A domain name of up to 24 characters is logged as it is; a longer one as its first 12 and last 9 characters
+       around ``...``, so two names differing in a suffix of up to 9 characters stay apart, and the per-domain column
+       of the run's last line keeps its numbers. Fails with the truncation removed.
    * - ``JointRecord.RoundTripIsExactOnEveryRank``, ``JointRecord.NoFileIsNotAJointCheckpoint``, ``JointRecord.MalformedRecordsAbort``, ``JointRecord.LineEndsAreNotPartOfThePath`` (tracker N-114, beyond the plan)
      - The joint record (``Source/JointRecord.cpp``) written by the I/O rank reads back on every rank with the
        feedback, the exchanges, the CFL floors bit for bit (1/3, 0.1 and 0) and each nest's checkpoint path (one with

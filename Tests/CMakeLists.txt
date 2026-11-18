@@ -67,6 +67,7 @@ add_executable(unit_tests
     Unit_Tests/test_NewtonPreconditioner.cpp
     Unit_Tests/test_Terrain.cpp
     Unit_Tests/test_JointRecord.cpp
+    Unit_Tests/test_JointRun.cpp
     Unit_Tests/test_NestBuildings.cpp
     Unit_Tests/test_NestDefect.cpp
     Unit_Tests/test_NestRelax.cpp

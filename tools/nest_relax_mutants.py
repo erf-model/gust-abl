@@ -36,6 +36,15 @@ M = [
   "const amrex::Real dxh = amrex::max(dx[0], dx[1]);"),
  # the implicit diagonal
  ("X10", "no diagonal", F, "a(i, j, k, coef_P) += c(i, j, k);", "a(i, j, k, coef_P) += 0;"),
+ # the boxes outside every footprint, skipped (tracker N-114, item 14)
+ ("X11", "only the first footprint's boxes kept", F,
+  "if (amrex::convert(fp, vb.ixType()).intersects(vb)) { return true; }",
+  "return amrex::convert(fp, vb.ixType()).intersects(vb);"),
+ ("X12", "boxes kept by the inner box, not the footprint", F,
+  "m_footprints.push_back(g.footprint);", "m_footprints.push_back(g.inner);"),
+ ("X13", "the boxes that touch a footprint skipped", F,
+  "if (!touches_footprint(fps, mfi.validbox())) { continue; }\n        const auto r = R.array(mfi);",
+  "if (touches_footprint(fps, mfi.validbox())) { continue; }\n        const auto r = R.array(mfi);"),
 ]
 EQUIVALENT = set()
 

@@ -36,6 +36,14 @@ const char* status_name (SteadyStatus s)
 
 } // namespace
 
+std::string joint_log_name (const std::string& name)
+{
+    constexpr std::size_t width = kJointLogNameWidth, head = 12, tail = 9;
+    static_assert(head + 3 + tail == width, "joint_log_name keeps head + \"...\" + tail characters");
+    if (name.size() <= width) { return name; }
+    return name.substr(0, head) + "..." + name.substr(name.size() - tail);
+}
+
 JointResult run_joint (const std::vector<JointMember*>& members, int max_exchanges, int first_exchange,
                        const std::vector<amrex::Real>& prior_window)
 {
@@ -100,7 +108,7 @@ JointResult run_joint (const std::vector<JointMember*>& members, int max_exchang
                 for (const auto& n : P.relax->nests()) {
                     char line[200];
                     std::snprintf(line, sizeof(line), "gust: joint: %s: mean horizontal speed %.4e m/s, rate f U / dx "
-                                  "%.4e 1/s\n", n.name.c_str(), double(n.speed), double(n.rate));
+                                  "%.4e 1/s\n", joint_log_name(n.name).c_str(), double(n.speed), double(n.rate));
                     amrex::Print() << line;
                 }
             }
@@ -169,7 +177,7 @@ JointResult run_joint (const std::vector<JointMember*>& members, int max_exchang
             }
             std::string text = line;
             for (std::size_t n = 1; n < members.size(); ++n) {
-                text += ", " + members[n]->name + " " + status_name(members[n]->verdict.status);
+                text += ", " + joint_log_name(members[n]->name) + " " + status_name(members[n]->verdict.status);
             }
             amrex::Print() << text << "\n";
         }
@@ -183,7 +191,8 @@ JointResult run_joint (const std::vector<JointMember*>& members, int max_exchang
     std::string per;
     for (const JointMember* m : members) {
         char b[160];
-        std::snprintf(b, sizeof(b), "; %s %d iterations %.3f s", m->name.c_str(), m->iterations, m->wall_seconds);
+        std::snprintf(b, sizeof(b), "; %s %d iterations %.3f s", joint_log_name(m->name).c_str(), m->iterations,
+                      m->wall_seconds);
         per += b;
     }
     char line[200];
