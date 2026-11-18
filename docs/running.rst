@@ -30,7 +30,7 @@ What a run does
 #. **Run the nests**, if the deck names any (``nest.names``): each nest runs in the same process as a finer patch
    of the outer domain's checkpoint, and with ``nest.feedback`` other than ``none`` a joint run of the outer domain
    and the nests follows (:ref:`nests-one-run`, :ref:`two-way-nests`). The nests run only if the outer domain
-   reaches its steady verdict; otherwise the run stops after the outer domain's output. A joint run writes every
+   reaches its steady verdict; otherwise the run aborts after the outer domain's output and names its last checkpoint. A joint run writes every
    domain's output a second time when it ends.
 
 With the default ``steady.stage = none`` the run skips step 4: it writes the mesh and initial field and stops.

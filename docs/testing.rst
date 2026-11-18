@@ -2661,8 +2661,8 @@ Current tests
        On the cube of ``Tests/Canonical_RANS/Building_Cube`` as an unsteady run of four steps of 0.5 s on 2 ranks:
        the run with the file and the run without it write the same plotfile; a restart at 1 s reproduces the
        uninterrupted file and drops a row written past the checkpoint; a restart that finds no file starts one at
-       the checkpoint's time; a file with another header is refused, not overwritten. Label ``regression``,
-       except the first (``smoke``).
+       the checkpoint's time; a file with another header is refused. Label ``regression``; the
+       first is also ``smoke``.
    * - ``abort_canopy_heat_inputs``, ``abort_canopy_heat_celsius``, ``abort_canopy_heat_frozen_unused``,
        ``rt_canopy_heat``
      - The leaves' heat exchange (:doc:`canopy`). The refusals name the input: ``canopy.heat = fixed`` without
@@ -2671,7 +2671,8 @@ Current tests
        ``rt_canopy_heat`` (``Tests/Canonical_RANS/Forested_Escarpment``, ``check_canopy_heat.py``, about 2 minutes,
        label ``regression``): with :math:`\theta` solved and leaves cooler than the air, :math:`\theta` stays
        between the two and is the same on 2 and 4 ranks; with :math:`\theta` frozen, ``skip`` gives the frozen run
-       bit for bit and ``blend`` changes :math:`\theta` in the canopy only.
+       bit for bit and ``blend`` changes :math:`\theta` in the canopy only; a run continued from its checkpoint
+       equals the uninterrupted one. MPI builds only.
    * - ``rt_column_target``, ``rt_column_target_mol``
      - The column's target wind carried into the 3-D run (``Tests/Canonical_RANS/Column_Target``,
        ``check_column_target.py``, ``init.column_target_*``): the 3-D wind at 10 m is the target of 8 m/s to
@@ -2686,7 +2687,7 @@ Current tests
    * - ``rt_sequencing_restart_first``, ``rt_sequencing_z0map``
      - ``rt_sequencing_restart_first`` writes the checkpoint of three sequenced iterations that
        ``rt_sequencing_restart`` continues. ``rt_sequencing_z0map``: on the two-level deck with a roughness map,
-       each level's logged minimum, maximum and geometric mean equal the Python values; level 1 is the geometric
+       each level's logged minimum, maximum and geometric mean match the Python values to three significant digits; level 1 is the geometric
        mean of level 0's 2 × 2 blocks.
    * - ``rt_iteration_log_full``, ``rt_iteration_table_confidence``, ``abort_iteration_log_value``,
        ``rt_iteration_table_columns``
@@ -2705,8 +2706,8 @@ Current tests
        download (on tiles made in the test, no network) and the case set-up window (offscreen; its window tests
        skip without PySide6 and pyqtgraph). The last three need PyYAML and numpy. Label ``unit``.
    * - ``rt_coriolis_repeat_clean``, ``rt_askervein_210_clean``, ``buildings_defaults_fraction_stress_clean``,
-       ``buildings_defaults_roof_stress_clean``
-     - Fixtures: they empty the run directories of the tests of the same name, so no check reads an earlier run's
+       ``buildings_defaults_roof_stress_clean``, ``buildings_defaults_drag_clean``
+     - Fixtures: they empty the run directories of the tests they are set up for, so no check reads an earlier run's
        output.
 
 In a build without MPI (``GUST_MPI=OFF``, as in the Windows CI job) every test runs on one rank, so
@@ -4161,8 +4162,8 @@ GoogleTest suite
        overlap; on a slope each column holds the map's volume from the local ground; wall masks and distances
        equal hand values; the same bits on every box layout, across a periodic seam; bare columns hold nothing;
        ERF's cube file and the two file formats; a void deck is open with a wall under the building; the
-       reference distance on stretched layers; round-off leaves solid cells solid; a restart with changed
-       buildings is refused by its hash; files and inputs are checked.
+       reference distance on stretched layers; round-off leaves solid cells solid; the checkpoint's hash
+       changes with the building inputs, and a checkpoint written without buildings is refused; files and inputs are checked.
    * - ``BuildingLaw.*`` (3), ``BuildingForcing.*`` (4), ``BuildingSides.*`` (9)
      - The buildings' momentum terms: the wall law returns :math:`u_*` of an exact log profile, with its blend
        floor and with no reference cell; the sink, its diagonal and a closed face; part-covered walls and open
@@ -4200,7 +4201,8 @@ GoogleTest suite
    * - ``ResidualWorkspace.*`` (3 tests)
      - The residual's persistent workspace: the wall state the ghost fill returns is the residual's own, bit for
        bit; a workspace reused across states and layouts, poisoned with NaN before every call, gives the bits of
-       fresh fields, also in the Jacobian-vector product with the refill.
+       fresh fields, also in the Jacobian-vector product with the refill (in double precision; to a few ulps in
+       single).
    * - ``NewtonSmoothness.FrozenCanopyCapNeedsTheSameAlpha``
      - A checkpoint of frozen closure decisions records the canopy's length cap: a restart with another
        ``canopy.length_alpha``, or without the canopy terms, is refused.

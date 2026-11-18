@@ -19,7 +19,7 @@ Summary of recommended settings
      - ``steady.sweep = lusgs``, 2 sweeps
      - `Line LU-SGS`_
    * - CFL cap
-     - ``steady.cfl_max = 8`` (the default with ``lusgs``); 16 on the hill cases
+     - ``steady.cfl_max = 8`` (the default with ``lusgs``); 16 on the 2-D hill LU-SGS decks
      - `Line LU-SGS`_
    * - Terrain with separated lees
      - ``turb.realizability = 0.309``, ``turb.nut_relax = 0.5`` and the near-ground upwind blend

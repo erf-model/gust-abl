@@ -11,8 +11,8 @@ of the physical steps, and find the time averages and the probe histories.
 The setup
 ---------
 
-``Tests/Canonical_RANS/Unsteady_Hill_2D/inputs_unsteady_hill2d`` follows the hill deck of tutorial 3. These
-lines make it unsteady:
+``Tests/Canonical_RANS/Unsteady_Hill_2D/inputs_unsteady_hill2d`` has the hill, the mesh and the forcing of
+tutorial 3, with z-line Jacobi sweeps where tutorial 3 uses LU-SGS. These lines make it unsteady:
 
 .. code-block:: text
 
@@ -75,8 +75,9 @@ The log
    gust: wrote unsteady_hill2d_plt00248
    gust: wrote chk00248
 
-There is one line per physical step. The first two steps need 48 inner iterations and the later ones about 19,
-since the flow changes less from step to step. The summary counts the steps that stopped at
+There is one line per physical step. The first two steps need 48 inner iterations and the later ones about 19:
+the pseudo-time CFL is held at ``steady.cfl0`` for the first ``steady.residual_ref_iterations`` (100 in this deck)
+inner iterations of the run and rises towards ``steady.cfl_max`` after that. The summary counts the steps that stopped at
 ``unsteady.max_inner`` before reaching the drop; here there are none. A run with many such steps needs a smaller
 step or a larger ``unsteady.max_inner``.
 
@@ -85,7 +86,9 @@ The outputs
 
 - **Plotfiles.** ``unsteady_hill2d_plt00153`` (after step 5) and ``unsteady_hill2d_plt00248`` (at the end) are
   numbered by the total of inner iterations and carry the physical time. Besides the fields of a steady run they
-  hold the running means and variances from 300 s on: ``u_mean`` … ``tke_mean`` and ``u_var`` … ``tke_var``.
+  hold the running means and variances, ``u_mean`` … ``tke_mean`` and ``u_var`` … ``tke_var``. The averages start
+  at 300 s: they are zero in ``plt00153``, written at 300 s before the first sample, and cover 300 to 600 s in
+  ``plt00248``.
 - **Probes.** ``unsteady_hill2d_plt_probes.csv`` has a header that gives each probe's cell and one row per step
   with :math:`u, v, w, \theta, k` at each probe:
 
@@ -102,14 +105,16 @@ The outputs
   (values shortened to four decimals). At the hill top, 50 m above the ground, :math:`u` changes by about 0.03 m/s
   per step at the end: after ten minutes the flow is still adjusting from the first guess.
 - **Checkpoint.** ``chk00248`` holds the state, the time, the step count and the averages. A later run with
-  ``io.restart = chk00248`` and a later ``unsteady.stop_time`` continues it.
+  ``io.restart = chk00248`` in place of ``init.first_guess``, the same ``unsteady.average_start`` and a later
+  ``unsteady.stop_time`` continues it.
 
 Things to try
 -------------
 
 - **A longer run.** Raise ``unsteady.stop_time``. This hill has a steady state, so the changes per step die out
   and the variances over a late window become small.
-- **A start from the steady state.** Run tutorial 3's z-line deck (``inputs_steady_hill2d``, the same mesh) first,
+- **A start from the steady state.** Run the z-line deck of the same hill
+  (``Tests/Canonical_RANS/Neutral_Hill_2D/inputs_steady_hill2d``, the mesh of tutorial 3) first,
   then give its checkpoint as ``io.restart`` in place of ``init.first_guess``. The unsteady run then starts at
   :math:`t = 0` from that state (the test ``rt_unsteady_hill2d_from_steady`` does this from an early checkpoint).
 - **A smaller step.** Backward Euler is first order and damps oscillations. For a flow that sheds vortices, halve

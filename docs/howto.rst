@@ -231,7 +231,7 @@ Jacobi; give the same settings there explicitly. The hill cases were measured at
 
    steady.sweep        = lusgs        # the CPU default
    steady.zline_sweeps = 2            # the default
-   steady.cfl_max      = 8.           # the default with lusgs; 16 on the hill cases
+   steady.cfl_max      = 8.           # the default with lusgs; 16 on the 2-D hill LU-SGS decks
    steady.residual_ref_iterations = 5 # the default; a longer reference window holds the CFL at cfl0
    init.first_guess    = column       # with Coriolis forcing; otherwise profile
 
@@ -294,8 +294,10 @@ or when the time history is wanted. Take the steady deck and change the stage:
   (``terrain.representation = immersed_forcing``). The run stops with a message that names the key.
 - **Start from the steady run.** Give the checkpoint of a ``steady.stage = simplec`` run as ``io.restart`` (and
   remove the ``init.*`` keys). The time starts at 0 from that state, which shortens the transient. A
-  ``simplec_newton`` checkpoint cannot be used. A steady deck with the upwind blend or with
-  ``simplec.theta = frozen`` cannot be restarted at all; start the unsteady run from the first guess then.
+  ``simplec_newton`` checkpoint cannot be used. A deck that sets the upwind blend or
+  ``simplec.theta = frozen`` is refused with ``io.restart``. The unsteady deck sets neither, so by these checks it
+  reads the checkpoint of such a steady run and continues without them (the blend is not in the checkpoint); no
+  test covers this start.
 - **Choose the step.** Backward Euler is first order and damps oscillations: resolve a shedding period with many
   steps, and halve the step to see how much the amplitude changes (:doc:`buildings`, Validation, has the cylinder's
   numbers).

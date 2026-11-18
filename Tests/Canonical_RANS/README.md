@@ -28,11 +28,11 @@ set-up, expected results and the full list of its CTests.
 | `Nests_One_Process` | `rt_nests_one_process`, `abort_nests_*` | Nests named in the outer deck (`nest.names`) and run in the same process; the refusals of misplaced nests. |
 | `Nests_Two_Way` | `rt_nests_two_way`, `rt_nests_joint_restart*` | Two-way nesting as a joint run (`nest.feedback = defect`, `relax`, `relax_consistent`, `inject`) and its restart. |
 | `Nests_Flat_ABL` | `rt_nests_flat_abl_*` | Nests on a flat, horizontally uniform boundary layer, neutral, buoyant and stable, one way and joint. |
-| `Nest_Placement_Runs` | (study) | Fifteen joint runs behind the step rule of `tools/nest_placement.py`; not a CTest. |
+| `Nest_Placement_Runs` | (study) | Fifteen runs (three uniform references and twelve joint runs) behind the step rule of `tools/nest_placement.py`; not a CTest. |
 | `Canopy_Drag` | `rt_canopy_drag`, `rt_canopy_tke`, `rt_canopy_column` | The canopy's drag with each implicit diagonal, the canopy's k terms and the column first guess through two forest patches. |
 | `Homogeneous_Canopy` | `rt_homogeneous_canopy` | A horizontally uniform forest under a pressure gradient at LAI 2, 5 and 10 against published canopy relations. |
 | `Forest_Edge` | `rt_forest_edge` | A forest, clearing, forest pattern (the geometry of Dupont and Brunet 2008): the adjustment behind the leading edge. |
-| `Forested_Hill` | `rt_forested_hill` | A uniform canopy on a periodic train of cosine hills, in two regimes of Poggi et al. (2008). |
+| `Forested_Hill` | `rt_forested_hill` | A uniform canopy on a periodic train of cosine hills, in two geometries classified on the regime map of Poggi et al. (2008). |
 | `Forested_Escarpment` | `rt_forested_escarpment`, `rt_frozen_theta`, `rt_canopy_heat` | A dense canopy on a 200 m escarpment with an inflow face and grid sequencing; frozen theta; the leaves' heat exchange. |
 | `Building_Cube` | `building_cube_*`, `force_file_cube_*` | One block on flat ground in a log-law wind with each wall form; `buildings.force_file` in an unsteady run. |
 | `Building_Courtyard` | `building_courtyard_*` | A courtyard open to the wind: the wall law's speed in cells with two walls. |
