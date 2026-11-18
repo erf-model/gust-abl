@@ -29,15 +29,21 @@ c. against the reference (RMS of u over the nest, and over the outer cells
 
 With --relax (PR-71, nest.feedback = relax) the script runs ref/ and joint/
 as above, then relax1/, relax4/ and relax16/: COMMAND with the nest hill and
-nest.feedback = relax at nest.feedback_factor = 1, 4 and 16. Checked:
+nest.feedback = relax at nest.feedback_factor = 1, 4 and 16, and
+relax_default/: relax without nest.feedback_factor. Checked:
 a. as above for each relax run (its own start line);
 d. the last logged RMS of u of the parent minus the restricted nest under the
    nest (where the relaxation's rate is > 0) falls as the factor grows, and at
    16 is at most RELAX_FALL of its value at 1 (measured: README.md);
 e. against the reference, the nest and outer errors (as in c.) of the run at
-   factor 1 (the default): at most RELAX_NEST_RATIO and RELAX_OUTER_RATIO of
-   the one-way ones. At 4 and 16 they are printed, not checked: they grow
-   with the factor (README.md, with the defect run's beside them).
+   factor 1 (the default before tracker N-114, item 13): at most
+   RELAX_NEST_RATIO and RELAX_OUTER_RATIO of the one-way ones. At 4 and 16
+   they are printed, not checked: they grow with the factor (README.md, with
+   the defect run's beside them);
+h. old against new default: relax_default/, the same run without
+   nest.feedback_factor, names factor RELAX_DEFAULT (0.5) on its start line,
+   and its nest error is at most RELAX_DEFAULT_NEST of the factor-1 run's,
+   its outer error at most RELAX_DEFAULT_OUTER of it (README.md).
 
 With --feedback-flux (tracker N-114, item 1; nest.feedback_flux, old against new)
 the script runs ref/ as above, then, with nest.feedback = defect,
@@ -118,6 +124,9 @@ RELAX_FACTORS = (1, 4, 16)
 RELAX_FALL = 0.35            # parent - restricted nest, u RMS at 16 over that at 1, measured 0.19
 RELAX_NEST_RATIO = 0.5       # factor 1: nest error over the one-way one (u), measured 0.41
 RELAX_OUTER_RATIO = 0.6      # factor 1: outer error outside the footprint over the one-way one (u), measured 0.35
+RELAX_DEFAULT = 0.5          # the default nest.feedback_factor with relax (1 before tracker N-114, item 13)
+RELAX_DEFAULT_NEST = 0.8     # default run's nest error over the factor-1 run's (u), measured 0.69
+RELAX_DEFAULT_OUTER = 1.05   # default run's outer error over the factor-1 run's (u), measured 1.00
 INJECT_FACTOR = 0.5          # the default nest.feedback_factor with inject
 INJECT_NEST_RATIO = 0.55     # nest error over the one-way one (u), measured 0.513
 INJECT_OUTER_RATIO = 0.42    # outer error outside the footprint over the one-way one (u), measured 0.377
@@ -342,7 +351,7 @@ def main():
     if consistent:
         return relax_consistent(cmd, r, n_def, e_def)
     if relax:
-        diff = []
+        diff, errs = [], {}
         print(f"check_nests_two_way: defect: {n_def} exchanges, u RMS against the 25 m run: nest {e_def['hill']:.4e}, "
               f"outer {e_def['outer']:.4e}")
         for f in RELAX_FACTORS:
@@ -352,8 +361,20 @@ def main():
             n, e = check(log, where, {"hill": FOOT}, r, RELAX_NEST_RATIO if bound else float("inf"),
                          RELAX_OUTER_RATIO if bound else float("inf"), factor=f)
             diff.append(last_difference(log, where))
+            errs[f] = e
             print(f"check_nests_two_way: relax factor {f}: {n} exchanges, parent - restricted nest u RMS "
                   f"{diff[-1]:.4e}; u RMS against the 25 m run: nest {e['hill']:.4e}, outer {e['outer']:.4e}")
+        # h.
+        log = run(cmd + NEST + ["nest.feedback=relax"], "relax_default")
+        n, e = check(log, "relax_default", {"hill": FOOT}, r, float("inf"), float("inf"), factor=RELAX_DEFAULT)
+        gain = {k: e[k] / errs[1][k] for k in ("hill", "outer")}
+        print(f"check_nests_two_way: relax default (factor {RELAX_DEFAULT:g}): {n} exchanges, parent - restricted "
+              f"nest u RMS {last_difference(log, 'relax_default'):.4e}; u RMS against the 25 m "
+              f"run: nest {e['hill']:.4e}, outer {e['outer']:.4e}; over factor 1: nest {gain['hill']:.3f}, outer "
+              f"{gain['outer']:.3f}")
+        if not (gain["hill"] <= RELAX_DEFAULT_NEST and gain["outer"] <= RELAX_DEFAULT_OUTER):
+            fail(f"the default factor's errors over the factor-1 run's are nest {gain['hill']:.3f}, outer "
+                 f"{gain['outer']:.3f}; not at most {RELAX_DEFAULT_NEST} and {RELAX_DEFAULT_OUTER}")
         # d.
         if not all(b < a for a, b in zip(diff, diff[1:])):
             fail(f"the parent - restricted nest difference does not fall with the factor: {diff}")

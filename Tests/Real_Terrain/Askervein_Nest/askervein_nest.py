@@ -45,8 +45,9 @@ observations (digitized from Wagenbrenner et al. 2019, Fig. 8, in
 Tests/Real_Terrain/WindNinja2019/wagenbrenner2019_digitized.csv; speed-up
 relative to the inflow's 10 m speed). No verdict: the numbers are those of
 docs/boundary_conditions.rst. "relax", "inject" and "relax_consistent" add
-the joint runs with nest.feedback = relax (rx_*), inject (ij_*) and
-relax_consistent (rc_*) at their default nest.feedback_factor (1, 0.5 and 1),
+the joint runs with nest.feedback = relax (rx_*) at nest.feedback_factor = 1
+(the default before tracker N-114 item 13; now 0.5), inject (ij_*) and
+relax_consistent (rc_*) at their default nest.feedback_factor (0.5 and 1),
 compared with the others; "keep" skips a
 run whose plotfile is already in the working directory. With "paper"
 COMMAND names no deck: the runs
@@ -272,9 +273,11 @@ def two_way(cmd, paper=False, extra=(), keep=False):
     runs = [("ref", [f"mesh.n_cell={n_ref} {n_ref} {nz}"]),
             ("ow", [f"mesh.n_cell={n_out} {n_out} {nz}"] + nest + ["nest.feedback=none"]),
             ("jt", [f"mesh.n_cell={n_out} {n_out} {nz}"] + nest + ["nest.feedback=defect"])]
-    joint = {"rx": "relax", "ij": "inject", "rc": "relax_consistent"}
-    runs += [(k, [f"mesh.n_cell={n_out} {n_out} {nz}"] + nest + [f"nest.feedback={v}"])
-             for k, v in joint.items() if v in extra]
+    # relax at factor 1, the default before tracker N-114 item 13 (now 0.5), so the README's table stays
+    # reproducible; inject and relax_consistent at their defaults (0.5 and 1).
+    joint = {"rx": ("relax", ["nest.feedback_factor=1"]), "ij": ("inject", []), "rc": ("relax_consistent", [])}
+    runs += [(k, [f"mesh.n_cell={n_out} {n_out} {nz}"] + nest + [f"nest.feedback={v}"] + fa)
+             for k, (v, fa) in joint.items() if v in extra]
     for name, args in runs:
         if keep and glob.glob(name + "_plt[0-9]*"):
             continue
@@ -330,7 +333,7 @@ def two_way(cmd, paper=False, extra=(), keep=False):
     outer = np.ones(Rc.shape[:2], bool)
     outer[i0:i0 + ni, i0:i0 + ni] = False
     rows = []
-    label = {"ow": "one-way", "jt": "joint", "rx": "relax", "ij": "inject", "rc": "relax_consistent"}
+    label = {"ow": "one-way", "jt": "joint", "rx": "relax, f = 1", "ij": "inject", "rc": "relax_consistent"}
     for t in tags:
         n_, o_ = N[t], O[t]
         rows.append((label[t], "nest",

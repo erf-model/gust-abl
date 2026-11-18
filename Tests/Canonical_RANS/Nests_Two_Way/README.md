@@ -27,8 +27,11 @@ The nest `hill` covers outer cells 8 to 24 in x and 6 to 18 in y (`nest.hill.lo 
 `nest.hill.hi = 1200 900`): 32 x 24 x 16 cells of 25 m. The second joint run has two nests that touch at
 x = 1000 m: `crest` (`300 300` to `1000 900`, the windward side and the crest) and `lee` (`1000 250` to `1500 950`).
 
-## Data
-None. The case is analytic.
+## Data and acknowledgements
+The hill and the two-nest layout are analytic. `relax_factor_sweep.py` also runs the Columbia Gorge and Askervein
+cases; their terrain and observations are credited, with thanks to their providers, under "Data and
+acknowledgements" in `Tests/Real_Terrain/Columbia_Gorge/README.md` and `Tests/Real_Terrain/Askervein_Nest/README.md`.
+Nothing more is redistributed here.
 
 ## How to run
 ```bash
@@ -87,7 +90,10 @@ away from the fine run. The two-nest layout therefore ends the crest nest 1.33 h
 2. the outer domain minus the restricted nest where the relaxation acts (the log's last RMS of u) falls from factor 1
    to 4 to 16, and at 16 is at most 0.35 of its value at 1;
 3. at factor 1, against the 25 m run, the RMS of u over the nest at most 0.5 of one way and over the outer cells
-   outside the footprint at most 0.6.
+   outside the footprint at most 0.6;
+4. old against new default (tracker N-114 item 13): a relax run without `nest.feedback_factor` (`relax_default/`)
+   names 0.5 on its start line, and its RMS of u over the nest is at most 0.8 of the factor-1 run's (measured 0.694:
+   2.35e-3 against 3.38e-3, 158 exchanges) and over the outer cells outside the footprint at most 1.05 (1.00).
 
 Measured on 2 ranks (RMS of u, m/s; "outer - nest" where the relaxation acts):
 
@@ -96,13 +102,14 @@ Measured on 2 ranks (RMS of u, m/s; "outer - nest" where the relaxation acts):
 | one way | | | 8.23e-3 | 1.44e-2 |
 | defect | 208 | | **2.03e-3** | **4.89e-3** |
 | relax, f = 0.25 | 150 | 1.33e-2 | 2.32e-3 | 5.90e-3 |
-| relax, f = 0.5 | 154 | 1.07e-2 | 2.34e-3 | 5.10e-3 |
+| relax, f = 0.5 (default) | 158 | 1.07e-2 | 2.35e-3 | 5.02e-3 |
 | relax, f = 1 | 160 | 8.04e-3 | 3.38e-3 | 5.03e-3 |
 | relax, f = 2 | 159 | 5.52e-3 | 5.60e-3 | 6.14e-3 |
 | relax, f = 4 | 177 | 3.49e-3 | 9.94e-3 | 9.54e-3 |
 | relax, f = 16 | 508 | 1.50e-3 | 3.27e-2 | 2.94e-2 |
 
-(0.25, 0.5 and 2 are not in the test.) The difference between the two domains falls with the factor, but above
+(0.25 and 2 are not in the test and come from PR-71, #116; the other rows are from this branch, where f = 1, 4 and
+16 reproduce PR-71 and f = 0.5 is the `relax_default/` run.) The difference between the two domains falls with the factor, but above
 f = 1 both move away from the fine run: the relaxation's target carries no nest pressure gradient, so as it tightens
 the outer velocity under the nest stops responding to the outer pressure, and the nest, which takes its faces from
 it, follows. The exchanges grow with f for the same reason: the flow rate through the footprint is set by a loop
@@ -216,8 +223,20 @@ exchanges and errors of their case READMEs.
   closer over the nest (3.04e-3 against 3.37e-3) and further outside it (3.32e-3 against 3.21e-3); further on the
   hill; within 2 % on the Gorge.
 
-On these four cases the table supports 0.5 over 1 as the default of `nest.feedback_factor` with relax. The relaxation's target has no nest pressure gradient (above); a target that carries one
-could move the best factor.
+On these four cases the table supports 0.5 over 1 as the default of `nest.feedback_factor` with relax, and 0.5 is
+the default since this item; `nest.feedback_factor = 1` keeps the old answer, and `rt_nests_relax` runs both
+(Feedback by relaxation, above). The relaxation's target has no nest pressure gradient (above); a target that
+carries one (tracker N-114 item 12) removes the cause of the errors above f = 1 and could move the best factor up,
+so that change should re-run this sweep.
+
+Limits of the sweep:
+- Each factor ran once; the exchanges vary by about 5 % from one factor to the next without a trend (the Gorge:
+  163, 176, 175 at 0.25, 0.5, 0.75), so smaller differences in exchanges are not gains. 0.35 was not run.
+- The outer domain is compared with the reference's 2 x 2 means level by level, without interpolating to the outer
+  cell heights; where the two meshes follow the terrain differently this adds an error that is the same at every
+  factor, and draws every ratio towards 1 (most on the Gorge).
+- Not covered: two touching nests with relax, stratified decks (theta is relaxed at the same rate), canopy and
+  Coriolis decks.
 
 ## Conservative faces (`--feedback-flux`)
 `check_nests_two_way.py --feedback-flux` (CTest `rt_nests_feedback_flux`, tracker N-114 item 1) runs the reference
@@ -297,7 +316,7 @@ M must be above the one-way runs' iterations (`steady.max_iterations` caps them 
 | | ranks | M | exchanges | result |
 |---|---|---|---|---|
 | crest and lee, defect | 3 | 150 | 254 | byte for byte |
-| hill, relax | 2 | 140 | 160 | byte for byte |
+| hill, relax (default factor 0.5) | 2 | 140 | 158 | byte for byte |
 | hill, inject | 2 | 150 | 344 | byte for byte |
 
 ## CTest
@@ -311,8 +330,8 @@ and a record naming a nest checkpoint that is not there stop the run and name `i
 the run and name the key. `inputs_abort` is `inputs_outer` without `mesh.max_grid_size` and `steady.stage`, which
 two of them set on the command line (a key given twice stops the run).
 
-`rt_nests_relax` (2 ranks, label `regression`; above): about 2 minutes on an Apple M-series laptop, against under
-1 minute for `rt_nests_two_way`, most of it the f = 16 run (508 exchanges). `--relax` skips the two-nest `joint2/`
+`rt_nests_relax` (2 ranks, label `regression`; above): about 50 s alone on an Apple M-series laptop (about 2 minutes
+under `ctest -j 4`), most of it the f = 16 run (508 exchanges). `--relax` skips the two-nest `joint2/`
 run. `abort_nests_feedback_factor`, `_factor_nan`, `_factor_unused` and `_relax_damping` check that
 `nest.feedback_factor = 0`, `nan`, a factor with `nest.feedback = defect`, and `relax` with a Rayleigh layer on u, v
 and k stop the run and name the key.

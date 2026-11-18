@@ -49,9 +49,11 @@ half-width 1000 m, one way and joint, one after another, with the recommended se
 ```bash
 python3 askervein_nest.py two_way -- mpiexec -n 4 <build>/gust inputs_askervein_domain
 ```
-`two_way relax inject` adds the joint runs with `nest.feedback = relax` (factor 1) and `nest.feedback = inject`
-(factor 0.5), `relax_consistent` the run with `nest.feedback = relax_consistent` (factor 1; tracker N-114 item 12,
-`docs/boundary_conditions.rst`, Pressure-consistent relaxation), and `keep` skips runs whose plotfiles are already there:
+`two_way relax inject` adds the joint runs with `nest.feedback = relax` (factor 1, given explicitly: the default
+before tracker N-114 item 13, now 0.5; `Tests/Canonical_RANS/Nests_Two_Way/README.md`, Choice of the relaxation
+factor, has this case at 0.5) and `nest.feedback = inject` (factor 0.5), `relax_consistent` the run with
+`nest.feedback = relax_consistent` (factor 1; tracker N-114 item 12, `docs/boundary_conditions.rst`,
+Pressure-consistent relaxation), and `keep` skips runs whose plotfiles are already there:
 ```bash
 python3 askervein_nest.py two_way relax inject -- mpiexec -n 4 <build>/gust inputs_askervein_domain
 ```
@@ -126,7 +128,7 @@ Horizontal speed in the lowest 200 m: no nest cell differs from the 20 m run by 
 than 0.25 m/s, 1 by more than 0.5 m/s. 10 m speed at the masts, relative to the 20 m run: nest 0.04 % one way and
 0.11 % joint, outer domain 1.18 % and 1.05 % (RMS).
 
-With `relax inject` (same machine and setting; relax steady after 191 exchanges, inject after 2153):
+With `relax inject` (same machine and setting; relax (factor 1) steady after 191 exchanges, inject after 2153):
 
 | Field | Nest, relax | Nest, inject | Outer, relax | Outer, inject |
 |---|---|---|---|---|

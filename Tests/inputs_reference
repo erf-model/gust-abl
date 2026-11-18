@@ -1072,18 +1072,19 @@
 #     steady and the feedback has settled over the outer domain's steady.monitor_window exchanges to its
 #     steady.monitor_rel_tol; otherwise it stops with an error.
 #
-# nest.feedback_factor = 1    # 0.5 with inject
+# nest.feedback_factor = 0.5    # 1 with relax_consistent
 #     Dimensionless; given only with nest.feedback = relax, relax_consistent or inject, once. With relax and
 #     relax_consistent: finite, > 0, the relaxation's rate over the advection rate, f in c = w(s) f U / Δ x, U the
 #     nest's mean horizontal speed and Δ x the smaller of the outer Δ x, Δ y (two-way-relax,
 #     docs/boundary_conditions.rst). With relax a larger factor holds the outer domain closer to the nest under it,
 #     but does not by itself bring either domain closer to a fine run (two-way-relax, docs/boundary_conditions.rst,
-#     Results). With relax_consistent the restricted nests satisfy the outer rows where the weight is 1 at any
-#     factor; the factor sets the rate on the margin and the iteration (two-way-relax-consistent,
-#     docs/boundary_conditions.rst). With inject: finite, > 0 and <= 1, the fraction ω of the way the outer state
-#     moves towards the restricted nests at each exchange (two-way-inject, docs/boundary_conditions.rst); 1 replaces
-#     it fully. A smaller factor takes more exchanges to the same state; 0.75 and 1 did not reach steady on the
-#     canonical hill (two-way-inject, docs/boundary_conditions.rst, Results).
+#     Results); its default was 1 before tracker N-114 item 13, and nest.feedback_factor = 1 keeps that answer. With
+#     relax_consistent the restricted nests satisfy the outer rows where the weight is 1 at any factor; the factor
+#     sets the rate on the margin and the iteration (two-way-relax-consistent, docs/boundary_conditions.rst). With
+#     inject: finite, > 0 and <= 1, the fraction ω of the way the outer state moves towards the restricted nests at
+#     each exchange (two-way-inject, docs/boundary_conditions.rst); 1 replaces it fully. A smaller factor takes more
+#     exchanges to the same state; 0.75 and 1 did not reach steady on the canonical hill (two-way-inject,
+#     docs/boundary_conditions.rst, Results).
 #
 # nest.feedback_flux = outer
 #     outer or nest. outer: the outer row just outside each nest's source region keeps the outer scheme's flux of

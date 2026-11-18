@@ -93,6 +93,8 @@ NestOptions read_nest_options ()
         }
     } else if (opt.feedback == NestFeedback::inject) {
         opt.feedback_factor = kInjectFactorDefault;
+    } else if (opt.feedback == NestFeedback::relax_consistent) {
+        opt.feedback_factor = kRelaxConsistentFactorDefault;
     }
     if (pp.countname("feedback_flux") > 1) { opt.errors.emplace_back("nest.feedback_flux is given more than once"); }
     if (pp.contains("feedback_flux")) {

@@ -157,6 +157,27 @@ TEST (Nests, ReadErrorsNameTheKey)
     EXPECT_TRUE(opt.nests.empty());
 }
 
+// nest.feedback_factor's default with relax is 0.5 (tracker N-114, item 13; 1 before it), and
+// nest.feedback_factor = 1 still reads as 1: the old answer stays reachable. Inject and relax_consistent keep their
+// own defaults (0.5 and 1; the sweep of item 13 covered relax only).
+TEST (Nests, RelaxFactorDefaultAndTheOldValue)
+{
+    const std::vector<std::pair<std::string, amrex::Real>> cases = {
+        {"nest.feedback = relax\n", amrex::Real(0.5)},
+        {"nest.feedback = relax\nnest.feedback_factor = 1\n", amrex::Real(1)},
+        {"nest.feedback = inject\n", amrex::Real(0.5)},
+        {"nest.feedback = relax_consistent\n", amrex::Real(1)}};
+    for (const auto& [text, expected] : cases) {
+        ScopedKeys guard{{{"nest", "names"}, {"nest.a", "lo"}, {"nest.a", "hi"}, {"nest", "feedback"},
+                          {"nest", "feedback_factor"}}};
+        add_inputs_text("nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 1200 900\n" + text);
+        const auto opt = gust::read_nest_options();
+        ASSERT_TRUE(opt.errors.empty()) << opt.errors.front();
+        EXPECT_EQ(opt.feedback_factor, expected) << text;
+    }
+    EXPECT_EQ(gust::kRelaxFactorDefault, amrex::Real(0.5));
+}
+
 TEST (Nests, PlacementOnTheOuterCellFaces)
 {
     const auto m = outer_mesh();

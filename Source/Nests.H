@@ -11,7 +11,7 @@
 //                                     one way (default), or the joint run
 //                                     with the defect source, the relaxation
 //                                     (plain or consistent) or the injection
-//   nest.feedback_factor = 1          the relaxation's factor (relax and
+//   nest.feedback_factor = 0.5        the relaxation's factor (relax; 1 with
 //                                     relax_consistent), or the
 //                                     injection's fraction per exchange
 //                                     (inject; default 0.5, at most 1)
@@ -57,13 +57,15 @@
 //
 // nest.feedback = relax (NestRelax.H): the same joint run with the relaxation
 // of the outer domain towards the restricted nests over their footprints in
-// place of the defect source; nest.feedback_factor (default 1, finite and
-// > 0) scales its rate.
+// place of the defect source; nest.feedback_factor (default 0.5,
+// kRelaxFactorDefault; finite and > 0) scales its rate. The default was 1
+// before tracker N-114, item 13; nest.feedback_factor = 1 keeps that answer.
 //
 // nest.feedback = relax_consistent (NestRelax.H): the relaxation with the
 // residual of its target, weighted by the relaxation's weight, taken from the
 // source as well, so the target satisfies the outer rows where the weight is
-// 1 (the parent's pressure there mostly follows the nests'); same factor.
+// 1 (the parent's pressure there mostly follows the nests'); same factor, but
+// its default stays 1 (kRelaxConsistentFactorDefault).
 //
 // nest.feedback_flux = nest (NestFaceFlux.H; defect only): the outer cells
 // just outside the defect source's region take the nests' own fluxes through
@@ -113,13 +115,21 @@ enum class NestDamping { w_theta, outer };
 //! The value of nest.feedback as the deck gives it.
 const char* nest_feedback_name (NestFeedback f);
 
+//! nest.feedback_factor's default with nest.feedback = relax (tracker N-114, item 13: the sweep of
+//! Tests/Canonical_RANS/Nests_Two_Way/relax_factor_sweep.py; 1 before it).
+constexpr amrex::Real kRelaxFactorDefault = amrex::Real(0.5);
+//! nest.feedback_factor's default with nest.feedback = relax_consistent (tracker N-114, item 12; the sweep of item
+//! 13 covered relax only, so it keeps 1).
+constexpr amrex::Real kRelaxConsistentFactorDefault = amrex::Real(1);
+
 struct NestOptions
 {
     std::vector<NestSpec> nests;
     NestFeedback feedback{NestFeedback::none};
-    //! nest.feedback_factor: relax's and relax_consistent's factor (finite, > 0; default 1) or inject's fraction (finite, > 0 and <= 1;
+    //! nest.feedback_factor: relax's factor (finite, > 0; default kRelaxFactorDefault), relax_consistent's (default
+    //! kRelaxConsistentFactorDefault) or inject's fraction (finite, > 0 and <= 1;
     //! default kInjectFactorDefault); not given with other feedbacks.
-    amrex::Real feedback_factor{1};
+    amrex::Real feedback_factor{kRelaxFactorDefault};
     //! nest.feedback_flux (nest.feedback = defect only).
     NestFeedbackFlux feedback_flux{NestFeedbackFlux::outer};
     //! nest.damping.
