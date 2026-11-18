@@ -14,7 +14,7 @@ F = "Source/NestDefect.cpp"
 M = [
  # the restriction
  ("D1", "cell values a plain mean (no detJ weight)", F, "sjq += jj(i, j, k) * qq(i, j, k);", "sjq += qq(i, j, k);"),
- ("D2", "u and v not divided by the parent face area", F, "o(I, J, k) = s * rinv / cc(I, J, k);",
+ ("D2", "u and v not divided by the parent face area", F, "o(I, J, k) = ao > 0 ? s * rinv / den : amrex::Real(0);",
   "o(I, J, k) = s * rinv;"),
  ("D3", "Omega summed over one nest face row only", F,
   "                for (int a = 0; a < r; ++a) {\n                    const int i = r * (I - ox) + a, j = r * (J - oy) + b;\n                    s += aa",
@@ -38,6 +38,23 @@ M = [
   "    coarse_ghosts(coarse);\n    for (const NestImage& n : nests) {\n",
   "        restrict_horizontal(*n.fine, *n.mesh, n.ratio, n.offset, mesh_c, geom_c, coarse);\n"
   "        coarse_ghosts(coarse);\n"),
+ # the open face areas with buildings (N-114 item 7)
+ ("D12", "u: the nest's full face areas in the flux", F, "restrict_faces<0>(mesh_f.flux_area(0), fine.u",
+  "restrict_faces<0>(mesh_f.ax, fine.u"),
+ ("D13", "u: the parent's full face area as the divisor", F, "ac.ParallelCopy(mesh_c.flux_area(0), 0, 0, 1);",
+  "ac.ParallelCopy(mesh_c.ax, 0, 0, 1);"),
+ ("D14", "v: the nest's full face areas in the flux", F, "restrict_faces<1>(mesh_f.flux_area(1), fine.v",
+  "restrict_faces<1>(mesh_f.ay, fine.v"),
+ ("D15", "v: the parent's full face area as the divisor", F, "ac.ParallelCopy(mesh_c.flux_area(1), 0, 0, 1);",
+  "ac.ParallelCopy(mesh_c.ay, 0, 0, 1);"),
+ ("D16", "Omega: the nest's full face areas in the flux", F, "restrict_zfaces(mesh_f.flux_area(2), om_f",
+  "restrict_zfaces(mesh_f.az, om_f"),
+ ("D17", "Omega: the parent's full face area as the divisor", F, "ac.ParallelCopy(mesh_c.flux_area(2), 0, 0, 1);",
+  "ac.ParallelCopy(mesh_c.az, 0, 0, 1);"),
+ ("D18", "u, v: a closed parent face divided by its zero area", F,
+  "o(I, J, k) = ao > 0 ? s * rinv / den : amrex::Real(0);", "o(I, J, k) = s * rinv / ao;"),
+ ("D19", "Omega: a closed parent face divided by its zero area", F,
+  "o(I, J, k) = ao > 0 ? s * r2inv / den : amrex::Real(0);", "o(I, J, k) = s * r2inv / ao;"),
 ]
 EQUIVALENT = set()
 

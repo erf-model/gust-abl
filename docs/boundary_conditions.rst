@@ -729,8 +729,11 @@ Here
 - :math:`q_c`: the outer state; :math:`q_f`: a nest's state;
 - :math:`I`: the restriction at 2 2 1. Cell values are the :math:`J`-weighted mean of the nest cells; :math:`u` and
   :math:`v` are the nest's face fluxes summed over the outer face's area; :math:`w` comes from the restricted
-  vertical flux :math:`\Omega`. The restricted field is divergence-free on the outer cells when the nest's field is
-  divergence-free on its own, so continuity gets no source. The pressure is the :math:`J`-weighted mean of the nest cells,
+  vertical flux :math:`\Omega`. Both areas are the open part of the face, :math:`a_d (1 - \beta_d)`
+  (``Mesh::flux_area``, :doc:`buildings`), as in the divergence and the pressure correction; an outer face closed in
+  full gets 0 (unit test ``RestrictionWeightsTheOpenFaceAreas``). Without buildings the open part is the whole face.
+  Joint nests are still refused with buildings. The restricted field is divergence-free on the outer cells when the
+  nest's field is divergence-free on its own, so continuity gets no source. The pressure is the :math:`J`-weighted mean of the nest cells,
   shifted by one constant per nest so that its mean over the footprint is the outer pressure's mean there (the two
   pressures have different levels). The shift uses plain means, not :math:`J`-weighted ones. The level does not
   reach :math:`S`: the momentum rows of :math:`\chi_s` see the pressure only through differences inside the

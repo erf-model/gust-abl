@@ -17,6 +17,9 @@
 //       (bit for bit), on 1, 2 and 4 ranks (the unit_np* tests);
 //   restrict_patches: two nests that touch, with different u on the shared
 //     face, keep the restricted nest Omega on both footprints;
+//   partly open faces (buildings' face fractions, made up): u, v and w are
+//     the nest's flux through the open parts over the parent's open area,
+//     0 on a parent face closed in full, against values by hand;
 //   defect_region: the footprint and the inner box kDefectMargin cells in;
 //   NestDefect: S = R on the inner box's points (faces from L to H + 1 along
 //     their normal), 0 elsewhere; add_to_residual subtracts it; nothing
@@ -372,6 +375,115 @@ TEST(NestDefect, TouchingNestsKeepTheRestrictedOmegaOnBothFootprints)
     EXPECT_EQ(bad, 0) << "non-finite Omega on a footprint";
     EXPECT_GT(scale, 1.0e-3) << "the nest Omega is too small to test";
     EXPECT_LT(err, kTol * std::max(1.0, scale)) << "the parent's Omega differs from the restricted nest Omega";
+}
+
+// Partly open faces (buildings, Mesh::set_open_faces) on flat ground, with face fractions made up for the test.
+// The restriction divides the nest's flux through the open parts, sum_f a_f (1 - beta_f) q_f (1/r or 1/r^2), by
+// the parent face's open area a_c (1 - beta_c); a parent face closed in full gets 0. Flat ground: the two levels
+// share their layers, so a_f = a_c and Omega = w, and the restricted values below follow by hand.
+//   x-faces (u), parent face (I, J), nest faces j = 2 (J - 2) + b with u_f = 2 + 2 b + 0.1 k:
+//     I - 3 even, J - 2 even: beta_f = 0, 0.5; beta_c = 0.25:  (2 + 0.1 k + 0.5 (4 + 0.1 k)) / 2 / 0.75 = 8/3 + 0.1 k
+//     I - 3 even, J - 2 odd:  beta_f = 1, 1;   beta_c = 1:     0
+//     I - 3 odd,  J - 2 even: beta_f = 1, 0;   beta_c = 0:     (4 + 0.1 k) / 2                         = 2 + 0.05 k
+//     I - 3 odd,  J - 2 odd:  beta_f = 0, 0;   beta_c = 0:     (6 + 0.2 k) / 2                         = 3 + 0.1 k
+//   y-faces (v): the same with x and y swapped.
+//   z-faces (w), nest faces (2 (I - 3) + a, 2 (J - 2) + b) with w_f = 1 + a + 2 b + 0.1 k:
+//     I + J odd:  beta_f = 0, 0.5, 1, 0 (a + 2 b = 0..3); beta_c = 0.375: (6 + 0.25 k) / 4 / 0.625 = 2.4 + 0.1 k
+//     I + J even: beta_f = 1 (all four); beta_c = 1: 0
+// With the full areas (the restriction before N-114 item 7) these are 3 + 0.1 k, 3 + 0.1 k, 3 + 0.1 k, 3 + 0.1 k and
+// 2.5 + 0.1 k.
+TEST(NestDefect, RestrictionWeightsTheOpenFaceAreas)
+{
+    DefectCase p{parent_inputs(false)};
+    p.make();
+    DefectCase n{nest_inputs(p.in)};
+    n.make(true);
+    // The face fractions: beta of the nest's faces by their indices, of the parent's by the parent face's case.
+    const auto beta_fine = [] (int d, int i, int j) -> double {
+        if (d == 2) {
+            const double b[4] = {0.0, 0.5, 1.0, 0.0};
+            const int a = i / 2, b2 = j / 2;  // the parent face's offsets in the footprint, I - 3 and J - 2
+            return ((a + b2) % 2 == 0) ? b[i % 2 + 2 * (j % 2)] : 1.0;
+        }
+        const int nrm = (d == 0) ? i : j, tan = (d == 0) ? j : i;
+        if (nrm % 2 != 0) { return 0.0; }  // between the parent faces: not used
+        const double even[4] = {0.0, 0.5, 1.0, 1.0}, odd[4] = {1.0, 0.0, 0.0, 0.0};
+        return ((nrm / 2) % 2 == 0) ? even[tan % 4] : odd[tan % 4];
+    };
+    const amrex::Box fp = footprint(p);
+    const auto beta_coarse = [] (int d, int I, int J) -> double {
+        const int a = I - kOffset[0], b = J - kOffset[1];
+        const int na = (d == 0) ? 12 : 11, nb = (d == 1) ? 10 : 9;  // the footprint's faces of type d
+        if (a < 0 || b < 0 || a > na || b > nb) { return 0.0; }
+        if (d == 2) { return ((a + b) % 2 == 0) ? 0.375 : 1.0; }
+        const int nrm = (d == 0) ? a : b, tan = (d == 0) ? b : a;
+        if (nrm % 2 == 0) { return (tan % 2 == 0) ? 0.25 : 1.0; }
+        return 0.0;
+    };
+    for (DefectCase* c : {&p, &n}) {
+        const amrex::MultiFab* area[3] = {&c->mesh.ax, &c->mesh.ay, &c->mesh.az};
+        std::array<amrex::MultiFab, 3> beta;
+        for (int d = 0; d < 3; ++d) {
+            beta[static_cast<std::size_t>(d)].define(area[d]->boxArray(), c->dm, 1, 0);
+            fill_all(beta[static_cast<std::size_t>(d)], [&] (int i, int j, int) {
+                return (c == &n) ? beta_fine(d, i, j) : beta_coarse(d, i, j);
+            });
+        }
+        amrex::MultiFab beta_cell(c->ba, c->dm, 1, 0);
+        beta_cell.setVal(0.0);
+        c->mesh.set_open_faces(beta[0], beta[1], beta[2], beta_cell, c->geom);
+    }
+    fill_parent(p);
+    fill_nest(n, [&] (const amrex::MultiFab&, int c, int i, int j, int k) {
+        if (c == 0) { return 2.0 + 2.0 * (j % 2) + 0.1 * k; }
+        if (c == 1) { return 2.0 + 2.0 * (i % 2) + 0.1 * k; }
+        if (c == 2) { return 1.0 + (i % 2) + 2.0 * (j % 2) + 0.1 * k; }
+        return 300.0;
+    });
+    gust::restrict_patch(n.q, n.mesh, n.geom, kR, kOffset, p.mesh, p.geom, ghosts(p.geom), p.q);
+
+    const amrex::Box dom_c = p.geom.Domain(), dom_f = n.geom.Domain();
+    const amrex::MultiFab* qc[3] = {&p.q.u, &p.q.v, &p.q.w};
+    const amrex::MultiFab* ac[3] = {&p.mesh.ax, &p.mesh.ay, &p.mesh.az};
+    const amrex::MultiFab* af[3] = {&n.mesh.ax, &n.mesh.ay, &n.mesh.az};
+    for (int d = 0; d < 3; ++d) {
+        const amrex::IndexType t(amrex::IntVect::TheDimensionVector(d));
+        const amrex::Box bc = amrex::convert(dom_c, t), bf = amrex::convert(dom_f, t);
+        const std::vector<double> q = gather(*qc[d], dom_c), a_c = gather(*ac[d], dom_c), a_f = gather(*af[d], dom_f);
+        const amrex::Box faces = amrex::convert(fp, t);
+        double err = 0, aerr = 0;
+        amrex::Long bad = 0, closed = 0, cases[4] = {0, 0, 0, 0};
+        for (amrex::BoxIterator it(faces); it.ok(); ++it) {
+            const amrex::IntVect c = it();
+            const int a = c[0] - kOffset[0], b = c[1] - kOffset[1], k = c[2];
+            // The precondition of the values by hand: the nest's areas equal the parent's.
+            const amrex::IntVect f(kR * a, kR * b, k);
+            aerr = std::max(aerr, std::abs(a_f[static_cast<std::size_t>(bf.index(f))]
+                                           - a_c[static_cast<std::size_t>(bc.index(c))]));
+            double e = 0;
+            if (d == 2) {
+                e = ((a + b) % 2 == 0) ? 2.4 + 0.1 * k : 0.0;
+                ++cases[(a + b) % 2];
+            } else {
+                const int nrm = (d == 0) ? a : b, tan = (d == 0) ? b : a;
+                const int m = 2 * (nrm % 2) + (tan % 2);
+                const double v[4] = {8.0 / 3.0 + 0.1 * k, 0.0, 2.0 + 0.05 * k, 3.0 + 0.1 * k};
+                e = v[m];
+                ++cases[m];
+            }
+            const double x = q[static_cast<std::size_t>(bc.index(c))];
+            if (!std::isfinite(x)) { ++bad; }
+            if (e == 0.0 && x == 0.0) { ++closed; }
+            err = std::max(err, std::abs(x - e));
+        }
+        EXPECT_LT(aerr, kTol) << "face type " << d << ": the nest's areas differ from the parent's on flat ground";
+        EXPECT_EQ(bad, 0) << "face type " << d << ": a non-finite restricted velocity";
+        EXPECT_GT(closed, 0) << "face type " << d << ": no closed parent face restricted to 0";
+        for (int m = 0; m < (d < 2 ? 4 : 2); ++m) {
+            EXPECT_GT(cases[m], 0) << "face type " << d << ": case " << m << " not met";
+        }
+        EXPECT_LT(err, 10.0 * kTol) << "face type " << d << ": the restricted velocity differs from the open-area value";
+    }
 }
 
 TEST(NestDefect, RestrictionOfCellFieldsAndThePressureLevel)

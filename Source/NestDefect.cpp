@@ -49,7 +49,9 @@ void restrict_cells (const amrex::MultiFab& J, const amrex::MultiFab& q, int r, 
 }
 
 //! c = (1/r) sum a q over the r nest x-faces (D = 0) or y-faces (D = 1) of
-//! each parent image face, over the parent's area ac there.
+//! each parent image face, over the parent's area ac there; 0 where ac = 0.
+//! a and ac are the open areas (Mesh::flux_area): with buildings c is the
+//! nest's flux through the open part over the parent face's open part.
 template <int D>
 void restrict_faces (const amrex::MultiFab& area, const amrex::MultiFab& q, int r, const amrex::IntVect& offset,
                      const amrex::MultiFab& ac, amrex::MultiFab& c)
@@ -70,13 +72,20 @@ void restrict_faces (const amrex::MultiFab& area, const amrex::MultiFab& q, int 
                 const int j = (D == 0) ? r * (J - oy) + b : r * (J - oy);
                 s += aa(i, j, k) * qq(i, j, k);
             }
-            o(I, J, k) = s * rinv / cc(I, J, k);
+            // A face buildings close in full (ac = 0) carries no flux: 0, not 0 / 0. The divisor is never 0,
+            // since clang may divide before the branch (FE_INVALID under amrex.fpe_trap_invalid); where ac > 0
+            // it is ac itself, so runs without buildings keep their bits. A NaN in ac would also give 0; ac is a
+            // copy of the areas' valid points, which hold none.
+            const amrex::Real ao = cc(I, J, k);
+            const amrex::Real den = amrex::max(ao, std::numeric_limits<amrex::Real>::min());
+            o(I, J, k) = ao > 0 ? s * rinv / den : amrex::Real(0);
         });
     }
 }
 
 //! c = (1/r^2) sum a_z Omega over the r x r nest z-faces of each parent image
-//! z-face, over the parent's a_z there.
+//! z-face, over the parent's a_z there; 0 where it is 0. As restrict_faces,
+//! with the open areas.
 void restrict_zfaces (const amrex::MultiFab& az, const amrex::MultiFab& omega, int r, const amrex::IntVect& offset,
                       const amrex::MultiFab& ac, amrex::MultiFab& c)
 {
@@ -97,7 +106,10 @@ void restrict_zfaces (const amrex::MultiFab& az, const amrex::MultiFab& omega, i
                     s += aa(i, j, k) * qq(i, j, k);
                 }
             }
-            o(I, J, k) = s * r2inv / cc(I, J, k);
+            // A closed face gets 0, as in restrict_faces.
+            const amrex::Real ao = cc(I, J, k);
+            const amrex::Real den = amrex::max(ao, std::numeric_limits<amrex::Real>::min());
+            o(I, J, k) = ao > 0 ? s * r2inv / den : amrex::Real(0);
         });
     }
 }
@@ -170,22 +182,22 @@ void restrict_horizontal (const State& fine, const Mesh& mesh_f, int r, const am
             dst->ParallelCopy(img, 0, 0, 1);
         }
     }
-    // u, v: the flux through the r nest faces over the parent face's area. ax, ay and az are the full face areas;
-    // with partly open faces (buildings) the divergence uses flux_area, and this restriction would not be
-    // divergence-free. App.cpp refuses buildings with nests.
+    // u, v: the flux through the r nest faces over the parent face's area. Both areas are Mesh::flux_area, the
+    // open part of the face, as in the divergence (MassFlux.cpp) and the pressure correction (Poisson.cpp):
+    // without buildings it is ax, ay or az itself. App.cpp still refuses buildings with joint nests.
     {
         amrex::MultiFab img = image(fba, fdm, r, offset, XF);
         amrex::MultiFab ac = image(fba, fdm, r, offset, XF);
-        ac.ParallelCopy(mesh_c.ax, 0, 0, 1);
-        restrict_faces<0>(mesh_f.ax, fine.u, r, offset, ac, img);
+        ac.ParallelCopy(mesh_c.flux_area(0), 0, 0, 1);
+        restrict_faces<0>(mesh_f.flux_area(0), fine.u, r, offset, ac, img);
         // With the periodicity: a footprint face on a periodic seam (face 0 or N) also sets its image.
         coarse.u.ParallelCopy(img, 0, 0, 1, 0, 0, geom_c.periodicity());
     }
     {
         amrex::MultiFab img = image(fba, fdm, r, offset, YF);
         amrex::MultiFab ac = image(fba, fdm, r, offset, YF);
-        ac.ParallelCopy(mesh_c.ay, 0, 0, 1);
-        restrict_faces<1>(mesh_f.ay, fine.v, r, offset, ac, img);
+        ac.ParallelCopy(mesh_c.flux_area(1), 0, 0, 1);
+        restrict_faces<1>(mesh_f.flux_area(1), fine.v, r, offset, ac, img);
         coarse.v.ParallelCopy(img, 0, 0, 1, 0, 0, geom_c.periodicity());
     }
 }
@@ -207,8 +219,8 @@ void restrict_w (const State& fine, const Mesh& mesh_f, const amrex::Geometry& g
         omega_from_w(fine.u, fine.v, fine.w, fine.z_phys_nd, mesh_f, geom_f, om_f, 0);
         amrex::MultiFab img = image(fba, fdm, r, offset, ZF);
         amrex::MultiFab ac = image(fba, fdm, r, offset, ZF);
-        ac.ParallelCopy(mesh_c.az, 0, 0, 1);
-        restrict_zfaces(mesh_f.az, om_f, r, offset, ac, img);
+        ac.ParallelCopy(mesh_c.flux_area(2), 0, 0, 1);
+        restrict_zfaces(mesh_f.flux_area(2), om_f, r, offset, ac, img);
         amrex::MultiFab om_c(coarse.w.boxArray(), coarse.w.DistributionMap(), 1, 0);
         omega_from_w(coarse.u, coarse.v, coarse.w, coarse.z_phys_nd, mesh_c, geom_c, om_c, 0);
         om_c.ParallelCopy(img, 0, 0, 1);

@@ -586,7 +586,7 @@ off fails case ``nests_hill_stf`` of its self-test.
 
 The mutants of the two-way nests' restriction and defect source (``Source/NestDefect.cpp``), each run
 against ``NestDefect.*`` on two ranks with the unit-test flags by ``tools/nest_defect_mutants.py`` (macOS arm64,
-AppleClang). All 11 are killed (D11 came with N-114 item 8).
+AppleClang). All 19 are killed (D11 came with N-114 item 8, D12–D19 with N-114 item 7).
 
 .. list-table::
    :header-rows: 1
@@ -600,10 +600,11 @@ AppleClang). All 11 are killed (D11 came with N-114 item 8).
      - ``RestrictionOfCellFieldsAndThePressureLevel``
    * - D2
      - u and v not divided by the parent face area
-     - ``RestrictionConservesTheFluxesOnAHill``
+     - ``RestrictionConservesTheFluxesOnAHill``, ``RestrictionWeightsTheOpenFaceAreas``
    * - D3
      - :math:`\Omega` summed over one nest face row only
-     - ``RestrictionConservesTheFluxesOnAHill``, ``TouchingNestsKeepTheRestrictedOmegaOnBothFootprints``
+     - ``RestrictionConservesTheFluxesOnAHill``, ``RestrictionWeightsTheOpenFaceAreas``,
+       ``TouchingNestsKeepTheRestrictedOmegaOnBothFootprints``
    * - D4
      - The pressure level not shifted to the parent's
      - ``RestrictionOfCellFieldsAndThePressureLevel``
@@ -628,6 +629,30 @@ AppleClang). All 11 are killed (D11 came with N-114 item 8).
    * - D11
      - Each nest restricted in full (u, v, then w) before the next, the order before N-114 item 8
      - ``TouchingNestsKeepTheRestrictedOmegaOnBothFootprints``
+   * - D12
+     - u: the nest's full face areas (``ax``) in the flux, in place of ``flux_area``
+     - ``RestrictionWeightsTheOpenFaceAreas``
+   * - D13
+     - u: the outer face's full area as the divisor
+     - ``RestrictionWeightsTheOpenFaceAreas``
+   * - D14
+     - v: the nest's full face areas (``ay``) in the flux
+     - ``RestrictionWeightsTheOpenFaceAreas``
+   * - D15
+     - v: the outer face's full area as the divisor
+     - ``RestrictionWeightsTheOpenFaceAreas``
+   * - D16
+     - :math:`\Omega`: the nest's full face areas (``az``) in the flux
+     - ``RestrictionWeightsTheOpenFaceAreas``
+   * - D17
+     - :math:`\Omega`: the outer face's full area as the divisor
+     - ``RestrictionWeightsTheOpenFaceAreas``
+   * - D18
+     - u, v: a closed outer face divided by its zero area (no guard)
+     - ``RestrictionWeightsTheOpenFaceAreas`` (crash: the FPE trap on 0 / 0)
+   * - D19
+     - :math:`\Omega`: a closed outer face divided by its zero area (no guard)
+     - ``RestrictionWeightsTheOpenFaceAreas`` (crash: the FPE trap on 0 / 0)
 
 The one-line mutants of the two-way nests' relaxation source (``Source/NestRelax.cpp``), each run against
 ``NestRelax.*`` on two ranks with the unit-test flags by ``tools/nest_relax_mutants.py`` (macOS arm64, AppleClang).
@@ -3589,6 +3614,12 @@ GoogleTest suite
        parent: on both footprints the parent's :math:`\Omega` is the :math:`a_z`-weighted mean of the nest's over its
        2 × 2 faces. Restricting the nests one after the other (the order before) misses by 0.066 against a tolerance
        of 8e-11, and fails.
+   * - ``NestDefect.RestrictionWeightsTheOpenFaceAreas`` (N-114, item 7)
+     - Made-up face fractions on flat ground, partly open, closed and open faces on both levels: u, v and
+       :math:`\Omega` are the nest's open-area flux over the parent's open area, against values by hand
+       (:math:`8/3 + 0.1k`, :math:`2 + 0.05k`, :math:`3 + 0.1k` for u and v, :math:`2.4 + 0.1k` for :math:`\Omega`);
+       a parent face closed in full gets 0 and stays finite. With the full areas the values are :math:`3 + 0.1k` and
+       :math:`2.5 + 0.1k`, and the test fails (mutants D12–D19).
    * - ``NestDefect.RegionAndSource`` (PR-70)
      - ``defect_region``: the footprint and the inner box ``kDefectMargin`` cells in (not across a periodic
        direction); :math:`S = R` on the inner box's points (faces from L to H + 1 along their normal) and 0 elsewhere;
