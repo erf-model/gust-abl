@@ -50,7 +50,8 @@ half-width 1000 m, one way and joint, one after another, with the recommended se
 python3 askervein_nest.py two_way -- mpiexec -n 4 <build>/gust inputs_askervein_domain
 ```
 `two_way relax inject` adds the joint runs with `nest.feedback = relax` (factor 1) and `nest.feedback = inject`
-(factor 0.5), and `keep` skips runs whose plotfiles are already there:
+(factor 0.5), `relax_consistent` the run with `nest.feedback = relax_consistent` (factor 1; tracker N-114 item 12,
+`docs/boundary_conditions.rst`, Pressure-consistent relaxation), and `keep` skips runs whose plotfiles are already there:
 ```bash
 python3 askervein_nest.py two_way relax inject -- mpiexec -n 4 <build>/gust inputs_askervein_domain
 ```

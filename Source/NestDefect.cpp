@@ -320,7 +320,7 @@ DefectRegion defect_region (const std::string& name, const amrex::IntVect& fine_
         if (!periodic[d]) { g.inner.grow(d, -kDefectMargin); }
     }
     if (!g.inner.ok()) {
-        amrex::Abort("gust: " + name + ": with nest.feedback = defect, relax or inject a nest spans at least "
+        amrex::Abort("gust: " + name + ": with nest.feedback other than none a nest spans at least "
                      + std::to_string(2 * kDefectMargin + 1) + " parent cells in x and y (the feedback keeps "
                      + std::to_string(kDefectMargin) + " cells from its faces)");
     }

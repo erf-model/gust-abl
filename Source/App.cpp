@@ -832,15 +832,17 @@ std::string run_domain (const DomainRole& role)
         }
         // nest.feedback = defect: the outer domain's source of its nests (NestDefect.H), zero until the joint run sets it.
         std::unique_ptr<NestDefect> defect;
-        // nest.feedback = relax: the outer domain's relaxation towards its nests (NestRelax.H) in its place.
+        // nest.feedback = relax or relax_consistent: the outer domain's relaxation towards its nests (NestRelax.H) in its
+        // place.
         std::unique_ptr<NestRelax> relax;
         // nest.feedback_flux = nest: the nests' face fluxes on the rows just outside the source (NestFaceFlux.H).
         std::unique_ptr<NestFaceFlux> face_flux;
         // nest.feedback = inject: the outer domain's injection of its nests (NestInject.H) in its place.
         std::unique_ptr<NestInject> inject;
         if (role.joint && nest == nullptr) {
-            if (role.nests->feedback == NestFeedback::relax) {
-                relax = std::make_unique<NestRelax>(ba, dm, geom, role.nests->feedback_factor);
+            if (role.nests->feedback == NestFeedback::relax || role.nests->feedback == NestFeedback::relax_consistent) {
+                relax = std::make_unique<NestRelax>(ba, dm, geom, role.nests->feedback_factor,
+                                                    role.nests->feedback == NestFeedback::relax_consistent);
             } else if (role.nests->feedback == NestFeedback::inject) {
                 inject = std::make_unique<NestInject>(ba, dm, geom, role.nests->feedback_factor);
             } else {
@@ -1144,7 +1146,7 @@ std::string run_domain (const DomainRole& role)
         // A joint restart writes nothing before its joint iterations: its step is the checkpoint's.
         if (role.resume == nullptr) { finish(); }
         if (role.joint && v.status != SteadyStatus::Diverged) {
-            // nest.feedback = defect, relax or inject: this domain joins the joint run (Run.cpp, JointRun.H), which steps it in
+            // nest.feedback = defect, relax, relax_consistent or inject: this domain joins the joint run (Run.cpp, JointRun.H), which steps it in
             // memory; then its outputs are written again at its new step.
             JointMember m;
             m.name = role_name;
@@ -1175,11 +1177,14 @@ std::string run_domain (const DomainRole& role)
                 log.print(driver, simplec_stage, sv.status != SteadyStatus::NotSteady, label, newton_stage);
                 return sv;
             };
-            if (defect) {
-                m.defect = defect.get();
+            if (defect || (relax && relax->consistent())) {
+                // R_c(q*) for the defect source, or for relax_consistent's added term (NestRelax.H): the residual
+                // without the feedback (one of the two pointers is null).
+                if (defect) { m.defect = defect.get(); }
                 m.residual_without_defect = [&] (const State& q, ResidualFields& R) {
                     ResidualInputs fin = res_in;
                     fin.defect = nullptr;
+                    fin.relax = nullptr;
                     if (!simplec_stage.hybrid_sigma().empty()) { fin.hybrid_sigma = &simplec_stage.hybrid_sigma(); }
                     residual(q, fin, mesh, geom, R);
                     // theta is data with simplec.theta = frozen: no theta source, and no theta in the feedback change.

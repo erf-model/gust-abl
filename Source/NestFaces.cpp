@@ -362,7 +362,7 @@ void check_joint_levels (const amrex::Geometry& geom, const amrex::MultiFab& z_p
     }
     char line[1400];
     std::snprintf(line, sizeof(line),
-                  "gust: %s: the levels that follow the outer domain's surfaces (nest.feedback = defect, relax or inject) invert: "
+                  "gust: %s: the levels that follow the outer domain's surfaces (nest.feedback other than none) invert: "
                   "the layer from level %d to %d %s. The levels stay increasing while "
                   "m - dh coth(H/s)/s > 0; here m = %.4g (the outer surfaces' smallest slope), dh = %.4g m "
                   "(max |h - h_outer|), H = %.4g m, s = %.4g m: %.4g. With s = 2 dh/m that needs dh below 0.91 m H "

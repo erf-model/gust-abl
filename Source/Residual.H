@@ -200,7 +200,7 @@ struct ResidualInputs
     //! subtracts it from u, v, w, theta and k right after the time term, before the rows that
     //! replace their own; it has no implicit part.
     const NestDefect* defect{nullptr};
-    //! The nests' relaxation (NestRelax.H, nest.feedback = relax); null: none. The residual adds
+    //! The nests' relaxation (NestRelax.H, nest.feedback = relax or relax_consistent); null: none. The residual adds
     //! c (q - q*) to u, v, w, theta and k right after the defect source, and implicit_rows adds c
     //! to their diagonals right after the time term's 1/dt, both before the rows that replace their own.
     const NestRelax* relax{nullptr};

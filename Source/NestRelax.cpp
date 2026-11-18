@@ -134,6 +134,43 @@ void add_source (const std::vector<amrex::Box>& fps, const amrex::MultiFab& rate
     }
 }
 
+//! relax_consistent: R += c (q - q*) - s, s = w R_c(q*) (NestRelax.H); its own kernel, not a branch in add_source's.
+void add_source_consistent (const std::vector<amrex::Box>& fps, const amrex::MultiFab& rate, const amrex::MultiFab& q,
+                            const amrex::MultiFab& target, const amrex::MultiFab& added, amrex::MultiFab& R)
+{
+    for (amrex::MFIter mfi(R, false); mfi.isValid(); ++mfi) {
+        if (!touches_footprint(fps, mfi.validbox())) { continue; }   // c = 0 and s = 0 at all its points
+        const auto r = R.array(mfi);
+        const auto c = rate.const_array(mfi);
+        const auto a = q.const_array(mfi);
+        const auto p = target.const_array(mfi);
+        const auto s = added.const_array(mfi);
+        amrex::ParallelFor(mfi.validbox(), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+        {
+            r(i, j, k) += c(i, j, k) * (a(i, j, k) - p(i, j, k)) - s(i, j, k);
+        });
+    }
+}
+
+//! s = w R where w > 0 (the footprints' points away from their faces), 0 elsewhere whatever R holds there.
+//! w: the weight at s's index type (footprint_rate with c0 = 1, 0 outside every footprint); where footprints
+//! overlap it is already the larger weight. A box outside every footprint keeps s = 0 (setVal).
+void weighted_residual (const std::vector<amrex::Box>& fps, const amrex::MultiFab& w, const amrex::MultiFab& R,
+                        amrex::MultiFab& s)
+{
+    s.setVal(0.0);
+    for (amrex::MFIter mfi(s, false); mfi.isValid(); ++mfi) {
+        if (!touches_footprint(fps, mfi.validbox())) { continue; }
+        const auto o = s.array(mfi);
+        const auto ww = w.const_array(mfi);
+        const auto rr = R.const_array(mfi);
+        amrex::ParallelFor(mfi.validbox(), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+        {
+            o(i, j, k) = ww(i, j, k) > amrex::Real(0) ? ww(i, j, k) * rr(i, j, k) : amrex::Real(0);
+        });
+    }
+}
+
 void add_diagonal (const std::vector<amrex::Box>& fps, const amrex::MultiFab& rate, amrex::MultiFab& A)
 {
     for (amrex::MFIter mfi(A, false); mfi.isValid(); ++mfi) {
@@ -167,8 +204,8 @@ std::string check_feedback_factor (amrex::Real factor)
 }
 
 NestRelax::NestRelax (const amrex::BoxArray& ba, const amrex::DistributionMapping& dm, const amrex::Geometry& geom,
-                      amrex::Real factor)
-    : m_geom(geom), m_factor(factor)
+                      amrex::Real factor, bool consistent)
+    : m_geom(geom), m_factor(factor), m_consistent(consistent)
 {
     const std::string err = check_feedback_factor(factor);
     if (!err.empty()) { amrex::Abort("gust: " + err); }
@@ -181,10 +218,50 @@ NestRelax::NestRelax (const amrex::BoxArray& ba, const amrex::DistributionMappin
     for (int n = 0; n < 5; ++n) {
         m_target[static_cast<std::size_t>(n)].define(amrex::convert(ba, types[tt[n]]), dm, 1, 0);
         m_target[static_cast<std::size_t>(n)].setVal(0.0);
+        if (m_consistent) {
+            m_added[static_cast<std::size_t>(n)].define(amrex::convert(ba, types[tt[n]]), dm, 1, 0);
+            m_added[static_cast<std::size_t>(n)].setVal(0.0);
+        }
     }
 }
 
 void NestRelax::set (const State& qstar, const std::vector<DefectRegion>& regions)
+{
+    if (m_consistent) { amrex::Abort("gust: NestRelax::set: nest.feedback = relax_consistent needs the residual at q*"); }
+    set_target(qstar, regions);
+}
+
+void NestRelax::set (const State& qstar, const std::vector<DefectRegion>& regions, const ResidualFields& Rstar)
+{
+    if (!m_consistent) { amrex::Abort("gust: NestRelax::set: the residual at q* is for nest.feedback = relax_consistent"); }
+    set_target(qstar, regions);
+    const amrex::MultiFab* r[5] = {&Rstar.u, &Rstar.v, &Rstar.w, &Rstar.theta, &Rstar.tke};
+    const int ri[5] = {0, 1, 2, 3, 3};
+    // The weight w at each index type: the rate's construction with c0 = 1 (the same faces and margin). The
+    // footprints are those of the whole joint run, so it is built at the first set and kept.
+    auto& wt = m_weight;
+    if (m_weight_footprints.empty()) {
+        for (std::size_t n = 0; n < 4; ++n) {
+            wt[n].define(m_rate[n].boxArray(), m_rate[n].DistributionMap(), 1, 0);
+            wt[n].setVal(0.0);
+        }
+        for (const auto& g : regions) {
+            const std::array<bool, 2> face{g.inner.length(0) != g.footprint.length(0), g.inner.length(1) != g.footprint.length(1)};
+            for (auto& w : wt) { footprint_rate(w, g.footprint, face, amrex::Real(1)); }
+        }
+        m_weight_footprints = m_footprints;
+    } else if (m_weight_footprints != m_footprints) {
+        amrex::Abort("gust: NestRelax::set: the footprints changed during the joint run");
+    }
+    for (int n = 0; n < 5; ++n) {
+        amrex::MultiFab& a = m_added[static_cast<std::size_t>(n)];
+        require_layout("set", *r[n], a);
+        weighted_residual(m_footprints, wt[static_cast<std::size_t>(ri[n])], *r[n], a);
+    }
+    amrex::Gpu::streamSynchronize();
+}
+
+void NestRelax::set_target (const State& qstar, const std::vector<DefectRegion>& regions)
 {
     const amrex::MultiFab* src[5] = {&qstar.u, &qstar.v, &qstar.w, &qstar.theta, &qstar.tke};
     for (int n = 0; n < 5; ++n) { require_layout("set", *src[n], m_target[static_cast<std::size_t>(n)]); }
@@ -201,7 +278,8 @@ void NestRelax::set (const State& qstar, const std::vector<DefectRegion>& region
         n.name = g.name;
         n.speed = deterministic_sum(spd, 0) / static_cast<amrex::Real>(g.footprint.numPts());
         if (!std::isfinite(static_cast<double>(n.speed))) {
-            amrex::Abort("gust: nest.feedback = relax: " + g.name + ": the restricted nest's speed is not finite");
+            amrex::Abort(std::string("gust: nest.feedback = ") + (m_consistent ? "relax_consistent: " : "relax: ") + g.name
+                         + ": the restricted nest's speed is not finite");
         }
         n.rate = m_factor * n.speed / dxh;
         // A direction where the inner box keeps the footprint's whole span has no faces (a periodic nest).
@@ -247,7 +325,12 @@ void NestRelax::add_to_residual (const State& q, ResidualFields& R) const
         const amrex::MultiFab& t = m_target[static_cast<std::size_t>(n)];
         require_layout("add_to_residual", *rf[n], t);
         require_layout("add_to_residual", *qf[n], t);
-        add_source(m_footprints, m_rate[static_cast<std::size_t>(ri[n])], *qf[n], t, *rf[n]);
+        if (m_consistent) {
+            add_source_consistent(m_footprints, m_rate[static_cast<std::size_t>(ri[n])], *qf[n], t,
+                                  m_added[static_cast<std::size_t>(n)], *rf[n]);
+        } else {
+            add_source(m_footprints, m_rate[static_cast<std::size_t>(ri[n])], *qf[n], t, *rf[n]);
+        }
     }
 }
 
@@ -262,6 +345,12 @@ void NestRelax::add_to_implicit (Equation eq, amrex::MultiFab& A) const
 }
 
 const amrex::MultiFab& NestRelax::rate (Loc loc) const { return m_rate[static_cast<std::size_t>(rate_index(loc))]; }
+
+const amrex::MultiFab& NestRelax::added (Equation eq) const
+{
+    if (!m_consistent) { amrex::Abort("gust: NestRelax::added: only with nest.feedback = relax_consistent"); }
+    return m_added[static_cast<std::size_t>(target_index(eq))];
+}
 
 const amrex::MultiFab& NestRelax::target (Equation eq) const { return m_target[static_cast<std::size_t>(target_index(eq))]; }
 

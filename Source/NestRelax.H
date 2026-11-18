@@ -59,6 +59,36 @@
 // (Residual.cpp), and its diagonal after the time term's (implicit_rows),
 // before them.
 //
+// nest.feedback = relax_consistent (tracker row N-114, item 12; proposed in
+// Pressel's review of PR-71): the same relaxation with the weighted residual
+// of its target taken from the source as well,
+//
+//     R_c(q_c) + c (q_c - q*) - w(s) R_c(q*) = 0,
+//
+// with R_c(q*) the parent's residual at q* without this source (the defect
+// source's evaluation, NestDefect.H, made once per exchange). At q_c = q*
+// the left side is (1 - w) R_c(q*): pointwise, q* satisfies the relaxed
+// rows where w = 1 (the defect source's region chi_s: the inner box's points
+// are those with w = 1), at any factor. The coupled fixed point is not q*
+// exactly: the margin rows keep (1 - w) R_c(q*), so q_c differs from q* on
+// the margin and, much less, on the w = 1 rows that read it (Pressel review:
+// 5e-6 against relax's 1.4e-2 in a 1-D model at f = 1). R_c(q*) carries the
+// nests' pressure, so the parent's pressure under the patch mostly follows
+// the nests' (the rest is set at the margin and does not decay inward), the
+// term the plain relaxation lacks (No pressure target above). On the margin
+// (0 < w < 1) the parent blends its own equations and the defect source;
+// outside the footprint the source is 0. The added term is a constant of the
+// parent's iteration (it changes at an exchange only), so the diagonal, the
+// implicit rows and the pseudo-time iteration's amplification with q* held
+// are those of relax; the exchange loop's gain is not (it is somewhat higher
+// at small f and tends to relax's as f grows). That loop is stable with the
+// domains stepped in turn (JointRun.cpp); stepped together from the same old
+// states it can diverge at low cell Peclet numbers (Pressel review). With overlapping footprints w is the
+// larger weight. The stop window measures the change of q* only, as with
+// relax (the added term is a function of q* and of the parent's state next
+// to the footprint, which the parent's own verdict covers); a joint restart
+// rebuilds it from q* at its first exchange.
+//
 // The kernels have the form of PR-66's relaxation zone (NestFaces.H: R +=
 // c (q - q_parent), A_P += c); they are kept here, not shared, so the two
 // features do not share code paths.
@@ -89,9 +119,10 @@ public:
 
     //! The source on the parent's layout with factor f (nest.feedback_factor;
     //! aborts unless finite and > 0) and the parent's geometry (for dx); zero
-    //! and inactive until set.
+    //! and inactive until set. consistent: nest.feedback = relax_consistent
+    //! (the source also subtracts w R_c(q*); set with the residual).
     NestRelax (const amrex::BoxArray& ba, const amrex::DistributionMapping& dm, const amrex::Geometry& geom,
-               amrex::Real factor);
+               amrex::Real factor, bool consistent = false);
 
     //! q* = qstar (u, v, w, theta, k on the valid points; q* is read only
     //! where c > 0, inside the footprints) and the rates c of the regions'
@@ -100,9 +131,16 @@ public:
     //! Records the change of the target (change(): max |q*_new - q*_old|
     //! where c > 0; size the largest |u*|, |v*|, |w*| there for each velocity
     //! component, 0 for theta, the largest k* for k; first on the first set).
+    //! nest.feedback = relax only (aborts if consistent).
     void set (const State& qstar, const std::vector<DefectRegion>& regions);
+    //! nest.feedback = relax_consistent only (aborts if not consistent): set
+    //! above, and the added term w R_c(q*) from Rstar, the parent's residual at
+    //! qstar without this source, on the footprints' points (0 elsewhere, and
+    //! where w = 0 whatever Rstar holds there).
+    void set (const State& qstar, const std::vector<DefectRegion>& regions, const ResidualFields& Rstar);
 
-    //! R += c (q - q*) for u, v, w, theta and k (nothing while inactive).
+    //! R += c (q - q*) for u, v, w, theta and k, and with relax_consistent
+    //! R += c (q - q*) - w R_c(q*) (nothing while inactive).
     //! A box with no point of a footprint (c = 0 at all its points) is
     //! skipped, here and in add_to_implicit.
     void add_to_residual (const State& q, ResidualFields& R) const;
@@ -111,6 +149,9 @@ public:
 
     [[nodiscard]] bool active () const { return m_active; }
     [[nodiscard]] amrex::Real factor () const { return m_factor; }
+    [[nodiscard]] bool consistent () const { return m_consistent; }
+    //! relax_consistent: the added term w R_c(q*) of eq at the last set (aborts without consistent).
+    [[nodiscard]] const amrex::MultiFab& added (Equation eq) const;
     //! The rate c (1/s) at the points of loc (xface, yface, zface, cell).
     [[nodiscard]] const amrex::MultiFab& rate (Loc loc) const;
     //! The target q* of eq.
@@ -137,11 +178,17 @@ private:
     amrex::Real m_factor{1};
     std::array<amrex::MultiFab, 5> m_target;   //!< u, v, w, theta, tke
     std::array<amrex::MultiFab, 4> m_rate;     //!< at XF, YF, ZF, CC
+    std::array<amrex::MultiFab, 5> m_added;    //!< relax_consistent: w R_c(q*) of u, v, w, theta, tke (else undefined)
+    std::array<amrex::MultiFab, 4> m_weight;   //!< relax_consistent: w at the u, v, w and cell points, built at the first set
+    std::vector<amrex::Box> m_weight_footprints;   //!< the footprints m_weight was built for (empty: not built)
     std::vector<Nest> m_nests;
     std::vector<amrex::Box> m_footprints;   //!< the regions' footprints at the last set (cells)
     FeedbackChange m_change;
+    bool m_consistent{false};
     bool m_active{false};
     bool m_have_previous{false};
+
+    void set_target (const State& qstar, const std::vector<DefectRegion>& regions);
 };
 
 //! nest.feedback_factor's check: finite and > 0. Empty: no problem.

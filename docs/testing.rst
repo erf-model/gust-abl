@@ -654,9 +654,9 @@ AppleClang). All 19 are killed (D11 came with N-114 item 8, D12–D19 with N-114
      - :math:`\Omega`: a closed outer face divided by its zero area (no guard)
      - ``RestrictionWeightsTheOpenFaceAreas`` (crash: the FPE trap on 0 / 0)
 
-The one-line mutants of the two-way nests' relaxation source (``Source/NestRelax.cpp``), each run against
-``NestRelax.*`` on two ranks with the unit-test flags by ``tools/nest_relax_mutants.py`` (macOS arm64, AppleClang).
-All 13 are killed.
+The one-line mutants of the two-way nests' relaxation source (``Source/NestRelax.cpp``, ``relax`` and
+``relax_consistent``), each run against ``NestRelax.*`` and ``NestRelaxConsistent.*`` on two ranks with the unit-test
+flags by ``tools/nest_relax_mutants.py`` (macOS arm64, AppleClang). All 18 are killed.
 
 .. list-table::
    :header-rows: 1
@@ -667,46 +667,63 @@ All 13 are killed.
      - Failing tests
    * - X1
      - The source with the wrong sign
-     - ``BoxesOutsideEveryFootprintAreSkippedExactly``, ``DiagonalIsTheDerivativeOfTheSource``, ``FootprintOnAPeriodicSeam``, ``PeriodicSpanHasNoFaces``, ``ResidualGainsTheSourceOnTheFootprintRows``, ``SourceIsItsClosedFormOnUnevenBoxes``
+     - ``NestRelax.BoxesOutsideEveryFootprintAreSkippedExactly``, ``NestRelax.DiagonalIsTheDerivativeOfTheSource``, ``NestRelax.FootprintOnAPeriodicSeam``, ``NestRelax.PeriodicSpanHasNoFaces``, ``NestRelax.ResidualGainsTheSourceOnTheFootprintRows``, ``NestRelax.SourceIsItsClosedFormOnUnevenBoxes``
    * - X2
      - k left out of the source
-     - ``BoxesOutsideEveryFootprintAreSkippedExactly``, ``DiagonalIsTheDerivativeOfTheSource``, ``FootprintOnAPeriodicSeam``, ``PeriodicSpanHasNoFaces``, ``ResidualGainsTheSourceOnTheFootprintRows``, ``SourceIsItsClosedFormOnUnevenBoxes``
+     - ``NestRelax.BoxesOutsideEveryFootprintAreSkippedExactly``, ``NestRelax.DiagonalIsTheDerivativeOfTheSource``, ``NestRelax.FootprintOnAPeriodicSeam``, ``NestRelax.PeriodicSpanHasNoFaces``, ``NestRelax.ResidualGainsTheSourceOnTheFootprintRows``, ``NestRelax.SourceIsItsClosedFormOnUnevenBoxes``, ``NestRelaxConsistent.TargetIsAFixedPointWhereTheWeightIsOne``
    * - X3
      - A margin of three parent cells
-     - ``BoxesOutsideEveryFootprintAreSkippedExactly``, ``FootprintOnAPeriodicSeam``, ``PeriodicSpanHasNoFaces``, ``SourceIsItsClosedFormOnUnevenBoxes``
+     - ``NestRelax.BoxesOutsideEveryFootprintAreSkippedExactly``, ``NestRelax.FootprintOnAPeriodicSeam``, ``NestRelax.PeriodicSpanHasNoFaces``, ``NestRelax.SourceIsItsClosedFormOnUnevenBoxes``, ``NestRelaxConsistent.AddedTermIsTheWeightedResidualOnUnevenBoxes``
    * - X4
      - Cells measured from the face like face points
-     - ``BoxesOutsideEveryFootprintAreSkippedExactly``, ``DiagonalIsTheDerivativeOfTheSource``, ``FootprintOnAPeriodicSeam``, ``PeriodicSpanHasNoFaces``, ``ResidualGainsTheSourceOnTheFootprintRows``, ``SourceIsItsClosedFormOnUnevenBoxes``
+     - ``NestRelax.BoxesOutsideEveryFootprintAreSkippedExactly``, ``NestRelax.DiagonalIsTheDerivativeOfTheSource``, ``NestRelax.FootprintOnAPeriodicSeam``, ``NestRelax.PeriodicSpanHasNoFaces``, ``NestRelax.ResidualGainsTheSourceOnTheFootprintRows``, ``NestRelax.SourceIsItsClosedFormOnUnevenBoxes``, ``NestRelaxConsistent.AddedTermIsTheWeightedResidualOnUnevenBoxes``, ``NestRelaxConsistent.TargetIsAFixedPointWhereTheWeightIsOne``
    * - X5
      - Faces also across a periodic span
-     - ``PeriodicSpanHasNoFaces``
+     - ``NestRelax.PeriodicSpanHasNoFaces``, ``NestRelaxConsistent.TargetIsAFixedPointWhereTheWeightIsOne``
    * - X6
      - Overlapping footprints: the last one's rate, not the larger
-     - ``SourceIsItsClosedFormOnUnevenBoxes``
+     - ``NestRelax.SourceIsItsClosedFormOnUnevenBoxes``, ``NestRelaxConsistent.AddedTermIsTheWeightedResidualOnUnevenBoxes``
    * - X7
      - The rate floored at 0.1 of its full value
-     - ``BoxesOutsideEveryFootprintAreSkippedExactly``, ``ChangeOfTheTargetBetweenTwoSets``, ``FootprintOnAPeriodicSeam``, ``PeriodicSpanHasNoFaces``, ``SourceIsItsClosedFormOnUnevenBoxes``
+     - ``NestRelax.BoxesOutsideEveryFootprintAreSkippedExactly``, ``NestRelax.ChangeOfTheTargetBetweenTwoSets``, ``NestRelax.FootprintOnAPeriodicSeam``, ``NestRelax.PeriodicSpanHasNoFaces``, ``NestRelax.SourceIsItsClosedFormOnUnevenBoxes``, ``NestRelaxConsistent.AddedTermIsTheWeightedResidualOnUnevenBoxes``
    * - X8
      - :math:`U` from :math:`|u|` alone
-     - ``FootprintOnAPeriodicSeam``, ``PeriodicSpanHasNoFaces``, ``SourceIsItsClosedFormOnUnevenBoxes``
+     - ``NestRelax.FootprintOnAPeriodicSeam``, ``NestRelax.PeriodicSpanHasNoFaces``, ``NestRelax.SourceIsItsClosedFormOnUnevenBoxes``
    * - X9
      - :math:`\Delta x` the larger horizontal cell size
-     - ``FootprintOnAPeriodicSeam``, ``PeriodicSpanHasNoFaces``, ``SourceIsItsClosedFormOnUnevenBoxes``
+     - ``NestRelax.FootprintOnAPeriodicSeam``, ``NestRelax.PeriodicSpanHasNoFaces``, ``NestRelax.SourceIsItsClosedFormOnUnevenBoxes``
    * - X10
      - No diagonal
-     - ``BoxesOutsideEveryFootprintAreSkippedExactly``, ``DiagonalIsTheDerivativeOfTheSource``
+     - ``NestRelax.BoxesOutsideEveryFootprintAreSkippedExactly``, ``NestRelax.DiagonalIsTheDerivativeOfTheSource``
    * - X11
      - Only the first footprint's boxes kept by the box skip
-     - ``BoxesOutsideEveryFootprintAreSkippedExactly``, ``SourceIsItsClosedFormOnUnevenBoxes``
+     - ``NestRelax.BoxesOutsideEveryFootprintAreSkippedExactly``, ``NestRelax.SourceIsItsClosedFormOnUnevenBoxes``, ``NestRelaxConsistent.AddedTermIsTheWeightedResidualOnUnevenBoxes``
    * - X12
      - Boxes kept by the inner box, not the footprint
-     - ``BoxesOutsideEveryFootprintAreSkippedExactly``, ``DiagonalIsTheDerivativeOfTheSource``, ``FootprintOnAPeriodicSeam``, ``PeriodicSpanHasNoFaces``, ``ResidualGainsTheSourceOnTheFootprintRows``, ``SourceIsItsClosedFormOnUnevenBoxes``
+     - ``NestRelax.BoxesOutsideEveryFootprintAreSkippedExactly``, ``NestRelax.DiagonalIsTheDerivativeOfTheSource``, ``NestRelax.FootprintOnAPeriodicSeam``, ``NestRelax.PeriodicSpanHasNoFaces``, ``NestRelax.ResidualGainsTheSourceOnTheFootprintRows``, ``NestRelax.SourceIsItsClosedFormOnUnevenBoxes``, ``NestRelaxConsistent.AddedTermIsTheWeightedResidualOnUnevenBoxes``, ``NestRelaxConsistent.TargetIsAFixedPointWhereTheWeightIsOne``
    * - X13
      - The source skips the boxes that touch a footprint
-     - ``BoxesOutsideEveryFootprintAreSkippedExactly``, ``DiagonalIsTheDerivativeOfTheSource``, ``FootprintOnAPeriodicSeam``, ``PeriodicSpanHasNoFaces``, ``ResidualGainsTheSourceOnTheFootprintRows``, ``SourceIsItsClosedFormOnUnevenBoxes``
+     - ``NestRelax.BoxesOutsideEveryFootprintAreSkippedExactly``, ``NestRelax.DiagonalIsTheDerivativeOfTheSource``, ``NestRelax.FootprintOnAPeriodicSeam``, ``NestRelax.PeriodicSpanHasNoFaces``, ``NestRelax.ResidualGainsTheSourceOnTheFootprintRows``, ``NestRelax.SourceIsItsClosedFormOnUnevenBoxes``
+   * - C1
+     - The added term with the wrong sign
+     - ``NestRelaxConsistent.TargetIsAFixedPointWhereTheWeightIsOne``
+   * - C2
+     - The added term left out
+     - ``NestRelaxConsistent.TargetIsAFixedPointWhereTheWeightIsOne``
+   * - C3
+     - The residual not weighted
+     - ``NestRelaxConsistent.AddedTermIsTheWeightedResidualOnUnevenBoxes``, ``NestRelaxConsistent.TargetIsAFixedPointWhereTheWeightIsOne``
+   * - C4
+     - The residual weighted by w squared
+     - ``NestRelaxConsistent.AddedTermIsTheWeightedResidualOnUnevenBoxes``, ``NestRelaxConsistent.TargetIsAFixedPointWhereTheWeightIsOne``
+   * - C5
+     - The weight from a footprint one cell wider
+     - ``NestRelaxConsistent.AddedTermIsTheWeightedResidualOnUnevenBoxes``, ``NestRelaxConsistent.TargetIsAFixedPointWhereTheWeightIsOne``
 
 By hand against ``rt_nests_relax``: k left out of the source (X2 in the application) leaves the nest's u error at
 :math:`f = 16` at 3.26e-2 against 3.27e-2, so the test does not detect it; the unit tests do.
+By hand against ``rt_nests_relax_consistent``: with the added term left out (C2) the factor-1 run is the
+``relax`` run (160 exchanges, outer minus nest 1.000 of ``relax``'s), and the test fails.
 
 The one-line mutants of the two-way nests' injection (``Source/NestInject.cpp``, ``Source/Simplec.cpp``,
 ``Source/Poisson.cpp``), each run against ``NestInject.*`` and ``MaskedPoisson.*`` on two ranks with the unit-test flags
@@ -1997,6 +2014,15 @@ Current tests
        factor, and at 16 is at most 0.35 of its value at 1 (measured 0.19); at factor 1 the nest's u RMS against the
        25 m run is at most 0.5 of the one-way one (0.41) and the outer domain's outside the footprint at most 0.6
        (0.35). About 2 minutes on an Apple M-series laptop, most of it the factor-16 run (508 exchanges).
+   * - ``rt_nests_relax_consistent``
+     - Pressure-consistent relaxation (``check_nests_two_way.py --relax-consistent``; tracker N-114, item 12,
+       ``nest.feedback = relax_consistent``), old against new: the ``rt_nests_relax`` hill with the nest ``hill``, the
+       defect run and ``relax`` at factor 1 beside ``relax_consistent`` at factors 1 and 4, on two ranks with the
+       GPU-CI flags. The start line ends ``with the weighted residual of the target``; at factor 1 the outer domain
+       minus the restricted nest (the log's last RMS of u) is at most 0.25 of ``relax``'s (measured 0.164), and falls
+       from factor 1 to 4; at factor 1 the nest's u RMS against the 25 m run is at most 0.6 of the one-way one
+       (0.515) and the outer domain's outside the footprint at most 0.45 (0.361). With the added term left out
+       (mutant C2) the first bound fails (ratio 1.0).
    * - ``rt_nests_feedback_flux``
      - Conservative nest faces (``Tests/Canonical_RANS/Nests_Two_Way``, ``check_nests_two_way.py --feedback-flux``;
        N-114 item 1, ``nest.feedback_flux``), old against new: the ``rt_nests_two_way`` hill, on two ranks with the
@@ -2047,11 +2073,16 @@ Current tests
      - ``nest.feedback_factor = 0``; ``= nan``; ``= 2`` with ``nest.feedback = defect``; ``relax`` with a Rayleigh
        layer on u, v and k; ``= 2`` with ``nest.feedback = inject`` (above 1): each stops the run before the outer
        domain starts, naming the key.
+   * - ``abort_nests_relax_consistent_feedback_flux``, ``_factor``
+     - ``nest.feedback = relax_consistent`` with ``nest.feedback_flux = nest``; with ``nest.feedback_factor = -1``:
+       each stops the run before the outer domain starts, naming the key, and not as an unknown ``nest.feedback``
+       value.
    * - ``abort_nests_inject_mlmg``, ``_periodic``, ``_feedback_flux``
      - ``nest.feedback = inject`` with ``solver.poisson_backend = mlmg``; with a nest across the periodic y of the
        outer deck; with ``nest.feedback_flux = nest`` (the conservative faces are the defect source's): each stops
        the run before the outer domain starts, naming the key.
-   * - ``rt_nests_joint_restart``, ``rt_nests_joint_restart_relax``, ``rt_nests_joint_restart_inject``
+   * - ``rt_nests_joint_restart``, ``rt_nests_joint_restart_relax``, ``rt_nests_joint_restart_relax_consistent``,
+       ``rt_nests_joint_restart_inject``
      - A joint run stopped after 150 exchanges (``steady.max_iterations``) and restarted from the joint record its
        message names (``Tests/Canonical_RANS/Nests_Two_Way/check_joint_restart.py``): the record has the feedback,
        150 exchanges and the nests in order; the restart logs ``restarted after exchange 150``, is steady after the
@@ -2059,7 +2090,8 @@ Current tests
        checkpoint of every domain (state, node heights, closure history, nest faces, joint record; not the driver
        record's wall times) are byte for byte the straight run's. The nests ``crest`` and ``lee`` with the defect
        source on 3 ranks (254 exchanges); the nest ``hill`` with the relaxation on 2 ranks, stopped after 140 (160),
-       and with the injection on 2 ranks, stopped after 150 (344). With the full injection after the joint loop also
+       with ``relax_consistent`` on 2 ranks, stopped after 140 (169; the added term is rebuilt from :math:`q^*`), and
+       with the injection on 2 ranks, stopped after 150 (344). With the full injection after the joint loop also
        applied to a run stopped before steady, the inject restart is steady one exchange early, and fails.
        Mutants: with AMReX's default rank order for a joint nest's boxes (which follows each rank's memory in use)
        the relax test fails (the nest's plotfile differs; the 3-rank defect test passes by chance); without the
@@ -3658,6 +3690,19 @@ GoogleTest suite
        positive gains :math:`c(q - q^*)` and :math:`c` on the diagonal, every other point and every off-diagonal
        coefficient keeps its value bit for bit; on 1, 2 and 4 ranks. Mutants X11 to X13 fail it. It checks that no
        box with a footprint point is skipped; the cost saving itself is not visible in values.
+   * - ``NestRelaxConsistent.AddedTermIsTheWeightedResidualOnUnevenBoxes`` (UT-12.1, tracker N-114, item 12)
+     - A periodic hill of 16 × 2 × 12 cells on four boxes, a footprint over cells 3 to 12 in x: the term
+       ``NestRelax`` stores for each of u, v, w, :math:`\theta` and k is :math:`w R_c(q^*)` with :math:`R_c(q^*)`
+       from ``NestDefect``'s evaluation, to a tolerance against :math:`\max|R_c(q^*)|` reduced over ranks; zero on
+       the footprint's faces and outside it; points on the margin and where :math:`w = 1` both present. 1, 2 and
+       4 ranks. Mutants C3, C4 and C5 fail it (C1 changes the sign where the term is used, not the stored term).
+   * - ``NestRelaxConsistent.TargetIsAFixedPointWhereTheWeightIsOne`` (UT-12.2)
+     - The same hill: the outer residual with the source at :math:`q = q^*` is zero where :math:`w = 1` and
+       :math:`(1 - w) R_c(q^*)` on the margin; with ``relax`` it is :math:`R_c(q^*)`, not small there (so the test is
+       not vacuous); continuity is unchanged bit for bit. Mutants C1 to C5 fail it.
+   * - ``NestRelaxConsistent.ImplicitRowsAreThoseOfRelax`` (UT-12.3)
+     - The implicit coefficients with ``relax_consistent`` are bit for bit those of ``relax``. A guard: no current
+       mutant changes them.
    * - ``JointRun.LogNamesAreTruncatedToTheColumnWidth`` (tracker N-114, item 14, beyond the plan)
      - A domain name of up to 24 characters is logged as it is; a longer one as its first 12 and last 9 characters
        around ``...``, so two names differing in a suffix of up to 9 characters stay apart, and the per-domain column

@@ -392,6 +392,21 @@ CASES = [
      "nest.feedback = defect\nnest.feedback_flux = fine\n", ["E nest.feedback_flux values"], []),
     ("nests_feedback_flux_with_relax", "inflow", "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 1200 900\n"
      "nest.feedback = relax\nnest.feedback_flux = nest\n", ["E nest.feedback_flux nests"], []),
+    # nest.feedback = relax_consistent (tracker row N-114, item 12): the factor and the refusals of relax.
+    ("nests_relax_consistent_ok", "inflow", "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 1200 900\n"
+     "nest.feedback = relax_consistent\nnest.feedback_factor = 0.5\n", [], ["E *"]),
+    ("nests_relax_consistent_factor_zero", "inflow", "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 1200 900\n"
+     "nest.feedback = relax_consistent\nnest.feedback_factor = 0\n", ["E nest.feedback_factor values"],
+     ["E nest.feedback values"]),
+    ("nests_relax_consistent_feedback_flux", "inflow", "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 1200 900\n"
+     "nest.feedback = relax_consistent\nnest.feedback_flux = nest\n", ["E nest.feedback_flux nests"],
+     ["E nest.feedback values"]),
+    ("nests_relax_consistent_newton", "inflow", "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 1200 900\n"
+     "nest.feedback = relax_consistent\nsteady.stage = simplec_newton\n", ["E nest.feedback nests"],
+     ["E nest.feedback values"]),
+    ("nests_joint_restart_relax_consistent", "inflow", NEST_A + "nest.feedback = relax_consistent\nio.restart = chk00010\n"
+     "steady.max_iterations = 10\n", [], ["E nest.feedback", "E nest.names", "E steady.max_iterations", "E io.restart nests"],
+     {"files": {"chk00010/Header": "x\n", "chk00010/Joint": JOINT % ("relax_consistent", 4, "a"), "chk_a/Header": "x\n"}}),
     # A joint restart (io.restart with nest.feedback): the checkpoint's joint record is read as the run reads it; a
     # checkpoint without one restarts the outer domain alone. (init.first_guess of the base is reported on io.restart.)
     ("nests_joint_restart_ok", "inflow", NEST_A + "nest.feedback = defect\nio.restart = chk00010\n"

@@ -48,8 +48,8 @@ bool on_all_ranks (bool ok)
 
 TEST(JointRecord, RoundTripIsExactOnEveryRank)
 {
-    // Each joint feedback (nest.feedback = defect, relax, inject).
-    for (const char* fb : {"defect", "relax", "inject"}) {
+    // Each joint feedback (nest.feedback = defect, relax, relax_consistent, inject).
+    for (const char* fb : {"defect", "relax", "relax_consistent", "inject"}) {
         const ScopedDir d(std::string("ut_joint_record_") + fb);
         gust::JointRecord w;
         w.feedback = fb;

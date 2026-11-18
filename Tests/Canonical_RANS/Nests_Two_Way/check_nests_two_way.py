@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Two-way nesting (nest.feedback = defect, relax or inject) on a steep hill against the uniform fine run.
+"""Two-way nesting (nest.feedback = defect, relax, relax_consistent or inject) on a steep hill against the uniform fine run.
 
-    check_nests_two_way.py [--relax | --inject | --feedback-flux] -- COMMAND [ARGS ...]
+    check_nests_two_way.py [--relax | --relax-consistent | --inject | --feedback-flux] -- COMMAND [ARGS ...]
 
 COMMAND runs the outer deck (an argument ending in inputs_outer); the script
 runs, each in its own directory under the current one:
@@ -64,6 +64,20 @@ f. against the reference, the nest and outer errors (as in c.): at most
    INJECT_NEST_RATIO and INJECT_OUTER_RATIO of the one-way ones. The defect
    run's are printed beside them (README.md).
 
+With --relax-consistent (tracker row N-114, item 12, nest.feedback =
+relax_consistent) the script runs ref/ and joint/ as above, then relax1/
+(nest.feedback = relax at nest.feedback_factor = 1) and rc1/ and rc4/
+(relax_consistent at factors 1 and 4). Checked:
+a. as above for each run (its own start line, which for relax_consistent
+   ends with "with the weighted residual of the target");
+h. the last logged RMS of u of the parent minus the restricted nest under the
+   nest: at factor 1 relax_consistent's is at most RC_DIFF of relax's, and it
+   falls from factor 1 to 4;
+i. against the reference, the nest and outer errors (as in c.) of rc1/: at
+   most RC_NEST_RATIO and RC_OUTER_RATIO of the one-way ones. Those of rc4/
+   are printed, not checked: they grow with the factor, as with relax
+   (README.md, with the defect and relax runs' beside them).
+
 The exit code is the verdict.
 """
 import glob
@@ -107,6 +121,10 @@ RELAX_OUTER_RATIO = 0.6      # factor 1: outer error outside the footprint over 
 INJECT_FACTOR = 0.5          # the default nest.feedback_factor with inject
 INJECT_NEST_RATIO = 0.55     # nest error over the one-way one (u), measured 0.513
 INJECT_OUTER_RATIO = 0.42    # outer error outside the footprint over the one-way one (u), measured 0.377
+RC_FACTORS = (1, 4)          # relax_consistent runs (--relax-consistent)
+RC_DIFF = 0.25               # factor 1: parent - restricted nest, u RMS, relax_consistent over relax; measured 0.164
+RC_NEST_RATIO = 0.6          # factor 1: nest error over the one-way one (u), measured 0.515
+RC_OUTER_RATIO = 0.45        # factor 1: outer error outside the footprint over the one-way one (u), measured 0.361
 
 
 MONITOR_REL_TOL = 1.0e-3     # steady.monitor_rel_tol (default; the decks do not set it)
@@ -152,7 +170,8 @@ def check(log, where, foots, r, nest_ratio, outer_ratio, factor=None, one_way=Fa
         start, line = r"nest\.feedback = defect", r"max \|S\| u "
     else:
         start = r"nest\.feedback = %s, nest\.feedback_factor = %g" % (feedback, factor)
-        line = r"outer - nest under the nests: " if feedback == "relax" else r"outer - injected nest under the nests: "
+        line = (r"outer - injected nest under the nests: " if feedback == "inject"
+                else r"outer - nest under the nests: ")
     for pat in (r"^gust: joint run \(%s\): the outer domain and %d nest" % (start, len(foots)),
                 r"^gust: joint +1: " + line, r"^gust: joint run: steady after \d+ exchanges"):
         if not re.search(pat, log, re.M):
@@ -241,14 +260,49 @@ def feedback_flux(cmd, r):
     return 0
 
 
+def relax_consistent(cmd, r, n_def, e_def):
+    """--relax-consistent: h. and i. of the docstring."""
+    print(f"check_nests_two_way: defect: {n_def} exchanges, u RMS against the 25 m run: nest {e_def['hill']:.4e}, "
+          f"outer {e_def['outer']:.4e}")
+    inf = float("inf")
+    log = run(cmd + NEST + ["nest.feedback=relax", "nest.feedback_factor=1"], "relax1")
+    n, e = check(log, "relax1", {"hill": FOOT}, r, inf, inf, factor=1)
+    d_relax = last_difference(log, "relax1")
+    print(f"check_nests_two_way: relax factor 1: {n} exchanges, parent - restricted nest u RMS {d_relax:.4e}; "
+          f"u RMS against the 25 m run: nest {e['hill']:.4e}, outer {e['outer']:.4e}")
+    diff = []
+    for f in RC_FACTORS:
+        where = f"rc{f}"
+        log = run(cmd + NEST + ["nest.feedback=relax_consistent", f"nest.feedback_factor={f}"], where)
+        if not re.search(r"^gust: joint run \(nest\.feedback = relax_consistent, .*with the weighted residual of "
+                         r"the target$", log, re.M):
+            fail(f"{where}: the start line does not name the weighted residual of the target")
+        bound = f == 1
+        n, e = check(log, where, {"hill": FOOT}, r, RC_NEST_RATIO if bound else inf,
+                     RC_OUTER_RATIO if bound else inf, factor=f, feedback="relax_consistent")
+        diff.append(last_difference(log, where))
+        print(f"check_nests_two_way: relax_consistent factor {f}: {n} exchanges, parent - restricted nest u RMS "
+              f"{diff[-1]:.4e} ({diff[-1] / d_relax:.3f} of relax at 1); u RMS against the 25 m run: "
+              f"nest {e['hill']:.4e}, outer {e['outer']:.4e}")
+    # h.
+    if not diff[0] <= RC_DIFF * d_relax:
+        fail(f"at factor 1 the parent - restricted nest difference is {diff[0] / d_relax:.3f} of relax's, "
+             f"not at most {RC_DIFF}")
+    if not diff[1] < diff[0]:
+        fail(f"the parent - restricted nest difference does not fall from factor 1 to 4: {diff}")
+    print("check_nests_two_way: passed")
+    return 0
+
+
 def main():
     if "--" not in sys.argv:
         print(__doc__)
         return 2
     opts = sys.argv[1:sys.argv.index("--")]
     relax, inject, flux = "--relax" in opts, "--inject" in opts, "--feedback-flux" in opts
-    if relax + inject + flux > 1:
-        fail("--relax, --inject and --feedback-flux are separate runs")
+    consistent = "--relax-consistent" in opts
+    if relax + inject + flux + consistent > 1:
+        fail("--relax, --relax-consistent, --inject and --feedback-flux are separate runs")
     cmd = sys.argv[sys.argv.index("--") + 1:]
     deck = next((a for a in cmd if a.endswith("inputs_outer")), None)
     if deck is None:
@@ -285,6 +339,8 @@ def main():
               f"nest {e['hill']:.4e}, outer {e['outer']:.4e}")
         print("check_nests_two_way: passed")
         return 0
+    if consistent:
+        return relax_consistent(cmd, r, n_def, e_def)
     if relax:
         diff = []
         print(f"check_nests_two_way: defect: {n_def} exchanges, u RMS against the 25 m run: nest {e_def['hill']:.4e}, "

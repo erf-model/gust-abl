@@ -3,7 +3,7 @@
 
     columbia_gorge.py prepare [--work DIR]
     columbia_gorge.py run --gust GUST [--work DIR] [--mpi "mpiexec -n 4"] [--relax F ...] [--inject F ...]
-                          [--relax-only]
+                          [--relax-consistent F ...] [--relax-only]
     columbia_gorge.py compare [--work DIR]
 
 prepare: fetches the terrain (tools/fetch_terrain.py, SRTM 1 arc-second
@@ -18,7 +18,9 @@ run:     runs, one after another in DIR/gorge_outer: the uniform 100 m
          defect, jt_*); with --relax F ..., then one joint run per factor
          with nest.feedback = relax, nest.feedback_factor = F (rx<F>_*);
          with --inject F ..., one joint run per factor with nest.feedback =
-         inject, nest.feedback_factor = F (ij<F>_*); --relax-only skips
+         inject, nest.feedback_factor = F (ij<F>_*); with
+         --relax-consistent F ..., one per factor with nest.feedback =
+         relax_consistent (rc<F>_*); --relax-only skips
          the first three (already run).
 compare: the RMS of u, v, w and k of each run against the reference: over
          the nest, over the outer cells outside the nest's footprint, over
@@ -93,25 +95,26 @@ def prepare(work):
     print(f"columbia_gorge: wrote {deck} and inputs_ref")
 
 
-def run(work, gust, mpi, relax=(), relax_only=False, inject=()):
+def run(work, gust, mpi, relax=(), relax_only=False, inject=(), consistent=()):
     case = os.path.join(work, "gorge_outer")
     launch = mpi.split() + [os.path.abspath(gust)]
     if not relax_only:
         sh(launch + ["inputs_ref", "io.plot_file=ref_plt", "io.chk_file=ref_chk"], case, "ref.log")
         sh(launch + ["inputs", *NEST, "nest.feedback=none", "io.plot_file=ow_plt", "io.chk_file=ow_chk"], case, "ow.log")
         sh(launch + ["inputs", *NEST, "nest.feedback=defect", "io.plot_file=jt_plt", "io.chk_file=jt_chk"], case, "jt.log")
-    for feedback, prefix, factors in (("relax", "rx", relax), ("inject", "ij", inject)):
+    for feedback, prefix, factors in (("relax", "rx", relax), ("inject", "ij", inject),
+                                      ("relax_consistent", "rc", consistent)):
         for f in factors:
             tag = f"{prefix}{f:g}"
             sh(launch + ["inputs", *NEST, f"nest.feedback={feedback}", f"nest.feedback_factor={f:g}",
                          f"io.plot_file={tag}_plt", f"io.chk_file={tag}_chk"], case, tag + ".log")
 
 
-FEEDBACK = {"rx": "relax", "ij": "inject"}
+FEEDBACK = {"rx": "relax", "ij": "inject", "rc": "relax_consistent"}
 
 
 def relax_runs(case):
-    """The tags of the relax and inject runs in case (rx<F>, then ij<F>), by factor."""
+    """The tags of the relax, inject and relax_consistent runs in case (rx<F>, ij<F>, then rc<F>), by factor."""
     out = []
     for prefix in FEEDBACK:
         tags = {os.path.basename(p).split("_plt")[0] for p in glob.glob(os.path.join(case, prefix + "*_plt_rg[0-9]*"))}
@@ -229,8 +232,10 @@ def main():
                     help="run: also the joint run with nest.feedback = relax at each nest.feedback_factor F")
     ap.add_argument("--inject", type=float, nargs="+", default=[], metavar="F",
                     help="run: also the joint run with nest.feedback = inject at each nest.feedback_factor F")
+    ap.add_argument("--relax-consistent", type=float, nargs="+", default=[], metavar="F",
+                    help="run: also the joint run with nest.feedback = relax_consistent at each nest.feedback_factor F")
     ap.add_argument("--relax-only", action="store_true",
-                    help="run: only the relax and inject runs (the others already ran)")
+                    help="run: only the relax, inject and relax_consistent runs (the others already ran)")
     a = ap.parse_args()
     work = os.path.abspath(a.work)
     if a.step == "prepare":
@@ -238,9 +243,9 @@ def main():
     elif a.step == "run":
         if not a.gust:
             ap.error("run needs --gust")
-        if a.relax_only and not (a.relax or a.inject):
-            ap.error("--relax-only needs --relax or --inject")
-        run(work, a.gust, a.mpi, a.relax, a.relax_only, a.inject)
+        if a.relax_only and not (a.relax or a.inject or a.relax_consistent):
+            ap.error("--relax-only needs --relax, --inject or --relax-consistent")
+        run(work, a.gust, a.mpi, a.relax, a.relax_only, a.inject, a.relax_consistent)
     else:
         compare(work, a.plot)
     return 0

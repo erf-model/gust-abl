@@ -21,7 +21,9 @@ part of the recommended setting: on the Ishihara and Zhou rough ridge it stops a
 With `--relax F ...`, `run` then makes one joint run per factor with feedback by relaxation (PR-71,
 `nest.feedback = relax`, `nest.feedback_factor = F`; `docs/boundary_conditions.rst`, Two-way nests by relaxation),
 and `compare` adds them to its tables. `--inject F ...` does the same with `nest.feedback = inject` (tracker row
-N-114, item 2; `docs/boundary_conditions.rst`, Two-way nests by injection); the two options can be given together.
+N-114, item 2; `docs/boundary_conditions.rst`, Two-way nests by injection), and `--relax-consistent F ...` with
+`nest.feedback = relax_consistent` (tracker row N-114, item 12; `docs/boundary_conditions.rst`, Pressure-consistent
+relaxation); the options can be given together.
 
 `compare` gives the RMS difference of each run from the reference: over the nest, over the outer cells outside the
 nest's footprint, over the footprint, and downstream (east) of the nest. It then counts the cells in the lowest
@@ -34,7 +36,7 @@ reference's.
 | File | Role |
 |---|---|
 | `case.yaml` | The case for `tools/make_gust_case.py`: 19.2 km x 16 km centred on 45.70 N, 120.80 W, top 3000 m, 200 m cells, first layer 10 m, 37 layers; wind 8 m/s at 10 m from the west (270 degrees), z0 = 0.05 m, neutral; a 1000 m flat border and a 2000 m slope to the terrain on every side. |
-| `columbia_gorge.py` | `prepare` (fetch the terrain, write the decks), `run` (the three runs; with `--relax F ...` or `--inject F ...` also the relax or inject runs, with `--relax-only` only those), `compare` (the tables below and, with `--plot`, the map). |
+| `columbia_gorge.py` | `prepare` (fetch the terrain, write the decks), `run` (the three runs; with `--relax F ...` or `--inject F ...` also the relax or inject runs, with `--relax-only` only those), `compare` (the tables below and, with `--plot`, the map). `--relax-consistent F ...` adds relax_consistent runs. |
 
 The deck written by `prepare`: 96 x 80 x 37 cells; inflow on xlo, outflow on xhi, slip walls on y; a Rayleigh layer
 on w above 2100 m (as every nest has, so the outer domain and the nest are damped alike); three hierarchy levels with

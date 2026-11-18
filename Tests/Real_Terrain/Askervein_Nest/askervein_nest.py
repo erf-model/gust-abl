@@ -5,8 +5,8 @@
     askervein_nest.py nest   NAME PARENT D   -- COMMAND [ARGS ...]
     askervein_nest.py compare PATCH REFERENCE [PARENT] [--ratio R] [--rms X] [--below PATCH2 ...]
     askervein_nest.py study  -- MPIEXEC ... GUST [-- ARGS ...]
-    askervein_nest.py two_way [relax] [inject] [keep] -- COMMAND [ARGS ...]
-    askervein_nest.py two_way paper [relax] [inject] [keep] -- MPIEXEC ... GUST [ARGS ...]
+    askervein_nest.py two_way [relax] [inject] [relax_consistent] [keep] -- COMMAND [ARGS ...]
+    askervein_nest.py two_way paper [relax] [inject] [relax_consistent] [keep] -- MPIEXEC ... GUST [ARGS ...]
 
 run: the whole 6 km domain (inputs_askervein_domain) on N x N x 18 cells (150:
 40 m, the parent; 300: 20 m, the reference) to the steady verdict. The last
@@ -44,9 +44,10 @@ reference's, and the RMS of the speed-up on lines A and AA against the
 observations (digitized from Wagenbrenner et al. 2019, Fig. 8, in
 Tests/Real_Terrain/WindNinja2019/wagenbrenner2019_digitized.csv; speed-up
 relative to the inflow's 10 m speed). No verdict: the numbers are those of
-docs/boundary_conditions.rst. "relax" and "inject" add the joint runs with
-nest.feedback = relax (rx_*) and inject (ij_*) at their default
-nest.feedback_factor (1 and 0.5), compared with the others; "keep" skips a
+docs/boundary_conditions.rst. "relax", "inject" and "relax_consistent" add
+the joint runs with nest.feedback = relax (rx_*), inject (ij_*) and
+relax_consistent (rc_*) at their default nest.feedback_factor (1, 0.5 and 1),
+compared with the others; "keep" skips a
 run whose plotfile is already in the working directory. With "paper"
 COMMAND names no deck: the runs
 take a copy of Tests/Real_Terrain/WindNinja2019/inputs_askervein without the
@@ -271,7 +272,7 @@ def two_way(cmd, paper=False, extra=(), keep=False):
     runs = [("ref", [f"mesh.n_cell={n_ref} {n_ref} {nz}"]),
             ("ow", [f"mesh.n_cell={n_out} {n_out} {nz}"] + nest + ["nest.feedback=none"]),
             ("jt", [f"mesh.n_cell={n_out} {n_out} {nz}"] + nest + ["nest.feedback=defect"])]
-    joint = {"rx": "relax", "ij": "inject"}
+    joint = {"rx": "relax", "ij": "inject", "rc": "relax_consistent"}
     runs += [(k, [f"mesh.n_cell={n_out} {n_out} {nz}"] + nest + [f"nest.feedback={v}"])
              for k, v in joint.items() if v in extra]
     for name, args in runs:
@@ -329,7 +330,7 @@ def two_way(cmd, paper=False, extra=(), keep=False):
     outer = np.ones(Rc.shape[:2], bool)
     outer[i0:i0 + ni, i0:i0 + ni] = False
     rows = []
-    label = {"ow": "one-way", "jt": "joint", "rx": "relax", "ij": "inject"}
+    label = {"ow": "one-way", "jt": "joint", "rx": "relax", "ij": "inject", "rc": "relax_consistent"}
     for t in tags:
         n_, o_ = N[t], O[t]
         rows.append((label[t], "nest",
@@ -399,9 +400,9 @@ def main(argv):
         run_domain(args[1], int(args[2]), cmd)
     elif args[0] == "nest" and len(args) == 4:
         run_nest(args[1], args[2], float(args[3]), cmd)
-    elif args[0] == "two_way" and set(args[1:]) <= {"paper", "relax", "inject", "keep"} \
+    elif args[0] == "two_way" and set(args[1:]) <= {"paper", "relax", "inject", "relax_consistent", "keep"} \
             and len(set(args[1:])) == len(args) - 1:
-        return two_way(cmd, paper="paper" in args, extra=[a for a in args if a in ("relax", "inject")],
+        return two_way(cmd, paper="paper" in args, extra=[a for a in args if a in ("relax", "inject", "relax_consistent")],
                        keep="keep" in args)
     elif args[0] == "study" and len(args) == 1:
         return study(cmd)

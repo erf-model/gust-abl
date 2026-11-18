@@ -6,19 +6,20 @@ check_nests, or of Source/App.cpp before the outer domain starts):
 - nest.names: a name that is not an identifier (a letter, then letters,
   digits or '_') or is 'names', 'feedback', 'feedback_factor',
   'feedback_flux' or 'damping'; a name given twice;
-- nest.feedback other than none, defect, relax or inject, or without
-  nest.names; nest.feedback_factor without nest.feedback = relax or inject
-  (its range is in `values`; with inject also <= 1); nest.feedback_flux
-  without nest.feedback = defect (its values are in `values`); nest.damping
-  without nest.names, or = outer without a Rayleigh layer on u, v or tke (its
-  values are in `values`); with defect, relax or inject: steady.stage =
-  simplec_newton, bc.rayleigh_fields with u, v or tke (unless nest.damping =
-  outer), an odd mesh.max_grid_size that splits a nest into boxes
+- nest.feedback other than none, defect, relax, relax_consistent or inject,
+  or without nest.names; nest.feedback_factor without nest.feedback = relax,
+  relax_consistent or inject (its range is in `values`; with inject also
+  <= 1); nest.feedback_flux without nest.feedback = defect (its values are in
+  `values`); nest.damping without nest.names, or = outer without a Rayleigh
+  layer on u, v or tke (its values are in `values`); with defect, relax,
+  relax_consistent or inject: steady.stage = simplec_newton,
+  bc.rayleigh_fields with u, v or tke (unless nest.damping = outer), an odd
+  mesh.max_grid_size that splits a nest into boxes
   with an odd number of cells in x or y, or a nest spanning fewer than
   2 DEFECT_MARGIN + 1 outer cells in a non-periodic x or y; with inject:
   solver.poisson_backend = mlmg, or a nest across a periodic x or y
   (Source/App.cpp);
-- with defect, relax or inject and io.restart, the checkpoint's joint record (Joint;
+- with defect, relax, relax_consistent or inject and io.restart, the checkpoint's joint record (Joint;
   Source/JointRecord.cpp, Source/Run.cpp): one that is not GUST_JOINT 1 or
   2 or cannot be read (io.restart), other nests or another order than nest.names
   (nest.names), steady.max_iterations at or below its exchanges
@@ -39,7 +40,7 @@ check_nests, or of Source/App.cpp before the outer domain starts):
 
 The value counts (two values per corner) are in `values`.
 
-WARNING: nest.feedback = defect, relax or inject with bc.sponge_width > 0 (the nests have no
+WARNING: nest.feedback = defect, relax, relax_consistent or inject with bc.sponge_width > 0 (the nests have no
 side sponge; GUST prints a note).
 
 INFO: each nest's cells (refinement 2 2 1).
@@ -80,7 +81,7 @@ def read_joint_record(text):
         version = 0
     if not 1 <= version <= JOINT_VERSION:
         return "expected GUST_JOINT 1 or %d" % JOINT_VERSION
-    if len(head) < 4 or head[2] != "feedback" or head[3] not in ("defect", "relax", "inject"):
+    if len(head) < 4 or head[2] != "feedback" or head[3] not in ("defect", "relax", "relax_consistent", "inject"):
         return "the feedback line"
     try:
         exchanges = int(head[5]) if len(head) >= 6 and head[4] == "exchanges" else 0
@@ -205,14 +206,15 @@ class NestsChecker(Checker):
         return True
 
     def _feedback(self, names, outer_damping=False):
-        """nest.feedback (Source/Nests.cpp, Source/App.cpp); the value for a joint run (defect, relax or inject), else
+        """nest.feedback (Source/Nests.cpp, Source/App.cpp); the value for a joint run (defect, relax,
+        relax_consistent or inject), else
         None."""
         c = self.ctx
         fb = c.s("nest.feedback") if self.given("nest.feedback") else "none"
-        if self.given("nest.feedback_factor") and fb not in ("relax", "inject"):
+        if self.given("nest.feedback_factor") and fb not in ("relax", "relax_consistent", "inject"):
             self.error("nest.feedback_factor", "GUST stops: nest.feedback_factor has no effect without nest.feedback "
-                                               "= relax or inject.",
-                       "Remove nest.feedback_factor, or set nest.feedback = relax or inject.")
+                                               "= relax, relax_consistent or inject.",
+                       "Remove nest.feedback_factor, or set nest.feedback = relax, relax_consistent or inject.")
         elif self.given("nest.feedback_factor") and fb == "inject":
             f = c.r("nest.feedback_factor")
             if f > 1:   # > 0 is values' rule
@@ -224,9 +226,10 @@ class NestsChecker(Checker):
                                              "= defect.", "Remove nest.feedback_flux, or set nest.feedback = defect.")
         if not self.given("nest.feedback"):
             return None
-        if fb not in ("none", "defect", "relax", "inject"):
-            self.error("nest.feedback", "GUST stops: nest.feedback = '%s' is not none, defect, relax or inject." % fb,
-                       "Set nest.feedback = none, defect, relax or inject.")
+        if fb not in ("none", "defect", "relax", "relax_consistent", "inject"):
+            self.error("nest.feedback", "GUST stops: nest.feedback = '%s' is not none, defect, relax, relax_consistent "
+                                        "or inject." % fb, "Set nest.feedback = none, defect, relax, relax_consistent "
+                                                           "or inject.")
             return None
         if not names:
             self.error("nest.feedback", "GUST stops: nest.feedback = %s needs nest.names." % fb,
@@ -288,7 +291,8 @@ class NestsChecker(Checker):
                        "Run from the directory the joint run started in.")
 
     def _even_boxes(self, n, span, fb):
-        """With defect, relax or inject: at least 2 DEFECT_MARGIN + 1 outer cells in each non-periodic direction, and every box of the
+        """With defect, relax, relax_consistent or inject: at least 2 DEFECT_MARGIN + 1 outer cells in each non-periodic
+        direction, and every box of the
         nest an even number of cells in x and y (Source/App.cpp)."""
         c = self.ctx
         for d, ax in enumerate("xy"):
@@ -297,7 +301,7 @@ class NestsChecker(Checker):
             if periodic and fb == "inject":
                 self.error("nest.feedback", "GUST stops: nest.feedback = inject: nest.%s spans the periodic outer "
                                             "direction %s; the injection needs a nest with faces in x and y." % (n, ax),
-                           "Keep the nest off one outer face in %s, or use nest.feedback = defect or relax." % ax)
+                           "Keep the nest off one outer face in %s, or use nest.feedback = defect, relax or relax_consistent." % ax)
             if not periodic and cells < 2 * DEFECT_MARGIN + 1:
                 self.error("nest.feedback", "GUST stops: nest.feedback = %s: nest.%s spans %d outer cells in %s; it "
                                             "needs at least %d (the feedback keeps %d cells from each face)."

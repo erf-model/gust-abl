@@ -3,7 +3,7 @@
 
 // One domain's run (App.cpp run_domain) and the role it runs in: the outer
 // domain, or a nest of it (Nests.H). run() (Run.cpp) runs the outer domain,
-// then each nest; with nest.feedback = defect, relax or inject, then the outer domain and the
+// then each nest; with nest.feedback = defect, relax, relax_consistent or inject, then the outer domain and the
 // nests together (JointRun.H).
 
 #include "Nests.H"
@@ -28,7 +28,7 @@ class NestParent;
 struct ResidualFields;
 struct State;
 
-//! One domain of the joint run (nest.feedback = defect, relax or inject, JointRun.H), handed
+//! One domain of the joint run (nest.feedback = defect, relax, relax_consistent or inject, JointRun.H), handed
 //! out by run_domain once its one-way run is done; its pointers and functions
 //! are valid while the hook that receives it runs.
 struct JointMember
@@ -47,7 +47,8 @@ struct JointMember
     std::function<void(State&)> fill_ghosts;
     //! One iteration of this domain's driver (logged; the step count advances).
     std::function<SteadyVerdict()> step;
-    // The outer domain: its residual without the source (with the stage's upwind blend), and the source.
+    // The outer domain: its residual without the source (with the stage's upwind blend; also for relax_consistent's
+    // R_c(q*), NestRelax.H), and the source.
     std::function<void(const State&, ResidualFields&)> residual_without_defect;
     NestDefect* defect{nullptr};
     //! The outer domain with nest.feedback_flux = nest: the nests' face fluxes on the rings (NestFaceFlux.H).
@@ -55,7 +56,8 @@ struct JointMember
     //! Every domain with nest.feedback_flux = nest: its residual without the source (with the stage's upwind blend),
     //! its fluxes passed to the probe.
     std::function<void(const State&, ResidualFields&, FluxProbe*)> probed_residual;
-    //! The outer domain with nest.feedback = relax: the relaxation (NestRelax.H) in place of the defect source.
+    //! The outer domain with nest.feedback = relax or relax_consistent: the relaxation (NestRelax.H) in place of the
+    //! defect source.
     NestRelax* relax{nullptr};
     //! The outer domain: the joint run's stop also needs the feedback to have settled over the last feedback_window
     //! exchanges (its steady.monitor_window; FeedbackWindow, NestDefect.H) to feedback_tol (its
@@ -91,7 +93,7 @@ struct DomainRole
     std::function<void()> after_checks;
     //! Return once the inputs pass their checks.
     bool check_only{false};
-    //! nest.feedback = defect, relax or inject: called with this domain once its one-way run is done and its outputs
+    //! nest.feedback = defect, relax, relax_consistent or inject: called with this domain once its one-way run is done and its outputs
     //! are written (not if it diverged); after it returns a domain that took joint iterations
     //! writes its outputs again. Empty: one way.
     std::function<void(JointMember&)> joint;

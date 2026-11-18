@@ -1,7 +1,7 @@
 # Nests_Two_Way
 
 ## Purpose
-Two-way nesting (PR-70, `nest.feedback = defect`; PR-71, `nest.feedback = relax`; and `nest.feedback = inject`, below). The outer domain and its nest first run one way, as in
+Two-way nesting (PR-70, `nest.feedback = defect`; PR-71, `nest.feedback = relax`; `nest.feedback = relax_consistent` and `nest.feedback = inject`, below). The outer domain and its nest first run one way, as in
 `Nests_One_Process` except that the nest's levels already follow the joint rule (they bend to the outer domain's
 surfaces aloft), so "one way" in the tables below is that first pass. Then they run jointly: every iteration the nest's faces are refreshed from the outer domain, and
 the outer domain carries the defect source of the nest over the nest's footprint
@@ -108,6 +108,31 @@ it, follows. The exchanges grow with f for the same reason: the flow rate throug
 (the nest returns the flow rate it is given, the relaxation imposes it) whose gain tends to 1. The bounds on the
 errors therefore apply at f = 1 only.
 
+## Pressure-consistent relaxation (`--relax-consistent`)
+`check_nests_two_way.py --relax-consistent` (CTest `rt_nests_relax_consistent`, tracker N-114 item 12) runs the
+reference, the defect run with the nest `hill`, `nest.feedback = relax` at factor 1 (`relax1/`) and
+`nest.feedback = relax_consistent` at factors 1 and 4 (`rc1/`, `rc4/`; `docs/boundary_conditions.rst`,
+Pressure-consistent relaxation). It requires:
+1. every run exits 0, and each relax_consistent log's start line ends `with the weighted residual of the target`;
+2. at factor 1 the outer domain minus the restricted nest (the log's last RMS of u) at most 0.25 of relax's, and
+   smaller at factor 4 than at 1;
+3. at factor 1, against the 25 m run, the RMS of u over the nest at most 0.6 of the one-way one and over the outer
+   cells outside the footprint at most 0.45.
+
+Measured on 2 ranks (RMS of u, m/s):
+
+| run | exchanges | outer - nest | nest | outer outside |
+|---|---|---|---|---|
+| one way | | | 8.23e-3 | 1.44e-2 |
+| defect | 208 | | **2.03e-3** | **4.89e-3** |
+| relax, f = 1 | 160 | 8.04e-3 | 3.38e-3 | 5.03e-3 |
+| relax_consistent, f = 1 | 169 | 1.32e-3 | 4.24e-3 | 5.18e-3 |
+| relax_consistent, f = 4 | 174 | 1.22e-3 | 1.07e-2 | 1.01e-2 |
+
+The outer domain follows the nest about six times more closely than with relax, as the added term intends. Both
+domains are slightly further from the fine run than with relax at f = 1, and further at f = 4: the coupling loop
+described above is unchanged. The bounds on the errors apply at f = 1 only.
+
 ## Conservative faces (`--feedback-flux`)
 `check_nests_two_way.py --feedback-flux` (CTest `rt_nests_feedback_flux`, tracker N-114 item 1) runs the reference
 and three joint runs with `nest.feedback = defect`: the nest `crest` ending at x = 900 m, on the lee slope, with
@@ -167,8 +192,8 @@ and it takes more exchanges.
 A joint run that stops after `steady.max_iterations` exchanges writes a joint record (`Joint`) in the outer
 domain's last checkpoint and names that checkpoint in its error message (`docs/boundary_conditions.rst`, Two-way
 nests, Restart). The script runs, each in its own directory:
-1. `straight/`: the deck with the nests `crest` and `lee` and `nest.feedback = defect` (with `--relax` or `--inject`:
-   the nest `hill` and `nest.feedback = relax` or `inject`), to the steady verdict;
+1. `straight/`: the deck with the nests `crest` and `lee` and `nest.feedback = defect` (with `--relax`, `--relax-consistent` or
+   `--inject`: the nest `hill` and `nest.feedback = relax`, `relax_consistent` or `inject`), to the steady verdict;
 2. `stopped/`: the same with `steady.max_iterations = M` (`--stop M`), which stops after M exchanges;
 3. `stopped/`: the restart, with the deck less its `init.*` lines and `io.restart` set to the named checkpoint.
 
