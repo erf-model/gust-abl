@@ -45,6 +45,8 @@ The input file
 
    # Initial profile: the log law with u* = 0.35 m/s (tutorial 1: 0.25 m/s)
    bc.inflow_ustar     = 0.35
+   # The first guess's k with the wall-law length (the default is the closure's length)
+   bc.inflow_tke_length = unbounded
 
    # Solver: four z-line sweeps, CFL cap 2
    steady.sweep                   = zjacobi

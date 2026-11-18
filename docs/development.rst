@@ -33,11 +33,14 @@ Layout
 
 .. code-block:: text
 
-   Source/          application and gust_refavg: inputs, state, I/O, reductions,
-                    steady criterion, reference archives
+   Source/          application and gust_refavg: inputs, mesh, state and I/O, the steady
+                    stages (SIMPLEC, Newton) and the unsteady time driver, closure,
+                    canopy, buildings, nests, immersed terrain, reference archives
    Tests/           one folder per test case (Tests/README.md), the GoogleTest suite
                     (Tests/Unit_Tests/) and shared check scripts (Tests/Supporting_Files/)
    docs/            this documentation (Sphinx)
    extern_erf/      files copied from ERF, listed in EXTRACTED.md
-   tools/           drift check, VERSIONS check, Kestrel scripts (tools/kestrel/)
+   tools/           case set-up (make_gust_case.py, check_gust_inputs.py, fetch_terrain.py,
+                    gust_gui.py), input reference, drift check, VERSIONS check,
+                    Kestrel scripts (tools/kestrel/)
    external/        AMReX and GoogleTest submodules

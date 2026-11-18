@@ -311,7 +311,8 @@ frozen once the relative residual falls below ``convection.hybrid_freeze`` (afte
 on each grid level), so a converged state satisfies one fixed scheme. The blend is of the convection operators,
 not of the face fluxes: it is not conservative where :math:`\sigma` varies (in a 1-D test with :math:`\sigma` rising
 from 0 to 0.1 over a few cells, a net source of 0.2–0.4 % of the flux jump; mass is not affected). :math:`\sigma` is
-not checkpointed, so ``io.restart`` with the blend aborts.
+not checkpointed, so ``io.restart`` with the blend aborts. The blend also aborts with
+``steady.stage = simplec_newton`` and ``unsteady``.
 
 **Where it acts.** Because :math:`C_r` is at the equilibrium value, :math:`a` is 1.00–1.03 in an equilibrium surface
 layer, so :math:`\sigma` reaches :math:`\sigma_\mathrm{max}` over most of the near-ground layer below :math:`H_h`, on the

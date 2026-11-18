@@ -477,7 +477,7 @@
 # buildings other than those of the run it continues.
 #
 # buildings.type = none
-#     none or immersed_forcing. Refused with a nest face.
+#     none or immersed_forcing. Refused with nest.names; a patch with nest faces keeps its buildings clear of them.
 #
 # buildings.file =    # required when on
 #     The height map, readable. Heights above the local ground (m), finite and ≥ 0. At least one building in the

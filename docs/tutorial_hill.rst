@@ -116,10 +116,11 @@ The log reports the column solve, then the 3-D run:
 
 .. code-block:: text
 
-   gust: column guess: converged after 129 steps (0.018 s), 64 levels, u* 0.3785 m/s, u 10.0000 v -0.0000 m/s at the top
-   gust: steady after 1231 iterations (1231 over the run)
+   gust: column guess: converged after 129 steps in 1 columns (0.018 s), 64 levels, u* 0.3785 m/s, u 10.0000 v -0.0000 m/s at the top
+   gust: steady after 1233 iterations (1233 over the run)
 
-The run converges in 1231 iterations instead of 3048. The column profile is written to ``column_guess.dat``.
+The run converges in 1233 iterations instead of 3048 (the count differs by a few between compilers; :doc:`results`
+lists 1237). The column profile is written to ``column_guess.dat``.
 
 What you have seen
 ------------------
