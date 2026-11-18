@@ -48,7 +48,10 @@ jobs:
       - name: Install LaTeX for the PDF
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends texlive-xetex texlive-latex-extra latexmk fonts-freefont-otf
+          # texlive-fonts-recommended carries pzdr.tfm (Zapf Dingbats metrics),
+          # which hyperref loads under xelatex; without it the PDF build stops.
+          sudo apt-get install -y --no-install-recommends texlive-xetex texlive-latex-extra \
+            texlive-fonts-recommended latexmk fonts-freefont-otf
       - name: Build the PDF and add it to the pages
         env:
           LATEXMKOPTS: -interaction=nonstopmode -halt-on-error
