@@ -59,10 +59,10 @@ void ImmersedStrain::apply (const State& q, const amrex::Geometry& geom, amrex::
             const auto Gu = grad_at<XF, CC>(u, i, j, k, m, dxinv);
             const auto Gv = grad_at<YF, CC>(v, i, j, k, m, dxinv);
             const auto Gw = grad_at<ZF, CC>(w, i, j, k, m, dxinv);
-            const amrex::Real eo = Gu[2] + Gw[0], fo = Gv[2] + Gw[1];
-            const amrex::Real en = gu + Gw[0], fn = gv + Gw[1];
-            // Not below zero: the closure's S2 holds eo^2 + fo^2 to round-off only.
-            s2(i, j, k) = amrex::max(amrex::Real(0), s2(i, j, k) + (en * en - eo * eo) + (fn * fn - fo * fo));
+            const amrex::Real e_old = Gu[2] + Gw[0], f_old = Gv[2] + Gw[1];
+            const amrex::Real e_new = gu + Gw[0], f_new = gv + Gw[1];
+            // Not below zero: the closure's S2 holds e_old^2 + f_old^2 to round-off only.
+            s2(i, j, k) = amrex::max(amrex::Real(0), s2(i, j, k) + (e_new * e_new - e_old * e_old) + (f_new * f_new - f_old * f_old));
         });
     }
 }

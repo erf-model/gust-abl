@@ -141,6 +141,24 @@ void solid_identity_rows (amrex::MultiFab& lhs, const amrex::MultiFab& x, const 
     }
 }
 
+// The largest change of a node's height along x or y, over each box's nodes (this rank's part). A free function:
+// CUDA does not take a device lambda in a private member (Poisson::prepare).
+amrex::Real largest_level_change (const amrex::MultiFab& znd, const amrex::MultiFab& cells)
+{
+    amrex::ReduceOps<amrex::ReduceOpMax> op;
+    amrex::ReduceData<amrex::Real> data(op);
+    for (amrex::MFIter mfi(cells, false); mfi.isValid(); ++mfi) {
+        const auto z = znd.const_array(mfi);
+        amrex::Box nb = amrex::surroundingNodes(mfi.validbox());
+        nb.growHi(0, -1);
+        nb.growHi(1, -1);
+        op.eval(nb, data, [=] AMREX_GPU_DEVICE (int i, int j, int k) -> amrex::GpuTuple<amrex::Real> {
+            return {amrex::max(std::abs(z(i + 1, j, k) - z(i, j, k)), std::abs(z(i, j + 1, k) - z(i, j, k)))};
+        });
+    }
+    return amrex::get<0>(data.value(op));
+}
+
 } // namespace
 
 // The linear operator for amrex::GMRES: ERF's TerrainPoisson, with
@@ -531,19 +549,7 @@ void PoissonSolver::prepare (const FaceCoeffs& coeffs, const PoissonBC& bc)
         amrex::MultiFab::Copy(m_J_fluid, m_mesh.detJ, 0, 0, 1, 0);
         amrex::MultiFab::Multiply(m_J_fluid, m_fluid, 0, 0, 1, 0);
         if (!m_level_known) {
-            // The largest change of a node's height along x or y, over each box's nodes.
-            amrex::ReduceOps<amrex::ReduceOpMax> op;
-            amrex::ReduceData<amrex::Real> data(op);
-            for (amrex::MFIter mfi(m_mesh.detJ, false); mfi.isValid(); ++mfi) {
-                const auto z = m_z.const_array(mfi);
-                amrex::Box nb = amrex::surroundingNodes(mfi.validbox());
-                nb.growHi(0, -1);
-                nb.growHi(1, -1);
-                op.eval(nb, data, [=] AMREX_GPU_DEVICE (int i, int j, int k) -> amrex::GpuTuple<amrex::Real> {
-                    return {amrex::max(std::abs(z(i + 1, j, k) - z(i, j, k)), std::abs(z(i, j + 1, k) - z(i, j, k)))};
-                });
-            }
-            amrex::Real dz = amrex::get<0>(data.value(op));
+            amrex::Real dz = largest_level_change(m_z, m_mesh.detJ);
             amrex::ParallelDescriptor::ReduceRealMax(dz);
             m_level = dz == amrex::Real(0);
             m_level_known = true;
