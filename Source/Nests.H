@@ -11,6 +11,9 @@
 //                                     one way (default), or the joint run
 //                                     with the defect source or the relaxation
 //   nest.feedback_factor = 1          the relaxation's factor (relax only)
+//   nest.feedback_flux = outer | nest the flux the outer cells just outside
+//                                     the defect source take through its
+//                                     lateral faces (defect only; NestFaceFlux.H)
 //
 // Everything else is the outer domain's: the deck's physics, closure,
 // solver and terrain keys, and these derived settings:
@@ -48,6 +51,11 @@
 // of the outer domain towards the restricted nests over their footprints in
 // place of the defect source; nest.feedback_factor (default 1, finite and
 // > 0) scales its rate.
+//
+// nest.feedback_flux = nest (NestFaceFlux.H; defect only): the outer cells
+// just outside the defect source's region take the nests' own fluxes through
+// its lateral faces (summed over the nest faces) in place of the outer
+// scheme's flux of the restricted nest state (the default, outer).
 
 #include "BoundaryConditions.H"
 #include "Inputs.H"
@@ -74,6 +82,10 @@ struct NestSpec
 //! JointRun.H) or relax (the joint run with the relaxation, NestRelax.H).
 enum class NestFeedback { none, defect, relax };
 
+//! nest.feedback_flux: outer (the default: the outer scheme's fluxes) or nest (the nests' own summed face fluxes
+//! through the defect source's lateral faces, NestFaceFlux.H; nest.feedback = defect only).
+enum class NestFeedbackFlux { outer, nest };
+
 //! The value of nest.feedback as the deck gives it.
 const char* nest_feedback_name (NestFeedback f);
 
@@ -83,12 +95,14 @@ struct NestOptions
     NestFeedback feedback{NestFeedback::none};
     //! nest.feedback_factor (nest.feedback = relax only; finite, > 0).
     amrex::Real feedback_factor{1};
+    //! nest.feedback_flux (nest.feedback = defect only).
+    NestFeedbackFlux feedback_flux{NestFeedbackFlux::outer};
     //! Value-count and name problems found while reading.
     std::vector<std::string> errors;
     [[nodiscard]] bool active () const { return !nests.empty(); }
 };
 
-//! Read nest.names, nest.feedback, nest.feedback_factor and each nest's nest.<name>.lo and
+//! Read nest.names, nest.feedback, nest.feedback_factor, nest.feedback_flux and each nest's nest.<name>.lo and
 //! nest.<name>.hi. No placement checks (check_nests).
 NestOptions read_nest_options ();
 

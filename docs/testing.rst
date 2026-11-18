@@ -678,6 +678,46 @@ By hand against ``rt_nests_two_way``: ``nest.feedback = none`` in place of ``def
 log check, and the first two-nest layout (the crest nest ending at x = 900 m, on the lee slope) fails the nest
 ratio at 3.33.
 
+The one-line mutants of the conservative nest faces (``Source/NestFaceFlux.cpp``, and ``NestDefect::add`` in
+``Source/NestDefect.cpp``; N-114 item 1), each run against ``NestFaceFlux.*`` on two ranks with the unit-test flags by
+``tools/nest_face_flux_mutants.py`` (macOS arm64, AppleClang). All 8 are killed.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 6 50 44
+
+   * - Mutant
+     - Change
+     - Failing tests
+   * - F1
+     - The ring's sum with the wrong sign
+     - ``LinearThetaUpwind``, ``LinearThetaVanLeerWithTheBlend``, ``SummedNestFluxesOnEveryFaceLocation``, ``SummedNestFluxesWithTheBlend``
+   * - F2
+     - The transverse trapezoid's end nodes at full weight
+     - ``SummedNestFluxesOnEveryFaceLocation``, ``SummedNestFluxesWithTheBlend``
+   * - F3
+     - A cell-centred flux's normal average shifted by one nest cell
+     - ``SummedNestFluxesOnEveryFaceLocation``, ``SummedNestFluxesWithTheBlend``
+   * - F4
+     - The nest's fluxes without the ghost exchange
+     - ``SummedNestFluxesOnEveryFaceLocation`` (a crash)
+   * - F5
+     - The upwind blend's term dropped
+     - ``LinearThetaVanLeerWithTheBlend``, ``SummedNestFluxesWithTheBlend``
+   * - F6
+     - The diffusive flux added, not subtracted
+     - ``SummedNestFluxesOnEveryFaceLocation``, ``SummedNestFluxesWithTheBlend``
+   * - F7
+     - The ring's face on the wrong side
+     - ``LinearThetaUpwind``, ``LinearThetaVanLeerWithTheBlend``, ``SummedNestFluxesOnEveryFaceLocation``, ``SummedNestFluxesWithTheBlend``
+   * - F8
+     - The correction subtracted from the source (``NestDefect::add``)
+     - ``DefectAddsTheCorrection``
+
+By hand against ``rt_nests_feedback_flux``: ``nest.feedback_flux = outer`` in place of ``nest`` (the defect source
+alone) fails its log check, and on the nest ``crest`` ending at x = 900 m fails the nest ratio at 3.31 against the
+bound 1.6. Without the ring's suffix on the joint lines (``Source/JointRun.cpp``) it fails its log check.
+
 The one-line mutants of the canopy's drag field (``Source/Canopy.cpp``, ``Source/Canopy_K.H``), each run against
 ``Canopy.*`` on two ranks with the unit-test flags by ``tools/canopy_mutants.py`` (macOS arm64, AppleClang). All 18 are
 killed.
@@ -1873,6 +1913,18 @@ Current tests
        factor, and at 16 is at most 0.35 of its value at 1 (measured 0.19); at factor 1 the nest's u RMS against the
        25 m run is at most 0.5 of the one-way one (0.41) and the outer domain's outside the footprint at most 0.6
        (0.35). About 2 minutes on an Apple M-series laptop, most of it the factor-16 run (508 exchanges).
+   * - ``rt_nests_feedback_flux``
+     - Conservative nest faces (``Tests/Canonical_RANS/Nests_Two_Way``, ``check_nests_two_way.py --feedback-flux``;
+       N-114 item 1, ``nest.feedback_flux``), old against new: the ``rt_nests_two_way`` hill, on two ranks with the
+       GPU-CI flags, with the nest ``crest`` ending at x = 900 m on the lee slope, by the defect source alone
+       (``outer``) and with the conservative faces (``nest``), and with the nest ``hill`` (``nest``). Only the
+       ``nest`` runs log the first largest correction and end their joint lines with the ring's
+       (``ring max |C|``). On the crest nest, the ``outer`` run's u RMS against the 25 m run is at least 2.0 times
+       the one-way one (measured 3.31); the ``nest`` run's is at most 1.6 times over the nest (1.22) and 1.25 times
+       over the outer cells outside it (0.96), and at most 0.6 of the ``outer`` run's (0.37 and 0.35). The hill keeps the same two bounds (0.26 and 0.33).
+   * - ``abort_nests_feedback_flux_value``, ``_unused``
+     - ``nest.feedback_flux = fine``; ``nest`` without ``nest.feedback = defect``: each stops the run before the outer
+       domain starts, naming ``nest.feedback_flux``.
    * - ``abort_nests_feedback_factor``, ``_factor_nan``, ``_factor_unused``, ``_relax_damping``
      - ``nest.feedback_factor = 0``; ``= nan``; ``= 2`` with ``nest.feedback = defect``; ``relax`` with a Rayleigh
        layer on u, v and k: each stops the run before the outer domain starts, naming the key.

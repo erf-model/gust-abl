@@ -71,6 +71,30 @@ class TimeTerm;
 
 class BoundaryConditions;
 
+//! The parts of an equation's face fluxes that residual() hands a FluxProbe.
+enum class FluxPart
+{
+    convective,          //!< the convection's fluxes F q_face with the equation's limiter
+    convective_upwind,   //!< the same with the upwind limiter (only with the upwind blend, ResidualInputs::hybrid_sigma)
+    diffusive            //!< the diffusive fluxes, after the wall model's and the buildings' faces
+};
+
+//! Receives the face fluxes residual() forms (ResidualInputs::flux_probe; NestFaceFlux.H). The residual of a
+//! field is (1/J) div(G_c - G_d) on its control volumes (CVFluxes.H), with G_c the convective part (blended
+//! towards the upwind part where the blend acts) and G_d the diffusive one, plus the terms that are not fluxes.
+class FluxProbe
+{
+public:
+    virtual ~FluxProbe () = default;
+    //! eq: 0 u, 1 v, 2 w, 3 theta, 4 k. G: the part's fluxes on the control-volume faces of the field
+    //! (define_cv_fluxes), set on each box's cv_flux_box (one point outside the box where its control
+    //! volumes need it; no exchange between boxes). sigma: with convective_upwind, the blend's weights
+    //! (ResidualInputs::hybrid_sigma; the residual is (1 - s) C + s C_upwind with s = sigma at the field's
+    //! points, HybridConvection.H); null otherwise. Called during residual(), once per part.
+    virtual void take (int eq, FluxPart part, const amrex::Array<amrex::MultiFab, AMREX_SPACEDIM>& G,
+                       const amrex::MultiFab* sigma) = 0;
+};
+
 //! The residual of each equation, on the state's locations, without ghosts.
 struct ResidualFields
 {
@@ -182,6 +206,9 @@ struct ResidualInputs
     //! false: the residual leaves the buildings' fixed rows out (BuildingForcing::apply_rows), so the
     //! blocked faces keep their momentum residual, from which BuildingLoads sums the force on them.
     bool building_rows{true};
+    //! Receives the face fluxes of u, v, w, theta and k as residual() forms them (null: none; FluxProbe). It does
+    //! not change R. jvp hands its in to residual() unchanged, so a caller sets it only for a plain residual().
+    FluxProbe* flux_probe{nullptr};
 };
 
 //! Scratch fields of residual() and jvp, kept between calls so that a

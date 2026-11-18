@@ -354,6 +354,19 @@ void NestDefect::restore_previous (const std::array<const amrex::MultiFab*, 5>& 
     m_have_previous = true;
 }
 
+void NestDefect::add (const ResidualFields& C)
+{
+    if (!m_active) { amrex::Abort("gust: NestDefect::add: the source is not set"); }
+    amrex::MultiFab* S[5] = {&m_S.u, &m_S.v, &m_S.w, &m_S.theta, &m_S.tke};
+    const amrex::MultiFab* c[5] = {&C.u, &C.v, &C.w, &C.theta, &C.tke};
+    for (int n = 0; n < 5; ++n) {
+        if (c[n]->boxArray() != S[n]->boxArray() || c[n]->DistributionMap() != S[n]->DistributionMap()) {
+            amrex::Abort("gust: NestDefect::add: the correction is not on the parent's layout");
+        }
+        amrex::MultiFab::Add(*S[n], *c[n], 0, 0, 1, 0);
+    }
+}
+
 void NestDefect::add_to_residual (ResidualFields& R) const
 {
     if (!m_active) { return; }

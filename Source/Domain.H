@@ -18,7 +18,9 @@
 namespace gust {
 
 class Mesh;
+class FluxProbe;
 class NestDefect;
+class NestFaceFlux;
 class NestRelax;
 class NestFaces;
 class NestParent;
@@ -47,6 +49,11 @@ struct JointMember
     // The outer domain: its residual without the source (with the stage's upwind blend), and the source.
     std::function<void(const State&, ResidualFields&)> residual_without_defect;
     NestDefect* defect{nullptr};
+    //! The outer domain with nest.feedback_flux = nest: the nests' face fluxes on the rings (NestFaceFlux.H).
+    NestFaceFlux* face_flux{nullptr};
+    //! Every domain with nest.feedback_flux = nest: its residual without the source (with the stage's upwind blend),
+    //! its fluxes passed to the probe.
+    std::function<void(const State&, ResidualFields&, FluxProbe*)> probed_residual;
     //! The outer domain with nest.feedback = relax: the relaxation (NestRelax.H) in place of the defect source.
     NestRelax* relax{nullptr};
     //! The outer domain: the joint run's stop also needs the feedback to have settled over the last feedback_window

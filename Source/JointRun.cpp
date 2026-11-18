@@ -2,6 +2,7 @@
 
 #include "Mesh.H"
 #include "NestDefect.H"
+#include "NestFaceFlux.H"
 #include "NestFaces.H"
 #include "NestParent.H"
 #include "NestRelax.H"
@@ -104,6 +105,8 @@ JointResult run_joint (const std::vector<JointMember*>& members, int max_exchang
                     amrex::Print() << line;
                 }
             }
+        } else if (P.face_flux != nullptr) {
+            P.face_flux->set_defect(members, qr, regions, R);   // nest.feedback_flux = nest
         } else {
             P.residual_without_defect(qr, R);
             P.defect->set(R, regions);
@@ -171,6 +174,7 @@ JointResult run_joint (const std::vector<JointMember*>& members, int max_exchang
             for (std::size_t n = 1; n < members.size(); ++n) {
                 text += ", " + members[n]->name + " " + status_name(members[n]->verdict.status);
             }
+            if (P.face_flux != nullptr) { text += P.face_flux->log_suffix(); }   // nest.feedback_flux = nest
             amrex::Print() << text << "\n";
         }
         if (diverged) { out.diverged = true; break; }

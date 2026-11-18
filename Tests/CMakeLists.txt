@@ -69,6 +69,7 @@ add_executable(unit_tests
     Unit_Tests/test_JointRecord.cpp
     Unit_Tests/test_NestBuildings.cpp
     Unit_Tests/test_NestDefect.cpp
+    Unit_Tests/test_NestFaceFlux.cpp
     Unit_Tests/test_NestRelax.cpp
     Unit_Tests/test_NestFaces.cpp
     Unit_Tests/test_NestParent.cpp
@@ -1766,6 +1767,13 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
         gust_add_test(NAME rt_nests_relax NP 2 LABELS "regression"
                       PREFIX ${Python3_EXECUTABLE} ${NESTS2_CASE}/check_nests_two_way.py --relax --
                       COMMAND ${NESTS2_OUTER} ${GUST_TEST_AMREX_FLAGS})
+        # Conservative nest faces (tracker N-114, item 1), old against new: the nest crest alone with its downstream
+        # face on the lee slope (x = 900 m), nest.feedback_flux = outer and nest. With outer the joint nest error is
+        # at least 2 times the one-way one; with nest at most 1.6 times (outer domain 1.25) and at most 0.6 of the
+        # errors with outer; the hill with nest keeps the bounds of rt_nests_two_way (README.md has the values).
+        gust_add_test(NAME rt_nests_feedback_flux NP 2 LABELS "regression"
+                      PREFIX ${Python3_EXECUTABLE} ${NESTS2_CASE}/check_nests_two_way.py --feedback-flux --
+                      COMMAND ${NESTS2_OUTER} ${GUST_TEST_AMREX_FLAGS})
     endif()
     # A joint run stopped after 150 exchanges (steady.max_iterations) and restarted from the joint record its
     # message names (tracker N-114, item 3): the restart is steady after the straight run's exchanges, and the last
@@ -1789,6 +1797,12 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
     gust_add_test(NAME abort_nests_feedback_factor_unused NP 1 LABELS "regression;smoke"
                   PREFIX ${EXPECT_ABORT} "nest\\.feedback_factor has no effect without nest\\.feedback = relax" --
                   COMMAND ${NESTS_OUTER} ${NESTS_A} nest.feedback=defect nest.feedback_factor=2 ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME abort_nests_feedback_flux_value NP 1 LABELS "regression;smoke"
+                  PREFIX ${EXPECT_ABORT} "nest\\.feedback_flux = 'fine' is not outer or nest" --
+                  COMMAND ${NESTS_OUTER} ${NESTS_A} nest.feedback=defect nest.feedback_flux=fine ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME abort_nests_feedback_flux_unused NP 1 LABELS "regression;smoke"
+                  PREFIX ${EXPECT_ABORT} "nest\\.feedback_flux has no effect without nest\\.feedback = defect" --
+                  COMMAND ${NESTS_OUTER} ${NESTS_A} nest.feedback_flux=nest ${GUST_TEST_AMREX_FLAGS})
     gust_add_test(NAME abort_nests_feedback_relax_damping NP 1 LABELS "regression;smoke"
                   PREFIX ${EXPECT_ABORT} "nest\\.feedback = relax needs bc\\.rayleigh_fields without u, v and tke" --
                   COMMAND ${NESTS_OUTER} ${NESTS_A} nest.feedback=relax ${GUST_TEST_AMREX_FLAGS})

@@ -80,11 +80,28 @@ NestOptions read_nest_options ()
             opt.errors.emplace_back("nest.feedback_factor has no effect without nest.feedback = relax");
         }
     }
+    if (pp.countname("feedback_flux") > 1) { opt.errors.emplace_back("nest.feedback_flux is given more than once"); }
+    if (pp.contains("feedback_flux")) {
+        std::string ff;
+        if (pp.countval("feedback_flux") != 1) {
+            opt.errors.emplace_back("nest.feedback_flux takes one value: outer or nest");
+        } else {
+            pp.get("feedback_flux", ff);
+            if (ff == "nest") {
+                opt.feedback_flux = NestFeedbackFlux::nest;
+            } else if (ff != "outer") {
+                opt.errors.emplace_back("nest.feedback_flux = '" + ff + "' is not outer or nest");
+            }
+        }
+        if (opt.feedback != NestFeedback::defect) {
+            opt.errors.emplace_back("nest.feedback_flux has no effect without nest.feedback = defect");
+        }
+    }
     for (std::size_t i = 0; i < names.size(); ++i) {
         const std::string& n = names[i];
-        if (!is_identifier(n) || n == "names" || n == "feedback" || n == "feedback_factor") {
+        if (!is_identifier(n) || n == "names" || n == "feedback" || n == "feedback_factor" || n == "feedback_flux") {
             opt.errors.emplace_back("nest.names: '" + n + "' is not a nest name (a letter, then letters, digits or '_'; "
-                                    "not 'names', 'feedback' or 'feedback_factor')");
+                                    "not 'names', 'feedback', 'feedback_factor' or 'feedback_flux')");
             continue;
         }
         if (std::find(names.begin(), names.begin() + static_cast<std::ptrdiff_t>(i), n) != names.begin() + static_cast<std::ptrdiff_t>(i)) {

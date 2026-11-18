@@ -861,7 +861,9 @@ iterations. The log says ``joint run: restarted after exchange N``.
   window was added (``GUST_JOINT 1``) still restarts, as does a restart that changes ``nest.feedback``; there the
   window starts empty and is full again after ``steady.monitor_window`` exchanges (the log notes it), so the restart
   never stops earlier than the run it continues and may stop later.
-- ``nest.feedback`` may change at a restart (the log notes it). ``steady.max_iterations`` at or below the recorded
+- ``nest.feedback`` may change at a restart (the log notes it). ``nest.feedback_flux`` is not in the record and may
+  change at a restart without a note: the ring correction is formed again at every exchange, so nothing of it is
+  restored. ``steady.max_iterations`` at or below the recorded
   exchanges, a record that names other nests, and a record that cannot be read stop the run, naming
   ``io.restart``.
 - A checkpoint without a record, such as the outer domain's when its one-way run did not reach steady, restarts that
@@ -877,6 +879,103 @@ nests' equations, so an outer Rayleigh term on :math:`u, v` or :math:`k` would a
 inside them: a jump in the forcing at each footprint's edge above ``bc.rayleigh_zdamp``. ``nest.feedback = defect``
 (and ``relax``) therefore needs ``bc.rayleigh_fields = w`` or ``w theta``, and stops with an error otherwise. A nest has no side
 sponge either: with ``bc.sponge_width > 0`` the run prints a note, and the nests are best placed outside the sponge.
+Nor does a nest of ``nest.names`` have a relaxation zone or a ground blend (Nest faces, above):
+each nest's ``bc.nest_relax_width`` is 0 (``Source/Nests.cpp``), and ``bc.nest_relax_width`` or
+``terrain.nest_blend_width`` in the outer deck stops the run, since the outer domain has no ``nest`` face. A joint
+nest's ground is its own up to the faces, and its coordinate surfaces follow the outer domain's aloft (above).
+
+.. _conservative-faces:
+
+**Conservative faces (``nest.feedback_flux = nest``).** With the default, ``outer``, the outer row just outside
+:math:`\chi_s` (the *ring*) keeps its own equation, and its face on the edge of :math:`\chi_s` carries the outer
+scheme's flux of :math:`q^*`. The nest's own flux through that face can differ, most on a lee slope (Limits, below).
+With ``nest`` the ring's equation takes the nest's flux there, as in the conservative local defect correction of
+Anthonissen et al. (2003) (``Source/NestFaceFlux``):
+
+.. math::
+
+   R_c(q_c) - S = 0 \text{ on the ring}, \qquad
+   S = \frac{s}{J\,\Delta\xi} \Big[ (G_c - G_f) + w \big( (G_c^{up} - G_c) - (G_f^{up} - G_f) \big) \Big],
+
+with
+
+- :math:`G_c`: the outer flux of :math:`q^*` through the face (convective minus diffusive, as the residual forms
+  them, after the wall law and the building closures);
+- :math:`G_f`: the nest's flux of :math:`q_f` through the nest faces the outer face covers, summed and divided by
+  their number (the mean flux density; on a staggered face of :math:`u` or :math:`v` the nest's faces at the two
+  ends weigh half). Where the outer face is nodal along its normal (:math:`u` in :math:`x`, :math:`v` in
+  :math:`y`) it lies inside a nest control volume, and :math:`G_f` is the mean of the two nest faces around it, an
+  interpolation, not a sum;
+- :math:`G^{up}`: the same fluxes with the upwind limiter, and :math:`w` the ring point's blend weight
+  (``convection.hybrid_sigma_max``; :math:`w = 0` without the blend). :math:`k` has no blend (bounded upwind);
+- :math:`s`: +1 on the ring below :math:`\chi_s` along the face's normal, −1 above; :math:`J` the ring point's
+  Jacobian, :math:`\Delta\xi` the outer cell size along the normal.
+
+The ring's flux through the face is then :math:`G_f + [G_c(q_c) - G_c(q^*)]`: the nest's flux plus the outer flux of
+what :math:`q_c` and :math:`q^*` still differ by there (:math:`q^*` covers the whole footprint, the ring and the
+margin keep the outer equations). It is the nest's flux only to that difference; a one-dimensional model of the
+exchange (advection and diffusion, ratio 2) gives the nest's flux to round-off, but in two or three dimensions only
+the sum over the edge of :math:`\chi_s` has to match. Only the convective and diffusive fluxes are corrected: the
+ring's pressure gradient, continuity and the source terms (buoyancy, production of :math:`k`, the wall law) stay the
+outer domain's, so the momentum through the face is not the nest's. The blend term matches the nest's only where the
+nest's own blend weight next to the face is the ring's :math:`w`. The joint log lines end with the ring's largest
+correction (``ring max |C| u ...``), so a correction that grows or oscillates shows. :math:`S` on the ring is formed
+at every exchange, with :math:`S` on :math:`\chi_s`, from the outer residual at :math:`q^*` and one more residual of
+each nest (the cost: one nest residual per exchange). Only the lateral faces of :math:`\chi_s`, in the directions a
+nest has faces; the ratio must be even (2 for named nests). With ``nest.feedback = relax`` or ``none`` the key is
+refused. Results (RMS of :math:`u` against the uniform 25 m run, joint over one way,
+``Tests/Canonical_RANS/Nests_Two_Way``, 2 ranks; the deck as it is, and the recommended setting in brackets):
+
+.. list-table::
+   :header-rows: 1
+
+   * - Nests
+     - Nest, ``outer``
+     - Nest, ``nest``
+     - Outer domain outside the footprints, ``outer``
+     - Outer domain outside the footprints, ``nest``
+   * - ``hill`` (faces 250 m and more from the crest)
+     - 0.25 (0.30)
+     - 0.26 (0.34)
+     - 0.34 (0.31)
+     - 0.33 (0.30)
+   * - ``crest`` 300 to 800 m (downstream face on the lee slope)
+     - 1.54 (1.68)
+     - **1.03** (1.08)
+     - 1.59 (1.77)
+     - **0.90** (0.93)
+   * - ``crest`` 300 to 900 m
+     - 3.31 (3.47)
+     - **1.22** (1.37)
+     - 2.74 (2.95)
+     - **0.96** (1.10)
+   * - ``crest`` 300 to 1000 m
+     - 0.40 (0.77)
+     - **0.38** (0.57)
+     - 0.66 (0.54)
+     - **0.50** (0.46)
+   * - ``crest`` to 1000 m and ``lee`` (touching)
+     - 0.42 / 0.61 (0.80 / 0.50)
+     - **0.37 / 0.43** (0.56 / 0.41)
+     - 0.80 (0.70)
+     - **0.51** (0.48)
+   * - ``crest`` to 900 m and ``lee`` from 900 m
+     - 3.37 / 2.38 (3.49 / 2.36)
+     - **1.23 / 0.65** (1.38 / 0.69)
+     - 2.19 (2.19)
+     - **0.85** (0.92)
+
+Where the nest's face is on the lee slope the joint run is now within 1.4 times the one-way nest's error, and the
+outer domain outside the footprints within 1.1 times its one-way error; it was 3.5 and 3.0 times. On the hill, whose
+faces are far from the crest, the nest's :math:`u` error is 3 % larger than with ``outer`` (2.03e-3 to 2.10e-3; 13 %
+with the recommended setting). Each exchange costs one more nest residual; the number of exchanges changed by at most
+8 % (wall times were not measured on an idle machine). The regression ``rt_nests_feedback_flux`` checks the crest to
+900 m with both values and the hill with ``nest``. Two more layouts, by hand (2 ranks; :math:`u`, :math:`w`, :math:`k`
+of the nest, joint over one way, ``outer`` → ``nest``): the crest nest ending at 950 m, where the flow near the ground
+is slowest behind the hill, 2.04 → 0.65, 2.20 → 0.72, 2.09 → 0.78 (189 and 188 exchanges); the crest to 900 m on a
+hill 150 m high, 1.96 → 0.62, 2.41 → 0.87, 2.02 → 0.69 (249 and 255 exchanges). Neither reference separates behind the
+hill, so a face that carries reversed flow is not tested. In all four runs the ring's largest correction settles
+without growing or oscillating.
 
 **Limits.**
 
@@ -894,8 +993,9 @@ sponge either: with ``bc.sponge_width > 0`` the run prints a note, and the nests
   joint error 3.3 times its one-way one, and one ending 200 m or more behind it 0.4 times or less. A likely cause:
   the flux leaving :math:`\chi_s` is the outer scheme's flux of :math:`I q_f`, not the nest's own face flux, and
   where the gradients are strong the two differ. A 1-D model problem (second-order upwind, ratio 2) shows the same
-  pattern, and a conservative variant (the summed nest flux on that face) reduced it there; that variant is not in
-  GUST.
+  pattern, and a conservative variant (the summed nest flux on that face) reduced it there. That variant is
+  ``nest.feedback_flux = nest`` (Conservative faces, above); on the same nest it brings the joint error to 1.2 times
+  the one-way one.
 
 **Where to put a joint nest.** ``tools/nest_placement.py`` checks a nest from the terrain file and the outer mesh
 alone, before any run (``--nest X0 Y0 X1 Y1``), or searches for one of a given size (``--recommend WIDTH HEIGHT``).
@@ -916,9 +1016,16 @@ runs support so far:
   flag.
 - A nest 4 outer cells from the outer inflow face did not converge in a joint run on the Columbia Gorge; the
   search keeps 10 outer cells from the outer faces by default, and a nest closer than that gets a note.
-- The step rule (escarpments, plateau edges, steep valley sides), other cell sizes and oblique wind have not
-  been tested by a run. With the default step rise (0.125 dx, 25 m) no 9.6 km x 7.2 km position on the Columbia
-  Gorge is clear for wind from 270°; with ``--step-rise 100``, 3 are.
+- The step rule was tested on an escarpment 60 m high, with 50 m outer cells (misfit at most 1.8 m) and two nests
+  whose faces cut the step at 35° and 55° (``Tests/Canonical_RANS/Nest_Placement_Runs``; N-114 item 11). For winds
+  along an axis the verdicts match the runs: the two flagged nests make the joint run worse than one way (up to
+  1.35 times in the nest and 1.75 outside it at 55°), and the two clear ones do not (within 1.02).
+  ``nest.feedback_flux = nest`` brings the flagged nests back to within 1.02 (nest) and 1.08 (outside) of one way.
+  For an oblique wind (from 225°, every face inflow or outflow) the tool flags both nests, but neither joint run
+  is worse than one way: that wind blows within 10° of the step's contour lines, and the tool measures the angle
+  against the face normal, not the wind. The flag is then on the safe side, and the thresholds are unchanged.
+  Other cell sizes have not been tested by a run. With the default step rise (0.125 dx, 25 m) no
+  9.6 km x 7.2 km position on the Columbia Gorge is clear for wind from 270°; with ``--step-rise 100``, 3 are.
 
 When no position is clear, the tool says so, recommends none and exits with status 2. Compare
 ``nest.feedback = none`` and ``defect`` on the best-covering flagged position, or try another size. A checked
@@ -953,8 +1060,25 @@ On Askervein the joint run moves the outer domain towards the 20 m run outside t
 nest :math:`w` improves (2.87e-3 to 1.48e-3) and :math:`v` and :math:`k` get worse (5.68e-3 to 6.03e-3 and 1.56e-3 to
 2.76e-3). There the one-way nest is already close to the 20 m run: its 10 m speed at the masts of lines A and AA
 differs by 0.04 % RMS, the joint nest's by 0.11 %; the outer domain's moves from 1.18 % to 1.05 %. No nest cell in
-the lowest 200 m differs from the 20 m run by more than 0.25 m/s in either run (largest 0.23 and 0.14 m/s). The
-joint run costs more than the one-way run: on Askervein the joint run takes 45 s after the one-way runs, and the
+the lowest 200 m differs from the 20 m run by more than 0.25 m/s in either run (largest 0.23 and 0.14 m/s).
+
+Why the nest's :math:`u` does not move (N-114 item 9): the joint run changes two things, the nest's levels (they
+follow the outer domain's surfaces aloft) and the feedback. The first pass of the joint run (one way, with the joint
+levels) separates them. The levels move by 0.10 m RMS (at most 1.3 m, largest at 130 m above the ground), and alone
+raise the nest's RMS error in :math:`u` from 3.37e-3 to 3.92e-3, in :math:`v` from 5.68e-3 to 6.72e-3 and in :math:`k`
+from 1.56e-3 to 2.80e-3 (:math:`w` 2.87e-3 to 2.84e-3). The feedback then lowers all four, to 3.37e-3, 6.03e-3,
+1.48e-3 and 2.76e-3. :math:`u` ends where it began because the two cancel. The feedback acts near the faces: within 4
+nest cells of them it lowers :math:`u` by 31 %, :math:`v` by 32 % and :math:`w` by 62 %; 8 to 40 cells in, :math:`u`
+and :math:`v` rise by up to 14 %. The :math:`k` error added by the levels lies in the lowest three levels. All these
+errors are at most 0.2 % of the fields' RMS (:math:`u` 8.8 m/s, :math:`v` 15.2 m/s, :math:`k` 1.66 m²/s²): the nest
+and the 20 m run share the cell size, so the comparison measures the nest's faces and levels only. With
+``nest.feedback_flux = nest`` (:ref:`Conservative faces <conservative-faces>`; 156 exchanges, as before) the nest's
+errors fall to 2.98e-3 (:math:`u`), 4.74e-3 (:math:`v`), 1.21e-3 (:math:`w`) and 2.65e-3 (:math:`k`): below the
+one-way run's for :math:`u`, :math:`v` and :math:`w`, while the :math:`k` error the levels add stays. Outside the
+footprint the outer domain moves a little further towards the 20 m run (:math:`u` 3.19e-3, :math:`v` 6.73e-3,
+:math:`w` 2.44e-3, :math:`k` 3.05e-3).
+
+The joint run costs more than the one-way run: on Askervein the joint run takes 45 s after the one-way runs, and the
 uniform 20 m run 85 s (4 ranks). Over the footprint the outer
 :math:`w` follows the restricted contravariant flux, not a cell mean of the nest's :math:`w`; on Askervein's slopes
 the two differ by 0.05 m/s RMS, so read :math:`w` there from the nest. On a gentler hill (60 m, half-width 250 m, the

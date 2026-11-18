@@ -97,12 +97,23 @@ against the reference at its own cell heights, the outer domain against the refe
 footprint. "One way" is a separate `nest.feedback = none` run (the nest's own coordinate surfaces). The joint run was
 steady after 156 exchanges.
 
-| Field | Nest, one way | Nest, joint | Outer, one way | Outer, joint |
-|---|---|---|---|---|
-| u | 3.372e-3 | 3.372e-3 | 4.62e-3 | **3.21e-3** |
-| v | **5.68e-3** | 6.03e-3 | 9.37e-3 | **6.93e-3** |
-| w | 2.87e-3 | **1.48e-3** | 2.57e-3 | **2.51e-3** |
-| k | **1.56e-3** | 2.76e-3 | 3.73e-3 | **3.12e-3** |
+| Field | Nest, one way | Nest, joint levels | Nest, joint | Outer, one way | Outer, joint |
+|---|---|---|---|---|---|
+| u | 3.372e-3 | 3.92e-3 | 3.372e-3 | 4.62e-3 | **3.21e-3** |
+| v | **5.68e-3** | 6.72e-3 | 6.03e-3 | 9.37e-3 | **6.93e-3** |
+| w | 2.87e-3 | 2.84e-3 | **1.48e-3** | 2.57e-3 | **2.51e-3** |
+| k | **1.56e-3** | 2.80e-3 | 2.76e-3 | 3.73e-3 | **3.12e-3** |
+
+"Joint levels" is the first pass of the joint run: one way, but with the nest levels of the joint run (they follow
+the outer domain's surfaces aloft; they move by 0.10 m RMS, at most 1.3 m). The levels alone raise the nest's u, v
+and k errors; the feedback then lowers all four fields, so the nest's u ends where the one-way run left it
+(tracker N-114 item 9; `docs/boundary_conditions.rst`, Two-way nests, Results). The feedback lowers the errors within
+4 nest cells of the faces (u by 31 %, v by 32 %, w by 62 %) and raises u and v by up to 14 % 8 to 40 cells in. Every
+nest error here is at most 0.2 % of the field's RMS (u 8.8 m/s, v 15.2 m/s, k 1.66 m²/s²).
+
+With the conservative faces (`nest.feedback_flux = nest`, added to `two_way`'s joint run by hand; 156 exchanges)
+the nest's RMS is 2.98e-3 (u), 4.74e-3 (v), 1.21e-3 (w) and 2.65e-3 (k), and the outer domain's outside the
+footprint 3.19e-3, 6.73e-3, 2.44e-3 and 3.05e-3.
 
 Horizontal speed in the lowest 200 m: no nest cell differs from the 20 m run by more than 0.25 m/s in either run
 (largest 0.23 m/s one way, 0.14 m/s joint); outside the footprint 24 outer cells one way and 19 joint differ by more

@@ -4,11 +4,13 @@ ERROR (each is an abort of Source/Nests.cpp read_nest_options and
 check_nests, or of Source/App.cpp before the outer domain starts):
 
 - nest.names: a name that is not an identifier (a letter, then letters,
-  digits or '_') or is 'names', 'feedback' or 'feedback_factor'; a name
+  digits or '_') or is 'names', 'feedback', 'feedback_factor' or
+  'feedback_flux'; a name
   given twice;
 - nest.feedback other than none, defect or relax, or without nest.names;
   nest.feedback_factor without nest.feedback = relax (its range is in
-  `values`); with defect or relax: steady.stage = simplec_newton, bc.rayleigh_fields with
+  `values`); nest.feedback_flux without nest.feedback = defect (its values
+  are in `values`); with defect or relax: steady.stage = simplec_newton, bc.rayleigh_fields with
   u, v or tke, an odd mesh.max_grid_size that splits a nest into boxes
   with an odd number of cells in x or y, or a nest spanning fewer than
   2 DEFECT_MARGIN + 1 outer cells in a non-periodic x or y (Source/App.cpp);
@@ -129,9 +131,10 @@ class NestsChecker(Checker):
         names = c.tokens("nest.names") if self.given("nest.names") else []
         valid = []
         for n in names:
-            if not _NAME.match(n) or n in ("names", "feedback", "feedback_factor"):
+            if not _NAME.match(n) or n in ("names", "feedback", "feedback_factor", "feedback_flux"):
                 self.error("nest.names", "GUST stops: nest.names: '%s' is not a nest name (a letter, then letters, "
-                                         "digits or '_'; not 'names', 'feedback' or 'feedback_factor')." % n,
+                                         "digits or '_'; not 'names', 'feedback', 'feedback_factor' or "
+                                         "'feedback_flux')." % n,
                            "Rename the nest.")
             elif n in valid:
                 self.error("nest.names", "GUST stops: nest.names: '%s' is named more than once." % n,
@@ -186,6 +189,9 @@ class NestsChecker(Checker):
         if self.given("nest.feedback_factor") and fb != "relax":
             self.error("nest.feedback_factor", "GUST stops: nest.feedback_factor has no effect without nest.feedback "
                                                "= relax.", "Remove nest.feedback_factor, or set nest.feedback = relax.")
+        if self.given("nest.feedback_flux") and fb != "defect":
+            self.error("nest.feedback_flux", "GUST stops: nest.feedback_flux has no effect without nest.feedback "
+                                             "= defect.", "Remove nest.feedback_flux, or set nest.feedback = defect.")
         if not self.given("nest.feedback"):
             return None
         if fb not in ("none", "defect", "relax"):

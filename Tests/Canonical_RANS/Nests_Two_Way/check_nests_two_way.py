@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Two-way nesting (nest.feedback = defect, or relax) on a steep hill against the uniform fine run.
 
-    check_nests_two_way.py [--relax] -- COMMAND [ARGS ...]
+    check_nests_two_way.py [--relax | --feedback-flux] -- COMMAND [ARGS ...]
 
 COMMAND runs the outer deck (an argument ending in inputs_outer); the script
 runs, each in its own directory under the current one:
@@ -39,6 +39,23 @@ e. against the reference, the nest and outer errors (as in c.) of the run at
    the one-way ones. At 4 and 16 they are printed, not checked: they grow
    with the factor (README.md, with the defect run's beside them).
 
+With --feedback-flux (tracker N-114, item 1; nest.feedback_flux, old against new)
+the script runs ref/ as above, then, with nest.feedback = defect,
+flux_outer/ and flux_nest/: the nest crest alone (CREST: its downstream face
+at x = 900 m, on the lee slope) with nest.feedback_flux = outer (the default,
+the PR-70 source alone) and nest (the ring rows take the nest's face fluxes),
+and flux_hill/: the nest hill with nest.feedback_flux = nest. Checked:
+a. as above for each run; the nest runs log the first correction
+   ("nest.feedback_flux = nest: ... first max |correction|") and end their
+   joint lines with the ring's max |C| ("; ring max |C| u ..."), the outer
+   run does neither;
+f. CREST with outer: the joint nest error is at least FLUX_OLD_RATIO of the
+   one-way one (the defect this option is for); with nest: the joint nest and
+   outer errors are at most FLUX_NEST_RATIO and FLUX_OUTER_RATIO of the
+   one-way ones, and at most FLUX_GAIN of the joint errors with outer;
+g. the hill with nest: the bounds of c. (NEST_RATIO, OUTER_RATIO).
+Measured: README.md.
+
 The exit code is the verdict.
 """
 import glob
@@ -66,6 +83,15 @@ NESTS2 = ["nest.names=crest lee", "nest.crest.lo=300 300", "nest.crest.hi=1000 9
 FOOTS2 = {"crest": (6, 6, 14, 12), "lee": (20, 5, 10, 14)}
 NEST2_RATIO = 0.7            # measured 0.42 (crest) and 0.61 (lee), u
 OUTER2_RATIO = 0.9           # measured 0.80 (u)
+# nest.feedback_flux (--feedback-flux): the crest nest alone, its downstream face at x = 900 m on the lee slope.
+CREST = ["nest.names=crest", "nest.crest.lo=300 300", "nest.crest.hi=900 900"]
+FOOT_CREST = {"crest": (6, 6, 12, 12)}
+FLUX_OLD_RATIO = 2.0         # outer: joint nest error over the one-way one, measured 3.31 (u)
+FLUX_NEST_RATIO = 1.6        # nest: measured 1.22 (u)
+FLUX_OUTER_RATIO = 1.25      # nest: outer error outside the footprint over the one-way one, measured 0.96 (u)
+FLUX_GAIN = 0.6              # nest over outer, joint errors: measured 0.37 (nest) and 0.35 (outer), u
+FLUX_LOG = r"^gust: joint run: nest\.feedback_flux = nest: .*first max \|correction\|"
+FLUX_RING = r"^gust: joint +\d+: max \|S\| .*; ring max \|C\| u \S+ v \S+ w \S+ theta \S+ k \S+$"
 RELAX_FACTORS = (1, 4, 16)
 RELAX_FALL = 0.35            # parent - restricted nest, u RMS at 16 over that at 1, measured 0.19
 RELAX_NEST_RATIO = 0.5       # factor 1: nest error over the one-way one (u), measured 0.41
@@ -106,10 +132,10 @@ def rms(a):
     return float(np.sqrt(np.mean(a * a)))
 
 
-def check(log, where, foots, r, nest_ratio, outer_ratio, factor=None):
+def check(log, where, foots, r, nest_ratio, outer_ratio, factor=None, one_way=False):
     """a.-c. for the joint run in where, with the nests foots (name: outer cells i0, j0, ni, nj); factor: the
     nest.feedback_factor of a relax run (None: defect). Returns the exchanges and the joint errors
-    (nest name: u RMS, and "outer")."""
+    (nest name: u RMS, and "outer"; with one_way also "<name> one way" and "outer one way")."""
     # a.
     if factor is None:
         start, line = r"nest\.feedback = defect", r"max \|S\| u "
@@ -140,6 +166,8 @@ def check(log, where, foots, r, nest_ratio, outer_ratio, factor=None):
         print(f"check_nests_two_way: {where}: u RMS against the 25 m run over nest {name}: one way {ow:.4e}, "
               f"joint {jt:.4e} (ratio {jt / ow:.3f})")
         errors[name] = jt
+        if one_way:
+            errors[name + " one way"] = ow
         if not jt <= nest_ratio * ow:
             fail(f"{where}: the joint error of nest {name} is not at most {nest_ratio} of the one-way one")
         mask[i0:i0 + ni, j0:j0 + nj] = False
@@ -150,6 +178,8 @@ def check(log, where, foots, r, nest_ratio, outer_ratio, factor=None):
     if not jt <= outer_ratio * ow:
         fail(f"{where}: the joint outer error outside the footprints is not at most {outer_ratio} of the one-way one")
     errors["outer"] = jt
+    if one_way:
+        errors["outer one way"] = ow
     exchanges = int(re.search(r"^gust: joint run: steady after (\d+) exchanges", log, re.M).group(1))
     return exchanges, errors
 
@@ -162,11 +192,51 @@ def last_difference(log, where):
     return float(found[-1].rstrip(","))
 
 
+def feedback_flux(cmd, r):
+    """--feedback-flux: f. and g. of the docstring."""
+    inf = float("inf")
+    runs = {}
+    for where, extra, foots in (("flux_outer", CREST + ["nest.feedback_flux=outer"], FOOT_CREST),
+                                ("flux_nest", CREST + ["nest.feedback_flux=nest"], FOOT_CREST),
+                                ("flux_hill", NEST + ["nest.feedback_flux=nest"], {"hill": FOOT})):
+        log = run(cmd + extra + ["nest.feedback=defect"], where)
+        logged = re.search(FLUX_LOG, log, re.M) is not None
+        if logged != where.endswith(("nest", "hill")):
+            fail(f"{where}: the first-correction line is {'' if logged else 'not '}in the log")
+        ring = re.search(FLUX_RING, log, re.M) is not None
+        if ring != logged:
+            fail(f"{where}: the joint lines {'' if ring else 'do not '}end with the ring's max |C|")
+        hill = where == "flux_hill"
+        runs[where] = check(log, where, foots, r, NEST_RATIO if hill else inf, OUTER_RATIO if hill else inf,
+                            one_way=True)
+    (_, old), (_, new) = runs["flux_outer"], runs["flux_nest"]
+    ratios = {"old nest": old["crest"] / old["crest one way"], "new nest": new["crest"] / new["crest one way"],
+              "new outer": new["outer"] / new["outer one way"]}
+    print("check_nests_two_way: feedback_flux, crest to x = 900 m: joint over one-way, u: outer "
+          f"{ratios['old nest']:.3f}; nest {ratios['new nest']:.3f} (outer domain {ratios['new outer']:.3f}); nest over "
+          f"outer, joint: nest {new['crest'] / old['crest']:.3f}, outer domain {new['outer'] / old['outer']:.3f}")
+    for ok, text in ((ratios["old nest"] >= FLUX_OLD_RATIO, f"with outer the joint nest error over the one-way one "
+                      f"is {ratios['old nest']:.3f}, not at least {FLUX_OLD_RATIO}"),
+                     (ratios["new nest"] <= FLUX_NEST_RATIO, f"with nest the joint nest error over the one-way one is "
+                      f"{ratios['new nest']:.3f}, not at most {FLUX_NEST_RATIO}"),
+                     (ratios["new outer"] <= FLUX_OUTER_RATIO, f"with nest the joint outer error over the one-way one "
+                      f"is {ratios['new outer']:.3f}, not at most {FLUX_OUTER_RATIO}"),
+                     (new["crest"] <= FLUX_GAIN * old["crest"] and new["outer"] <= FLUX_GAIN * old["outer"],
+                      f"the joint errors with nest are not at most {FLUX_GAIN} of those with outer")):
+        if not ok:
+            fail(text)
+    print("check_nests_two_way: passed")
+    return 0
+
+
 def main():
     if "--" not in sys.argv:
         print(__doc__)
         return 2
-    relax = "--relax" in sys.argv[1:sys.argv.index("--")]
+    opts = sys.argv[1:sys.argv.index("--")]
+    relax, flux = "--relax" in opts, "--feedback-flux" in opts
+    if relax and flux:
+        fail("--relax and --feedback-flux are separate runs")
     cmd = sys.argv[sys.argv.index("--") + 1:]
     deck = next((a for a in cmd if a.endswith("inputs_outer")), None)
     if deck is None:
@@ -189,6 +259,8 @@ def main():
     if not ref:
         fail("no reference plotfile")
     r = u_of(ref[-1])
+    if flux:
+        return feedback_flux(cmd, r)
     n_def, e_def = check(run(cmd + NEST + ["nest.feedback=defect"], "joint"), "joint", {"hill": FOOT}, r, NEST_RATIO,
                          OUTER_RATIO)
     if relax:

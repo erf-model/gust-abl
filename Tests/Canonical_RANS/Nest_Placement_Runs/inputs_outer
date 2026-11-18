@@ -1,0 +1,38 @@
+# The outer domain of the nest-placement runs (nest_placement_runs.py): an
+# escarpment 60 m high (z = (H/2)(1 + tanh(s/L)), L = 60 m) whose contour
+# lines run at 35 degrees to the x axis through the middle of the domain;
+# 60 x 48 x 16 cells of 50 m over 3000 m x 2400 m x 800 m, first layer 10 m;
+# a log-law inflow, u* = 0.4 m/s, z0 = 0.1 m. The script writes the terrain
+# file (terrain.file) and gives every run its wind (bc.inflow_direction), its side faces,
+# its nest and nest.feedback; the uniform 25 m reference is this deck with
+# 120 x 96 x 16 cells. The recommended setting (docs/turbulence_model.rst),
+# with convection.hybrid_height = 2.5 escarpment heights.
+mesh.prob_lo       = 0. 0. 0.
+mesh.prob_hi       = 3000. 2400. 800.
+mesh.is_periodic   = 0 0 0
+mesh.max_grid_size = 30 24
+mesh.dz0           = 10.
+
+terrain.type      = xyz
+terrain.smoothing = 0
+
+bc.zlo = surface_layer
+bc.zhi = slip_wall
+bc.surface_z0 = 0.1
+bc.inflow_profile   = log_law
+bc.inflow_ustar     = 0.4
+bc.inflow_z0        = 0.1
+bc.rayleigh_zdamp    = 400.
+bc.rayleigh_dampcoef = 0.2
+bc.rayleigh_fields   = w theta
+
+init.first_guess = profile
+
+turb.realizability          = 0.309
+turb.nut_relax              = 0.5
+turb.max_geom_lscale        = 100.
+convection.hybrid_sigma_max = 0.1
+convection.hybrid_height    = 150.
+
+steady.stage          = simplec
+steady.max_iterations = 4000

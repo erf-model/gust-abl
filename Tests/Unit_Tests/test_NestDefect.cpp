@@ -320,8 +320,8 @@ TEST(NestDefect, TouchingNestsKeepTheRestrictedOmegaOnBothFootprints)
     for (int m = 0; m < 2; ++m) {
         gust::Inputs in = nest_inputs(p.in);
         in.mesh.n_cell = amrex::IntVect(12, 20, 8);
-        in.mesh.prob_lo = {-700.0 + 600.0 * m, 700, 0};
-        in.mesh.prob_hi = {-100.0 + 600.0 * m, 1700, 800};
+        in.mesh.prob_lo = {amrex::Real(-700.0 + 600.0 * m), 700, 0};
+        in.mesh.prob_hi = {amrex::Real(-100.0 + 600.0 * m), 1700, 800};
         nests.push_back(std::make_unique<DefectCase>(DefectCase{in}));
         nests.back()->make(m == 1);
         DefectCase& n = *nests.back();

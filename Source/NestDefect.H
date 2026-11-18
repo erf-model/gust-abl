@@ -169,6 +169,9 @@ public:
     //! largest |S_new|; first on the first set).
     void set (const ResidualFields& R, const std::vector<DefectRegion>& regions);
 
+    //! S += C for u, v, w, theta and k (C on the parent's layout; nest.feedback_flux = nest, NestFaceFlux.H). After set.
+    void add (const ResidualFields& C);
+
     //! R -= S for u, v, w, theta and k (nothing while inactive).
     void add_to_residual (ResidualFields& R) const;
 

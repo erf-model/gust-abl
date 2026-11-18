@@ -41,8 +41,12 @@ Two questions, answered from the terrain file and the outer mesh only:
    the 20 degree angle and the 5 m misfit gate were fitted on four nests (25 and 28 degrees with misfit
    above 5 m raised the outer cells above 0.25 m/s from 12 to 663 and 817 in a joint run; 0 and 14 degrees
    stayed at 12 and 26); they have not been tested on an independent case. A nest next to an 89 degree
-   channel bend stayed at 12 cells, so a bend is a note. The step rule, other cell sizes and oblique wind
-   have not been tested by a run. A nest closer than --margin to an outer face gets a note: on the Gorge a
+   channel bend stayed at 12 cells, so a bend is a note. The step rule was tested on an escarpment with
+   50 m cells (Tests/Canonical_RANS/Nest_Placement_Runs, N-114 item 11): for winds along an axis the two
+   flagged nests made the joint run worse and the two clear ones did not; for an oblique wind blowing
+   within 10 degrees of the step's contours both nests were flagged but neither run was worse (the
+   angle is taken against the face normal, not the wind). Other cell sizes have not been tested by a
+   run. A nest closer than --margin to an outer face gets a note: on the Gorge a
    nest 4 outer cells from the inflow face did not converge in a joint run.
 
 The thresholds scale with the outer cell size dx; the factors are the values fitted at dx = 200 m:
