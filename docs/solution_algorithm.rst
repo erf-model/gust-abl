@@ -224,7 +224,8 @@ or removing heat. With buoyancy in the momentum equations as well, stable and un
 With :math:`\theta` frozen from a near-1-D column and buoyancy in the closure only, all four converged. Van der Laan et al. (2024) use the form
 for neutral and stable boundary layers; the unstable cases apply it beyond that, with :math:`N^2 < 0` making
 the closure's :math:`P_b` a source of :math:`k`. The cost: the flow cannot change the stratification. A cold pool in a valley or air
-lifted over a ridge keeps the upstream profile by height above the ground, and there are no buoyancy forces, so no
+lifted over a ridge keeps the upstream profile by height above the ground (a patch of a parent run keeps the
+parent's :math:`\theta`, a cold pool included, but not its force), and there are no buoyancy forces, so no
 lee waves, gravity currents or katabatic and anabatic slope flows. Over terrain the omitted force is not small: with
 :math:`\theta` by height above the ground, :math:`\partial\theta/\partial x = -\Gamma\tan\alpha` at fixed
 :math:`z` (:math:`\Gamma` the profile's gradient, :math:`\alpha` the slope), and across an escarpment of height
@@ -233,9 +234,19 @@ not in hydrostatic balance, which is why it cannot be combined with the buoyancy
 apply the form on flat terrain with a constant :math:`N`.
 
 **Limits.** Refused with ``steady.stage = simplec_newton`` (the Newton stage solves :math:`\theta`), with
-``io.restart`` (the checkpoint holds no record of the option), without grid sequencing (``steady.sequencing = 1``
-and ``mesh.hierarchy_levels`` > 1 in the outer domain: the levels set :math:`\theta`; a nest of ``nest.names`` holds
-the outer domain's :math:`\theta`, interpolated). With a stratified column first guess (``init.first_guess = column``
+``io.restart`` (the checkpoint holds no record of the option), and in a run with neither grid sequencing
+(``steady.sequencing = 1`` and ``mesh.hierarchy_levels`` > 1: the levels set :math:`\theta`) nor a parent run
+(``init.first_guess = nest``). A patch of a parent run holds the parent's :math:`\theta`, interpolated onto the patch
+(bilinear on each :math:`\zeta`-level, :doc:`initial_conditions`), whether the parent solved :math:`\theta` or held
+it; the log gives its range and mean (``Tests/Canonical_RANS/Nest_Faces``). If the parent solved :math:`\theta`, its
+velocity and :math:`p'` balance a buoyancy force the patch does not carry. The patch then departs from the parent
+inside and at the nest faces, more as the Froude number :math:`U/(N h)` of the terrain falls (stratified 60 m hill
+of the test, patch against parent: rms :math:`w` 0.008 m/s at Fr 8.3 and 0.15 m/s at Fr 2.4, where the largest
+:math:`|w|` is 0.9 m/s). A parent that also held :math:`\theta` has no such mismatch (rms :math:`w` 0.002 m/s at
+both). The mismatch also raises the first residual of :math:`w` (6 times at Fr 8.3, 37 times at Fr 2.4), and the
+steady verdict is relative to it, so the run stops at a larger absolute residual (at Fr 2.4, 3.6e-6 against 3.0e-7
+for :math:`w`). ``steady.stage = unsteady`` is refused in a patch with :math:`\theta` frozen (not tested). A nest of ``nest.names`` holds the outer
+domain's :math:`\theta`, interpolated. With a stratified column first guess (``init.first_guess = column``
 with a non-neutral ``init.column_stability``) the frozen field is the column's evolved :math:`\theta`, not the inflow
 profile's (``Tests/Canonical_RANS/Nests_Flat_ABL``). With :math:`\theta` frozen, the inputs that act only on the :math:`\theta` equation have no
 effect: a Rayleigh layer or sponge on ``theta`` (``bc.rayleigh_fields``) and the :math:`\theta` gradient through the
