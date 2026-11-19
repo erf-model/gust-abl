@@ -5,10 +5,10 @@ Source/Residual.cpp, Source/Predictor.cpp, Source/Sequencing.cpp,
 Source/App.cpp).
 
 F1-F7 and F16-F19 run against FrozenTheta.* by the shared runner
-tools/mutants.py (two ranks, the unit-test flags). F8-F15 and F20-F23 change the
+tools/mutants.py (two ranks, the unit-test flags). F8-F15 and F20-F27 change the
 wiring of the application, which
 the unit tests do not reach: each rebuilds gust and runs the CTests
-rt_frozen_theta, abort_simplec_theta_* and rt_nests_flat_abl_buoyant (about a
+rt_frozen_theta, abort_simplec_theta_*, rt_nests_flat_abl_buoyant and *nest_faces_frozen* (about a
 minute each). The table is
 in docs/testing.rst.
 
@@ -60,7 +60,16 @@ APP = [
  ("F12", "theta from the sounding by absolute height, not by height above the ground", Q,
   "&inflow, true);", "&inflow, false);"),
  ("F13", "frozen accepted without grid sequencing", A,
-  "if (simplec.theta_frozen && nest == nullptr && !(sequencing && in.mesh.hierarchy_levels > 1)) {", "if (false) {"),
+  "if (simplec.theta_frozen && nest == nullptr && !nest_guess && !(sequencing && in.mesh.hierarchy_levels > 1)) {", "if (false) {"),
+ ("F24", "frozen refused in a patch of a parent run", A,
+  "nest == nullptr && !nest_guess && !(sequencing", "nest == nullptr && !(sequencing"),
+ ("F25", "canopy.heat_frozen = blend accepted in a frozen patch", A,
+  "canopy_opt.heat.frozen == CanopyFrozenHeat::blend) {\n        err.emplace_back(\"init.first_guess = nest is not",
+  "canopy_opt.heat.frozen == CanopyFrozenHeat::blend && false) {\n        err.emplace_back(\"init.first_guess = nest is not"),
+ ("F26", "a frozen patch's theta reset to 300 K after the interpolation", A,
+  "            if (simplec.theta_frozen && nest == nullptr) {\n", "            if (simplec.theta_frozen && nest == nullptr) { state.theta.setVal(300);\n"),
+ ("F27", "frozen accepted with the unsteady stage in a patch", A,
+  "if (solve && nest == nullptr && nest_guess && simplec.theta_frozen && unsteady) {", "if (false) {"),
  ("F14", "frozen accepted with the Newton stage", A,
   "if (newton && simplec.theta_frozen) {", "if (false) {"),
  ("F15", "frozen accepted with a restart", A,
@@ -74,7 +83,7 @@ APP = [
  ("F23", "the levels do not extend theta below the ground", Q,
   "    bc.set_theta_ground_extension(s.simplec.theta_frozen);\n", ""),
 ]
-CTESTS = "rt_frozen_theta|abort_simplec_theta|rt_nests_flat_abl_buoyant"
+CTESTS = "rt_frozen_theta|abort_simplec_theta|rt_nests_flat_abl_buoyant|rt_nest_faces_clean|nest_faces_frozen"
 
 
 def ctest(build):

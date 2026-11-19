@@ -1,0 +1,4 @@
+# A canopy patch inside inputs_hill_patch (x 400 to 1200 m, y 300 to 900 m), for the refusal of
+# canopy.heat_frozen = blend in a patch with frozen theta.
+# type  x    y    height  diameter  cd   lai  laimax
+1       800  600  20      200       0.2  3    0.8

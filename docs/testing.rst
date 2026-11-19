@@ -1156,6 +1156,20 @@ with the unit-test flags, F8–F15 and F20–F23 against the CTests ``rt_frozen_
    * - F23
      - The levels do not extend θ below the ground
      - ``rt_frozen_theta`` (first-cell Rt of the file-profile run)
+   * - F24
+     - Frozen refused in a patch of a parent run (``init.first_guess = nest``)
+     - ``rt_nest_faces_frozen``, ``rt_nest_faces_frozen_building``, ``rt_nest_faces_frozen_inflow``,
+       ``abort_nest_faces_frozen_building_theta``
+   * - F25
+     - ``canopy.heat_frozen = blend`` accepted in a frozen patch
+     - ``abort_nest_faces_frozen_canopy_blend``
+   * - F26
+     - A frozen patch's θ reset to 300 K after the interpolation
+     - ``rt_nest_faces_frozen`` (θ against the parent's, level range), ``rt_nest_faces_frozen_building_theta``,
+       ``rt_nest_faces_frozen_inflow_theta``
+   * - F27
+     - Frozen accepted with the unsteady stage in a patch
+     - ``abort_nest_faces_frozen_unsteady``
 
 The one-line mutants of the physical time term (``Source/TimeTerm.cpp``, ``Source/Residual.cpp``), each run
 against ``TimeTerm.*`` on two ranks with the unit-test flags by ``tools/time_term_mutants.py`` (macOS arm64,
@@ -1999,9 +2013,9 @@ Current tests
    * - ``abort_simplec_theta_value``, ``abort_simplec_theta_newton``, ``abort_simplec_theta_restart``,
        ``abort_simplec_theta_no_sequencing``
      - ``simplec.theta = fixed`` is refused, naming the key; ``frozen`` is refused with ``steady.stage =
-       simplec_newton``, with ``io.restart`` and without grid sequencing, each naming the reason. Frozen θ with a
-       stratified column first guess and with nests runs in ``rt_nests_flat_abl_buoyant`` and
-       ``rt_nests_flat_abl_neutral``.
+       simplec_newton``, with ``io.restart`` and without grid sequencing or a parent run, each naming the reason.
+       Frozen θ with a stratified column first guess and with nests runs in ``rt_nests_flat_abl_buoyant`` and
+       ``rt_nests_flat_abl_neutral``; in a patch of a parent run in ``rt_nest_faces_frozen``.
    * - ``abort_sequencing_hold_value``, ``abort_sequencing_cfl_start_value``
      - ``steady.sequencing_hold = 2`` and ``steady.sequencing_cfl_start = last``: each refused, naming its input.
    * - ``rt_sequencing_hold_kept``, ``rt_sequencing_hold_released``, ``rt_sequencing_cfl_previous``
@@ -2159,6 +2173,17 @@ Current tests
      - The hill patch with a 75 m × 75 m × 20 m block clear of its nest faces (``building_inside.txt``) runs five iterations
        on two ranks in nine boxes and writes its checkpoint; the log must report solid cells (9 solid, 9 partial and 33 wall cells; solid volume 112 500 m³) (sub-phase 9.4, beyond the plan; before, buildings with a
        ``nest`` face stopped the run).
+   * - ``rt_nest_faces_frozen`` (fixture ``rt_nest_faces_frozen_parent``), ``rt_nest_faces_frozen_building``, ``_building_theta``, ``rt_nest_faces_frozen_inflow``, ``_inflow_theta``, ``abort_nest_faces_frozen_canopy_blend``, ``_building_theta``, ``_unsteady``
+     - ``simplec.theta = frozen`` in a patch of a parent run (beyond the plan). The hill parent with a sounding of 300 K
+       at the ground and 304 K at 800 m, θ solved, is steady in 85 iterations. Its patch, whose own sounding is 310 K to
+       330 K, runs for 1 iteration and to steady (109 iterations) on two ranks in nine boxes: the log names the
+       parent's θ as the held field; θ's residual is 0 in every iteration; θ is the same bit for bit in the two
+       runs; θ equals the parent's θ interpolated bilinearly on each level within 1e-10 K (1.1e-13 K); θ varies by
+       more than 0.01 K on every level (2.2e-2 K); the 2 × 2 means of u, v, w and k are within 0.15 m/s and
+       0.06 m²/s² of the parent (0.10 m/s, 0.038 m²/s²). With the block of ``building_inside.txt`` (5 iterations) and
+       with an inflow face on xlo and an outflow face on xhi (``inputs_hill_patch_inflow``, 20 iterations), θ is the
+       one-iteration run's bit for bit. ``canopy.heat_frozen = blend`` (``canopy_inside.txt``),
+       ``buildings.theta_mode = ambient`` and ``steady.stage = unsteady`` each stop the run, naming the key.
    * - ``rt_nests_one_process``
      - Nests in one run (``Tests/Canonical_RANS/Nests_One_Process``; PR-69): the hill parent of ``Nest_Faces`` with a
        Rayleigh layer on every field above 400 m, and two touching nests given by ``nest.names`` and their corners

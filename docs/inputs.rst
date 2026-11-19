@@ -553,7 +553,7 @@ Quick reference
      - The cap's safety margin on sloping ground (0: off)
    * - ``simplec.theta``
      - ``solve``
-     - ``frozen``: θ prescribed from the inflow profile, buoyancy in the closure only
+     - ``frozen``: θ prescribed (the inflow profile's, or a parent run's in a patch), buoyancy in the closure only
    * - **Poisson solver** (`solver`_)
      -
      -
@@ -1089,8 +1089,8 @@ inputs then change the answer, not only the path; a checkpoint of fully frozen c
      - ``skip`` or ``blend``; ``canopy.heat = fixed`` with ``simplec.theta = frozen`` only (refused otherwise).
        ``skip``: the leaf heat is left out, with a warning. ``blend``: in the canopy :math:`\theta` is set each
        iteration to :math:`\theta_f + w(\theta_l - \theta_f)`, :math:`w = \lambda k/(\varepsilon + \lambda k)`, from
-       the frozen :math:`\theta_f` (:doc:`canopy`). ``blend`` is refused with ``nest.names``: a nest would blend
-       the outer domain's blended :math:`\theta` again.
+       the frozen :math:`\theta_f` (:doc:`canopy`). ``blend`` is refused with ``nest.names`` and with ``init.first_guess = nest``: a
+       nest or a patch would blend the outer domain's or the parent run's :math:`\theta` again.
 
 ``buildings``
 -------------
@@ -1659,9 +1659,12 @@ See :doc:`solution_algorithm`. Read with ``steady.stage = simplec`` or ``simplec
        and is not solved (in a canopy with ``canopy.heat_frozen = blend``, blended towards the leaves' θ,
        :doc:`canopy`); the momentum equations carry no buoyancy force, the closure keeps :math:`N^2`
        (:doc:`solution_algorithm`, prescribed potential temperature). Needs grid sequencing (``steady.sequencing = 1``,
-       ``mesh.hierarchy_levels`` > 1) in the outer domain; a nest of ``nest.names`` holds the θ it starts from (the
-       outer domain's, interpolated). Refused with ``steady.stage = simplec_newton`` and with ``io.restart``. With
-       ``frozen``, ``theta`` in ``bc.rayleigh_fields`` and ``bc.zhi_theta_grad`` have no effect.
+       ``mesh.hierarchy_levels`` > 1) or ``init.first_guess = nest``. A patch (``init.first_guess = nest``) holds the
+       θ of its parent run (``bc.nest_parent``), interpolated, whether the parent solved θ or held it; a nest of
+       ``nest.names`` holds the θ it starts from (the outer domain's, interpolated). Refused with
+       ``steady.stage = simplec_newton``, with ``io.restart``, and in a patch with ``steady.stage = unsteady``.
+       With ``frozen``, ``theta`` in ``bc.rayleigh_fields`` and ``bc.zhi_theta_grad`` have no effect, and in a
+       patch with ``nest`` faces on its four sides ``bc.theta_profile`` is not used.
 
 ``solver``
 ----------

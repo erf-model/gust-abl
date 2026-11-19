@@ -8,7 +8,7 @@ on its faces and the parent's u, v, w, theta and k in its ghost cells. The wind 
 every face of the patch has the parent's flow entering on one part or leaving on another. Two grounds: flat (the patch
 must keep the parent's flow) and a 60 m round Witch of Agnesi hill (the finer cells change the flow over the hill).
 The relaxation zone (`bc.nest_relax_width`), the ground blend (`terrain.nest_blend_width`) and the restart record are
-exercised too.
+exercised too. One patch holds the theta of a stratified parent (`simplec.theta = frozen`, beyond the plan).
 
 ## Files
 | File | Role |
@@ -18,6 +18,8 @@ exercised too.
 | `inputs_flat_patch_open` | The flat patch with `bc.xlo = nest`, `bc.xhi = outflow` and periodic y: parent cells 8 to 23 in x and the parent's whole width in y (32 x 48 x 16 cells). |
 | `inputs_hill_parent_pair` | The hill parent without `bc.inflow_ustar` or an iteration count: two parents on the same mesh at the same step with different flows (u* 0.4 and 0.6 m/s, 30 iterations), for the restart tests. |
 | `inputs_hill_patch_restart` | The hill patch without a first guess, box size, parent or iteration count: the restart tests give them on the command line. |
+| `inputs_hill_patch_inflow` | The same with an inflow face on xlo (the parent's log law) and an outflow face on xhi; nest faces on ylo and yhi. For the frozen-theta test. |
+| `canopy_inside.txt` | One canopy patch inside the hill patch, for the refusal of `canopy.heat_frozen = blend`. |
 | `check_nest_faces.py` | Runs a parent or a patch and checks it (below). |
 
 The decks do not name their outputs; `check_nest_faces.py` appends `io.plot_file` and `io.chk_file`, and copies the
@@ -32,7 +34,10 @@ None. The cases are analytic.
 ctest --test-dir <build> -R "nest_faces"
 ```
 `check_nest_faces.py open ...` takes the arguments of `patch` for a patch with an outflow face (check 1 then requires
-the net flux to be reported as not removed).
+the net flux to be reported as not removed). `check_nest_faces.py frozen PARENT_PLOTFILE PREFIX OX OY TOL_THETA
+MIN_RANGE TOL_VEL TOL_TKE -- COMMAND` runs COMMAND twice with `simplec.theta=frozen`, for 1 iteration (`PREFIX_one`)
+and to steady (`PREFIX`). `check_nest_faces.py same FIELD PLOTFILE_A PLOTFILE_B` runs nothing: FIELD of the two
+plotfiles must be equal bit for bit.
 
 By hand, in a scratch directory:
 ```bash
@@ -77,7 +82,19 @@ Measured (macOS arm64, AppleClang, double precision):
   blended ground (moved by up to 0.12 m). A restart with another `bc.nest_relax_width` (3) or
   `terrain.nest_blend_width` (150), or from a parent of the same mesh, place and step with another flow, stops,
   naming `io.restart`.
-- Refused with a nest face: lateral walls, buildings, and (with no inflow face) a Rayleigh layer on u, v or k and a
+- Frozen theta: the hill parent with a sounding of 300 K at the ground and 304 K at 800 m (5 K/km), theta solved,
+  is steady in 85 iterations. Its patch with `simplec.theta = frozen` is steady in 109. The log names the parent's
+  theta as the held field; the residual of theta is 0 in every iteration; theta after 109 iterations equals theta
+  after 1 iteration bit for bit in all 12288 cells; theta differs from the parent's theta, interpolated bilinearly
+  on each level (weights 9, 3, 3, 1 over 16), by at most 1.1e-13 K (tolerance 1e-10 K); theta varies by at least
+  2.2e-2 K along every level of the patch (required: more than 0.01 K). The patch's own sounding (310 K to 330 K)
+  is not used. The same patch with theta solved differs from the held field by up to 7.7e-3 K. The 2 x 2 means
+  differ from the parent by at most 0.10 m/s (u), 0.051 m/s (v), 0.037 m/s (w) and 0.038 m2/s2 (k): the parent's
+  flow balances a buoyancy force the patch does not carry (Fr = U/(N h) is 8.3 here). With the block of
+  `building_inside.txt` (5 iterations), and with an inflow and an outflow face (20 iterations), theta is the
+  one-iteration run's bit for bit. `canopy.heat_frozen = blend` is refused in a patch, and `steady.stage = unsteady`,
+  and `buildings.theta_mode` other than `none` with frozen theta.
+- Refused with a nest face: lateral walls, buildings near a nest face, its zone or the blend, and (with no inflow face) a Rayleigh layer on u, v or k and a
   side sponge.
 
 ## CTest
@@ -93,5 +110,12 @@ Double precision only.
 | `rt_nest_faces_hill_zone` | The hill patch with `bc.nest_relax_width=4` and `terrain.nest_blend_width=150`. |
 | `rt_nest_faces_pair_a`, `_pair_b` | Fixtures: the hill parent for 30 iterations with u* 0.4 and 0.6 m/s. |
 | `rt_nest_faces_restart_first`, `_continued`, `_straight`, `_matches` | Zone of 2 cells and blend of 100 m; 10 + 10 iterations against 20 straight: `fcompare` with zero tolerance; the restarted log names the zone and the blend. |
+| `rt_nest_faces_frozen_parent` | Fixture: the hill parent with the 300 to 304 K sounding, theta solved, to steady on 2 ranks. |
+| `rt_nest_faces_frozen` | Its patch with `simplec.theta = frozen` on 2 ranks, boxes of 13 x 9 cells: the log line, zero theta residual, theta unchanged bit for bit between 1 iteration and steady, theta within 1e-10 K of the parent's interpolated, level range above 0.01 K, 2 x 2 means of u, v, w, k within 0.15 m/s and 0.06 m2/s2 of the parent. The patch's own sounding is 310 to 330 K. |
+| `abort_nest_faces_frozen_canopy_blend` | `simplec.theta = frozen` with `canopy.heat_frozen = blend` in a patch stops, naming the keys. |
+| `rt_nest_faces_frozen_building`, `_building_theta` | The frozen-theta patch with the block of `building_inside.txt`: 5 iterations, solid cells reported and a checkpoint; theta equal bit for bit to the one-iteration patch's. |
+| `rt_nest_faces_frozen_inflow`, `_inflow_theta` | `inputs_hill_patch_inflow` with frozen theta: 20 iterations; theta equal bit for bit to the one-iteration patch's. |
+| `abort_nest_faces_frozen_unsteady` | `simplec.theta = frozen` with `steady.stage = unsteady` and `init.first_guess = nest` stops, naming the keys. |
+| `abort_nest_faces_frozen_building_theta` | The same with `buildings.theta_mode = ambient` stops, naming the key. |
 | `abort_nest_faces_restart_zone`, `_restart_blend`, `_restart_parent` | A restart with a changed zone or blend, or from the other parent of the pair, stops, naming `io.restart`. |
 | `abort_nest_faces_no_parent`, `_no_guess`, `_sequencing`, `_widths`, `_blend_width`, `_keys_unused`, `_blend_unused`, `_buildings`, `_damping` | Input faults stop the run, naming the key. |

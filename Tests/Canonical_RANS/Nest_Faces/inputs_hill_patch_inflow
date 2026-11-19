@@ -1,0 +1,33 @@
+# The hill patch with an inflow face on xlo, an outflow face on xhi and nest
+# faces on ylo and yhi, without a first guess, an iteration cap, the boxes or
+# the parent's path (the command line gives them). For the frozen-theta test
+# rt_nest_faces_frozen_inflow: the patch holds the parent's theta, and only
+# the inflow face's ghost cells take theta from bc.theta_profile.
+mesh.n_cell        = 32 24 16
+mesh.prob_lo       = 400. 300. 0.
+mesh.prob_hi       = 1200. 900. 800.
+mesh.is_periodic   = 0 0 0
+mesh.dz0           = 10.
+
+terrain.type            = agnesi
+terrain.hill_shape      = round
+terrain.hill_height     = 60.
+terrain.hill_half_width = 250.
+terrain.smoothing       = 0
+
+bc.xlo = inflow
+bc.xhi = outflow
+bc.ylo = nest
+bc.yhi = nest
+bc.zlo = surface_layer
+bc.zhi = slip_wall
+bc.surface_z0 = 0.1
+bc.inflow_profile   = log_law
+bc.inflow_ustar     = 0.4
+bc.inflow_z0        = 0.1
+bc.inflow_direction = 20.
+
+steady.stage = simplec
+
+# The cap of the geometric length before the default became 100 m: keeps this test's answers.
+turb.max_geom_lscale = 30.

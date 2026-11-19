@@ -319,6 +319,31 @@ use the ``bc.inflow_*`` profile and the sounding, not the parent's field. ``init
 ``nest``. Grid
 sequencing (``steady.sequencing = 1``) is refused with ``nest``: the patch starts on its own mesh from the parent.
 
+**Frozen θ.** With ``simplec.theta = frozen`` the patch holds the parent's :math:`\theta`, interpolated as above, for
+the whole run (:doc:`solution_algorithm`, prescribed potential temperature). The parent may have solved
+:math:`\theta` or held it. The log gives the range and the mean of the held field. The ground ghost cells of
+:math:`\theta` are extended from the patch's own first two cells, as on the sequenced levels. An ``inflow`` face of
+the patch still takes its :math:`\theta` from ``bc.theta_profile``; with nest faces on all lateral faces every
+lateral ghost value is the parent's, and ``bc.theta_profile`` (which the deck must still give) is not used.
+``canopy.heat_frozen = blend`` is refused: the parent's :math:`\theta` may already carry the leaves' heat.
+``steady.stage = unsteady`` is refused (not tested). ``Tests/Canonical_RANS/Nest_Faces`` (``rt_nest_faces_frozen``)
+checks that :math:`\theta` does not change over the run and equals the parent's, interpolated.
+
+What the patch does not take from the parent:
+
+- **The buoyancy force.** If the parent solved :math:`\theta`, its velocity and :math:`p'` balance a force the
+  patch does not carry, and the patch departs from the parent, more as :math:`U/(N h)` falls
+  (:doc:`solution_algorithm`, Limits, gives the test's numbers). A parent that also held :math:`\theta` has no
+  such mismatch.
+- **The parent's ground.** :math:`\theta` is carried with the :math:`\zeta`-level. Where the patch's ground
+  differs from the parent's by :math:`\delta h` in a domain of height :math:`H`, :math:`N^2` changes by about
+  :math:`\delta h/(H - h)` (0.23 % at most in the test; 5 % for a crest 50 m sharper in a 1000 m domain).
+- **The first cell's** :math:`N^2`. It is the held field's own gradient between the first two cells (the ground
+  extension), not the wall-law value of a parent that solved :math:`\theta`.
+- **The surface stability.** ``bc.surface_stability`` and ``bc.surface_heat_flux`` are the patch deck's own, and
+  are not compared with the parent's: give the patch the parent's values. A parent that solved :math:`\theta`
+  with a fixed heat flux has no steady :math:`\theta`; the patch holds the :math:`\theta` of its last iteration.
+
 .. _nests-one-run:
 
 Nests in one run

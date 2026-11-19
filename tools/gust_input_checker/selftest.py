@@ -233,6 +233,13 @@ CASES = [
      ["E steady.sequencing nest"], [], PARENT),
     ("nest_relax_too_wide", "nest", "bc.nest_relax_width = 8\n", ["E bc.nest_relax_width nest"], [], PARENT),
     ("nest_relax_ok", "nest", "bc.nest_relax_width = 3\n", [], ["E bc.nest_relax_width"], PARENT),
+    ("nest_frozen_theta", "nest", "simplec.theta = frozen\n", [], ["E simplec.theta"], PARENT),
+    ("nest_frozen_theta_unsteady", "nest",
+     "simplec.theta = frozen\nsteady.stage = unsteady\nunsteady.dt = 1\nunsteady.stop_time = 10\n",
+     ["E simplec.theta hierarchy"], [], dict(PARENT, drop="steady.stage")),
+    ("nest_frozen_theta_canopy_blend", "nest",
+     "simplec.theta = frozen\ncanopy.type = patches\ncanopy.file = c.txt\ncanopy.heat = fixed\ncanopy.leaf_theta = 302\n"
+     "canopy.heat_frozen = blend\n", ["E canopy.heat_frozen"], [], dict(PARENT, files=dict(PARENT["files"], **{"c.txt": "1 800 800 20 200 0.2 3 0.8\n"}))),
     ("nest_ratio_ok", "nest", "bc.nest_ratio = 4\n", [], ["E bc.nest_ratio", "W bc.nest_ratio"], PARENT),
     ("nest_ratio_six", "nest", "bc.nest_ratio = 6\n", ["E bc.nest_ratio nest"], [], PARENT),
     ("nest_ratio_no_parent", "solve", "bc.nest_ratio = 4\n", ["E bc.nest_ratio nest"], []),
