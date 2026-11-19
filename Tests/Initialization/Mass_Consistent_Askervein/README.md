@@ -21,7 +21,9 @@ Check script: `Supporting_Files/check_init.py askervein` (shared with `Bump_Spee
   divergence before at the gold's printed 10 digits.
 - Maximum |w| and the largest horizontal speed at the gold's values (1e-6); theta = 300 K everywhere; p' = 0;
   k > 0.
-- The state matches `Gold/init_askervein_plt00000` at relative 1e-8.
+- The state matches `Gold/init_askervein_plt00000` at relative 1e-8. The gold's k is for the 100 m default of
+  `turb.max_geom_lscale` (rewritten in November 2026; a run without the SIMPLEC stage refuses `turb.*`). The other
+  fields did not change with the default.
 
 lambda is not in the plotfile: the state plotfile is the regression artefact, and the unit tests pin lambda.
 

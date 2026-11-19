@@ -377,7 +377,7 @@ Quick reference
      - ``-1``, ``-3``
      - Richardson-number smoothing limits
    * - ``turb.max_geom_lscale``
-     - 30 m
+     - 100 m
      - Cap on the geometric length scale
    * - ``turb.tke_floor``
      - ``0``
@@ -412,6 +412,9 @@ Quick reference
    * - ``turb.wall_distance``
      - ``terrain_height``
      - Wall-distance method
+   * - ``turb.shear_stencil``
+     - ``central``
+     - Vertical shear in the production of k (``log_law``: exact for a log profile)
    * - **Convection** (`convection`_)
      -
      -
@@ -989,7 +992,7 @@ types, the inflow profile and the sounding; the other keys act in the SIMPLEC st
 
 The wall model and the inflow profile's equilibrium :math:`k` and :math:`\nu_t` use the turbulence model's
 ``turb.Cmu0`` and ``turb.kappa``, and the inflow profile its ``turb.max_geom_lscale``. Without the SIMPLEC stage
-(``turb.*`` is then refused) they use the defaults, 0.5562, 0.41 and 30 m.
+(``turb.*`` is then refused) they use the defaults, 0.5562, 0.41 and 100 m.
 
 ``canopy``
 ----------
@@ -1231,10 +1234,17 @@ See :doc:`turbulence_model`. Read with the SIMPLEC stage only.
      - Finite, < ``turb.Rt_crit`` and > −3.598: the smoothed :math:`R_t` stays above it. :math:`c_\mu` has its pole at
        −3.5987 and grows without bound as ``turb.Rt_min`` approaches it (:doc:`turbulence_model`).
    * - ``turb.max_geom_lscale``
-     - 30 m
-     - Finite, > 0: the harmonic cap of :math:`l_g` (about :math:`\kappa \times 0.1\delta`, the :math:`l_g` at the
-       top of the surface layer, :math:`\delta` the boundary-layer depth);
-       also the cap of the inflow profile's length with ``bc.inflow_tke_length = closure``.
+     - 100 m
+     - Finite, > 0: the harmonic cap of :math:`l_g`, approached aloft (:math:`l_g` is half of it where
+       :math:`\kappa (d + z_0)` equals it, 244 m above the ground for 100 m). Read as
+       :math:`\kappa \times 0.1\delta`, the :math:`l_g` at the top of the surface layer of a boundary layer of depth
+       :math:`\delta`, 100 m corresponds to :math:`\delta` of about 2.4 km and 30 m to 0.7 km.
+       Also the cap of the inflow profile's length with ``bc.inflow_tke_length = closure``. The default was 30 m
+       (ERF's default) before November 2026; set ``turb.max_geom_lscale = 30`` for the earlier answers. The cap is
+       not stored in a checkpoint: a restart reads it from the deck, so a run started with the earlier default
+       needs ``turb.max_geom_lscale = 30`` in its deck to continue the same problem. With 100 m a neutral
+       geostrophic column without an inversion has a boundary layer about 2 km deep (10 m/s, f = 1e-4 1/s):
+       use a domain of 3 km or more, a capping inversion or ``bc.zhi = geostrophic``.
    * - ``turb.tke_floor``
      - ``0``
      - 0 (machine epsilon) or ≥ machine epsilon (m²/s²): lower bound on :math:`k`.
@@ -1275,6 +1285,16 @@ See :doc:`turbulence_model`. Read with the SIMPLEC stage only.
    * - ``turb.wall_distance``
      - ``terrain_height``
      - ``terrain_height`` or ``tucker``.
+   * - ``turb.shear_stencil``
+     - ``central``
+     - ``central`` or ``log_law``. The vertical gradients of u and v in :math:`S^2`. ``central`` is the central
+       difference, which over-estimates the gradient of a log profile in the cells next to the wall cell.
+       ``log_law`` takes :math:`(u_{k+1} - u_{k-1}) / [(d_k + z_0) \ln((d_{k+1} + z_0)/(d_{k-1} + z_0))]` in every
+       cell above the wall cell, with :math:`d` the height above the ground (:ref:`log-shear`); with an immersed
+       ground it takes the place of that ground's shear formula (:doc:`immersed_terrain`). It needs
+       ``bc.zlo = surface_layer`` (``bc.surface_z0`` or ``bc.surface_z0_file``) and
+       ``turb.wall_distance = terrain_height``, and stops with ``buildings.type = immersed_forcing``. Refused with
+       ``turb.closure = none``.
 
 ``convection``
 --------------

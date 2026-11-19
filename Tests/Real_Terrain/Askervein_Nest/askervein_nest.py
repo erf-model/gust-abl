@@ -255,6 +255,13 @@ TWO_WAY = ["turb.realizability=0.309", "turb.nut_relax=0.5", "convection.hybrid_
 TWO_WAY_NEST = ["nest.names=ht", "nest.ht.lo=-1000 -1000", "nest.ht.hi=1000 1000"]
 
 
+def deck_without_cap(deck, copy):
+    """A copy of the deck without turb.max_geom_lscale, which TWO_WAY gives (a key given twice aborts)."""
+    with open(deck) as fh, open(copy, "w") as out:
+        out.writelines(line for line in fh if line.split("=")[0].strip() != "turb.max_geom_lscale")
+    return copy
+
+
 def two_way(cmd, paper=False, extra=(), keep=False):
     import glob
     import numpy as np
@@ -267,6 +274,8 @@ def two_way(cmd, paper=False, extra=(), keep=False):
         base = cmd[:at] + ["inputs_askervein_paper"] + cmd[at:] + [f"terrain.file={TERRAIN}", "io.write_checkpoint=1"]
         n_ref, n_out, half, nz = 256, 128, 937.5, 64
     else:
+        cmd = [deck_without_cap(a, "inputs_askervein_two_way") if os.path.basename(a) == "inputs_askervein_domain"
+               else a for a in cmd]   # the deck sets the 30 m cap of the one-way runs
         base = cmd + [f"terrain.file={TERRAIN}", f"bc.inflow_file={INFLOW}"] + TWO_WAY
         n_ref, n_out, half, nz = 300, 150, 1000.0, 18
     nest = ["nest.names=ht", f"nest.ht.lo={-half:g} {-half:g}", f"nest.ht.hi={half:g} {half:g}"]

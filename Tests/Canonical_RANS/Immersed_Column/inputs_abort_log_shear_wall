@@ -1,0 +1,37 @@
+# The refusal of turb.shear_stencil = log_law over a ground without a roughness length
+# (abort_shear_stencil_no_surface_layer): the column of Neutral_Column/inputs_steady_column with a
+# no-slip ground in the place of the surface layer. The run stops before the first iteration.
+mesh.n_cell        = 4 4 64
+mesh.prob_hi       = 2560. 2560. 1000.
+mesh.is_periodic   = 1 1 0
+mesh.max_grid_size = 4 4
+
+terrain.type = flat
+
+bc.zhi = slip_wall
+bc.theta_profile_z = 0.
+bc.theta_profile   = 300.
+bc.inflow_profile  = log_law
+bc.inflow_ustar    = 0.25
+bc.inflow_z0       = 0.1
+bc.inflow_direction = 0.
+
+init.first_guess = profile
+
+turb.max_geom_lscale = 1.0e12
+turb.face_mean       = logarithmic
+
+forcing.pressure_gradient = 1.225e-4 0. 0.
+
+steady.stage                = simplec
+steady.sweep                = zjacobi   # z-line Jacobi sweep (the CPU default is lusgs)
+steady.cfl0                 = 1.
+steady.cfl_max              = 50.
+steady.max_iterations       = 20000
+steady.residual_drop_orders = 6
+steady.residual_tol         = 1.e-8
+
+bc.zlo = no_slip_wall
+turb.shear_stencil = log_law
+io.write_plotfile = 0
+io.write_checkpoint = 0

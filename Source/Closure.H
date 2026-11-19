@@ -55,7 +55,7 @@
 // Inputs (turb.*, read by read_closure_options; the application and the
 // regression tool read them):
 //   Cmu0 0.5562 (> 0)   Cb 0.35 (> 0)   Rt_crit -1 (<= 0)   Rt_min -3 (< Rt_crit, > -3.6)
-//   max_geom_lscale 30 m (> 0)   tke_floor 0 (0: machine epsilon; else >= machine epsilon)
+//   max_geom_lscale 100 m (> 0)  tke_floor 0 (0: machine epsilon; else >= machine epsilon)
 //   sigma_k 1 (> 0)   nu_molecular 0 (>= 0, m^2/s)   alpha_molecular 0 (>= 0, m^2/s)
 //   kappa 0.41 (> 0)   nut_relax 1 ((0, 1])   frozen_switch 1 (0 | 1: freeze the floor during the Newton stage, Smoothness.H)
 //   nut_relax_end 0 (0: off, else in (0, 1) and needs nut_relax < 1: the driver's relative residual below which a
@@ -87,6 +87,9 @@
 namespace gust {
 
 enum class WallDistanceKind { terrain_height, tucker };
+//! turb.shear_stencil: the vertical gradients of u and v in S2 (central: the closure's central difference;
+//! log_law: exact for a logarithmic profile over the ground, LogShear.H).
+enum class ShearStencil { central, log_law };
 
 //! turb.closure: the k–L closure, or none (laminar: the molecular diffusivities alone).
 enum class ClosureKind { kl, none };
@@ -102,7 +105,7 @@ struct ClosureOptions
     amrex::Real Cb{amrex::Real(0.35)};
     amrex::Real Rt_crit{-1};
     amrex::Real Rt_min{-3};
-    amrex::Real max_geom_lscale{30};
+    amrex::Real max_geom_lscale{100};
     amrex::Real tke_floor{0};
     amrex::Real sigma_k{1};
     amrex::Real nu_molecular{0};
@@ -120,6 +123,7 @@ struct ClosureOptions
     amrex::Real ri_gate{0};
     FaceMean face_mean{FaceMean::arithmetic};
     WallDistanceKind wall_distance{WallDistanceKind::terrain_height};
+    ShearStencil shear_stencil{ShearStencil::central};
     //! turb.realizability = C_r (0: off, or finite and > 0): nu_t <= C_r k / S
     //! (ClosureWake.H), applied to the new nu_t before the nu_t relaxation.
     amrex::Real realizability{0};

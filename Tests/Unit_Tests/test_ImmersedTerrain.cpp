@@ -6,13 +6,19 @@
 //   sum a_nb kept) and in the viscous fluxes; the strain correction is the identity for a ground on a
 //   cell face and the log-law gradient times the flat ground's error above a cut cell; the body
 //   forces act on the open part of each face; the refusals of check_immersed_terrain; the restart record.
+// turb.shear_stencil = log_law (LogShear.H): the strain of an exact log profile is the log-law gradient
+// in every cell above the wall cell, over a body-fitted ground and above the cut cell of an immersed
+// one, where the central difference is 21 % high in the second cell; the wall cell, the cut cell and
+// the top cell keep the closure's strain.
 #include "BuildingForcing.H"
 #include "Closure.H"
 #include "ImmersedStrain.H"
 #include "ImmersedTerrain.H"
 #include "ImplicitOperator.H"
+#include "LogShear.H"
 #include "LaminarTestHelpers.H"
 #include "Residual.H"
+#include "SurfaceRoughness.H"
 
 #include <AMReX_ParallelDescriptor.H>
 
@@ -40,6 +46,8 @@ namespace {
 using gust::ptest::PCase;
 
 constexpr double rtol = std::is_same_v<amrex::Real, double> ? 1e-12 : 2e-4;
+// The log-law gradients: tight enough in single precision to tell them from the central difference (3 % at k = 3).
+constexpr double ltol = std::is_same_v<amrex::Real, double> ? 1e-9 : 2e-3;
 constexpr double kKappa = 0.41;
 constexpr double kZ0 = 0.1;
 constexpr double kDz = 10;   // the layers of ground_case
@@ -103,7 +111,8 @@ void fill_by_level (amrex::MultiFab& mf, const std::function<double(int)>& f)
     }
 }
 
-double log_law (double us, double d) { return us / kKappa * std::log((d + kZ0) / kZ0); }
+// 0 below the ground (the ghost layer under the mesh).
+double log_law (double us, double d) { return d > 0 ? us / kKappa * std::log((d + kZ0) / kZ0) : 0.0; }
 
 std::string scratch_dir (const std::string& name)
 {
@@ -257,6 +266,133 @@ TEST (ImmersedTerrain, StrainCorrectionFollowsTheFlatGround)
         const double dudz = R * us / (kKappa * (d2 + kZ0));
         EXPECT_NEAR(std::sqrt(strain((2 + f) * kDz, ulog, true)), dudz, 1e3 * rtol * dudz) << "f " << f;
     }
+}
+
+// turb.shear_stencil = log_law over a body-fitted ground: for an exact log profile at 30 degrees to x,
+// sqrt(S2) = u* / (kappa (d + z0)) in every cell between the wall cell and the top cell, across the box
+// seams; the closure's central difference is higher by (d + z0) ln((d_{k+1} + z0)/(d_{k-1} + z0)) / (2 dz),
+// 1.21 in the second cell; the wall cell and the top cell keep the closure's value.
+TEST (LogShear, LogProfileGivesTheLogLawGradient)
+{
+    const PCase c = ground_case(2);
+    gust::BuoyancyOptions buoy;
+    buoy.gravity = 0;
+    const double us = 0.35, ca = std::cos(M_PI / 6), sa = std::sin(M_PI / 6);
+    auto dk = [] (int k) { return (k + 0.5) * kDz; };
+    gust::State q;
+    gust::lamtest::define_state(q, c);
+    fill_by_level(q.u, [&] (int k) { return ca * log_law(us, dk(k)); });
+    fill_by_level(q.v, [&] (int k) { return sa * log_law(us, dk(k)); });
+    for (amrex::MultiFab* mf : {&q.w, &q.p, &q.tke}) { mf->setVal(0); }
+    q.theta.setVal(300);
+    amrex::MultiFab dist(c.ba, c.dm, 1, 1);
+    fill_by_level(dist, dk);
+    amrex::MultiFab N2, plain, S2;
+    gust::stratification_and_strain(q, buoy, c.geom, N2, plain);
+    gust::stratification_and_strain(q, buoy, c.geom, N2, S2);
+    gust::LogShear(dist, gust::Roughness(amrex::Real(kZ0)), nullptr).apply(q, c.geom, S2);
+    for (int i = 0; i < 4; ++i) {
+        for (const int j : {0, 1, 2}) {
+            EXPECT_EQ(value_at(S2, i, j, 0), value_at(plain, i, j, 0)) << "the wall cell";
+            EXPECT_EQ(value_at(S2, i, j, 23), value_at(plain, i, j, 23)) << "the top cell";
+            for (int k = 1; k < 23; ++k) {
+                const double exact = us / (kKappa * (dk(k) + kZ0));
+                EXPECT_NEAR(std::sqrt(value_at(S2, i, j, k)), exact, ltol * exact) << i << " " << j << " " << k;
+                const double R = (dk(k) + kZ0) * std::log((dk(k + 1) + kZ0) / (dk(k - 1) + kZ0)) / (2 * kDz);
+                EXPECT_NEAR(std::sqrt(value_at(plain, i, j, k)), R * exact, ltol * exact) << "central " << k;
+            }
+        }
+    }
+    const double R1 = (dk(1) + kZ0) * std::log((dk(2) + kZ0) / (dk(0) + kZ0)) / (2 * kDz);
+    EXPECT_NEAR(R1, 1.2032, 1e-4) << "the central difference in the second cell (z0 = dz / 100)";
+}
+
+// turb.shear_stencil = log_law above an immersed ground with solid fraction f in layer 2: the solid
+// layers and the cut cell (f = 0: the first fluid cell) keep the closure's strain; from the cell above,
+// the exact log profile at the fluid centroids' distances gives u* / (kappa (d + z0)). The solid layers hold
+// a distance that grows upward (1 and 2 cm), so that only the solid fraction keeps them out.
+TEST (LogShear, ImmersedGroundStartsAboveTheCutCell)
+{
+    const PCase c = ground_case(2);
+    gust::BuoyancyOptions buoy;
+    buoy.gravity = 0;
+    const double us = 0.35;
+    for (const double f : {0.0, 0.3, 0.7, 0.9}) {
+        Ground g(c, (2 + f) * kDz);
+        const double d1 = (1 - f) * kDz / 2, d2 = (1 - f) * kDz + kDz / 2;
+        auto dk = [&] (int k) { return k < 2 ? 0.01 * (k + 1) : (k == 2 ? d1 : d2 + (k - 3) * kDz); };
+        gust::State q;
+        gust::lamtest::define_state(q, c);
+        fill_by_level(q.u, [&] (int k) { return k < 2 ? 0.0 : log_law(us, dk(k)); });
+        for (amrex::MultiFab* mf : {&q.v, &q.w, &q.p, &q.tke}) { mf->setVal(0); }
+        q.theta.setVal(300);
+        amrex::MultiFab dist(c.ba, c.dm, 1, 1);
+        fill_by_level(dist, dk);
+        amrex::MultiFab N2, plain, S2;
+        gust::stratification_and_strain(q, buoy, c.geom, N2, plain);
+        gust::stratification_and_strain(q, buoy, c.geom, N2, S2);
+        gust::LogShear(dist, gust::Roughness(amrex::Real(kZ0)), &g.b).apply(q, c.geom, S2);
+        for (int i = 0; i < 4; ++i) {
+            for (int k = 0; k <= 2; ++k) { EXPECT_EQ(value_at(S2, i, 2, k), value_at(plain, i, 2, k)) << "f " << f << " layer " << k; }
+            for (int k = 3; k < 23; ++k) {
+                const double exact = us / (kKappa * (dk(k) + kZ0));
+                EXPECT_NEAR(std::sqrt(value_at(S2, i, 2, k)), exact, ltol * exact) << "f " << f << " " << i << " " << k;
+            }
+        }
+    }
+}
+
+// turb.shear_stencil = log_law with a roughness map: each column's own z0 enters its gradient. With one
+// profile u(k) in every column and z0 = 0.05 (1 + i) m, sqrt(S2) in column i is
+// (u_{k+1} - u_{k-1}) / ((d_k + z0_i) ln((d_{k+1} + z0_i) / (d_{k-1} + z0_i))).
+TEST (LogShear, RoughnessMapEntersByColumn)
+{
+    const PCase c = ground_case(2);
+    gust::BuoyancyOptions buoy;
+    buoy.gravity = 0;
+    auto dk = [] (int k) { return (k + 0.5) * kDz; };
+    auto uk = [&] (int k) { return log_law(0.35, dk(k)); };
+    auto z0i = [] (int i) { return 0.05 * (1 + ((i % 4) + 4) % 4); };   // periodic images included
+    gust::State q;
+    gust::lamtest::define_state(q, c);
+    fill_by_level(q.u, uk);
+    for (amrex::MultiFab* mf : {&q.v, &q.w, &q.p, &q.tke}) { mf->setVal(0); }
+    q.theta.setVal(300);
+    amrex::MultiFab dist(c.ba, c.dm, 1, 1);
+    fill_by_level(dist, dk);
+    amrex::MultiFab map(gust::ground_slab(c.ba), c.dm, 1, amrex::IntVect(1, 1, 0));
+    for (amrex::MFIter mfi(map, false); mfi.isValid(); ++mfi) {
+        const auto a = map.array(mfi);
+        amrex::LoopOnCpu(mfi.fabbox(), [&] (int i, int j, int k) { a(i, j, k) = static_cast<amrex::Real>(z0i(i)); });
+    }
+    amrex::MultiFab N2, S2;
+    gust::stratification_and_strain(q, buoy, c.geom, N2, S2);
+    gust::LogShear(dist, gust::Roughness(amrex::Real(0), &map), nullptr).apply(q, c.geom, S2);
+    for (int i = 0; i < 4; ++i) {
+        for (const int k : {1, 2, 5}) {
+            const double z0 = z0i(i);
+            const double want = (uk(k + 1) - uk(k - 1)) / ((dk(k) + z0) * std::log((dk(k + 1) + z0) / (dk(k - 1) + z0)));
+            EXPECT_NEAR(std::sqrt(value_at(S2, i, 1, k)), want, ltol * want) << i << " " << k;
+        }
+    }
+    const double a = (uk(2) - uk(0)) / ((dk(1) + 0.05) * std::log((dk(2) + 0.05) / (dk(0) + 0.05)));
+    const double b = (uk(2) - uk(0)) / ((dk(1) + 0.2) * std::log((dk(2) + 0.2) / (dk(0) + 0.2)));
+    EXPECT_GT(std::abs(a / b - 1), 4e-3) << "the columns' gradients differ";
+}
+
+// The refusals of LogShear: a roughness length that is not positive, a wall distance without ghost cells.
+TEST (LogShear, RefusesWhatItCannotUse)
+{
+    const PCase c = ground_case(4);
+    amrex::MultiFab dist(c.ba, c.dm, 1, 1), bare(c.ba, c.dm, 1, 0);
+    dist.setVal(1);
+    bare.setVal(1);
+    EXPECT_NE(abort_message([&] { gust::LogShear(dist, gust::Roughness(amrex::Real(0)), nullptr); })
+                  .find("turb.shear_stencil = log_law needs a roughness length z0 > 0"),
+              std::string::npos);
+    EXPECT_NE(abort_message([&] { gust::LogShear(bare, gust::Roughness(amrex::Real(kZ0)), nullptr); })
+                  .find("the wall distance needs one lateral ghost cell"),
+              std::string::npos);
 }
 
 // The body forces on the open part of each face: with q = 0 the residual of u is the pressure gradient

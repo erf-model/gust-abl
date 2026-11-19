@@ -62,7 +62,7 @@ struct AblSetupFacts
     SimplecOptions simplec;
     //! theta of the bc.inflow_file table, with bc.inflow_profile = file.
     amrex::Vector<amrex::Real> inflow_table_theta;
-    amrex::Real max_geom_lscale{30};
+    amrex::Real max_geom_lscale{100};
     bool surface_layer{false};  //!< bc.zlo = surface_layer
     bool restart{false};        //!< io.restart is given (the first guess is the checkpoint)
     bool solve{false};          //!< steady.stage is not none

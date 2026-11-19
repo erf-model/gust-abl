@@ -281,7 +281,8 @@ TEST(InflowProfile, ClosureLengthCapsTheEquilibrium)
     InflowProfileOptions opt;
     opt.z0 = amrex::Real(z0);
     EXPECT_EQ(opt.length, InflowProfileOptions::Length::closure);   // the default
-    EXPECT_EQ(opt.l_max, 30);
+    EXPECT_EQ(opt.l_max, 100);   // the default
+    opt.l_max = amrex::Real(lmax);   // 30 m for the numbers below
     // log law: dS/dz = u*/(kappa (z + z0)), u*_l = u* l / (kappa (z + z0)).
     opt.ustar = amrex::Real(0.6);
     {
@@ -343,6 +344,7 @@ TEST(InflowProfile, FileTableWithAndWithoutK)
     InflowProfileOptions opt;
     opt.kind = InflowProfileOptions::Kind::file;
     opt.file = fname;
+    opt.l_max = 30;   // the cap of the closure's length in the numbers below (the default is 100 m)
     opt.length = InflowProfileOptions::Length::unbounded;   // the wall-law length (closure: below)
     gust::InflowProfile f(opt, tref);
     EXPECT_EQ(f.table_size(), 3);

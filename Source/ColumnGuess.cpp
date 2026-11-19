@@ -749,12 +749,12 @@ ColumnGuessResult run_column_guess (const Inputs& in, const InitOptions& iopt, c
     int halvings = 0;
     double extreme = 0;   // the most stable column reached: the largest 1/L (mol) or the most negative q (heat_flux)
     auto too_stable = [&] () {
-        char msg[512];
+        char msg[640];
         if (mol_mode) {
             std::snprintf(msg, sizeof(msg), "gust: column guess: init.column_mol = %.4g m is more stable than this column reaches: "
                           "its smallest Obukhov length is about %.4g m (set by the wind, the Rayleigh layer on theta, "
-                          "bc.rayleigh_zdamp and bc.rayleigh_dampcoef, and the surface's bulk Richardson number bound, "
-                          "init.column_rib_max); a larger L or a stronger wind",
+                          "bc.rayleigh_zdamp and bc.rayleigh_dampcoef, the length cap turb.max_geom_lscale, and the surface's bulk "
+                          "Richardson number bound, init.column_rib_max); a larger L or a stronger wind",
                           static_cast<double>(iopt.column_mol), extreme > 0 ? 1.0 / extreme : 0.0);
         } else {
             std::snprintf(msg, sizeof(msg), "gust: column guess: the surface flux %.4e K m/s (bc.surface_heat_flux) is beyond the largest "

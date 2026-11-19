@@ -26,7 +26,8 @@ Steady cases
      - 1-D neutral column, immersed ground
      - The same column on a flat mesh with the ground inside a layer (:doc:`immersed_terrain`): the wall stress
        balances the force for solid fractions 0, 0.3, 0.7 and 0.9, and at 0 the column repeats the body-fitted one.
-     - ``rt_immersed_column_f0``, ``_f03``, ``_f07``, ``_f09``
+     - ``rt_immersed_column_f0``, ``_f03``, ``_f07``, ``_f09``; with ``turb.shear_stencil = log_law``:
+       ``rt_log_shear_column_f0``, ``_f03``, ``_f07``, ``_f09``
    * - 1c
      - Ridge and round hill, immersed ground
      - A sloping ground immersed in a flat mesh against the terrain-following mesh (:doc:`immersed_terrain`): the

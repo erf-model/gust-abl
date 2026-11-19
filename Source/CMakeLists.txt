@@ -23,6 +23,7 @@ set(GUST_SOURCES
     ImplicitOperator.cpp
     ImmersedSlope.cpp
     ImmersedStrain.cpp
+    LogShear.cpp
     ImmersedTerrain.cpp
     MassFlux.cpp
     Forcing.cpp

@@ -1321,7 +1321,7 @@ unit-test flags by ``tools/unsteady_output_mutants.py`` (macOS arm64, AppleClang
 The one-line mutants of the immersed ground (``Source/BuildingForcing.H``, ``Source/BuildingForcing.cpp``,
 ``Source/ImmersedStrain.cpp``, ``Source/Residual.cpp``, ``Source/ImmersedTerrain.cpp`` and ``Source/Inputs.cpp``),
 each run against ``ImmersedTerrain.*`` and ``Inputs.ImmersedTerrain*`` on one rank, with a rebuild from the restored
-sources between two mutants (macOS arm64, AppleClang). All 9 are killed.
+sources between two mutants (macOS arm64, AppleClang). All 15 are killed.
 
 .. list-table::
    :header-rows: 1
@@ -1378,6 +1378,49 @@ sources between two mutants (macOS arm64, AppleClang). All 9 are killed.
 
 IT1 to IT9 were run with a scripted pass over the sources (each change, a rebuild, the named tests, the file
 restored and touched), and IT10 to IT15 the same way against the CTests; the scripts are not in the repository.
+
+The one-line mutants of ``turb.shear_stencil = log_law`` (``Source/LogShear.cpp``, ``Source/Sequencing.cpp``), each
+run against ``LogShear.*`` on one rank, LS1 and LS7 also against ``rt_log_shear_column_f0`` and
+``rt_log_shear_column_f07``, with a rebuild from the restored sources at the end (macOS arm64, AppleClang). All 9
+are killed.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 6 50 44
+
+   * - Mutant
+     - Change
+     - Failing tests
+   * - LS1
+     - The central difference :math:`d_{k+1} - d_{k-1}` in the place of the log length
+     - ``LogProfileGivesTheLogLawGradient``, ``ImmersedGroundStartsAboveTheCutCell``, ``RoughnessMapEntersByColumn``;
+       CTest ``rt_log_shear_column_f0``, ``rt_log_shear_column_f07``
+   * - LS2
+     - :math:`z_0` not added to the distance
+     - the same three unit tests
+   * - LS3
+     - Immersed ground: the wall cell not left out
+     - ``ImmersedGroundStartsAboveTheCutCell``
+   * - LS4
+     - Immersed ground: the solid cells not left out
+     - ``ImmersedGroundStartsAboveTheCutCell``
+   * - LS5
+     - The gradient of :math:`v` taken from :math:`u`
+     - the same three unit tests
+   * - LS6
+     - The roughness map read as a uniform :math:`z_0`
+     - ``RoughnessMapEntersByColumn``
+   * - LS7
+     - The option read but the correction not given to the closure
+     - CTest ``rt_log_shear_column_f0``, ``rt_log_shear_column_f07`` (the unit tests do not run the application)
+   * - LS8
+     - :math:`d_{k-1}` in the place of :math:`d_k` in the log length
+     - the same three unit tests
+   * - LS9
+     - The cell under the top cell left out
+     - ``LogProfileGivesTheLogLawGradient``, ``ImmersedGroundStartsAboveTheCutCell``
+
+LS1 to LS9 were run the same way; the scripts are not in the repository.
 
 The one-line mutants of the sloping immersed ground (``Source/BuildingsSurface.cpp``, ``Source/Heights_K.H``,
 ``Source/ImmersedSlope.cpp`` and ``Source/ImmersedTerrain.cpp``), each run against ``ImmersedSurface.*`` on one rank
@@ -1790,6 +1833,16 @@ Current tests
        ridge and over the hill are the measured differences with a margin (the case's README). The ``_normal``
        test reads the body-fitted plotfile of the ``_vertical`` test. Mutant: the wall cell's distance halved fails
        ``rt_immersed_along_vertical`` (7.4 % against 2 %).
+   * - ``rt_log_shear_column_f0``, ``rt_log_shear_column_f03``, ``rt_log_shear_column_f07``, ``rt_log_shear_column_f09``
+     - The same columns with ``turb.shear_stencil = log_law`` (:ref:`log-shear`): the wall stress to 1e-5, the cut
+       cell within 0.2 % of the log law, the three cells above it within 0.5 %, and their :math:`k` within 1 %,
+       1.5 % and 2 % of the local balance :math:`u_*^2 (1 - d/D)/C_{\mu 0}^2` (``central``: 13 to 22 % above it in
+       the first). At 0 the immersed column equals the body-fitted column with the option to 1e-6. Double precision
+       only.
+   * - ``abort_shear_stencil_value``, ``abort_shear_stencil_buildings``, ``abort_shear_stencil_tucker``,
+       ``abort_shear_stencil_no_surface_layer``
+     - The refusals of ``turb.shear_stencil``: a value that is not ``central`` or ``log_law``, buildings, the Tucker
+       wall distance and a ground without a surface layer. Each stops naming the input.
    * - ``immersed_ground_clean``, ``immersed_ground_run``, ``immersed_ground_restart``,
        ``abort_immersed_restart_changed``, ``abort_immersed_restart_body_fitted``, ``abort_immersed_first_layer``,
        ``abort_immersed_buildings``, ``abort_immersed_surface_zref``
@@ -1977,7 +2030,9 @@ Current tests
        max relative ≤ 0.15, mean ≤ 0.03, ≤ 0.2 cells below 100 m, all finite), and the field against
        ``Tests/Discretization/Wall_Distance/Gold/walldist_hill2d_plt00000`` at relative 1e-8 (a gold written by GUST). Double precision only.
    * - ``rt_init_askervein``, ``rt_init_askervein_matches``
-     - The mass-consistent initial field on the Askervein mesh (30 × 30 × 18; ``Tests/Initialization/Mass_Consistent_Askervein/inputs_init_askervein``:
+     - The gold's ``tke`` is for the 100 m default of ``turb.max_geom_lscale`` (a run without the SIMPLEC stage
+       refuses ``turb.*``, so the deck cannot give 30; the other fields did not change with the default).
+       The mass-consistent initial field on the Askervein mesh (30 × 30 × 18; ``Tests/Initialization/Mass_Consistent_Askervein/inputs_init_askervein``:
        log law u* = 0.6 m/s, z₀ = 0.03 m along x, inflow at xlo, outflow at xhi, :math:`\alpha_h = 1`,
        :math:`\alpha_v = 0.5`; divergence 4.05e-1 → 6.1e-12 1/s). ``Tests/Supporting_Files/check_init.py askervein``: iterations at most 10 % above the gold's 13,
        divergence after at most 10 × ``solver.poisson_reltol`` times before, divergence before (the printed 10 digits),
@@ -2308,6 +2363,12 @@ Current tests
        5 of 5 pairs differed on Kestrel's H100s (up to 3.9e-13 relative in v, at nearly every point). On a CPU two
        runs agree either way (no OpenMP; two ranks' sums add in a fixed order): the test is for the nightly H100 job
        (:doc:`ci`). Labels ``regression;smoke``.
+   * - ``rt_default_geom_lscale``
+     - The default of ``turb.max_geom_lscale`` through the application
+       (``Tests/Canonical_RANS/Neutral_ABL_Flat/check_default_cap.py``): three runs of 40 iterations on the deck
+       without its cap line. No key and 100 m are identical in every field; 30 m (the default before November
+       2026) differs in :math:`k` by more than 1 % of the largest :math:`k` (measured 0.127 against 0.374 m²/s²).
+       Mutant: the default put back to 30 fails it. Double precision only.
    * - ``rt_steady_neutral_flat``
      - The application on ERF's Neutral_ABL_Flat (``Tests/Canonical_RANS/Neutral_ABL_Flat/inputs_steady_neutral_flat``: 8 × 8 × 64,
        geostrophic wind 10 m/s at latitude 90°, f = 1e-4 1/s, the sounding's inversion from 700 m, slip top with
@@ -3163,6 +3224,11 @@ GoogleTest suite
    * - ``Closure.MatchesKynemaKLAxellWhereTheyCoincide``
      - Kynema's ``KLAxell`` (transcribed) where the formulations coincide (neutral, z = d, λ = 30 m, no z₀, ρ = 1):
        L, ν_t, ε and P_s to 1e-12.
+   * - ``Closure.DefaultGeomLengthCapIs100m``
+     - The default of ``turb.max_geom_lscale`` is 100 m in its four places (the closure's options, the kernels'
+       constants, the inflow profile, the facts of ``abl.setup``); the capped length at κz = 100 m is 50 m with it and 23.08 m with the earlier
+       30 m. Mutant: the default put back to 30 fails it. The decks and unit tests that relied on the 30 m default
+       now give ``turb.max_geom_lscale = 30``, so their answers and golds are unchanged.
    * - ``Closure.SmoothingLimitsAndLargeRichardsonNumbers``
      - ``smooth_Rt``: identity above R_t^crit, continuous at it, within (R_t^min, R_t^crit] and monotone down to
        R_t = −1e30; the unstable length finite and below its bound for k down to 1e-16 under N² to −1e3; the same

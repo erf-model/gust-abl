@@ -57,3 +57,6 @@ io.plot_file = steep_ridge_plt
 io.chk_file  = steep_ridge_chk
 io.write_plotfile   = 0
 io.write_checkpoint = 0
+
+# The cap of the geometric length before the default became 100 m: keeps this test's answers.
+turb.max_geom_lscale = 30.

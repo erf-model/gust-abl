@@ -56,3 +56,6 @@ steady.cfl_max        = 2
 io.plot_file      = frozen_plt
 io.turb_plot_file = frozen_turb
 io.chk_file       = frozen_chk
+
+# The cap of the geometric length before the default became 100 m: keeps this test's answers.
+turb.max_geom_lscale = 30.

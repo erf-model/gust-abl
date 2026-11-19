@@ -222,6 +222,11 @@ interior cell makes. With :math:`\beta = 0` (the ground on a layer's face) the e
 rule of ERF's ``erf.if_flat_wall_dissipation`` and Kynema-SGF #2067 (an immersed wall repeats the flat ground's
 discretisation), applied here to the shear.
 
+With ``turb.shear_stencil = log_law`` (:ref:`log-shear`) this formula is not used: every fluid cell above the cut
+cell takes the log-law gradient through its two neighbours, at the fluid centroids' distances, which is the
+expression above with :math:`R = 1` in the first full cell. The cut cell and the solid cells keep the closure's
+:math:`S^2`.
+
 Restart
 -------
 
@@ -282,6 +287,48 @@ At :math:`f = 0` the column equals the body-fitted column of 65 layers within 4.
 :math:`(1 - \beta)(1 + e_1)^2 + \beta (1 + e_2)^2 = 1`, so :math:`e_1 \approx -e_2\,\beta/(1 - \beta)`: the reference
 cell's small deficit, of the size the body-fitted column has in its first cells, is multiplied by
 :math:`\beta/(1 - \beta)` in the cut cell (9 at 0.9, 99 at 0.99).
+
+The same columns with ``turb.shear_stencil = log_law`` (``rt_log_shear_column_*``). The deck has no length cap, so
+the log law holds, and :math:`k` is compared with the local balance :math:`u_*^2 (1 - d/D)/C_{\mu 0}^2` (shear
+production equal to dissipation at the stress :math:`u_*^2 (1 - d/D)`):
+
+.. list-table::
+   :header-rows: 1
+   :widths: 8 12 18 20 21 21
+
+   * - f
+     - Iterations
+     - :math:`u_*^2/(F D) - 1`
+     - Cut cell vs log law at :math:`d_1`
+     - Speed, three cells above
+     - :math:`k`, three cells above
+   * - 0
+     - 2313
+     - −5.5e-7
+     - 0.00 %
+     - −0.14 to −0.30 %
+     - −0.5 to −1.6 %
+   * - 0.3
+     - 2339
+     - −4.3e-7
+     - +0.03 %
+     - −0.07 to −0.23 %
+     - −0.5 to −1.5 %
+   * - 0.7
+     - 2440
+     - −2.1e-7
+     - +0.01 %
+     - 0.00 to −0.19 %
+     - −0.2 to −1.3 %
+   * - 0.9
+     - 2606
+     - −7.2e-8
+     - −0.12 %
+     - +0.01 to −0.18 %
+     - +0.1 to −1.2 %
+
+With ``central`` the same three cells have :math:`k` 13 to 22 %, 7 to 14 % and 4 to 7 % above the local balance.
+With a capped length the cut cell's speed is lower than the log law with ``log_law`` (:ref:`log-shear`, Limits).
 
 These numbers are for ``turb.face_mean = logarithmic``, which the decks set: with it and the spacing :math:`s`, the
 flux of a log profile across the cut cell's top face is :math:`u_*^2` exactly. With the default ``arithmetic`` the
