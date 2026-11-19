@@ -1,0 +1,60 @@
+# The body-fitted reference of inputs_immersed_hill: a round Witch of Agnesi hill, 100 m high, half-width 300 m
+# (slopes up to 12 degrees), on a terrain-following mesh of 80 m columns; otherwise the set-up of
+# inputs_body_fitted_ridge (README.md).
+mesh.n_cell        = 32 32 64
+mesh.prob_lo       = -1280. -1280. 0.
+mesh.prob_hi       =  1280.  1280. 1000.
+mesh.is_periodic   = 1 1 0
+mesh.max_grid_size = 16 16
+
+terrain.type            = agnesi
+terrain.hill_shape      = round
+terrain.hill_height     = 100.
+terrain.hill_half_width = 300.
+terrain.smoothing       = 0
+
+bc.zlo = surface_layer
+bc.zhi = slip_wall
+bc.surface_z0 = 0.1
+bc.theta_profile_z = 0.
+bc.theta_profile   = 300.
+bc.inflow_profile   = log_law
+bc.inflow_ustar     = 0.35
+bc.inflow_z0        = 0.1
+bc.inflow_direction = 0.
+bc.rayleigh_zdamp    = 700.
+bc.rayleigh_dampcoef = 0.2
+bc.rayleigh_fields   = w
+
+init.first_guess = profile
+
+forcing.gravity         = 0.
+forcing.coriolis        = 1
+forcing.coriolis_3d     = 0
+forcing.latitude        = 90.
+forcing.rotation_period = 125663.7061435917
+forcing.geostrophic     = 1
+forcing.ug              = 10.
+forcing.vg              = 0.
+
+# The recommended setting (docs/turbulence_model.rst).
+turb.tke_floor       = 1.e-6
+turb.realizability   = 0.309
+turb.nut_relax       = 0.5
+turb.max_geom_lscale = 100.
+convection.hybrid_sigma_max = 0.1
+convection.hybrid_height    = 250.
+
+steady.stage                   = simplec
+steady.sweep                   = zjacobi   # z-line Jacobi sweep (the CPU default is lusgs)
+steady.cfl0                    = 1.
+steady.cfl_max                 = 4.
+steady.zline_sweeps            = 16
+simplec.rotation_relax         = 1.
+steady.residual_ref_iterations = 100
+steady.residual_drop_orders    = 4
+steady.max_iterations          = 20000
+
+io.plot_file      = body_fitted_hill_plt
+io.turb_plot_file = body_fitted_hill_turb
+io.chk_file       = body_fitted_hill_chk

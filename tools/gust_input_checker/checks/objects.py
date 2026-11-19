@@ -281,7 +281,7 @@ class ImmersedTerrainChecker(Checker):
         c = self.ctx
         rep = c.s("terrain.representation")
         if rep == "body_fitted":
-            for k in ("flat_height", "small_volfrac"):
+            for k in ("flat_height", "small_volfrac", "immersed_slope"):
                 self.no_effect("terrain." + k, "unless terrain.representation = immersed_forcing")
             return
         if rep != "immersed_forcing":
@@ -291,8 +291,6 @@ class ImmersedTerrainChecker(Checker):
         def refuse(key, what, advice=""):
             self.error(key, "GUST stops: terrain.representation = immersed_forcing %s." % what, advice)
 
-        if c.terrain_type != "flat":
-            refuse("terrain.type", "needs terrain.type = flat for now")
         h = c.r("terrain.flat_height")
         if h is None or not h > 0:
             self.error("terrain.flat_height", "GUST stops: terrain.flat_height must be finite and > 0 " + with_rep + ".",

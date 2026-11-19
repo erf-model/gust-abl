@@ -21,6 +21,7 @@ set(GUST_SOURCES
     Convection.cpp
     Diffusion.cpp
     ImplicitOperator.cpp
+    ImmersedSlope.cpp
     ImmersedStrain.cpp
     LogShear.cpp
     ImmersedTerrain.cpp
@@ -37,6 +38,7 @@ set(GUST_SOURCES
     BuildingTheta.cpp
     BuildingTke.cpp
     Buildings.cpp
+    BuildingsSurface.cpp
     Canopy.cpp
     CanopyDrag.cpp
     CanopyHeat.cpp

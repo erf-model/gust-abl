@@ -226,6 +226,26 @@ LooseStop loose_stop (const SteadyHistory& h, const SteadyParams& p, const std::
 }
 
 // ---------------------------------------------------------------------------
+namespace {
+
+//! The fluid's mean height above an immersed ground that is a surface (Buildings::surface()), in every
+//! cell of \p dist and its ghost layers; those below and above the domain copy the nearest layer's.
+//! A free function: a device lambda cannot sit in a constructor (CUDA).
+void surface_height_above_ground (const amrex::MultiFab& surface, const amrex::Geometry& geom, amrex::MultiFab& dist)
+{
+    const int klo = geom.Domain().smallEnd(2), khi = geom.Domain().bigEnd(2);
+    for (amrex::MFIter mfi(dist, false); mfi.isValid(); ++mfi) {
+        const auto d = dist.array(mfi);
+        const auto h = surface.const_array(mfi, kSurfaceHeight);
+        amrex::ParallelFor(mfi.fabbox(), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+        {
+            d(i, j, k) = h(i, j, amrex::max(klo, amrex::min(khi, k)));
+        });
+    }
+}
+
+} // namespace
+
 LevelSolver::LevelSolver (const RunSetup& s, const Mesh& mesh, const amrex::Geometry& geom, const amrex::MultiFab& z_nd,
                           const amrex::BoxArray& ba, const amrex::DistributionMapping& dm, const std::string& label,
                           bool newton, const amrex::MultiFab* z0_fine, const Canopy* canopy_in,
@@ -268,6 +288,12 @@ LevelSolver::LevelSolver (const RunSetup& s, const Mesh& mesh, const amrex::Geom
         extend_by_zero_gradient(dist, geom);
     } else {
         height_above_ground(z_nd, dist);
+    }
+    if (buildings != nullptr && buildings->geometry() != nullptr && buildings->geometry()->from_surface()) {
+        // An immersed ground that is a surface: the fluid's mean height above it (Buildings::surface()),
+        // positive in the solid cells too, where the cell centre's height is negative. The ghost layers
+        // below and above the domain copy the nearest layer's, as height_above_ground's.
+        surface_height_above_ground(buildings->geometry()->surface(), geom, dist);
     }
     if (building_tke != nullptr) {
         // The closure's length sees the buildings (BuildingTke.H). The hybrid convection blend

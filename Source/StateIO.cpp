@@ -117,7 +117,8 @@ std::string write_plotfile (const std::string& prefix, const State& state,
         for (const auto& n : *extra_names) { names.push_back(n); }
     }
     amrex::WriteSingleLevelPlotfile(name, plt, names, geom, time, state.step);
-    amrex::VisMF::Write(state.z_phys_nd, name + "/Level_0/z_phys_nd");
+    // The mesh's heights alone (an immersed ground's component is not written: State.H).
+    amrex::VisMF::Write(amrex::MultiFab(state.z_phys_nd, amrex::make_alias, 0, 1), name + "/Level_0/z_phys_nd");
     return name;
 }
 
@@ -163,7 +164,9 @@ std::string write_checkpoint (const std::string& prefix, State& state, const Mes
     for (auto& f : state.fields()) {
         const std::string file = amrex::MultiFabFileFullPrefix(0, name, "Level_", f.name);
         if (f.mf == &state.z_phys_nd) {
-            amrex::VisMF::Write(*f.mf, file);
+            // The mesh's heights alone: an immersed ground's component is filled from the inputs
+            // (ImmersedTerrain.H), which the checkpoint's ImmersedTerrain record pins.
+            amrex::VisMF::Write(amrex::MultiFab(*f.mf, amrex::make_alias, 0, 1), file);
             continue;
         }
         amrex::MultiFab out(f.mf->boxArray(), f.mf->DistributionMap(), f.mf->nComp(), f.mf->nGrowVect());
@@ -284,17 +287,17 @@ void read_checkpoint (const std::string& dir, State& state, const MeshInputs& me
 
     for (auto& f : state.fields()) {
         amrex::MultiFab& dst = *f.mf;
-        amrex::MultiFab src(amrex::convert(ba_chk, dst.ixType()), dm_chk,
-                            dst.nComp(), dst.nGrowVect());
+        const int nc = &dst == &state.z_phys_nd ? 1 : dst.nComp();   // the heights' component 0 (see write_checkpoint)
+        amrex::MultiFab src(amrex::convert(ba_chk, dst.ixType()), dm_chk, nc, dst.nGrowVect());
         amrex::VisMF::Read(src, amrex::MultiFabFileFullPrefix(0, dir, "Level_", f.name));
         // Valid data exactly; nodal heights also with their ghost nodes,
         // since those come from the terrain and are not recomputed. A copy
         // from grown source boxes can land a checkpoint ghost on a valid
         // destination point, so ghosts go first and valid data overwrites.
         if (&dst == &state.z_phys_nd) {
-            dst.ParallelCopy(src, 0, 0, dst.nComp(), ngrow_nodal, ngrow_nodal);
+            dst.ParallelCopy(src, 0, 0, nc, ngrow_nodal, ngrow_nodal);
         }
-        dst.ParallelCopy(src, 0, 0, dst.nComp(), 0, 0);
+        dst.ParallelCopy(src, 0, 0, nc, 0, 0);
     }
 }
 

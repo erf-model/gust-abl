@@ -151,6 +151,10 @@ CASES = [
     ("immersed_column_guess", "solve", IMMERSED + "init.first_guess = column\n",
      ["E init.first_guess immersed_terrain"], [], {"dedupe": "init.first_guess"}),
     ("immersed_keys_body_fitted", "solve", "terrain.flat_height = 250\n", ["E terrain.flat_height immersed_terrain"], []),
+    ("immersed_hill", "solve", IMMERSED + "terrain.type = agnesi\nterrain.hill_height = 100\nterrain.hill_half_width = 500\n"
+     "terrain.immersed_slope = normal\n", [], ["E *"]),
+    ("immersed_slope_value", "solve", IMMERSED + "terrain.immersed_slope = slanted\n", ["E terrain.immersed_slope values"], []),
+    ("immersed_slope_body_fitted", "solve", "terrain.immersed_slope = normal\n", ["E terrain.immersed_slope immersed_terrain"], []),
     # --- terrain ----------------------------------------------------------------------------------------
     ("terrain_file_missing_key", "solve", "terrain.type = xyz\n", ["E terrain.file terrain"], []),
     ("terrain_file_on_flat", "solve", "terrain.file = hill.xyz\n", ["E terrain.file terrain"], []),

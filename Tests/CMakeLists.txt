@@ -43,6 +43,7 @@ add_executable(unit_tests
     Unit_Tests/test_SurfaceRoughness.cpp
     Unit_Tests/test_BuildingForcing.cpp
     Unit_Tests/test_ImmersedTerrain.cpp
+    Unit_Tests/test_ImmersedSurface.cpp
     Unit_Tests/test_BuildingLoads.cpp
     Unit_Tests/test_BuildingTheta.cpp
     Unit_Tests/test_BuildingTke.cpp
@@ -182,6 +183,7 @@ set(ASKERVEIN_NEST_CASE ${CMAKE_CURRENT_SOURCE_DIR}/Real_Terrain/Askervein_Nest)
 set(COLUMN_CASE         ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Neutral_Column)
 set(FLAT_CASE           ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Neutral_ABL_Flat)
 set(IMMERSED_COLUMN_CASE ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Immersed_Column)
+set(IMMERSED_RIDGE_CASE  ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Immersed_Ridge_2D)
 set(THIN_CELL_CASE      ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Thin_Cell_Flat)
 set(CANOPY_DRAG_CASE    ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Canopy_Drag)
 set(ESCARPMENT_CASE     ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Forested_Escarpment)
@@ -886,7 +888,7 @@ gust_add_test(NAME immersed_ground_restart NP 3 LABELS "regression;smoke" RUN_DI
 # A changed ground, and the other representation, are refused.
 gust_add_test(NAME abort_immersed_restart_changed NP 1 LABELS "regression;smoke" RUN_DIR ${IMMERSED_GROUND_DIR}
               FIXTURES_REQUIRED immersed_ground
-              PREFIX ${EXPECT_ABORT} "io\\.restart = immersed_ground_chk00001: terrain\\.flat_height, terrain\\.small_volfrac or bc\\.surface_z0 differ" --
+              PREFIX ${EXPECT_ABORT} "io\\.restart = immersed_ground_chk00001: the immersed ground.s inputs .* differ" --
               COMMAND $<TARGET_FILE:gust> ${IMMERSED_GROUND_CASE}/inputs_immersed_restart terrain.flat_height=43.
                       io.write_plotfile=0 ${GUST_TEST_AMREX_FLAGS})
 gust_add_test(NAME abort_immersed_restart_body_fitted NP 1 LABELS "regression;smoke" RUN_DIR ${IMMERSED_GROUND_DIR}
@@ -2264,6 +2266,30 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
     gust_add_test(NAME abort_shear_stencil_no_surface_layer NP 1 LABELS "regression;smoke"
                   PREFIX ${EXPECT_ABORT} "turb\\.shear_stencil = log_law needs bc\\.zlo = surface_layer" --
                   COMMAND $<TARGET_FILE:gust> ${IMMERSED_COLUMN_CASE}/inputs_abort_log_shear_wall ${GUST_TEST_AMREX_FLAGS})
+    # A sloping immersed ground against the body-fitted mesh (Immersed_Ridge_2D/README.md), on
+    # four ranks. The wind at 20, 40, 80 and 160 m above the ground, from the fluid cells only.
+    # Wind along a ridge (slopes up to 18 degrees across the wind, no flow over the ridge): every
+    # column within 2 % of the body-fitted far-field speed. Wind across a 100 m ridge: the crest
+    # speed, the lee minimum and the rms within measured margins. _vertical runs the body-fitted
+    # deck; _normal reads its plotfile (same run folder, the fixture).
+    # The round hill (32 x 32 columns) is the nightly one: about 40 min with its reference.
+    foreach(_pair "ridge;across;regression;--crest;4;--lee;16;--rms;8" "along;along;regression;--max;2;--rms;1.5"
+                  "hill;hill;nightly;--crest;5;--lee;27;--rms;13")
+        list(GET _pair 0 _tag)
+        list(GET _pair 1 _wind)
+        list(GET _pair 2 _label)
+        list(SUBLIST _pair 3 -1 _limits)
+        gust_add_test(NAME rt_immersed_${_tag}_vertical NP 4 LABELS "${_label}"
+                      RUN_DIR ${CMAKE_CURRENT_BINARY_DIR}/run/rt_immersed_${_tag} FIXTURES_SETUP immersed_${_tag}_reference
+                      PREFIX ${Python3_EXECUTABLE} ${IMMERSED_RIDGE_CASE}/check_immersed_ridge.py --wind ${_wind} --slope vertical
+                             ${_limits} --body-fitted ${IMMERSED_RIDGE_CASE}/inputs_body_fitted_${_tag} --
+                      COMMAND $<TARGET_FILE:gust> ${IMMERSED_RIDGE_CASE}/inputs_immersed_${_tag} ${GUST_TEST_AMREX_FLAGS})
+        gust_add_test(NAME rt_immersed_${_tag}_normal NP 4 LABELS "${_label}"
+                      RUN_DIR ${CMAKE_CURRENT_BINARY_DIR}/run/rt_immersed_${_tag} FIXTURES_REQUIRED immersed_${_tag}_reference
+                      PREFIX ${Python3_EXECUTABLE} ${IMMERSED_RIDGE_CASE}/check_immersed_ridge.py --wind ${_wind} --slope normal
+                             --reuse ${_limits} --body-fitted ${IMMERSED_RIDGE_CASE}/inputs_body_fitted_${_tag} --
+                      COMMAND $<TARGET_FILE:gust> ${IMMERSED_RIDGE_CASE}/inputs_immersed_${_tag} ${GUST_TEST_AMREX_FLAGS})
+    endforeach()
     # The iteration table's columns (io.iteration_log = table) on the flat ABL,
     # whose second row has all six residuals non-zero and distinct: the row
     # pins which residual sits in which column (u, v, w, tke, theta, p), the

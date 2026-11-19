@@ -542,7 +542,7 @@ std::string run_domain (const DomainRole& role)
                    << " boxes (each spans the full z column)\n";
 
     State state;
-    state.define(ba, dm);
+    state.define(ba, dm, immersed);
     Mesh mesh;
     mesh.define(ba, dm);
     const bool restart = !in.io.restart.empty();
@@ -561,13 +561,23 @@ std::string run_domain (const DomainRole& role)
             const std::string low = check_immersed_terrain_height(in.terrain, static_cast<double>(zl[1]),
                                                                   static_cast<double>(zl[zl.size() - 2]));
             if (!low.empty()) { amrex::Abort("gust: " + low); }
-            buildings.build_from_map(buildings_opt, immersed_terrain_map(in.terrain, geom), "terrain.flat_height", geom,
-                                     state.z_phys_nd, ba, dm);
-            amrex::Print() << "gust: immersed terrain (terrain.representation = immersed_forcing, terrain.flat_height = "
-                           << in.terrain.flat_height << " m, terrain.small_volfrac = " << in.terrain.small_volfrac
-                           << "): " << buildings.summary(mesh.detJ, geom) << "\n"
+            // The ground's height at the nodes, from the inputs (a restart's too: its record pins them).
+            fill_immersed_ground(state.z_phys_nd, geom, in.terrain);
+            const std::string out = check_immersed_ground_extent(state.z_phys_nd, static_cast<double>(zl[1]),
+                                                                 static_cast<double>(zl[zl.size() - 2]));
+            if (!out.empty()) { amrex::Abort("gust: " + out); }
+            buildings.build_from_surface(buildings_opt, "terrain.representation = immersed_forcing", geom, state.z_phys_nd, ba, dm);
+            amrex::Print() << "gust: immersed terrain (terrain.representation = immersed_forcing, terrain.type = "
+                           << in.terrain.type << ", terrain.flat_height = " << in.terrain.flat_height
+                           << " m, terrain.small_volfrac = " << in.terrain.small_volfrac << ", ground from "
+                           << state.z_phys_nd.min(state.z_phys_nd.nComp() - 1) << " m to "
+                           << state.z_phys_nd.max(state.z_phys_nd.nComp() - 1) << " m): "
+                           << buildings.summary(mesh.detJ, geom) << "\n"
                            << "gust: immersed terrain: the form 7 wall law with bc.surface_z0 = " << buildings_opt.z0
-                           << " m at the exact wall distance, the wall value of k in the cut cells\n";
+                           << (in.terrain.immersed_slope == "normal" ? " m at the fluid's mean distance from the ground along its normal"
+                                                                      : " m at the fluid's mean height above the ground")
+                           << " (terrain.immersed_slope = " << in.terrain.immersed_slope
+                           << "), the wall value of k in the cut cells\n";
         } else if (buildings_opt.active()) {
             buildings.build(buildings_opt, geom, state.z_phys_nd, ba, dm);
             amrex::Print() << "gust: buildings (buildings.type = " << buildings_opt.type_name << "): "

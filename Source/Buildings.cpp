@@ -420,6 +420,7 @@ void Buildings::build_from_map (const BuildingsOptions& opt, const BuildingHeigh
     if (!opt.active()) { amrex::Abort("gust: Buildings::build_from_map needs an active type"); }
     m_active = true;
     m_hash.clear();
+    m_surface.clear();
     const double lx = geom.isPeriodic(0) ? static_cast<double>(geom.ProbLength(0)) : 0.0;
     const double ly = geom.isPeriodic(1) ? static_cast<double>(geom.ProbLength(1)) : 0.0;
     for (int n = 0; n < cell_ba.size(); ++n) {

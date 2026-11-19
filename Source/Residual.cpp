@@ -573,8 +573,8 @@ amrex::Real jvp (const State& q, const State& v, const ResidualInputs& in, const
         R0 = &w.base;
     }
     State& qp = w.qp;
-    if (qp.p.empty()) { qp.define(q.p.boxArray(), q.p.DistributionMap()); }
-    amrex::MultiFab::Copy(qp.z_phys_nd, q.z_phys_nd, 0, 0, 1, q.z_phys_nd.nGrow());
+    if (qp.p.empty()) { qp.define(q.p.boxArray(), q.p.DistributionMap(), q.z_phys_nd.nComp() > 1); }
+    amrex::MultiFab::Copy(qp.z_phys_nd, q.z_phys_nd, 0, 0, q.z_phys_nd.nComp(), q.z_phys_nd.nGrow());
     const amrex::Vector<amrex::MultiFab*> pf{&qp.u, &qp.v, &qp.w, &qp.p, &qp.theta, &qp.tke};
     for (int n = 0; n < static_cast<int>(qf.size()); ++n) {
         amrex::MultiFab::LinComb(*pf[n], 1, *qf[n], 0, static_cast<amrex::Real>(eps), *vf[n], 0, 0, 1, qf[n]->nGrow());

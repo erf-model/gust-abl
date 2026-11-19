@@ -116,7 +116,14 @@ void Mesh::define (const amrex::BoxArray& ba, const amrex::DistributionMapping& 
 void Mesh::build (const Inputs& in, const amrex::Geometry& geom, amrex::MultiFab& z_phys_nd, const GroundEdit& ground_edit,
                   const LevelsEdit& levels_edit)
 {
-    fill_terrain_surface(z_phys_nd, geom, in.terrain);
+    if (in.terrain.representation == "immersed_forcing") {
+        // The mesh does not follow an immersed ground (ImmersedTerrain.H): its lower face is flat.
+        TerrainInputs flat = in.terrain;
+        flat.type = "flat";
+        fill_terrain_surface(z_phys_nd, geom, flat);
+    } else {
+        fill_terrain_surface(z_phys_nd, geom, in.terrain);
+    }
     if (ground_edit) { ground_edit(z_phys_nd); }
     build_from_ground(in, geom, z_phys_nd, levels_edit);
 }
