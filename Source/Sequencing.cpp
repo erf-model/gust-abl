@@ -287,10 +287,25 @@ LevelSolver::LevelSolver (const RunSetup& s, const Mesh& mesh, const amrex::Geom
                            << " cells, partly in " << building_tke->zone_cells() - building_tke->zone_off_cells() << "\n";
         }
     }
-    if (buildings != nullptr && buildings->immersed_ground()) {
+    if (buildings != nullptr && buildings->immersed_ground() && s.copt.shear_stencil != ShearStencil::log_law) {
         // The closure's shear next to an immersed ground follows the body-fitted ground's first cell.
         immersed_strain = std::make_unique<ImmersedStrain>(*buildings, surf.z0);
         closure.set_strain_correction(immersed_strain.get());
+    }
+    if (s.copt.shear_stencil == ShearStencil::log_law) {  // refused with turb.closure = none (Closure.cpp)
+        const bool immersed = buildings != nullptr && buildings->immersed_ground();
+        if (buildings != nullptr && !immersed) {
+            amrex::Abort("gust: turb.shear_stencil = log_law does not support buildings (the wall distance is not the height above the ground)");
+        }
+        if (!s.surface_layer) { amrex::Abort("gust: turb.shear_stencil = log_law needs bc.zlo = surface_layer (the ground's roughness length)"); }
+        if (s.copt.wall_distance != WallDistanceKind::terrain_height) {
+            amrex::Abort("gust: turb.shear_stencil = log_law needs turb.wall_distance = terrain_height");
+        }
+        // An immersed ground's distance is the height above it only once limit_wall_distance has run (above).
+        if (immersed && building_tke == nullptr) { amrex::Abort("gust: turb.shear_stencil = log_law: the immersed ground needs its wall distance (buildings.wall_tke)"); }
+        // The log-law gradients over the ground, with an immersed ground in the place of its strain.
+        log_shear = std::make_unique<LogShear>(dist, ground_roughness(&surf), immersed ? buildings->geometry() : nullptr);
+        closure.set_strain_correction(log_shear.get());
     }
     res_in = residual_inputs(s, closure, dist, bc, surf);
     res_in.buildings = buildings;

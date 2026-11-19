@@ -71,6 +71,7 @@
 #include "Driver.H"
 #include "Forcing.H"
 #include "ImmersedStrain.H"
+#include "LogShear.H"
 #include "InflowProfile.H"
 #include "Initializer.H"
 #include "MeshHierarchy.H"
@@ -219,6 +220,8 @@ public:
     ResidualInputs res_in;
     //! The strain next to an immersed ground (ImmersedStrain.H), the closure's correction; null without one.
     std::unique_ptr<ImmersedStrain> immersed_strain;
+    //! turb.shear_stencil = log_law (LogShear.H), the closure's correction in the place of immersed_strain; else null.
+    std::unique_ptr<LogShear> log_shear;
 
     [[nodiscard]] Driver& driver () { return *m_driver; }
     [[nodiscard]] const Driver& driver () const { return *m_driver; }

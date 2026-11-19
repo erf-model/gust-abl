@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run GUST on the immersed column and check the steady state (rt_immersed_column_*).
 
-    check_immersed_column.py --f F --cut-max PCT [--body-fitted DECK] -- COMMAND [ARGS ...]
+    check_immersed_column.py --f F --cut-max PCT [--body-fitted DECK] [--log-shear] -- COMMAND [ARGS ...]
 
 COMMAND runs the application on inputs_immersed_column with terrain.flat_height = (2 + F) dz, so
 the cut cell is layer k = 2 with solid fraction F. The run must reach the steady verdict; then:
@@ -23,6 +23,13 @@ the cut cell is layer k = 2 with solid fraction F. The run must reach the steady
   * --body-fitted DECK (F = 0 only): the same COMMAND with DECK in place of the immersed deck, run
     in the sub-folder body_fitted/, is the body-fitted column of the fluid's height; its u and tke
     in every layer equal the immersed column's layers k >= 2 to 1e-6 relative.
+  * --log-shear (COMMAND carries turb.shear_stencil=log_law, rt_log_shear_column_*): the limits of
+    the log-consistent shear in the place of those above. The cut cell's speed is within PCT percent
+    of the log law at d1 on either side; the three cells above it are within 0.5 % of the log law;
+    their tke is within 1 %, 1.5 % and 2 % of the local balance u*^2 (1 - d/D) / Cmu0^2 (shear
+    production = dissipation at the stress u*^2 (1 - d/D); measured -0.5 to +0.1 %, -1.1 to -0.7 %
+    and -1.6 to -1.2 %; with the central difference +13 to +22 %, +7 to +14 % and +4 to +7 %,
+    README.md).
 Prints one row per check; the exit code is the verdict.
 """
 import math
@@ -41,6 +48,7 @@ FORCE = 1.225e-4
 Z0 = 0.1
 KAPPA = 0.41
 KC = 2   # the cut cell's layer
+CMU0 = 0.5562
 
 
 def run(cmd, cwd):
@@ -66,8 +74,13 @@ def main(argv):
     opts, cmd = argv[:sep], argv[sep + 1:]
     f = cut_max = None
     body_fitted = None
+    log_shear = False
     i = 0
     while i < len(opts):
+        if opts[i] == "--log-shear":
+            log_shear = True
+            i += 1
+            continue
         if opts[i] == "--f":
             f = float(opts[i + 1])
         elif opts[i] == "--cut-max":
@@ -118,12 +131,17 @@ def main(argv):
         return us / KAPPA * math.log((d + Z0) / Z0)
 
     cut = 100 * (u[KC] / log_law(d1) - 1)
-    check("cut cell", cut >= -1e-3 and cut <= cut_max, "%+.2f %% of the log law at d1 = %.4f m (max %.2f %%)" % (cut, d1, cut_max))
+    cut_min = -cut_max if log_shear else -1e-3
+    check("cut cell", cut_min <= cut <= cut_max, "%+.2f %% of the log law at d1 = %.4f m (%.3f to %.2f %%)" % (cut, d1, cut_min, cut_max))
     for n, k in enumerate(range(KC + 1, KC + 4)):
         d = (k + 0.5) * DZ - height
         e = 100 * (u[k] / log_law(d) - 1)
-        lim = 1.0 if n == 0 else 2.5
+        lim = 0.5 if log_shear else (1.0 if n == 0 else 2.5)
         check("layer %d" % k, abs(e) <= lim, "%+.2f %% of the log law at %.3f m (max %.1f %%)" % (e, d, lim))
+        if log_shear:
+            e = 100 * (prof["tke"][k] * CMU0 ** 2 / (us * us * (1 - d / depth)) - 1)
+            lim = (1.0, 1.5, 2.0)[n]
+            check("tke of layer %d" % k, abs(e) <= lim, "%+.2f %% of u*^2 (1 - d/D) / Cmu0^2 (max %.1f %%)" % (e, lim))
 
     if body_fitted is not None:
         if f != 0:

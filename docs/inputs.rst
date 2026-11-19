@@ -409,6 +409,9 @@ Quick reference
    * - ``turb.wall_distance``
      - ``terrain_height``
      - Wall-distance method
+   * - ``turb.shear_stencil``
+     - ``central``
+     - Vertical shear in the production of k (``log_law``: exact for a log profile)
    * - **Convection** (`convection`_)
      -
      -
@@ -1270,6 +1273,16 @@ See :doc:`turbulence_model`. Read with the SIMPLEC stage only.
    * - ``turb.wall_distance``
      - ``terrain_height``
      - ``terrain_height`` or ``tucker``.
+   * - ``turb.shear_stencil``
+     - ``central``
+     - ``central`` or ``log_law``. The vertical gradients of u and v in :math:`S^2`. ``central`` is the central
+       difference, which over-estimates the gradient of a log profile in the cells next to the wall cell.
+       ``log_law`` takes :math:`(u_{k+1} - u_{k-1}) / [(d_k + z_0) \ln((d_{k+1} + z_0)/(d_{k-1} + z_0))]` in every
+       cell above the wall cell, with :math:`d` the height above the ground (:ref:`log-shear`); with an immersed
+       ground it takes the place of that ground's shear formula (:doc:`immersed_terrain`). It needs
+       ``bc.zlo = surface_layer`` (``bc.surface_z0`` or ``bc.surface_z0_file``) and
+       ``turb.wall_distance = terrain_height``, and stops with ``buildings.type = immersed_forcing``. Refused with
+       ``turb.closure = none``.
 
 ``convection``
 --------------

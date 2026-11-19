@@ -132,6 +132,149 @@ Model options
   when Newton started (:doc:`solution_algorithm`). The stable/unstable branch and the :math:`R_t` smoothing are not
   frozen: the length and :math:`R_t` are continuously differentiable across them (below).
 - ``turb.ri_gate``: the stratification gate (below).
+- ``turb.shear_stencil``: the vertical shear in :math:`S^2` near the ground (:ref:`log-shear`).
+
+.. _log-shear:
+
+Log-consistent shear near the ground
+------------------------------------
+
+The shear production is :math:`\nu_t S^2`, and :math:`S^2` takes the vertical gradients of :math:`u` and
+:math:`v` by a central difference over two layers. Near the ground the wind follows the log law, and the central
+difference of a logarithm is larger than its gradient. For :math:`u = (u_*/\kappa)\ln((d + z_0)/z_0)`, with
+:math:`d_k` the height of the centre of cell :math:`k` above the ground,
+
+.. math::
+
+   \frac{u_{k+1} - u_{k-1}}{d_{k+1} - d_{k-1}} = \frac{\partial u}{\partial z}\bigg|_{d_k}\,
+   \frac{(d_k + z_0)\,\ln\dfrac{d_{k+1} + z_0}{d_{k-1} + z_0}}{d_{k+1} - d_{k-1}} .
+
+On uniform layers with :math:`z_0` small against the layer the factor is 1.21 in the second cell, 1.06 in the third
+and 1.03 in the fourth, so :math:`S^2` is 46 %, 12 % and 6 % high there. The wall cell is not affected: its
+:math:`k` is the wall value.
+
+With ``turb.shear_stencil = log_law`` the vertical gradients of :math:`u` and :math:`v` in :math:`S^2` are
+
+.. math::
+
+   \frac{\partial u}{\partial z}\bigg|_{d_k} = \frac{u_{k+1} - u_{k-1}}{(d_k + z_0)\,\ln\dfrac{d_{k+1} + z_0}{d_{k-1} + z_0}}
+
+in every cell between the wall cell and the top cell (``Source/LogShear.cpp``). It is exact for a log profile. Away
+from the ground it tends to the central difference: on uniform layers of thickness :math:`\Delta` the two differ by
+the factor :math:`1 + \Delta^2/(3 d^2)`. :math:`z_0` is the column's roughness length (``bc.surface_z0`` or the map
+of ``bc.surface_z0_file``). The other gradients in :math:`S^2`, the momentum equations and the wall cell are as
+before. The default is ``central``, so existing results do not change.
+
+**Measured.** A neutral column driven by a geostrophic wind of 10 m/s (:math:`f_c` = 1e-4 1/s, layers of
+15.625 m, :math:`z_0` = 0.1 m, ``turb.max_geom_lscale = 30``, ``turb.face_mean = logarithmic``, a slip top near
+2 km), against the same column on
+grids 16 and 32 times finer, extrapolated. Differences from that reference in the four cells above the wall cell
+(body-fitted) or above the cut cell (immersed ground with solid fraction :math:`f`, :doc:`immersed_terrain`):
+
+.. list-table::
+   :header-rows: 1
+   :widths: 22 20 20 19 19
+
+   * - Ground
+     - :math:`k`, ``central``
+     - :math:`k`, ``log_law``
+     - Speed, ``central``
+     - Speed, ``log_law``
+   * - Body-fitted
+     - +4.1 to +17.3 %
+     - −1.1 to −0.5 %
+     - −0.8 to −0.5 %
+     - −0.4 to −0.1 %
+   * - Immersed, :math:`f` = 0.3
+     - +4.7 to +20.4 %
+     - −0.8 to −0.4 %
+     - −1.0 to −0.6 %
+     - −0.6 to −0.1 %
+   * - Immersed, :math:`f` = 0.7
+     - +5.6 to +25.5 %
+     - −1.0 to +1.0 %
+     - −1.2 to −0.5 %
+     - −0.8 to −0.1 %
+   * - Immersed, :math:`f` = 0.9
+     - +6.2 to +28.0 %
+     - −1.3 to +1.9 %
+     - −1.3 to −0.2 %
+     - −0.8 to 0.0 %
+   * - Body-fitted, ``turb.face_mean = arithmetic`` (the default)
+     - +4.7 to +13.7 %
+     - −3.2 to +0.1 %
+     - −1.4 to −1.3 %
+     - −1.1 to −0.5 %
+
+With the arithmetic face mean the cell above the wall cell keeps −3.2 % in :math:`k` (−1.2 % in the next): the
+arithmetic mean of a diffusivity that grows linearly from the ground is not the one that carries a log profile's
+stress. Every run reaches the steady verdict (4711 to 4785 iterations with ``log_law``). These columns are not
+CTests, and their decks and scripts are not in the repository: the reference is a separate fine-grid solution. The pressure-driven columns of
+``Tests/Canonical_RANS/Immersed_Column`` are (``rt_log_shear_column_*``, :doc:`immersed_terrain`).
+
+**Limits.**
+
+- The cut cell's speed above an immersed ground, with a capped length. The cap adds a term to the constant-stress
+  profile, :math:`u = u_*[\ln((d + z_0)/z_0)/\kappa + d/l_\mathrm{max}]`, so the cell above the cut cell (the
+  wall law's reference cell) is faster than the log law by a share :math:`e_a` that falls as
+  :math:`1/l_\mathrm{max}`. The wall law reads both speeds as logarithmic, and its two parts must add to
+  :math:`u_*^2`: :math:`(1 - f)\,r_c^2 + f\,r_a^2 = 1`, with :math:`r_c` and :math:`r_a = 1 + e_a` the speeds of
+  the cut cell and of the cell above over the log law. The cut cell is then slower by about
+  :math:`e_a\,f/(1 - f)`. In the geostrophic column, with :math:`u_*` from the cut cell's :math:`k`:
+
+  .. list-table::
+     :header-rows: 1
+     :widths: 16 18 22 22 22
+
+     * - ``turb.max_geom_lscale``
+       - Stencil
+       - :math:`f` = 0.3
+       - :math:`f` = 0.7
+       - :math:`f` = 0.9
+     * - 30 m
+       - ``central``
+       - −0.8 % (:math:`e_a` +1.9 %)
+       - −1.5 % (+0.7 %)
+       - −1.7 % (+0.2 %)
+     * - 30 m
+       - ``log_law``
+       - −1.3 % (+2.9 %)
+       - −3.6 % (+1.5 %)
+       - −8.2 % (+0.9 %)
+     * - 100 m
+       - ``central``
+       - 0.0 % (0.0 %)
+       - +0.8 % (−0.3 %)
+       - +3.4 % (−0.4 %)
+     * - 100 m
+       - ``log_law``
+       - −0.3 % (+0.8 %)
+       - −1.1 % (+0.5 %)
+       - −2.6 % (+0.3 %)
+
+  100 m is the default of ``turb.max_geom_lscale`` (30 m before November 2026).
+  With ``log_law`` :math:`e_a` is 3.1 to 3.5 times smaller at 100 m than at 30 m, as the cap's term, and so is the
+  cut cell's deficit. With ``central`` the extra :math:`k` lowers the speed of the cell above by about 1 %; at
+  30 m this offsets most of the cap's term, and at 100 m it exceeds it, so the cut cell is fast at
+  :math:`f` = 0.9. At 100 m with ``log_law`` the four cells above are within 0.8 % in :math:`k` and 0.3 % in
+  speed (``central``: :math:`k` +5 to +26 %). Without the cap (``turb.max_geom_lscale = 1e12``) the cut cell is
+  within 0.2 % with ``log_law`` (:doc:`immersed_terrain`, Verification).
+- It needs the height above the ground and its roughness length: ``bc.zlo = surface_layer`` and
+  ``turb.wall_distance = terrain_height``. With buildings (``buildings.type = immersed_forcing``) the run stops:
+  the closure's distance there is the distance to the nearest wall.
+- The column first guess (``init.first_guess = column``) and an inflow table made from it keep the central
+  difference: that column forms its own shear. The first guess and the inflow k next to the ground are then those
+  of ``central``, and the 3-D solve adjusts them.
+- Profiles that are not logarithmic. The formula scales the central difference by a factor below 1 on uniform
+  layers: 0.83 to 0.94 in the second cell (:math:`z_0/\Delta` from 0 to 1), at least 0.94 in the third. A linear
+  profile's gradient is then 17 % low in the second cell, and a stable log-linear profile's (Obukhov length
+  100 m) 9 % low where the central difference is 9 % high. The buoyancy frequency keeps its central difference,
+  so the gradient Richardson number of the second cell (also read by ``turb.ri_gate``) rises with ``log_law``.
+  In the first full cell above a cut cell the factor falls with :math:`f` (0.57 at :math:`f` = 0.995), and on
+  layers stretched by 1.3 it passes 1 a few cells up (1.006 in the sixth).
+- Measured on flat, neutral columns only. It is not part of the recommended setting below. No terrain, stratified
+  or canopy case has been run with it; the run is accepted there, and the profile near the ground is then not
+  logarithmic.
 
 Smoothness at neutral
 ---------------------
