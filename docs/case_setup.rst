@@ -109,6 +109,8 @@ What the tool does
   or takes ``surface.roughness_map.default``; tree or shrub cover in cropland (12) is 0.25 m; flooded tree cover
   (160, 170) is 1.0 m, as the other trees; bare areas (200–202) are 0.005 m. The class codes are those of the ESA
   Climate Change Initiative Land Cover maps; thanks to ESA and the Land Cover CCI team for making them public.
+  The inflow profile takes ``wind.upstream_roughness`` (default ``surface.roughness``), or with ``auto`` a value per
+  direction from a regional map (`Upstream roughness of each direction`_).
 - **Closure.** ``model.lee_setting = recommended`` writes the recommended lee setting of :doc:`howto`
   (``turb.realizability = 0.309``, ``turb.nut_relax = 0.5`` and the convection blend below
   ``model.blend_height``).
@@ -297,6 +299,89 @@ and turns 18.36 degrees from the stress; the drag law gives 15.944 m/s and 23.51
 Directions follow the case description: the direction the wind comes from, clockwise from north. The neutral
 column is rotation-invariant (it is solved for :math:`u + iv`), so :math:`|G|` and the turning angle are the same
 in every direction to round-off; ``rt_case_setup_column_axis`` checks this from 0, 270 and 240 degrees.
+
+Upstream roughness of each direction
+------------------------------------
+
+The inflow profile of a direction (the log law's :math:`u_*`, ``bc.inflow_z0``, and the column's
+``bc.surface_z0`` with a geostrophic drive) needs the roughness of the ground the wind crossed before it reached
+the domain. ``wind.upstream_roughness = auto`` takes it from a regional roughness map,
+``surface.regional_roughness_map`` (the same formats as ``surface.roughness_map``: ``x y z0`` points or a land-cover
+raster), which reaches beyond the domain on the sides the wind comes from. ``surface.roughness`` or
+``surface.roughness_map`` still sets the ground inside the domain.
+
+The method is empirical: a weighted mean of the upwind roughness, not a model of the flow over the regional map.
+For a wind from a direction, transects start on the faces it enters through and run upwind (towards the side the
+wind comes from). Along each, :math:`\ln z_0` is averaged with the weight :math:`e^{-x/L}`:
+
+.. math::
+
+   \ln z_{0,\mathrm{up}} = \frac{\sum_k w_k \ln z_0(x_k)}{\sum_k w_k}, \qquad
+   w_k = e^{-x_k/L} - e^{-x_{k+1}/L},
+
+with :math:`x` the distance upwind of the face, :math:`L` ``wind.fetch_length``, segments
+:math:`[x_k, x_{k+1}]` out to :math:`5L` (the weight beyond is :math:`e^{-5}`, 0.7 %) and :math:`\ln z_0` taken at
+each segment's middle. The transects are spread along the inflow faces and weighted by the flow through them (face
+length times the wind's component normal to the face), so the direction's value is the flux-weighted mean over its
+inflow faces. The faces are those the deck uses: with a geostrophic drive the deck turns the wind and may add
+side faces, so the transects then start on those faces, run along the wind near the ground, and are weighted by the
+turned wind. The turning depends on :math:`z_0`, so the faces and :math:`z_{0,\mathrm{up}}` are found together
+(at most five passes; the summary gives the turning).
+
+- **Default** ``wind.fetch_length`` = 100 ``wind.height`` (1 km for a 10 m wind), an empirical choice. :math:`L`
+  is an e-folding length: a wind at the reference height feels a change of surface from about 10-20 heights
+  upwind and is fully adjusted only after a few hundred, so 100 heights lies in that range. Give
+  ``wind.fetch_length`` to change it; it is required when ``wind.height`` is not given (for example with
+  ``atmosphere.geostrophic_wind``).
+- **Geometric mean.** The average is of :math:`\ln z_0`. An average matched to the surface drag would lean towards
+  the rough value: half 0.3 m and half 0.03 m gives about 0.13 m against the geometric 0.095 m.
+- **Coverage.** A segment outside the map is left out of both sums. Below 95 % of the weight covered, the
+  summary says so; below :math:`1 - e^{-1}` (63 %, the map reaches less than one :math:`L` on average) the case is
+  refused. The map is binned on a square grid of its point spacing (exact for a regular raster), and two passes
+  fill an empty bin from its neighbours.
+- **Mismatch.** ``case_summary.txt`` lists each direction's :math:`z_0`, the covered share and :math:`u_*`, and for
+  each inflow face the upwind :math:`z_0`, the ground's :math:`z_0` along the face and
+  :math:`\ln(z_{0,\mathrm{up}}/z_{0,\mathrm{ground}})`. A large mismatch starts an internal boundary layer at the
+  face; put the face where the two agree, or far enough upwind of the area of interest.
+- **Refused:** ``auto`` without ``surface.regional_roughness_map.file``, with ``wind.drive = couette`` (one lid
+  speed for all directions), with ``wind.profile = table`` or ``power_law`` (the profile's wind is the same for
+  every direction), and the regional map or ``wind.fetch_length`` without ``auto``.
+- A geostrophic drive runs each direction's column with that direction's :math:`z_0`. With
+  ``surface.roughness_map`` the column first guess is refused (it takes one roughness), so such a sweep uses
+  ``geostrophic_inflow``.
+
+``rt_case_setup_upstream`` checks the set-up on 2 ranks: a half-plane map (0.03 m west of the domain, 1 m east)
+also sets the ground; from 270 degrees both decks take 0.03 m and the 10 m wind more than 4 cells from the x faces
+varies by 0.62 % along x. Reading the direction as the one the wind blows towards gives 0.715 m and 11.8 %.
+
+**Sensitivity to** :math:`L`. The same domain (2 km wide, ``geostrophic_inflow`` at 45 degrees north, 8 m/s at
+10 m, ground 0.1 m) with 0.3 m for 450 m upwind of the inflow face and 0.03 m beyond (a map bin edge at the step),
+on 2 ranks. These runs are not in CTest:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 25 25 25
+
+   * - ``wind.fetch_length`` (m)
+     - :math:`z_{0,\mathrm{up}}` (m)
+     - 10 m wind at the centre (m/s)
+     - 10 m wind, max - min along x
+   * - 500
+     - 0.1187
+     - 8.106
+     - 1.2 %
+   * - **1000 (default)**
+     - **0.0695**
+     - **7.834**
+     - **3.7 %**
+   * - 2000
+     - 0.0479
+     - 7.665
+     - 6.2 %
+
+:math:`z_{0,\mathrm{up}}` is the closed form of the step to the four digits shown. Halving or doubling
+:math:`L` moves the 10 m wind at the centre by +3.5 % and -2.2 %; the wind then adjusts to the 0.1 m ground
+across the domain.
 
 A wind library from a sweep
 ---------------------------

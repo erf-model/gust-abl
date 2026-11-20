@@ -1,0 +1,31 @@
+# The upstream roughness from a regional map (wind.upstream_roughness: auto).
+# regional.xyz (written by check_case_setup.py) is 0.03 m west of x = 1200 m
+# and 1 m east; it also sets the ground inside the domain, so the inflow profile
+# from 270 degrees (0.03 m) matches the ground. check_case_setup.py: the decks
+# take 0.03 m and the 10 m wind holds across the domain.
+case:
+  name: upstream
+domain:
+  half_width: 1000.      # m from the centre to each face
+  top: 2000.             # m
+mesh:
+  cell_size: 100.        # m
+  layers: 32
+  first_layer: 4.        # m
+wind:
+  speed: 8.              # m/s at wind.height
+  height: 10.            # m
+  direction: 270.        # degrees the wind comes from, clockwise from north
+  drive: geostrophic_inflow
+  upstream_roughness: auto
+atmosphere:
+  latitude: 45.          # degrees north: the Coriolis parameter
+surface:
+  roughness_map:
+    file: regional.xyz
+  regional_roughness_map:
+    file: regional.xyz
+model:
+  lee_setting: recommended
+solver:
+  max_iterations: 600

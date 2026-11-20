@@ -303,12 +303,14 @@ def summary_text(lib):
     asked = ("for %.6g m/s at %.6g m" % (ref["speed"], ref["height"]) if ref["height"] is not None
              else "given (atmosphere.geostrophic_wind)")
     first = lib["directions"][0]
+    roughness = sorted({e["roughness"] for e in lib["directions"]})
+    z0_text = ("z0 = %.6g m" % roughness[0] if len(roughness) == 1
+               else "z0 per direction %.6g .. %.6g m (wind.upstream_roughness = auto)" % (roughness[0], roughness[-1]))
     head = ("from", "|G| m/s", "G from", "turning", "U_ref m/s", "U_ref from", "stress turn", "u* m/s", "drag |G|",
             "drag turn")
     fmt = "  " + " ".join(["%10s"] * len(head))
     lines = [SUMMARY_MARK,
-             "  the column's geostrophic wind G %s, z0 = %.6g m, latitude %.6g" % (asked, first["roughness"],
-                                                                                    first["latitude"]),
+             "  the column's geostrophic wind G %s, %s, latitude %.6g" % (asked, z0_text, first["latitude"]),
              fmt % head]
 
     def num(x, f):

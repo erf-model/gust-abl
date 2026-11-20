@@ -14,10 +14,11 @@ the case description (`docs/case_setup.rst`).
 | `column_target.yaml` | `wind.drive: geostrophic_column` at 45 degrees north: GUST's 1-D column finds the geostrophic wind that gives 8 m/s at 10 m from 240 degrees; `run.sh` passes it to the 3-D run. |
 | `column_axis.yaml` | `column_target`'s set-up with the 10 m wind along y (from 0 degrees) and along x (from 270 degrees): the geostrophic wind turns with height, so the faces parallel to the 10 m wind are inflow and outflow faces, not slip walls. A third direction, 240 degrees, is off the axes for `library.json`. |
 | `hill.yaml` | A Gaussian hill from an ESRI ASCII grid in a projected frame, off the domain centre, on a plane rising to the east. |
-| `check_case_setup.py` | Copies a YAML file to the run directory (writes `hill.asc` for the hill), writes the case, runs `run.sh` and checks the result. |
+| `upstream.yaml` | `wind.upstream_roughness: auto` from 270 degrees over a half-plane regional map (0.03 m west of x = 1200 m, 1 m east), which also sets the ground; `wind.drive: geostrophic_inflow` at 45 degrees north with the recommended lee setting. |
+| `check_case_setup.py` | Copies a YAML file to the run directory (writes `hill.asc` for the hill and `regional.xyz` for `upstream`), writes the case, runs `run.sh` and checks the result. |
 
 ## Data and acknowledgements
-No downloaded data. The hill grid is written by `check_case_setup.py` from a formula.
+No downloaded data. The hill grid and the regional roughness map are written by `check_case_setup.py` from formulas.
 
 ## How to run
 ```bash
@@ -69,12 +70,18 @@ ln(z + z0) between the cell centres around 10 m.
   formula at the cell centres: the crest (after the plane is removed) in the same cell, the relief to 2 % and the
   RMS difference (each field less its mean) below 0.3 % of the relief. Measured: same cell, 0.7 %, 0.12 %. The
   difference is the interpolation from the 20 m grid to the 50 m mesh.
+- `upstream`: the 3-D deck's `bc.inflow_z0` and the column deck's `bc.surface_z0` are 0.03 m (the map west of the
+  domain; the map has 1 m east of it), GUST's steady verdict, and the 10 m wind (mean over y) more than 4 cells from
+  the x faces varies by less than 1 % along x. Measured on 2 ranks: 0.62 % (126 iterations); the last cells at the
+  outflow face drop a further 0.8 %, an effect of the outflow face that a uniform roughness gives too (the decks
+  are those of `wind.upstream_roughness: 0.03`, comments aside). Mutant: the meteorological direction read as the
+  direction the wind blows towards gives 0.715 m in both decks and 11.8 %.
 - Each tolerance fails on a one-line mutant of the tool: u* from ln(z / z0) in place of ln((z + z0) / z0) gives
   8.0035 m/s (4.4e-4); a DEM read half a cell off gives an RMS of 0.66 %.
 
 ## CTest
 `rt_case_setup_flat_sweep`, `rt_case_setup_flat_nest`, `rt_case_setup_column_target`, `rt_case_setup_column_axis`,
-`rt_case_setup_hill`
+`rt_case_setup_hill`, `rt_case_setup_upstream`
 (labels `regression;smoke`; not on Windows, where `run.sh` cannot run). They and `gust_case_selftest` (the tool's
 unit tests, `tools/test_gust_case.py`) are registered only when the configure's Python has PyYAML and numpy.
 `gust_input_checker_selftest` runs the deck checker's unit tests (standard library only).

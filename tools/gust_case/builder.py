@@ -28,6 +28,7 @@ import shutil
 
 import yaml
 
+from . import fetch
 from . import library
 from . import resume
 from . import roughness as roughness_mod
@@ -77,6 +78,7 @@ class Builder:
         self.terrain = None
         self.roughness = None
         self.patch_terrain = {}
+        self.upstream = {}             # direction -> fetch.DirectionResult (wind.upstream_roughness = auto)
         self.notes = []
         self._noted = set()
 
@@ -114,6 +116,72 @@ class Builder:
             self.roughness = roughness_mod.prepare(p.rmap_file, r["format"], r["coordinates"], r["classes"], r["default"],
                                                    p.frame, p.margin, p.point_spacing)
             self.notes += self.roughness.notes
+        if p.upstream_auto:
+            self._upstream_roughness()
+
+    def _upstream_roughness(self):
+        """wind.upstream_roughness = auto: the inflow's z0 of each direction from the regional map (fetch.py)."""
+        p, r = self.plan, self.case["surface"]["regional_roughness_map"]
+        key = "surface.regional_roughness_map"
+        reach = fetch.REACH * p.fetch_length + max(p.dx, p.dy)
+        regional = roughness_mod.prepare(p.regional_file, r["format"], r["coordinates"], r["classes"], r["default"],
+                                         p.frame, reach, p.fetch_length / fetch.SEGMENTS_PER_FETCH, key=key,
+                                         drop_unclassed=True)
+        self.notes += [note + " (regional map)" for note in regional.notes]
+        binned = fetch.BinnedMap(regional.x, regional.y, regional.z0, key)
+        if self.roughness is not None:
+            ground = fetch.BinnedMap(self.roughness.x, self.roughness.y, self.roughness.z0,
+                                     "surface.roughness_map").sample_nearest_edge
+        else:
+            ground = fetch.uniform_ground(p.surface_roughness)
+        for direction in p.directions:
+            result = self._upstream_direction(binned, ground, direction, key)
+            self.upstream[direction] = result
+            low = [f.face for f in result.faces if f.cover < fetch.MIN_COVER]
+            if low:
+                self.notes.append("%s covers less than %.0f %% of the fetch weight upwind of face %s (wind from %g "
+                                  "degrees)" % (key, 100.0 * fetch.MIN_COVER, ", ".join(low), direction))
+            unknown = [f.face for f in result.faces if f.z0_ground is None]
+            if unknown:
+                self.notes.append("surface.roughness_map has empty bins along face %s: the ln mismatch from %g degrees "
+                                  "is not reported there" % (", ".join(unknown), direction))
+            if result.cover < fetch.NOTE_COVER:
+                self.notes.append("%s covers %.1f %% of the fetch weight upwind of the wind from %g degrees: the "
+                                  "uncovered part is left out of the mean" % (key, 100.0 * result.cover, direction))
+
+    def _upstream_direction(self, binned, ground, direction, key):
+        """The DirectionResult of a direction on the deck's inflow faces. For a geostrophic drive the faces turn
+        with the drag law, which depends on z0: start from the faces of the wind asked for and repeat until the
+        deck's faces for the result's z0 are the faces it was computed on (its turning then differs from the deck's
+        by the change of the drag law's turn with that last change of z0)."""
+        p = self.plan
+        towards = wind.towards_from_meteorological(direction)
+        result = fetch.upstream_roughness(binned, p.frame, direction, p.fetch_length, ground, key)
+        for _ in range(5):
+            turning, faces = self._deck_faces(towards, result.z0)
+            inflow = [n for n in ("xlo", "xhi", "ylo", "yhi") if faces[n] == "inflow"]
+            if turning == result.turning or (result.turning != 0.0 and [f.face for f in result.faces] == inflow):
+                return result
+            result = fetch.upstream_roughness(binned, p.frame, direction, p.fetch_length, ground, key, turning,
+                                              p.side_faces)
+        raise CaseError("%s: the deck's inflow faces from %g degrees do not settle (the drag law's turn moves them as "
+                        "z0 changes); give wind.upstream_roughness a number for this direction's case"
+                        % (key, direction))
+
+    def _z0(self, direction):
+        """The inflow profile's roughness length for a wind from ``direction``."""
+        if self.plan.upstream_auto:
+            return self.upstream[direction].z0
+        return self.plan.upstream_roughness
+
+    def _ustar(self, direction):
+        """u* of the log-law inflow for a wind from ``direction`` (None when the profile is not the log law)."""
+        p = self.plan
+        if not p.upstream_auto:
+            return p.ustar
+        if p.profile == "log_law" and not p.geostrophic and p.speed and p.height:
+            return wind.friction_velocity(p.speed, p.height, self._z0(direction))
+        return None
 
     def _patch_frame(self, patch):
         """The patch's box, in a frame that shares the parent's origin and projection."""
@@ -269,12 +337,8 @@ class Builder:
         p = self.plan
         f = p.frame
         towards = wind.towards_from_meteorological(direction)
-        turning = self._face_turning(towards)
-        faces = wind.lateral_faces(towards, p.side_faces, turning)
-        if turning != 0.0 and "slip_wall" in faces.values():
-            # the middle of the turn landed on an axis (to 6e-8 degrees): step towards the geostrophic wind
-            turning -= math.copysign(1.0e-6, p.latitude)
-            faces = wind.lateral_faces(towards, p.side_faces, turning)
+        z0_up, ustar = self._z0(direction), self._ustar(direction)
+        turning, faces = self._deck_faces(towards, z0_up)
         cx, cy = wind.unit_vector(towards)
         deck = Deck(self._title("wind from %g degrees" % direction))
 
@@ -308,7 +372,7 @@ class Builder:
             deck.set("bc." + face, faces[face])
         deck.set("bc.zlo", "surface_layer")
         if p.drive == "couette":
-            lid = wind.log_law_speed(p.ustar, p.top, p.upstream_roughness)
+            lid = wind.log_law_speed(ustar, p.top, z0_up)
             deck.set("bc.zhi", "no_slip_wall")
             deck.set("bc.zhi_wall_velocity", [lid * cx, lid * cy, 0.0], "the log law's %.6g m/s at the top" % lid)
         else:
@@ -322,24 +386,24 @@ class Builder:
         if p.geostrophic:
             deck.set("bc.inflow_profile", "file")
             deck.set("bc.inflow_file", COLUMN_TABLE, "written by the column run")
-            deck.set("bc.inflow_z0", float(p.upstream_roughness))
+            deck.set("bc.inflow_z0", float(z0_up))
         elif p.profile == "table":
             deck.set("bc.inflow_profile", "file")
             deck.set("bc.inflow_file", _rel(os.path.join(case_dir, "inflow_table.dat"), run_dir))
-            deck.set("bc.inflow_z0", float(p.upstream_roughness))
+            deck.set("bc.inflow_z0", float(z0_up))
         elif p.profile == "power_law":
             deck.set("bc.inflow_profile", "power_law")
             deck.set("bc.inflow_speed", float(p.speed))
             deck.set("bc.inflow_zref", float(p.height))
             if p.power_law_exponent is not None:
                 deck.set("bc.inflow_alpha", float(p.power_law_exponent))
-            deck.set("bc.inflow_z0", float(p.upstream_roughness))
+            deck.set("bc.inflow_z0", float(z0_up))
             deck.set("bc.inflow_direction", float(towards))
         else:
             deck.set("bc.inflow_profile", "log_law")
-            deck.set("bc.inflow_ustar", float(p.ustar), "%.6g m/s at %.6g m over z0 = %.6g m"
-                     % (p.speed, p.height, p.upstream_roughness))
-            deck.set("bc.inflow_z0", float(p.upstream_roughness))
+            deck.set("bc.inflow_ustar", float(ustar), "%.6g m/s at %.6g m over z0 = %.6g m"
+                     % (p.speed, p.height, z0_up))
+            deck.set("bc.inflow_z0", float(z0_up))
             deck.set("bc.inflow_direction", float(towards))
 
         self._theta(deck)
@@ -371,7 +435,18 @@ class Builder:
         self._apply_gust_inputs(deck)
         return deck, chk
 
-    def _face_turning(self, towards):
+    def _deck_faces(self, towards, z0):
+        """(turning, lateral faces) of the deck for the wind asked for and the inflow's z0."""
+        p = self.plan
+        turning = self._face_turning(towards, z0)
+        faces = wind.lateral_faces(towards, p.side_faces, turning)
+        if turning != 0.0 and "slip_wall" in faces.values():
+            # the middle of the turn landed on an axis (to 6e-8 degrees): step towards the geostrophic wind
+            turning -= math.copysign(1.0e-6, p.latitude)
+            faces = wind.lateral_faces(towards, p.side_faces, turning)
+        return turning, faces
+
+    def _face_turning(self, towards, z0):
         """Degrees to turn ``towards`` (the direction of the wind asked for) to the direction the lateral faces are
         chosen from: 0, or for a geostrophic drive the middle of the drag law's turn between the wind near the
         ground and the geostrophic wind (wind.face_turning), so that a face parallel to the wind near the ground takes
@@ -380,7 +455,6 @@ class Builder:
         p = self.plan
         if not p.geostrophic:
             return 0.0
-        z0 = p.upstream_roughness
         if p.geostrophic_wind is not None:
             ug, vg = p.geostrophic_wind
             half = wind.face_turning(wind.drag_law_ustar(math.hypot(ug, vg), z0, p.latitude), z0, p.latitude)
@@ -394,6 +468,7 @@ class Builder:
     # ----------------------------------------------------------------------------------------------------------
     def column_deck(self, direction):
         p = self.plan
+        z0_up = self._z0(direction)
         towards = wind.towards_from_meteorological(direction)
         cx, cy = wind.unit_vector(towards)
         deck = Deck(self._title("column run for the inflow profile, wind from %g degrees" % direction))
@@ -407,7 +482,7 @@ class Builder:
         deck.set("terrain.type", "flat")
         deck.set("bc.zlo", "surface_layer")
         deck.set("bc.zhi", "slip_wall")
-        deck.set("bc.surface_z0", float(p.upstream_roughness))
+        deck.set("bc.surface_z0", float(z0_up))
         self._theta(deck, column=True)
         self._damping(deck)
         deck.section("The column: GUST's implicit 1-D solve, adjusted to the wind asked for")
@@ -425,8 +500,8 @@ class Builder:
         else:
             # GUST scales and turns the column's forcing by the ratio of the target to the column's wind, so the
             # column needs a wind to start from: the neutral drag law's speed, along the wind asked for.
-            ustar = wind.friction_velocity(p.speed, p.height, p.upstream_roughness)
-            start = wind.geostrophic_speed(ustar, p.upstream_roughness, p.latitude)
+            ustar = wind.friction_velocity(p.speed, p.height, z0_up)
+            start = wind.geostrophic_speed(ustar, z0_up, p.latitude)
             deck.set("forcing.ug", start * cx, "where the column starts (the drag law's %.6g m/s); GUST adjusts it" % start)
             deck.set("forcing.vg", start * cy)
         deck.section("Closure")
@@ -787,6 +862,8 @@ def _summary(case, plan, builder, result, runs, checked):
                      % (plan.speed, plan.height, plan.upstream_roughness, plan.ustar))
     for run in runs:
         lines.append("        %s -> %s" % (run["label"], "inputs" if run["dir"] == "." else run["dir"] + "/inputs"))
+    lines += fetch.report_lines([builder.upstream[d] for d in plan.directions if d in builder.upstream],
+                                {d: builder._ustar(d) for d in plan.directions if d in builder.upstream})
     lines.append("")
     if result.notes:
         lines.append("Notes")

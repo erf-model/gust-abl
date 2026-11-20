@@ -9,7 +9,7 @@ import math
 import os
 import re
 
-from . import atmosphere, geo, grid, wind
+from . import atmosphere, fetch, geo, grid, wind
 from .errors import CaseError
 from .terrain import Frame
 
@@ -206,9 +206,33 @@ def _resolve_wind(case, given, problems, plan, base_dir):
     if not plan.roughness_map and s["roughness"] is None:
         problems.append("surface.roughness: required (or surface.roughness_map.file)")
     plan.surface_roughness = s["roughness"]
-    z0_up = w["upstream_roughness"] if w["upstream_roughness"] is not None else s["roughness"]
-    if z0_up is None and plan.roughness_map:
-        problems.append("wind.upstream_roughness: required with surface.roughness_map (the inflow profile's roughness)")
+    plan.upstream_auto = w["upstream_roughness"] == "auto"
+    regional = s["regional_roughness_map"]
+    plan.regional_map = regional["file"] is not None
+    plan.fetch_length = None
+    if plan.upstream_auto:
+        z0_up = None              # per direction, from the regional map (fetch.py, Builder.prepare_data)
+        if not plan.regional_map:
+            problems.append("wind.upstream_roughness = auto needs surface.regional_roughness_map.file (the map "
+                            "upwind of the domain)")
+        if w["fetch_length"] is not None:
+            plan.fetch_length = w["fetch_length"]
+        elif w["height"] is not None:
+            plan.fetch_length = fetch.FETCH_PER_HEIGHT * w["height"]
+        else:
+            problems.append("wind.fetch_length: required with wind.upstream_roughness = auto when wind.height is not "
+                            "given (its default is %g times wind.height)" % fetch.FETCH_PER_HEIGHT)
+    else:
+        z0_up = w["upstream_roughness"] if w["upstream_roughness"] is not None else s["roughness"]
+        if z0_up is None and plan.roughness_map:
+            problems.append("wind.upstream_roughness: required with surface.roughness_map (the inflow profile's "
+                            "roughness), or auto with surface.regional_roughness_map")
+        for name in ("file", "format", "classes", "default", "coordinates"):
+            if "surface.regional_roughness_map." + name in given:
+                problems.append("surface.regional_roughness_map.%s has no effect without wind.upstream_roughness = auto"
+                                % name)
+        if "wind.fetch_length" in given:
+            problems.append("wind.fetch_length has no effect without wind.upstream_roughness = auto")
     plan.upstream_roughness = z0_up
 
     # the profile
@@ -287,11 +311,17 @@ def _resolve_wind(case, given, problems, plan, base_dir):
             problems.append("wind.drive = couette needs wind.profile = log_law (the lid moves at the log law's speed)")
         if plan.roughness_map:
             problems.append("wind.drive = couette needs a uniform surface.roughness, not surface.roughness_map")
+        elif plan.upstream_auto:
+            problems.append("wind.upstream_roughness = auto: not with wind.drive = couette (the lid's log law takes "
+                            "surface.roughness)")
         elif z0_up is not None and s["roughness"] is not None and z0_up != s["roughness"]:
             problems.append("wind.drive = couette needs wind.upstream_roughness = surface.roughness (%g and %g)"
                             % (z0_up, s["roughness"]))
         if a["theta"] != "neutral":
             problems.append("wind.drive = couette needs atmosphere.theta = neutral (it is %s)" % a["theta"])
+    if plan.upstream_auto and profile != "log_law":
+        problems.append("wind.upstream_roughness = auto: not with wind.profile = %s (the profile's wind is the same "
+                        "for every direction; bc.inflow_z0 would set only its k)" % profile)
     plan.ustar = None
     if profile == "log_law" and not geostrophic and plan.speed and plan.height and z0_up:
         plan.ustar = wind.friction_velocity(plan.speed, plan.height, z0_up)
@@ -553,6 +583,8 @@ def resolve(case, given, base_dir):
     if widest >= 0.5 * min(frame.x_hi - frame.x_lo, frame.y_hi - frame.y_lo) and widest > 0.0:
         problems.append("terrain.border: flat_width + slope_width = %g m reaches the middle of the domain" % widest)
     plan.rmap_file = _path(base_dir, case["surface"]["roughness_map"]["file"]) if plan.roughness_map else None
+    regional = case["surface"]["regional_roughness_map"]["file"]
+    plan.regional_file = _path(base_dir, regional) if regional is not None and plan.upstream_auto else None
 
     m = case["model"]
     plan.lee = m["lee_setting"] == "recommended"
