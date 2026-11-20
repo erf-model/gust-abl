@@ -368,6 +368,13 @@ No code is copied from them.
 Case keys
 ---------
 
+``Tests/inputs_yaml_reference`` holds the same keys as a commented YAML file to copy lines from: remove the leading
+``# `` of the lines needed and what is left is a case file, with each key's meaning still a comment. It is written by
+``tools/make_gust_case.py --write-yaml-reference Tests/inputs_yaml_reference``; the CTest ``gust_case_selftest``
+fails when the file differs from what the tool writes, when the uncommented file is not YAML, or when a key or a
+default in it differs from the table below. ``Tests/inputs_reference`` is its counterpart for GUST's own deck
+inputs (:doc:`inputs`).
+
 .. include:: case_setup_keys.inc
 
 Limits

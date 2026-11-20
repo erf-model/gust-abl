@@ -20,6 +20,7 @@ import unittest
 from unittest import mock
 
 import numpy as np
+import yaml
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
@@ -27,7 +28,7 @@ sys.path.insert(0, HERE)
 
 import make_gust_case  # noqa: E402
 import tiff_to_xyz  # noqa: E402
-from gust_case import CaseError, apply_override, build, key_table_rst, resolve, validate  # noqa: E402
+from gust_case import CaseError, apply_override, build, key_reference_yaml, key_table_rst, resolve, validate  # noqa: E402
 from gust_case import atmosphere, geo, grid, roughness, schema, terrain, wind  # noqa: E402
 from gust_case.deck import Deck, format_value, read_deck  # noqa: E402
 
@@ -554,6 +555,31 @@ class SchemaTests(CaseDir):
         with open(path, encoding="utf-8") as handle:
             self.assertEqual(handle.read(), key_table_rst(),
                              "docs/case_setup_keys.inc is not what tools/make_gust_case.py --write-key-table writes")
+
+    def test_yaml_reference_is_current(self):
+        path = os.path.join(REPO, "Tests", "inputs_yaml_reference")
+        with open(path, encoding="utf-8") as handle:
+            self.assertEqual(handle.read(), key_reference_yaml(), "Tests/inputs_yaml_reference is not what "
+                             "tools/make_gust_case.py --write-yaml-reference writes")
+
+    def test_yaml_reference_uncommented_is_yaml_with_every_key_and_default(self):
+        lines = key_reference_yaml().splitlines(True)
+        self.assertTrue(all(line.startswith("#") or not line.strip() for line in lines))
+        data = yaml.safe_load("".join(line[2:] if line.startswith("# ") else line for line in lines))
+        for name, key in schema.iter_keys():
+            node = data
+            for part in name.split("."):
+                node = node[part[:-2]][0] if part.endswith("[]") else node[part]
+            if key.required or key.default is None:
+                self.assertIsNone(node, name)
+            elif key.default == "":
+                self.assertEqual(node, "", name)
+            elif isinstance(key.default, str) and not isinstance(node, str):
+                self.assertEqual(" ".join("%g" % v for v in (node if isinstance(node, list) else [node])),
+                                 key.default, name)
+            else:
+                self.assertEqual(node, list(key.default) if isinstance(key.default, tuple) else key.default, name)
+        self.assertEqual(sorted(data), sorted(schema.SPEC))
 
 
 class PlanTests(CaseDir):
