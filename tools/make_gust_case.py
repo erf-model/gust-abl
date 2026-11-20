@@ -7,6 +7,7 @@
     tools/make_gust_case.py case.yaml --set mesh.layers=48 --set solver.cfl_max=8
     tools/make_gust_case.py --list-keys                  every key, its default and its range
     tools/make_gust_case.py --example                    a starter case file
+    tools/make_gust_case.py --write-yaml-reference Tests/inputs_yaml_reference   every key as commented YAML
 
 The case file holds sections (domain, terrain, mesh, wind, atmosphere,
 surface, model, solver, output, run, nests, gust_inputs); docs/case_setup.rst
@@ -28,7 +29,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from gust_case import CaseError, apply_override, build, key_table_rst, key_table_text, load_yaml, validate  # noqa: E402
+from gust_case import CaseError, apply_override, build, key_reference_yaml, key_table_rst, key_table_text, load_yaml, validate  # noqa: E402
 
 EXAMPLE = """\
 # A starter case for tools/make_gust_case.py: wind from the west over flat ground.
@@ -95,6 +96,8 @@ def parse_args(argv):
     actions.add_argument("--example", action="store_true", help="print a starter case file and exit")
     actions.add_argument("--write-key-table", metavar="FILE", help="write the key table as reStructuredText "
                          "(docs/case_setup_keys.inc) and exit")
+    actions.add_argument("--write-yaml-reference", metavar="FILE", help="write every key as a commented YAML file "
+                         "(Tests/inputs_yaml_reference) and exit")
     return parser, parser.parse_args(argv)
 
 
@@ -128,6 +131,10 @@ def main(argv=None):
     if args.write_key_table:
         with open(args.write_key_table, "w", encoding="utf-8") as out:
             out.write(key_table_rst())
+        return 0
+    if args.write_yaml_reference:
+        with open(args.write_yaml_reference, "w", encoding="utf-8") as out:
+            out.write(key_reference_yaml())
         return 0
     if args.case_file is None:
         parser.print_usage(sys.stderr)

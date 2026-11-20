@@ -34,3 +34,7 @@ README lists its CTest names.
 - `inputs_reference` is the master input reference: every input with its default, range and meaning, as comments
   to copy into a deck. It is generated from `docs/inputs.rst` (`tools/input_reference.py --write`) and checked by
   the CTest `input_reference_current`.
+- `inputs_yaml_reference` is the same for the YAML case description of `tools/make_gust_case.py`: every key with
+  its default, unit, range and meaning, as comments to copy into a case file. It is generated from the tool's key
+  table (`tools/make_gust_case.py --write-yaml-reference Tests/inputs_yaml_reference`) and checked by the CTest
+  `gust_case_selftest`.

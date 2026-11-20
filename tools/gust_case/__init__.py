@@ -10,7 +10,7 @@ describes the keys.
 from .builder import Result, build
 from .errors import CaseError
 from .plan import resolve
-from .schema import SPEC, apply_override, key_table_rst, key_table_text, load_yaml, validate
+from .schema import SPEC, apply_override, key_reference_yaml, key_table_rst, key_table_text, load_yaml, validate
 
 
 def load_case(path, overrides=()):
@@ -21,5 +21,5 @@ def load_case(path, overrides=()):
     return validate(raw)
 
 
-__all__ = ["CaseError", "Result", "SPEC", "apply_override", "build", "key_table_rst", "key_table_text", "load_case",
+__all__ = ["CaseError", "Result", "SPEC", "apply_override", "build", "key_reference_yaml", "key_table_rst", "key_table_text", "load_case",
            "load_yaml", "resolve", "validate"]

@@ -2851,6 +2851,9 @@ Current tests
      - The Python unit tests of the deck checker (standard library only), the case set-up tool, the terrain
        download (on tiles made in the test, no network) and the case set-up window (offscreen; its window tests
        skip without PySide6 and pyqtgraph). The last three need PyYAML and numpy. Label ``unit``.
+       ``gust_case_selftest`` also checks that ``Tests/inputs_yaml_reference`` is what
+       ``tools/make_gust_case.py --write-yaml-reference`` writes and that, uncommented, it is YAML holding every key
+       with its default.
    * - ``rt_coriolis_repeat_clean``, ``rt_askervein_210_clean``, ``buildings_defaults_fraction_stress_clean``,
        ``buildings_defaults_roof_stress_clean``, ``buildings_defaults_drag_clean``
      - Fixtures: they empty the run directories of the tests they are set up for, so no check reads an earlier run's
