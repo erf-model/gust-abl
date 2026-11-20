@@ -3162,6 +3162,10 @@ if(NOT WIN32)
              COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/Real_Terrain/WindNinja2019/test_timed_run.sh)
     set_tests_properties(wn2019_timed_run PROPERTIES LABELS unit)
 endif()
+# The terrain and roughness converter of Tests/Real_Terrain/Bolund_Terrain_Files on small made-up grids.
+add_test(NAME rt_bolund_files_converter
+         COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/Real_Terrain/Bolund_Terrain_Files/to_gust_xyz.py selftest)
+set_tests_properties(rt_bolund_files_converter PROPERTIES LABELS unit)
 
 # The plotfile reader of the check scripts (extern_erf/erf_plotfile.py, a
 # local change): hand-made one-box plotfiles in float and double, little- and
