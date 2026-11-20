@@ -11,6 +11,7 @@ import shlex
 import shutil
 import sys
 
+from gust_case import library
 from gust_case.builder import COLUMN_TABLE
 
 from .logparse import column_wind
@@ -78,6 +79,19 @@ def steps(case_dir, runs):
             for patch in run["patches"]:
                 yield Step("%s: patch %s" % (run["label"], patch), os.path.join(base, "nest_" + patch),
                            ["inputs", "bc.nest_parent=../%s" % parent] + extra)
+
+
+def collect_library(case_dir):
+    """After the last step: library.json and the case summary's Library section for a geostrophic drive, as run.sh
+    writes them (gust_case/library.py). Returns a line for the log ('' when the drive has no column run)."""
+    if not library.is_geostrophic(case_dir):
+        return ""
+    try:
+        path = library.write(case_dir, library.collect(case_dir))
+    except (library.CaseError, OSError, ValueError, KeyError) as err:
+        problems = err.problems if isinstance(err, library.CaseError) else [str(err)]
+        return "library.json not written: %s" % "; ".join(problems)
+    return "wrote %s" % path
 
 
 def find_gust(executable, case_dir, frozen_dir=None, given=True):

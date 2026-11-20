@@ -12,6 +12,7 @@ Layout (one wind direction)::
         run.sh                runs them in order
         case_resolved.yaml    the case description with every default filled in
         case_summary.txt      mesh, wind, files and the checker's findings
+        library.json          after run.sh, geostrophic drives: G per direction (library.py)
 
 A sweep (``wind.directions``) has one ``dir_<DDD>/`` folder per direction, each
 with its own ``inputs`` (and ``column/``, ``nest_*/``); the terrain files are
@@ -27,6 +28,7 @@ import shutil
 
 import yaml
 
+from . import library
 from . import roughness as roughness_mod
 from . import terrain as terrain_mod
 from . import wind
@@ -511,6 +513,10 @@ def _run_script(case, plan, runs):
         'cd "$(dirname "$0")"',
         "",
     ]
+    if plan.geostrophic:
+        lines[4:4] = ["#   GUST_CASE_TOOL=/path/to/make_gust_case.py PYTHON=python3 ./run.sh     the tool and Python that "
+                      "write library.json at the end"]
+        lines += ["rm -f %s      # written again after the last run" % library.LIBRARY_FILE, ""]
     for run in runs:
         lines.append("# ---- %s" % run["label"])
         lines.append("(")
@@ -540,6 +546,14 @@ def _run_script(case, plan, runs):
         for patch in run["patches"]:
             lines.append('  ( cd nest_%s && $MPI "$GUST" inputs bc.nest_parent="../$parent"%s "$@" > log.txt )' % (patch, extra))
         lines.append(")")
+        lines.append("")
+    if plan.geostrophic:
+        tool = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "make_gust_case.py"))
+        lines.append("# ---- the geostrophic wind of every direction: library.json and the summary's Library section")
+        lines.append('TOOL=${GUST_CASE_TOOL:-%s}' % tool)
+        lines.append('if [ -f "$TOOL" ]; then ${PYTHON:-python3} "$TOOL" --collect . --quiet || '
+                     "echo \"run.sh: the runs ended; --collect failed, library.json not written (rerun: $TOOL --collect .)\" >&2; "
+                     "else echo \"run.sh: the runs ended; $TOOL not found, library.json not written (GUST_CASE_TOOL=...)\" >&2; fi")
         lines.append("")
     return "\n".join(lines)
 
@@ -625,6 +639,10 @@ def build(case, given, base_dir, dry_run=False, overwrite=False, check=True):
         if removed:
             result.notes.append("--overwrite: removed the %d files of the previous write (%s); run outputs stay"
                                 % (removed, MANIFEST))
+        stale = os.path.join(case_dir, library.LIBRARY_FILE)
+        if os.path.isfile(stale):                # the previous runs' library (library.py); run.sh writes it again
+            os.remove(stale)
+            result.notes.append("--overwrite: removed library.json of the previous runs")
         if builder.terrain is not None:
             builder.terrain.write(os.path.join(case_dir, "terrain.xyz"))
             result.files.append("terrain.xyz")

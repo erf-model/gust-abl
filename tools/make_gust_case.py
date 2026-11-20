@@ -8,6 +8,7 @@
     tools/make_gust_case.py --list-keys                  every key, its default and its range
     tools/make_gust_case.py --example                    a starter case file
     tools/make_gust_case.py --write-yaml-reference Tests/inputs_yaml_reference   every key as commented YAML
+    tools/make_gust_case.py --collect CASE_DIR           after run.sh: G per direction in library.json
 
 The case file holds sections (domain, terrain, mesh, wind, atmosphere,
 surface, model, solver, output, run, nests, gust_inputs); docs/case_setup.rst
@@ -20,8 +21,14 @@ The tool writes the deck(s), terrain.xyz and roughness.xyz when asked for, a
 run script and a summary, then runs the deck checker (check_gust_inputs.py)
 on every deck it wrote.
 
+With a geostrophic drive, run.sh ends with ``--collect``: the geostrophic
+wind each direction's column run found goes to library.json and to a section
+of case_summary.txt (gust_case/library.py).
+
 Exit status: 0 written; 1 written, but the deck checker found an error (or a
 warning with --strict); 2 the case description was refused, nothing written.
+With --collect: 0 library.json written; 2 refused (not a geostrophic case
+folder, a column run missing or unfinished), nothing written.
 """
 import argparse
 import os
@@ -29,6 +36,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+from gust_case import library  # noqa: E402
 from gust_case import CaseError, apply_override, build, key_reference_yaml, key_table_rst, key_table_text, load_yaml, validate  # noqa: E402
 
 EXAMPLE = """\
@@ -98,6 +106,8 @@ def parse_args(argv):
                          "(docs/case_setup_keys.inc) and exit")
     actions.add_argument("--write-yaml-reference", metavar="FILE", help="write every key as a commented YAML file "
                          "(Tests/inputs_yaml_reference) and exit")
+    actions.add_argument("--collect", metavar="CASE_DIR", help="after run.sh: write library.json and the case "
+                         "summary's Library section from the column runs of a geostrophic drive, and exit")
     return parser, parser.parse_args(argv)
 
 
@@ -135,6 +145,25 @@ def main(argv=None):
     if args.write_yaml_reference:
         with open(args.write_yaml_reference, "w", encoding="utf-8") as out:
             out.write(key_reference_yaml())
+        return 0
+    if args.collect:
+        others = [name for name, given in (("a case file", args.case_file is not None),
+                                           ("single keys", bool(overrides_from_args(args) or args.assignments)),
+                                           ("--dry-run", args.dry_run), ("--overwrite", args.overwrite),
+                                           ("--no-check", args.no_check), ("--strict", args.strict)) if given]
+        if others:
+            parser.error("--collect reads a written case folder; not with %s" % ", ".join(others))
+        try:
+            lib = library.collect(args.collect)
+            path = library.write(args.collect, lib)
+        except (CaseError, OSError, ValueError, KeyError) as err:
+            problems = err.problems if isinstance(err, CaseError) else [str(err)]
+            for problem in problems:
+                sys.stderr.write("make_gust_case.py --collect: %s\n" % problem)
+            return 2
+        if not args.quiet:
+            sys.stdout.write(library.summary_text(lib))
+            sys.stdout.write("wrote %s\n" % path)
         return 0
     if args.case_file is None:
         parser.print_usage(sys.stderr)

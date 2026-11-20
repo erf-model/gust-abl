@@ -3273,7 +3273,8 @@ if(_gust_case_python EQUAL 0)
             file(MAKE_DIRECTORY ${_case_dir})
             add_test(NAME rt_case_setup_${case}
                      COMMAND ${Python3_EXECUTABLE} ${CASE_SETUP_CASE}/check_case_setup.py ${case}
-                             --gust $<TARGET_FILE:gust> --mpi "${_case_launch}" -- ${GUST_TEST_AMREX_FLAGS}
+                             --gust $<TARGET_FILE:gust> --mpi "${_case_launch}" --precision ${GUST_PRECISION}
+                             -- ${GUST_TEST_AMREX_FLAGS}
                      WORKING_DIRECTORY ${_case_dir})
             set_tests_properties(rt_case_setup_${case} PROPERTIES LABELS "regression;smoke" PROCESSORS 2
                                  ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)

@@ -9,7 +9,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from . import mapview  # noqa: F401  (pyqtgraph's white background)
 from .logparse import RESIDUALS, LogReader
-from .runplan import RunError, command, steps
+from .runplan import RunError, collect_library, command, steps
 
 STOP_GRACE_MS = 5000             # Stop: terminate (mpiexec passes it to the ranks), then kill after this
 
@@ -65,6 +65,7 @@ class RunPanel(QtWidgets.QWidget):
         self.log.clear()
         self._gust, self._ranks, self._launcher = gust, ranks, launcher
         self._steps = steps(case_dir, runs)
+        self._case_dir = case_dir
         self._stopping = False
         self.stop_button.setEnabled(True)
         self._next(None)
@@ -73,7 +74,10 @@ class RunPanel(QtWidgets.QWidget):
         try:
             step = next(self._steps) if previous is None else self._steps.send(None)
         except StopIteration:
-            self._done(True, "All steps ended with status 0.")
+            note = collect_library(self._case_dir)
+            if note:
+                self.log.appendPlainText("==== %s\n" % note)
+            self._done(True, "All steps ended with status 0." + (" " + note if note else ""))
             return
         except (RunError, OSError) as err:
             self._done(False, str(err))

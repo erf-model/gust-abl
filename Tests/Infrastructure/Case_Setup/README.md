@@ -12,7 +12,7 @@ the case description (`docs/case_setup.rst`).
 | `flat_sweep.yaml` | Flat ground, moving lid (`wind.drive: couette`), two directions (240 and 0 degrees): one run folder per direction. |
 | `flat_nest.yaml` | Flat ground from 240 degrees with a nested patch at half the cell size; the patch starts from the parent's checkpoint. |
 | `column_target.yaml` | `wind.drive: geostrophic_column` at 45 degrees north: GUST's 1-D column finds the geostrophic wind that gives 8 m/s at 10 m from 240 degrees; `run.sh` passes it to the 3-D run. |
-| `column_axis.yaml` | `column_target`'s set-up with the 10 m wind along y (from 0 degrees) and along x (from 270 degrees): the geostrophic wind turns with height, so the faces parallel to the 10 m wind are inflow and outflow faces, not slip walls. |
+| `column_axis.yaml` | `column_target`'s set-up with the 10 m wind along y (from 0 degrees) and along x (from 270 degrees): the geostrophic wind turns with height, so the faces parallel to the 10 m wind are inflow and outflow faces, not slip walls. A third direction, 240 degrees, is off the axes for `library.json`. |
 | `hill.yaml` | A Gaussian hill from an ESRI ASCII grid in a projected frame, off the domain centre, on a plane rising to the east. |
 | `check_case_setup.py` | Copies a YAML file to the run directory (writes `hill.asc` for the hill), writes the case, runs `run.sh` and checks the result. |
 
@@ -44,6 +44,11 @@ ln(z + z0) between the cell centres around 10 m.
   10 m wind follows the inflow table, so a separate check covers the hand-over: the 3-D run solves its own column
   first guess from the `forcing.ug` and `forcing.vg` that `run.sh` passed, and its wind at the top (printed in
   `log.txt`) matches the table's top row to 1e-4. Measured: equal to the 4 printed decimals.
+  `library.json` (written by `run.sh`'s last step, `make_gust_case.py --collect`) holds 8 m/s at 10 m to 2e-4
+  along 240 degrees to 0.01 degrees (the stopping rule allows 1e-4 rad, 0.0057 degrees). Its G equals the last
+  `forcing.ug` and `forcing.vg` of `column/log.txt` (what `run.sh` passes to the 3-D run), turned clockwise of the
+  10 m wind by 10 to 25 degrees: between half the neutral drag law's angle for the column's u* (23.5 degrees) and
+  all of it. Measured: 7.99935 m/s, 0.0014 degrees; |G| 15.9089 m/s, turning -18.1405 degrees.
 - `column_axis`: no lateral face of either deck is a slip wall, and every cell's wind in the 3-D run is the column
   table's at the cell's height (linear between the table's levels) to 4 % of the table's top wind. Measured on 2
   ranks: 0.61 % (from 0) and 1.97 % (from 270). The largest difference from 270 is in the first cell at the
@@ -51,6 +56,15 @@ ln(z + z0) between the cell centres around 10 m.
   outflow face there; the 99th percentile is 1.15 %. The tool before this case made the faces parallel to the
   10 m wind slip walls, which block the flow that crosses them aloft: 72 % (from 270, 197 iterations against 119
   to 129 with the turned faces).
+  `library.json`: the same checks as `column_target` from 0, 270 and 240 degrees, and the same |G| and turning
+  angle for the three, as the neutral column is rotation-invariant: 1e-6 relative and 1e-4 degrees in double
+  precision. A quarter turn is exact in floating point, so 240 degrees is the direction that tests it. With
+  `--precision SINGLE` (CTest passes `GUST_PRECISION`) the tolerances are the stopping rule's bound for two
+  directions, 2e-4 and 0.0115 degrees. Measured (double, 2 ranks): |G| apart by 2.0e-10 (270) and 1.1e-9 (240),
+  turning by 3.4e-8 and 3.7e-8 degrees.
+  Mutants: reading the deck's first guess for G gives a turning of -0.0014 degrees (fails the 10 to 25 degree band
+  and the log's forcing lines); interpolating linearly in z gives 7.962 m/s (4.6e-3); no `--collect` step in
+  `run.sh` fails "library.json written by run.sh".
 - `hill`: the ground in GUST's plotfile, from the first cell centre (`z = zeta + h (1 - zeta / top)`), against the
   formula at the cell centres: the crest (after the plane is removed) in the same cell, the relief to 2 % and the
   RMS difference (each field less its mean) below 0.3 % of the relief. Measured: same cell, 0.7 %, 0.12 %. The
