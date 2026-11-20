@@ -1,0 +1,29 @@
+# Columbia River Gorge near Wasco, Oregon: the river at about 50 m above sea
+# level, the Columbia Hills to the north up to about 900 m, the plateau to the
+# south at 300 m. tools/fetch_terrain.py case.yaml writes dem.asc (SRTM
+# 1 arc-second, AWS Terrain Tiles) beside this file; tools/make_gust_case.py
+# case.yaml then writes the case folder. The domain and the wind are those of
+# Tests/Real_Terrain/Columbia_Gorge, without its nest.
+case:
+  name: columbia_gorge
+  description: Columbia River Gorge; 19.2 km x 16 km, 200 m cells, wind from the west
+domain:
+  center_lat_lon: [45.70, -120.80]
+  half_width: [9600., 8000.]
+  top: 3000.
+terrain:
+  file: dem.asc
+  border:
+    flat_width: 1000.
+    slope_width: 2000.
+    level: mean
+mesh:
+  cell_size: 200.
+  first_layer: 10.
+  stretch_ratio: 1.1
+wind:
+  speed: 8.
+  height: 10.
+  direction: 270.
+surface:
+  roughness: 0.05
