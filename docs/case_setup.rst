@@ -156,6 +156,9 @@ The case folder
        direction the geostrophic wind :math:`G` the column run found, the turning angle, the column's wind at
        ``wind.height``, its :math:`u_*`, and, for a neutral column, the neutral drag law's :math:`G` and angle for
        that :math:`u_*` (below).
+   * - ``wind_library/``
+     - Written by ``tools/make_gust_library.py build`` after the runs of a sweep: each direction's wind at heights
+       above the ground, for the blend between directions (below).
    * - ``case_resolved.yaml``
      - The case description with every default filled in.
 
@@ -241,6 +244,181 @@ and turns 18.36 degrees from the stress; the drag law gives 15.944 m/s and 23.51
 Directions follow the case description: the direction the wind comes from, clockwise from north. The neutral
 column is rotation-invariant (it is solved for :math:`u + iv`), so :math:`|G|` and the turning angle are the same
 in every direction to round-off; ``rt_case_setup_column_axis`` checks this from 0, 270 and 240 degrees.
+
+A wind library from a sweep
+---------------------------
+
+A sweep (``wind.directions``) runs one direction per folder. ``tools/make_gust_library.py`` turns the finished
+runs into a wind library: each direction's wind at fixed heights above the ground, and the wind for any direction
+in between, blended from the two directions either side. It needs PyYAML and numpy.
+
+.. code-block:: bash
+
+   tools/make_gust_library.py build CASE_DIR --heights 10 50 [--reference-point X Y] [--directions D ...]
+   tools/make_gust_library.py query CASE_DIR --direction 272 --speed 6 --height 10 [--point X Y] [--out wind.npz]
+
+``build`` reads each ``dir_<deg>/`` run of the case folder and writes ``CASE_DIR/wind_library/``. It is not the
+``library.json`` of a geostrophic drive (above), which holds the columns' geostrophic winds. Every run is read
+before anything is written; the new library is written beside the old one and replaces it whole, so a refused
+build leaves the previous library as it was and a build of fewer directions leaves no stale sector files.
+
+Positions (``--reference-point``, ``--point``, and ``x``, ``y`` in the files) are in the case frame, GUST's mesh
+coordinates: :math:`x` and :math:`y` measured from ``domain.center``, heights shifted by ``terrain.zero_level``.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 28 14 58
+
+   * - Option
+     - Default
+     - Effect
+   * - ``--heights H ...``
+     - 10
+     - Heights above the ground (m). Each must be at or above the first cell centre and at or below the last
+       in every column, and given once; otherwise refused.
+   * - ``--reference-point X Y``
+     - domain centre
+     - Where the reference speed is taken, at the first height (m, case frame). Refused outside the outermost
+       column centres.
+   * - ``--directions D ...``
+     - all
+     - A subset of the sweep's directions; a direction not in the sweep, or one given twice, is refused.
+   * - ``--quiet``
+     - off
+     - Print nothing when the build succeeds.
+
+For each run the tool reads ``log.txt`` (GUST's verdict, the iterations, the last relative residual :math:`r`)
+and the last plotfile ``<io.plot_file><step>`` written after the verdict (cell fields ``u``, ``v``, ``w``,
+``tke``, ``z`` and the node heights ``Level_0/z_phys_nd``; the prefix is the deck's, so an ``io.plot_file`` given on
+the command line is not seen). Refused, with the run folder named: a run with no ``inputs``, no verdict, or no
+plotfile after the verdict (``io.write_plotfile = 1`` writes one); an unsteady run; a two-way joint run
+(``nest.names``); a mesh with fewer than 2 cells in a direction; a sampled field that is not finite; no wind at
+the reference point. A run that ended "not steady" or "diverged" is kept, marked ``"converged": false``, and the
+query refuses it. All runs must share one mesh.
+
+**Heights above the ground.** The ground under a column is the mean of its four bottom node heights, and a cell
+centre's height above the ground is :math:`h = z_c - z_g`. Between two cell centres a field is linear in
+:math:`h`. Below the first centre the profile depends on the wall law, so the library does not extrapolate there. Over the
+log layer, linear sampling between centres reads low: 0.5 to 0.7 % at 10 m on the test hill below.
+
+**What is stored.** Let :math:`S_i` be the horizontal wind speed of run :math:`i` at the reference point and the
+first height (bilinear between column centres). The library stores
+
+.. math::
+
+   \hat u_i = u_i / S_i, \quad \hat v_i = v_i / S_i, \quad \hat w_i = w_i / S_i, \quad \hat k_i = k_i / S_i^2
+
+at each height, in the case frame (:math:`u` towards :math:`+x`, east; :math:`v` towards :math:`+y`, north).
+``wind_library/`` holds ``index.json``, ``grid.npz`` (the column centres ``x``, ``y`` and the ``ground``) and one
+``sector_<deg>.npz`` per direction (``u``, ``v``, ``w``, ``k``, each of shape (heights, nx, ny)).
+
+``index.json`` holds ``format_version`` (1), ``case``, ``heights``, ``reference_point``, ``reference_height`` (the
+first height), ``grid``, ``frame``, ``stored`` and one entry per direction, sorted by direction:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 28 72
+
+   * - Field
+     - Meaning
+   * - ``direction``, ``folder``, ``file``
+     - The sweep's direction (degrees the wind comes from, clockwise from north), its run folder and its ``.npz``.
+   * - ``status``, ``converged``, ``iterations``, ``last_r``
+     - GUST's verdict (``steady``, ``not steady``, ``diverged``), whether it is ``steady``, the iterations and
+       the last :math:`r` of the iteration table before the verdict (``null`` when the log has none).
+   * - ``plotfile``
+     - The plotfile read, relative to the case folder.
+   * - ``reference_speed``, ``reference_direction``
+     - :math:`S_i` (m/s) and the direction of the wind at the reference point (degrees, from). Over terrain this
+       differs from ``direction`` where the ground turns the flow.
+   * - ``surface_z0``, ``inflow_z0``
+     - The deck's ``bc.surface_z0`` and ``bc.inflow_z0`` (m); ``null`` when the deck does not set them.
+
+**The blend.** For a direction :math:`\theta` between the stored directions :math:`\theta_a` and
+:math:`\theta_b` (clockwise, across north when needed), with :math:`\Delta = (\theta_b - \theta_a) \bmod 360`
+and :math:`t = ((\theta - \theta_a) \bmod 360) / \Delta`, and a speed :math:`S` asked for. :math:`\theta` is
+the sweep's inflow direction (the weights use the sweep's directions, not ``reference_direction``), and
+:math:`S` is the local horizontal wind speed at the reference point and first height, not the inflow speed (over
+a crest the two differ):
+
+.. math::
+
+   \mathbf{u}(\theta, S) = \frac{S}{L}\left[(1 - t)\,\hat{\mathbf{u}}_a + t\,\hat{\mathbf{u}}_b\right], \qquad
+   k(\theta, S) = S^2\left[(1 - t)\,\hat k_a + t\,\hat k_b\right],
+
+   L = \left|(1 - t)\,\mathbf{e}_a + t\,\mathbf{e}_b\right|,
+
+where :math:`\mathbf{e}_a` and :math:`\mathbf{e}_b` are the unit vectors of the two reference winds
+(``reference_direction``). Each sector's reference wind has length 1, so the blend at the reference point has
+length :math:`L` before the division and :math:`S` after it. Without the division the blend midway would be
+:math:`\cos(\Delta/2)` short: 0.4 % for 10 degree sectors and 1.5 % for 20 degree ones. That shortfall comes
+from the two directions partly cancelling, not from a weaker flow, so :math:`k`, a scalar, is scaled by
+:math:`S^2` only (dividing it by :math:`L^2` as well puts it 3 % high at 270 degrees on the test hill). The
+blended wind at the reference point points within 0.04 degrees of :math:`\theta` for 20 degree sectors (the
+vector blend is on the bisector only midway). A direction within :math:`10^{-6}` degrees of a stored one takes
+that sector alone.
+
+Refused by the query (the message names ``--height``, ``--speed`` or ``--direction``): a height the library did not
+store; a speed, direction or height that is not a finite number (``bool`` included); a speed that is not above 0; a
+library of another ``format_version`` or a sector file of the wrong shape; a direction between two
+stored directions 180 degrees or more apart; any direction but its own for a library of one direction; a sector
+marked ``"converged": false`` when its weight is not zero (the message names its folder).
+
+``query`` prints the weights and ``u``, ``v``, ``w``, the speed, the direction and ``k`` at ``--point`` (default
+the reference point); ``--out`` writes the fields at the height (``u``, ``v``, ``w``, ``k``, ``x``, ``y``,
+``ground``) to a ``.npz`` file. The same is available from Python:
+
+.. code-block:: python
+
+   from gust_library import Library        # tools/ on sys.path
+   w = Library("CASE_DIR").wind(272.0, 6.0, 10.0)   # direction from, speed at the reference point, height
+   w["u"], w["v"], w["k"]                            # arrays (nx, ny)
+
+Exit status of ``make_gust_library.py``: 0 done; 2 refused, with the option or run folder named.
+
+**Accuracy and limits.** ``Tests/Infrastructure/Library_Hill`` (CTest ``rt_library_hill``, 2 ranks) blends a
+library at 270 degrees and compares it with the 270 degree run, over a 60 m Gaussian hill with 50 m cells. The
+horizontal-wind differences, as a percentage of :math:`S`, 4 cells or more from the lateral faces:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 14 28 28
+
+   * - Library
+     - Height
+     - Largest difference, 4 cells or more from the faces
+     - RMS, same cells
+   * - 260/280 (20 degrees)
+     - 10 m
+     - 0.67 % of :math:`S`
+     - 0.20 %
+   * - 260/280 (20 degrees)
+     - 50 m
+     - 0.44 %
+     - 0.11 %
+   * - **265/275 (10 degrees)**
+     - 10 m
+     - **0.23 %**
+     - 0.10 %
+   * - 265/275 (10 degrees)
+     - 50 m
+     - 0.19 %
+     - 0.09 %
+
+The largest difference falls by about 2.9 from 20 to 10 degree sectors; the 10 degree values are close to the
+runs' own convergence level (the 260 and 280 runs mirror each other to 0.3 % at :math:`r = 10^{-4}`), so this is not
+a measured order of accuracy. The 260/280 library queried at 265 and 275 is within 0.51 % of those runs. The
+interior mean of :math:`k` at 270 is 0.1 % (10 m) and 0.3 % (50 m) above the run's for the 260/280 library. Next to
+the lateral faces the differences are larger (1.2 to 1.6 %), where a face is an inflow face for one direction and
+a slip wall for the other. These numbers are for double precision; single precision is not measured.
+
+- The blend is linear: a feature present in one direction and not the next, such as a lee recirculation, is
+  smeared between them. Narrow sectors over steep terrain reduce this.
+- Scaling by the speed holds for a neutral flow over rough ground driven by an inflow profile: the solution then
+  does not depend on the speed, apart from molecular viscosity, the damping layers' rates (fixed in 1/s) and the
+  wall law's 0.1 m/s minimum wind, together 0.02 % at half the run's speed. With a geostrophic drive the turning with height
+  depends on the speed (Rossby number), so such a library holds at the speed its runs used.
+- The fields are those of the final plotfile; a library does not read checkpoints or nested patches.
 
 Command-line options
 --------------------

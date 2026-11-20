@@ -2847,10 +2847,21 @@ Current tests
        becomes a case folder, its decks pass the deck checker, ``run.sh`` runs GUST on 2 ranks, and the result
        meets the closed forms the YAML file asks for. Not on Windows; registered only when the configure's Python
        has PyYAML and numpy.
-   * - ``gust_input_checker_selftest``, ``gust_case_selftest``, ``gust_dem_selftest``, ``gust_window_selftest``
+   * - ``rt_library_hill``
+     - The wind library (``Tests/Infrastructure/Library_Hill``, :doc:`case_setup`): a hill sweep of five
+       directions on 2 ranks; libraries of 260/280 and 265/275 degrees blended at 270 against the 270 run (more
+       than 4 cells from the faces, under 1 % and 0.4 % of the reference speed), the 260/280 library at 265 and
+       275 against those runs (1 %), the interior mean of k at 270 (0.5 %), a stored sector returned unchanged,
+       and the reference speed asked for. Label ``regression``, about 70 s. Not on Windows; registered
+       only when the configure's Python has PyYAML and numpy.
+   * - ``gust_input_checker_selftest``, ``gust_case_selftest``, ``gust_dem_selftest``, ``gust_window_selftest``,
+       ``gust_library_selftest``
      - The Python unit tests of the deck checker (standard library only), the case set-up tool, the terrain
-       download (on tiles made in the test, no network) and the case set-up window (offscreen; its window tests
-       skip without PySide6 and pyqtgraph). The last three need PyYAML and numpy. Label ``unit``.
+       download (on tiles made in the test, no network), the case set-up window (offscreen; its window tests
+       skip without PySide6 and pyqtgraph) and the wind library (on plotfiles written in the test: several boxes,
+       single and double precision, ghost cells, a sloping ground; log lines, refused runs and library files). The
+       last four need PyYAML and numpy. Label
+       ``unit``.
        ``gust_case_selftest`` also checks that ``Tests/inputs_yaml_reference`` is what
        ``tools/make_gust_case.py --write-yaml-reference`` writes and that, uncommented, it is YAML holding every key
        with its default.
