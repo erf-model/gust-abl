@@ -173,7 +173,7 @@ SPEC = {
                                   "surface.regional_roughness_map upwind of the inflow faces (log-law profile or a geostrophic drive).",
                                   unit="m", lo=0.0, lo_open=True, words=(AUTO,)),
         "fetch_length": Key("number", None, "Fetch length L of wind.upstream_roughness = auto: the map's ln z0 is "
-                            "weighted by exp(-x/L) at x upwind of a face. Default: 100 times wind.height.",
+                            "weighted by exp(-x/L) at x upwind of a face (an empirical method). Default: 100 times wind.height.",
                             unit="m", lo=0.0, lo_open=True),
         "side_faces": Key("choice", "slip_wall", "The two faces parallel to a wind along x or y; not with a geostrophic drive.",
                           choices=("slip_wall", "periodic")),

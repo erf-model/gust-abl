@@ -310,6 +310,7 @@ the domain. ``wind.upstream_roughness = auto`` takes it from a regional roughnes
 raster), which reaches beyond the domain on the sides the wind comes from. ``surface.roughness`` or
 ``surface.roughness_map`` still sets the ground inside the domain.
 
+The method is empirical: a weighted mean of the upwind roughness, not a model of the flow over the regional map.
 For a wind from a direction, transects start on the faces it enters through and run upwind (towards the side the
 wind comes from). Along each, :math:`\ln z_0` is averaged with the weight :math:`e^{-x/L}`:
 
@@ -327,9 +328,9 @@ side faces, so the transects then start on those faces, run along the wind near 
 turned wind. The turning depends on :math:`z_0`, so the faces and :math:`z_{0,\mathrm{up}}` are found together
 (at most five passes; the summary gives the turning).
 
-- **Default** ``wind.fetch_length`` = 100 ``wind.height`` (1 km for a 10 m wind). :math:`L` is an e-folding
-  length, not a fitted value: a wind at the reference height feels a change of surface from about 10-20 heights
-  upwind and is fully adjusted only after a few hundred, so 100 heights is of the right order. Give
+- **Default** ``wind.fetch_length`` = 100 ``wind.height`` (1 km for a 10 m wind), an empirical choice. :math:`L`
+  is an e-folding length: a wind at the reference height feels a change of surface from about 10-20 heights
+  upwind and is fully adjusted only after a few hundred, so 100 heights lies in that range. Give
   ``wind.fetch_length`` to change it; it is required when ``wind.height`` is not given (for example with
   ``atmosphere.geostrophic_wind``).
 - **Geometric mean.** The average is of :math:`\ln z_0`. An average matched to the surface drag would lean towards

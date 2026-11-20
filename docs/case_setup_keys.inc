@@ -217,7 +217,7 @@
    * - ``wind.fetch_length``
      - m
      - none
-     - Fetch length L of wind.upstream_roughness = auto: the map's ln z0 is weighted by exp(-x/L) at x upwind of a face. Default: 100 times wind.height. Accepts a number > 0.
+     - Fetch length L of wind.upstream_roughness = auto: the map's ln z0 is weighted by exp(-x/L) at x upwind of a face (an empirical method). Default: 100 times wind.height. Accepts a number > 0.
    * - ``wind.side_faces``
      - –
      - slip_wall
