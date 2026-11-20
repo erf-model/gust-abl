@@ -1,0 +1,23 @@
+# A Gaussian hill (written by check_library_hill.py as hill.asc) under a neutral
+# log-law inflow, run from five directions 5 degrees apart. Libraries of 260 and
+# 280 and of 265 and 275 are blended at 270 and checked against the 270 run.
+case:
+  name: library_hill
+domain:
+  center: [2000., 2000.]
+  half_width: 1200.      # m from the centre to each face
+  top: 1000.             # m
+terrain:
+  file: hill.asc
+mesh:
+  cell_size: 50.         # m
+  layers: 20
+  first_layer: 4.        # m
+wind:
+  speed: 8.              # m/s at wind.height
+  height: 10.            # m
+  directions: [260., 265., 270., 275., 280.]
+surface:
+  roughness: 0.03        # m
+solver:
+  max_iterations: 800

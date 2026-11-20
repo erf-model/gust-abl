@@ -167,6 +167,7 @@ set(CANOPY_CASE         ${CMAKE_CURRENT_SOURCE_DIR}/Infrastructure/Canopy_Field)
 set(REFAVG_CASE         ${CMAKE_CURRENT_SOURCE_DIR}/Infrastructure/Reference_Archive)
 set(KESTREL_CASE        ${CMAKE_CURRENT_SOURCE_DIR}/Infrastructure/Kestrel_Dryrun)
 set(CASE_SETUP_CASE     ${CMAKE_CURRENT_SOURCE_DIR}/Infrastructure/Case_Setup)
+set(LIBRARY_HILL_CASE   ${CMAKE_CURRENT_SOURCE_DIR}/Infrastructure/Library_Hill)
 set(MESH_CASE           ${CMAKE_CURRENT_SOURCE_DIR}/Discretization/Terrain_Mesh)
 set(HIERARCHY_CASE      ${CMAKE_CURRENT_SOURCE_DIR}/Discretization/Grid_Hierarchy)
 set(BC_CASE             ${CMAKE_CURRENT_SOURCE_DIR}/Discretization/Boundary_Fluxes)
@@ -3241,6 +3242,11 @@ if(_gust_case_python EQUAL 0)
              COMMAND ${Python3_EXECUTABLE} -m unittest -v test_gust_case
              WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/tools)
     set_tests_properties(gust_case_selftest PROPERTIES LABELS unit ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
+    # The wind library (tools/make_gust_library.py, tools/gust_library/) on plotfiles written in the test.
+    add_test(NAME gust_library_selftest
+             COMMAND ${Python3_EXECUTABLE} -m unittest -v test_gust_library
+             WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/tools)
+    set_tests_properties(gust_library_selftest PROPERTIES LABELS unit ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
     # The terrain download (tools/fetch_terrain.py) on tiles made in the test: no network.
     add_test(NAME gust_dem_selftest
              COMMAND ${Python3_EXECUTABLE} -m unittest -v test_gust_dem
@@ -3279,8 +3285,18 @@ if(_gust_case_python EQUAL 0)
             set_tests_properties(rt_case_setup_${case} PROPERTIES LABELS "regression;smoke" PROCESSORS 2
                                  ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
         endforeach()
+        # A wind library from a hill sweep: the blend at 270 of the 260 and 280 runs against the 270 run;
+        # Tests/Infrastructure/Library_Hill/README.md.
+        set(_case_dir ${CMAKE_CURRENT_BINARY_DIR}/run/rt_library_hill)
+        file(MAKE_DIRECTORY ${_case_dir})
+        add_test(NAME rt_library_hill
+                 COMMAND ${Python3_EXECUTABLE} ${LIBRARY_HILL_CASE}/check_library_hill.py
+                         --gust $<TARGET_FILE:gust> --mpi "${_case_launch}" -- ${GUST_TEST_AMREX_FLAGS}
+                 WORKING_DIRECTORY ${_case_dir})
+        set_tests_properties(rt_library_hill PROPERTIES LABELS regression PROCESSORS 2
+                             ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
     endif()
 else()
     message(STATUS "GUST: PyYAML or numpy not found for ${Python3_EXECUTABLE}; "
-                   "gust_case_selftest and rt_case_setup_* are not registered")
+                   "gust_case_selftest, gust_library_selftest, rt_case_setup_* and rt_library_hill are not registered")
 endif()
