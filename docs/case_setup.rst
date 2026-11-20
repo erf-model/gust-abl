@@ -117,7 +117,8 @@ What the tool does
   parent's faces. ``run.sh`` runs the parent, then each patch with ``bc.nest_parent`` set to the parent's last
   checkpoint.
 - **Sweeps.** ``wind.directions`` (a list, or ``start``, ``stop``, ``step``) writes one folder ``dir_<deg>`` per
-  direction with its own deck; ``run.sh`` runs them in turn.
+  direction with its own deck; ``run.sh`` runs them in turn and skips those that already hold their answer
+  (`Stopping and going on`_).
 - **Anything else.** ``gust_inputs`` writes GUST inputs as they are, after everything else: a key the tool also
   writes is replaced, and ``null`` removes it. They go to the 3-D decks (the run folder's and each patch's), not to
   ``column/inputs``, the 1-D column run, which has its own mesh and keys.
@@ -147,7 +148,8 @@ The case folder
      - Runs everything in order. ``GUST=/path/to/gust`` and ``MPI="srun -n 64"`` change the executable and the
        launcher (``MPI=`` runs without one); ``./run.sh key=value ...`` passes more inputs to the 3-D runs (for
        example ``steady.max_iterations=1``). A key the deck already holds stops GUST (a key given twice); change it
-       in the YAML file, with ``--set``, or with ``gust_inputs``.
+       in the YAML file, with ``--set``, or with ``gust_inputs``. A direction that already holds its answer is
+       skipped (below); ``RESUME=0 ./run.sh`` runs every direction.
    * - ``case_summary.txt``
      - Domain, mesh, wind, notes and the deck checker's findings. With a geostrophic drive, ``run.sh`` adds a
        section "Library" after the runs (below).
@@ -161,6 +163,57 @@ The case folder
        above the ground, for the blend between directions (below).
    * - ``case_resolved.yaml``
      - The case description with every default filled in.
+
+Stopping and going on
+---------------------
+
+A sweep of many directions can be stopped (a laptop closed, a job out of time) and started again: ``run.sh`` and
+the window's **Run** skip each direction that already holds its answer (``run.resume = true``, the default), and
+print a line for each. A direction holds its answer when
+
+- its record ``.gust_ran`` (in ``dir_<deg>/``, or in the case folder for one direction) equals its decks now (the
+  run's, ``column/inputs`` and each ``nest_<name>/inputs``, byte for byte), the case's data list
+  ``.gust_case_data`` (the SHA-256 of each data file the tool wrote: ``terrain.xyz``, ``roughness.xyz``, the patch
+  terrains and the copied files) and the ``key=value`` arguments given to ``run.sh`` now (the window gives none); and
+- the run's ``log.txt`` and each patch's end in GUST's steady verdict (``gust: steady after N iterations``) followed
+  by a plotfile ``<io.plot_file><step>`` that is still there with its ``Header``.
+
+Everything else runs again: a run that stopped at ``steady.max_iterations`` (``not steady``), diverged, was stopped
+or crashed; a direction whose plotfile was removed; a case written again with other settings or other terrain,
+roughness or canopy files; other arguments. A case written again with the same settings and files keeps its decks
+and data list byte for byte, so its finished directions stay skipped.
+The whole direction runs again, its column run and patches included. When a direction starts, its old logs are
+removed and then its record is written, so a direction stopped part-way never counts as finished.
+
+``run.resume = false`` keeps the earlier behaviour, every direction run each time; ``RESUME=0 ./run.sh`` does the
+same for one call (and ``RESUME=1`` skips with ``run.resume = false``); another value of ``RESUME`` stops
+``run.sh``. The skip line reads ``run.sh: wind from 260 degrees: finished earlier with these decks, data files and
+arguments, skipped``.
+
+The test does not see:
+
+- another GUST executable (``GUST=``, ``run.executable`` or a rebuild) or a data file edited by hand after the case
+  was written: use ``RESUME=0`` (or ``run.resume = false``) to run again;
+- an ``io.plot_file`` given as a ``run.sh`` argument, a run that writes no plotfile (``io.write_plotfile = 0``)
+  and an unsteady run (``gust: unsteady run ended``): these always run again.
+
+A joint run's verdict (``gust: joint run: <name> steady after N joint iterations``) counts like the run's own. The
+check is per direction: a patch that stopped part-way runs the direction's column and terrain runs again too.
+
+A steady verdict is what GUST itself accepts: every residual below ``steady.residual_tol`` and four orders below
+its reference, and the monitors settled, or the confidence stop when ``steady.confidence`` is set.
+
+Starting a direction from the converged neighbouring direction was measured and is not offered. On the hill of
+``Tests/Infrastructure/Library_Hill`` (2 ranks, no convection blend), 260 degrees started with ``io.restart`` from
+the 265 degree checkpoint (the same inflow and outflow faces) took 128 level-0 iterations; from the usual first
+guess it took 45 iterations on the coarse level and 148 on level 0, about 160 level-0 iterations of work. The
+restart saved about 20 % of the work and reached the same answer: the two differ by at most
+:math:`4\times10^{-5}` m/s, which is the iteration error at :math:`r = 10^{-4}` (both are within
+:math:`4\times10^{-5}` m/s of the same run taken to :math:`r < 10^{-6}`). GUST refuses ``io.restart`` with the
+convection blend of the recommended lee setting (``convection.hybrid_sigma_max``), and the blend moves the wind by
+about 0.8 % of the reference speed at 10 m (1 % in the first cell), so the restart cannot give the recommended
+setting's answer. Where the faces differ (for example 265 to 270 degrees, where the y faces change from inflow and
+outflow to slip walls), the flow would first have to turn to the new faces; that case was not measured.
 
 The geostrophic wind of each direction
 --------------------------------------
@@ -602,7 +655,8 @@ The case set-up window
   columns of the iteration table are plotted as they come (from the aligned table of ``io.iteration_log = table``,
   the default; with ``full`` nothing is plotted). gust is ``run.executable``, a relative path taken from the case
   folder; ``run.ranks`` above 1 uses ``run.mpi_launcher``. **Stop** asks the step to end and ends it after 5 s if
-  it has not; the steps after it do not run.
+  it has not; the steps after it do not run. As ``run.sh``, it skips the directions that already hold their answer
+  (`Stopping and going on`_) unless ``run.resume = false``.
 
 On Windows, the window can be frozen into a folder with PyInstaller (``tools/gust_gui.spec``: one folder, no console
 window, rasterio left out):

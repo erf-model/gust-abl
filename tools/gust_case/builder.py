@@ -29,6 +29,7 @@ import shutil
 import yaml
 
 from . import library
+from . import resume
 from . import roughness as roughness_mod
 from . import terrain as terrain_mod
 from . import wind
@@ -507,12 +508,15 @@ def _run_script(case, plan, runs):
         "# Runs the case written by tools/make_gust_case.py: %s" % case["case"]["name"],
         "#   ./run.sh [key=value ...]     more GUST inputs for the terrain runs; a key the deck holds is refused by GUST",
         "#   GUST=/path/to/gust MPI=\"srun -n 64\" ./run.sh     another executable or launcher (MPI= runs without one)",
+        "#   RESUME=0 ./run.sh     run every direction again (default from run.resume: skip the finished ones)",
         "set -euo pipefail",
         "GUST=${GUST:-%s}" % r["executable"],
         "MPI=${MPI-%s}" % launcher,
+        "RESUME=${RESUME:-%d}" % (1 if r["resume"] else 0),
+        "case \"$RESUME\" in 0|1) ;; *) echo \"run.sh: RESUME must be 0 or 1, not '$RESUME'\" >&2; exit 1;; esac",
         'cd "$(dirname "$0")"',
         "",
-    ]
+    ] + _resume_functions()
     if plan.geostrophic:
         lines[4:4] = ["#   GUST_CASE_TOOL=/path/to/make_gust_case.py PYTHON=python3 ./run.sh     the tool and Python that "
                       "write library.json at the end"]
@@ -522,6 +526,19 @@ def _run_script(case, plan, runs):
         lines.append("(")
         if run["dir"] != ".":
             lines.append("  cd %s" % run["dir"])
+        decks = " ".join(resume.record_files(run))
+        folders = " && ".join("steady_plotfile %s" % f for f in ["."] + ["nest_" + p for p in run["patches"]])
+        lines.append('  if [ "$RESUME" = 1 ] && [ -f %s ] && { decks_and_args %s | cmp -s - %s; } 2>/dev/null && %s; then'
+                     % (resume.RECORD, decks, resume.RECORD, folders))
+        lines.append("    echo 'run.sh: %s: finished earlier with these decks, data files and arguments, skipped "
+                     "(RESUME=0 ./run.sh runs it again)'" % run["label"])
+        lines.append("    exit 0")
+        lines.append("  fi")
+        lines.append("  for f in %s; do [ -f \"$f\" ] || { echo \"run.sh: %s: $f is missing; write the case again\" >&2; "
+                     "exit 1; }; done" % (decks, run["label"]))
+        lines.append("  rm -f %s      # a direction stopped part-way never counts as finished"
+                     % " ".join(["log.txt"] + ["nest_%s/log.txt" % p for p in run["patches"]]))
+        lines.append("  decks_and_args %s > %s" % (decks, resume.RECORD))
         extra = ""
         if run["column"]:
             lines.append('  ( cd column && $MPI "$GUST" inputs > log.txt )')
@@ -556,6 +573,32 @@ def _run_script(case, plan, runs):
                      "else echo \"run.sh: the runs ended; $TOOL not found, library.json not written (GUST_CASE_TOOL=...)\" >&2; fi")
         lines.append("")
     return "\n".join(lines)
+
+
+def _resume_functions():
+    """The shell half of resume.py: the record's bytes and the steady test, as resume.record_bytes and
+    resume.steady_plotfile."""
+    return [
+        "# A direction is skipped when its record %s equals its decks, %s and these arguments, and its runs"
+        % (resume.RECORD, resume.DATA),
+        "# reached GUST's steady verdict and wrote a plotfile after it (tools/gust_case/resume.py).",
+        'ARGLINE="# arguments:"',
+        'for a in "$@"; do ARGLINE="$ARGLINE $a"; done',
+        "decks_and_args() { cat \"$@\"; printf '%s\\n' \"$ARGLINE\"; }",
+        "steady_plotfile() {",
+        "  local d=$1 p f",
+        '  [ -f "$d/log.txt" ] && [ -f "$d/inputs" ] || return 1',
+        "  p=$(LC_ALL=C awk '{sub(/\\r$/, \"\"); sub(/#.*/, \"\")} $1 == \"io.plot_file\" && $2 == \"=\" && NF >= 3 {v = $3} "
+        "END {print (v == \"\" ? \"plt\" : v)}' \"$d/inputs\")",
+        "  f=$(P=$p LC_ALL=C awk 'BEGIN {P = ENVIRON[\"P\"]} {sub(/\\r$/, \"\")} "
+        "/^gust: (joint run: [^ ]+ )?(steady|not steady|diverged|unsteady run ended) after [0-9]+ (joint )?iterations/ "
+        "{s = ($0 ~ /^gust: (joint run: [^ ]+ )?steady /); f = \"\"; next} s && $1 == \"gust:\" && $2 == \"wrote\" && "
+        "substr($3, 1, length(P)) == P && substr($3, length(P) + 1) ~ /^[0-9]+$/ {f = $3} "
+        "END {if (s && f != \"\") print f}' \"$d/log.txt\")",
+        '  [ -n "$f" ] && [ -f "$d/$f/Header" ]',
+        "}",
+        "",
+    ]
 
 
 def _check(path, overrides, result, rel):
@@ -655,6 +698,8 @@ def build(case, given, base_dir, dry_run=False, overwrite=False, check=True):
         for target, source in plan.copied_files.items():
             shutil.copyfile(source, os.path.join(case_dir, target))
             result.files.append(target)
+        resume.write_data(case_dir, list(result.files))
+        result.files.append(resume.DATA)
         for rel, deck, kind, overrides in result.decks:
             path = os.path.join(case_dir, rel)
             os.makedirs(os.path.dirname(path), exist_ok=True)

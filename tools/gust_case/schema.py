@@ -271,6 +271,9 @@ SPEC = {
                           "each step's folder (column/, nest_*/ are one deeper), so give an absolute path there; the "
                           "case set-up window takes a relative path from the case file's folder."),
         "mpi_launcher": Key("string", "mpiexec -n {ranks}", "The MPI command; {ranks} is replaced."),
+        "resume": Key("flag", True, "Skip a wind direction whose runs reached GUST's steady verdict with the "
+                      "current decks, data files and run.sh arguments and wrote a plotfile after it, so a stopped sweep "
+                      "goes on where it stopped. false runs every direction (RESUME=0 ./run.sh does the same once)."),
     },
     "nests": NestList({
         "name": Key("string", None, "Name of the patch; its folder is nest_<name>.", required=True),

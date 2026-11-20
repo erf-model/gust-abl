@@ -3247,6 +3247,12 @@ if(_gust_case_python EQUAL 0)
              COMMAND ${Python3_EXECUTABLE} -m unittest -v test_gust_library
              WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/tools)
     set_tests_properties(gust_library_selftest PROPERTIES LABELS unit ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
+    # Resumable sweeps: run.sh and the window skip a finished direction (tools/gust_case/resume.py), with a fake
+    # gust; the run.sh tests skip on Windows.
+    add_test(NAME gust_resume_selftest
+             COMMAND ${Python3_EXECUTABLE} -m unittest -v test_gust_resume
+             WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/tools)
+    set_tests_properties(gust_resume_selftest PROPERTIES LABELS unit ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
     # The terrain download (tools/fetch_terrain.py) on tiles made in the test: no network.
     add_test(NAME gust_dem_selftest
              COMMAND ${Python3_EXECUTABLE} -m unittest -v test_gust_dem
@@ -3298,5 +3304,5 @@ if(_gust_case_python EQUAL 0)
     endif()
 else()
     message(STATUS "GUST: PyYAML or numpy not found for ${Python3_EXECUTABLE}; "
-                   "gust_case_selftest, gust_library_selftest, rt_case_setup_* and rt_library_hill are not registered")
+                   "gust_case_selftest, gust_library_selftest, gust_resume_selftest, rt_case_setup_* and rt_library_hill are not registered")
 endif()

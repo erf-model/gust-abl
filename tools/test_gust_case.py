@@ -703,7 +703,7 @@ class BuilderTests(CaseDir):
         self.assertEqual(deck["forcing.gravity"], ["0."])
         self.assertNotIn("convection.hybrid_height", deck)       # no blend over flat ground
         self.assertEqual(sorted(os.listdir(result.case_dir)),
-                         [".gust_case_files", "case_resolved.yaml", "case_summary.txt", "inputs", "run.sh"])
+                         [".gust_case_data", ".gust_case_files", "case_resolved.yaml", "case_summary.txt", "inputs", "run.sh"])
         self.assertTrue(os.access(os.path.join(result.case_dir, "run.sh"), os.X_OK))
 
     def test_tool_decks_check_clean(self):
