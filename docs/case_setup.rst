@@ -149,9 +149,98 @@ The case folder
        example ``steady.max_iterations=1``). A key the deck already holds stops GUST (a key given twice); change it
        in the YAML file, with ``--set``, or with ``gust_inputs``.
    * - ``case_summary.txt``
-     - Domain, mesh, wind, notes and the deck checker's findings.
+     - Domain, mesh, wind, notes and the deck checker's findings. With a geostrophic drive, ``run.sh`` adds a
+       section "Library" after the runs (below).
+   * - ``library.json``
+     - Written by ``run.sh`` after the runs of a geostrophic drive (``make_gust_case.py --collect``): for each
+       direction the geostrophic wind :math:`G` the column run found, the turning angle, the column's wind at
+       ``wind.height``, its :math:`u_*`, and, for a neutral column, the neutral drag law's :math:`G` and angle for
+       that :math:`u_*` (below).
    * - ``case_resolved.yaml``
      - The case description with every default filled in.
+
+The geostrophic wind of each direction
+--------------------------------------
+
+A geostrophic drive runs a 1-D column for every direction before its 3-D run; each column finds the geostrophic
+wind :math:`G` that gives ``wind.speed`` at ``wind.height`` from that direction. The last step of ``run.sh`` reads
+what the columns left and writes ``library.json`` and a table at the end of ``case_summary.txt``
+(``tools/make_gust_case.py --collect <case folder>`` does the same by hand; a second collect replaces the table).
+The window (``gust_gui.py``) does the same after its last run.
+
+- ``run.sh`` removes ``library.json`` before its first run, and ``--overwrite`` removes it too, so a file left
+  from earlier runs never stays beside new ones.
+- A failed collect does not fail ``run.sh``: the runs are done, and ``run.sh`` prints why ``library.json`` was not
+  written and how to collect again.
+- The collect step needs the case tool's Python packages (PyYAML and numpy). ``GUST_CASE_TOOL`` names another
+  ``make_gust_case.py`` (the path written into ``run.sh`` is that of the tool that wrote it) and ``PYTHON``
+  another interpreter.
+- ``--collect`` reads a written case folder only; it is refused with a case file or any other option but
+  ``--quiet``. Exit status: 0 written, 2 refused (nothing written).
+
+``library.json`` holds ``format_version`` (1), ``case``, ``drive``, ``reference_wind`` (``speed``, ``height``:
+the wind asked for, null when ``atmosphere.geostrophic_wind`` is given), ``conventions`` and one entry per
+direction:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 28 72
+
+   * - Field
+     - Meaning
+   * - ``direction``, ``folder``
+     - The direction asked for (degrees, from; with ``atmosphere.geostrophic_wind``, ``wind.direction``) and its
+       run folder (``dir_<deg>``, or ``.`` without a sweep).
+   * - ``geostrophic_wind``
+     - :math:`G`: ``ug`` and ``vg`` (east and north, m/s), ``speed``, ``direction`` (degrees, from) and
+       ``adjusted_by_column``. With a wind asked for, the column log's last lines ``forcing.ug = ...`` and
+       ``forcing.vg = ...`` (9 digits, the values ``run.sh`` passes to the 3-D run), read only after the line
+       "target wind reached" (a log without it is refused). With ``atmosphere.geostrophic_wind``, that wind, from
+       the column deck.
+   * - ``wind_at_height``
+     - ``height`` (m), ``u``, ``v``, ``speed`` (m/s) and ``direction`` (degrees, from): the column table's wind at
+       ``wind.height``, computed as GUST's column computes it to meet its target (``wind_at`` in
+       ``Source/ColumnGuess.cpp``): linear in :math:`\ln(z + z_0)` between the two cell centres around the height;
+       below the first centre the log law along the first centre's wind (a stratified column is refused there,
+       as its profile needs :math:`\psi_m`). It must match the wind asked for to :math:`10^{-3}` and 0.06 degrees
+       (GUST stops at :math:`|R - 1| < 10^{-4}`), or the table is refused as one from another run. It is the
+       reference wind of the upstream flat column, not a point on the terrain. Null without a wind asked for.
+   * - ``turning_deg``
+     - The angle from ``wind_at_height`` to :math:`G` (degrees, counter-clockwise positive): negative in the
+       northern hemisphere, where :math:`G` is turned clockwise from the wind near the ground. Null without a
+       wind asked for.
+   * - ``turning_from_stress_deg``
+     - The angle from the wind at the first cell centre (the direction of the surface stress) to :math:`G`.
+   * - ``wind_at_top``
+     - The table's top level: ``height``, ``u``, ``v``. Not :math:`G`: the column's wind aloft can be
+       supergeostrophic and turned from it.
+   * - ``ustar``, ``inv_L``, ``surface_heat_flux``
+     - From the table's header: :math:`u_*` (m/s), :math:`1/L` (1/m) and the kinematic heat flux (K m/s).
+   * - ``roughness``, ``latitude``
+     - The column deck's ``bc.surface_z0`` (m) and ``forcing.latitude`` (degrees): the values the column ran with,
+       also when the latitude came from ``domain.center_lat_lon``.
+   * - ``drag_law``
+     - For a neutral column (:math:`1/L = 0` and no heat flux), the neutral drag law's ``speed`` and
+       ``turning_deg`` for the column's :math:`u_*`, with ``A`` and ``B``:
+
+       .. math::
+
+          G = \frac{u_*}{\kappa}\sqrt{\left(\ln\frac{u_*}{|f| z_0} - A\right)^2 + B^2}, \qquad
+          \alpha = \mathrm{atan2}\left(B,\ \ln\frac{u_*}{|f| z_0} - A\right),
+
+       :math:`\kappa = 0.41`, :math:`f = 2\Omega \sin\varphi` (:math:`\Omega = 2\pi/86400` s\ :sup:`-1`,
+       :math:`\varphi` the latitude), ``turning_deg`` :math:`= -\alpha` in the north and :math:`+\alpha` in the
+       south. :math:`\alpha` is the angle from the surface stress, so compare it with
+       ``turning_from_stress_deg``. Null for a stratified column.
+
+A column and the drag law need not agree: the drag law's constants are empirical, and the column's turning depends
+on its turbulence model, its length-scale cap (``turb.max_geom_lscale``) and its top. For 8 m/s at 10 m over
+:math:`z_0 = 0.03` m at 45 degrees north (``rt_case_setup_column_axis``) the column gives :math:`|G| = 15.909` m/s
+and turns 18.36 degrees from the stress; the drag law gives 15.944 m/s and 23.51 degrees.
+
+Directions follow the case description: the direction the wind comes from, clockwise from north. The neutral
+column is rotation-invariant (it is solved for :math:`u + iv`), so :math:`|G|` and the turning angle are the same
+in every direction to round-off; ``rt_case_setup_column_axis`` checks this from 0, 270 and 240 degrees.
 
 Command-line options
 --------------------

@@ -238,6 +238,16 @@ class RunPlanTests(unittest.TestCase):
         with self.assertRaisesRegex(runplan.RunError, "wrote no checkpoint chk"):
             next(gen)
 
+    def test_collect_library_after_the_last_step(self):
+        self.assertEqual(runplan.collect_library(self.dir), "")          # no case_resolved.yaml: nothing to do
+        self.write("case_resolved.yaml", "case: {name: x}\nwind: {drive: inflow_only, direction: 0}\n")
+        self.assertEqual(runplan.collect_library(self.dir), "")          # no column run
+        self.write("case_resolved.yaml", "case: {name: x}\nwind: {drive: geostrophic_column, direction: 0, "
+                   "directions: null, speed: 8, height: 10}\n")
+        note = runplan.collect_library(self.dir)                          # a geostrophic drive, its column not run
+        self.assertTrue(note.startswith("library.json not written"), note)
+        self.assertIn("column_guess.dat", note)
+
     def test_find_gust(self):
         exe = "gust.exe" if sys.platform.startswith("win") else "gust"
         frozen = os.path.join(self.dir, "frozen")
