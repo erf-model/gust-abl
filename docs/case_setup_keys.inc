@@ -213,7 +213,11 @@
    * - ``wind.upstream_roughness``
      - m
      - none
-     - Roughness length of the inflow profile. Default: surface.roughness. Accepts a number > 0.
+     - Roughness length of the inflow profile. Default: surface.roughness. auto: for each direction, the fetch-weighted mean of ln z0 of surface.regional_roughness_map upwind of the inflow faces (log-law profile or a geostrophic drive). Accepts a number > 0, or auto.
+   * - ``wind.fetch_length``
+     - m
+     - none
+     - Fetch length L of wind.upstream_roughness = auto: the map's ln z0 is weighted by exp(-x/L) at x upwind of a face. Default: 100 times wind.height. Accepts a number > 0.
    * - ``wind.side_faces``
      - –
      - slip_wall
@@ -317,6 +321,26 @@
      - none
      - Roughness length of a class the table does not hold. Absent: such a class is refused. Accepts a number > 0.
    * - ``surface.roughness_map.coordinates``
+     - –
+     - auto
+     - As terrain.coordinates. Accepts auto, projected, geographic.
+   * - ``surface.regional_roughness_map.file``
+     - –
+     - none
+     - A roughness map larger than the domain, for wind.upstream_roughness = auto: x y z0 points, or a land-cover raster (nodata points are left out). It should reach 5 wind.fetch_length upwind of the inflow faces: under 95 % of the fetch weight covered is noted, under 63 % refused. Accepts a file path.
+   * - ``surface.regional_roughness_map.format``
+     - –
+     - auto
+     - As roughness_map.format. Accepts auto, xyz, land_cover.
+   * - ``surface.regional_roughness_map.classes``
+     - –
+     - esa_cci
+     - As roughness_map.classes. Accepts see the text.
+   * - ``surface.regional_roughness_map.default``
+     - m
+     - none
+     - As roughness_map.default. Accepts a number > 0.
+   * - ``surface.regional_roughness_map.coordinates``
      - –
      - auto
      - As terrain.coordinates. Accepts auto, projected, geographic.

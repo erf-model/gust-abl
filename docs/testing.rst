@@ -2842,7 +2842,7 @@ Current tests
        ``table`` or ``full`` is refused. ``rt_iteration_table_columns`` (label ``regression``, about 15 s) pins
        the first two rows of the flat neutral case's table, which fixes the column of each residual.
    * - ``rt_case_setup_flat_sweep``, ``rt_case_setup_flat_nest``, ``rt_case_setup_column_target``,
-       ``rt_case_setup_column_axis``, ``rt_case_setup_hill``
+       ``rt_case_setup_column_axis``, ``rt_case_setup_hill``, ``rt_case_setup_upstream``
      - The case set-up tool end to end (``Tests/Infrastructure/Case_Setup``, :doc:`case_setup`): a YAML file
        becomes a case folder, its decks pass the deck checker, ``run.sh`` runs GUST on 2 ranks, and the result
        meets the closed forms the YAML file asks for. Not on Windows; registered only when the configure's Python
@@ -2855,14 +2855,16 @@ Current tests
        and the reference speed asked for. Label ``regression``, about 70 s. Not on Windows; registered
        only when the configure's Python has PyYAML and numpy.
    * - ``gust_input_checker_selftest``, ``gust_case_selftest``, ``gust_dem_selftest``, ``gust_window_selftest``,
-       ``gust_library_selftest``, ``gust_resume_selftest``
+       ``gust_library_selftest``, ``gust_resume_selftest``, ``gust_fetch_selftest``
      - The Python unit tests of the deck checker (standard library only), the case set-up tool, the terrain
        download (on tiles made in the test, no network), the case set-up window (offscreen; its window tests
        skip without PySide6 and pyqtgraph) and the wind library (on plotfiles written in the test: several boxes,
        single and double precision, ghost cells, a sloping ground; log lines, refused runs and library files), and
        resumable sweeps (``run.sh`` with a fake gust: finished directions skipped; unfinished, not steady, changed
        decks, data files or arguments, a missing patch plotfile and ``RESUME=0`` run again; the ``run.sh`` tests
-       skip on Windows). The last five need PyYAML and numpy. Label
+       skip on Windows), and the upstream roughness from a regional map (``wind.upstream_roughness = auto``: a
+       half-plane map, a uniform map, the closed form of the weight on a step map, two inflow faces, coverage, the
+       decks of a sweep and the refusals). The last six need PyYAML and numpy. Label
        ``unit``.
        ``gust_case_selftest`` also checks that ``Tests/inputs_yaml_reference`` is what
        ``tools/make_gust_case.py --write-yaml-reference`` writes and that, uncommented, it is YAML holding every key

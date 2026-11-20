@@ -3,9 +3,9 @@
 
     check_case_setup.py CASE --gust EXE [--mpi "mpiexec -n 2"] [-- key=value ...]
 
-CASE is flat_sweep, flat_nest, column_target, column_axis or hill (the YAML file of that
-name beside this script). The run happens in the current directory: the YAML
-file is copied there (hill.asc is written there for the hill), the case folder
+CASE is flat_sweep, flat_nest, column_target, column_axis, hill or upstream (the YAML file
+of that name beside this script). The run happens in the current directory: the YAML
+file is copied there (hill.asc or regional.xyz is written there), the case folder
 is written with --overwrite, and run.sh runs with GUST=EXE and MPI=<--mpi>
 (empty: no launcher). The arguments after -- go to run.sh, which passes them
 to the 3-D runs.
@@ -33,7 +33,11 @@ The checks pin closed forms, not the code's own output:
   rotation-invariant: 1e-6 relative and 1e-4 degrees in double precision; 2e-4 and 0.0115
   degrees, the bound of the stopping rule, with --precision SINGLE);
 - hill: GUST's ground follows the hill's formula (crest in the right cell,
-  relief to 2 %, RMS difference below 0.3 % of the relief).
+  relief to 2 %, RMS difference below 0.3 % of the relief);
+- upstream: wind.upstream_roughness = auto over a half-plane regional map that
+  also sets the ground: the wind from 270 degrees takes the map's 0.03 m west of
+  the domain (the decks' bc.inflow_z0 and the column's bc.surface_z0), and the
+  10 m wind more than 4 cells from the x faces varies by less than 1 % along x.
 """
 import argparse
 import json
@@ -74,6 +78,48 @@ def write_hill(path):
             y = GRID_Y0 + (j + 0.5) * GRID_CELL
             fh.write(" ".join("%.4f" % hill_height(GRID_X0 + (i + 0.5) * GRID_CELL, y) for i in range(GRID_N)))
             fh.write("\n")
+
+
+# The regional map of upstream.yaml: z0 = Z0 west of x = UPSTREAM_STEP, UPSTREAM_EAST east (m).
+UPSTREAM_STEP, UPSTREAM_EAST, UPSTREAM_REACH, UPSTREAM_SPACING = 1200.0, 1.0, 8000.0, 200.0
+
+
+def write_regional(path):
+    """regional.xyz: x y z0 points every UPSTREAM_SPACING out to UPSTREAM_REACH from the domain centre."""
+    n = int(round(UPSTREAM_REACH / UPSTREAM_SPACING))
+    with open(path, "w") as fh:
+        for j in range(-n, n + 1):
+            for i in range(-n, n + 1):
+                x = i * UPSTREAM_SPACING
+                fh.write("%.1f %.1f %g\n" % (x, j * UPSTREAM_SPACING, Z0 if x < UPSTREAM_STEP else UPSTREAM_EAST))
+
+
+def deck_value(path, key):
+    with open(path) as fh:
+        for ln in fh:
+            parts = ln.split()
+            if len(parts) >= 3 and parts[0] == key and parts[1] == "=":
+                return float(parts[2])
+    return float("nan")
+
+
+def check_upstream(folder):
+    """The decks take the map's z0 upwind of the inflow face; the 10 m wind (linear in ln(z + z0) between the cell
+    centres around it, mean over y) away from the inflow and outflow faces holds along x."""
+    check("bc.inflow_z0 of the 3-D deck (m)", deck_value(os.path.join(folder, "inputs"), "bc.inflow_z0"), Z0,
+          1e-9, "rel")
+    check("bc.surface_z0 of the column deck (m)",
+          deck_value(os.path.join(folder, "column", "inputs"), "bc.surface_z0"), Z0, 1e-9, "rel")
+    check("GUST's steady verdict", steady(folder), 1.0, 0.0, "abs")
+    hdr, data = erf_plotfile.read_fields(last_plotfile(folder), ["u", "v", "z"])
+    along_x = []
+    for i, plane in enumerate(data["z"]):
+        winds = [log_interp(column, [math.hypot(a, b) for a, b in zip(data["u"][i][j], data["v"][i][j])], HEIGHT)
+                 for j, column in enumerate(plane)]
+        along_x.append(sum(winds) / len(winds))
+    inner = along_x[4:-4]
+    check("(max - min) / max of the 10 m wind along x, 4 cells from the x faces", (max(inner) - min(inner)) / max(inner),
+          0.0, 1e-2, "abs")
 
 
 def check(name, value, target, tol, kind):
@@ -267,7 +313,7 @@ def main():
         n = argv.index("--")
         argv, extra = argv[:n], argv[n + 1:]
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("case", choices=("flat_sweep", "flat_nest", "column_target", "column_axis", "hill"))
+    ap.add_argument("case", choices=("flat_sweep", "flat_nest", "column_target", "column_axis", "hill", "upstream"))
     ap.add_argument("--gust", required=True, help="the GUST executable")
     ap.add_argument("--mpi", default="", help="the launcher run.sh puts before GUST (empty: none)")
     ap.add_argument("--precision", choices=("DOUBLE", "SINGLE"), default="DOUBLE", help="GUST's precision "
@@ -278,6 +324,8 @@ def main():
     shutil.copyfile(os.path.join(HERE, yaml_file), yaml_file)
     if opts.case == "hill":
         write_hill("hill.asc")
+    if opts.case == "upstream":
+        write_regional("regional.xyz")
     if os.path.isdir(opts.case):
         shutil.rmtree(opts.case)
     tool = os.path.join(ROOT, "tools", "make_gust_case.py")
@@ -310,6 +358,8 @@ def main():
         for d in (0.0, 270.0):
             check_column_axis(os.path.join(opts.case, "dir_%03d" % d), "from %g" % d)
         check_library(opts.case, (0.0, 270.0, 240.0), opts.precision == "SINGLE")
+    elif opts.case == "upstream":
+        check_upstream(opts.case)
     else:
         check_hill(opts.case, 1500.0, 4.0)
 

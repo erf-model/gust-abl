@@ -3253,6 +3253,12 @@ if(_gust_case_python EQUAL 0)
              COMMAND ${Python3_EXECUTABLE} -m unittest -v test_gust_resume
              WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/tools)
     set_tests_properties(gust_resume_selftest PROPERTIES LABELS unit ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
+    # Upstream roughness per wind direction from a regional map (tools/gust_case/fetch.py,
+    # wind.upstream_roughness = auto) on maps made in the test.
+    add_test(NAME gust_fetch_selftest
+             COMMAND ${Python3_EXECUTABLE} -m unittest -v test_gust_fetch
+             WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/tools)
+    set_tests_properties(gust_fetch_selftest PROPERTIES LABELS unit ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
     # The terrain download (tools/fetch_terrain.py) on tiles made in the test: no network.
     add_test(NAME gust_dem_selftest
              COMMAND ${Python3_EXECUTABLE} -m unittest -v test_gust_dem
@@ -3280,7 +3286,7 @@ if(_gust_case_python EQUAL 0)
             string(JOIN " " _case_launch ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2 ${MPIEXEC_PREFLAGS}
                    ${GUST_MPIEXEC_PREFLAGS})
         endif()
-        foreach(case IN ITEMS flat_sweep flat_nest column_target column_axis hill)
+        foreach(case IN ITEMS flat_sweep flat_nest column_target column_axis hill upstream)
             set(_case_dir ${CMAKE_CURRENT_BINARY_DIR}/run/rt_case_setup_${case})
             file(MAKE_DIRECTORY ${_case_dir})
             add_test(NAME rt_case_setup_${case}
@@ -3304,5 +3310,6 @@ if(_gust_case_python EQUAL 0)
     endif()
 else()
     message(STATUS "GUST: PyYAML or numpy not found for ${Python3_EXECUTABLE}; "
-                   "gust_case_selftest, gust_library_selftest, gust_resume_selftest, rt_case_setup_* and rt_library_hill are not registered")
+                   "gust_case_selftest, gust_library_selftest, gust_resume_selftest, gust_fetch_selftest, rt_case_setup_* and "
+                   "rt_library_hill are not registered")
 endif()

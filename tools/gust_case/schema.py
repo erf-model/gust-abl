@@ -168,8 +168,13 @@ SPEC = {
                        "z u v theta [k] rows).", choices=("log_law", "power_law", "table")),
         "power_law_exponent": Key("number", None, "Exponent of the power law (GUST's default 0.14).", lo=0.0, lo_open=True),
         "table": Key("path", None, "The profile table; copied into the case folder. With profile: table."),
-        "upstream_roughness": Key("number", None, "Roughness length of the inflow profile. Default: surface.roughness.",
-                                  unit="m", lo=0.0, lo_open=True),
+        "upstream_roughness": Key("number", None, "Roughness length of the inflow profile. Default: surface.roughness. "
+                                  "auto: for each direction, the fetch-weighted mean of ln z0 of "
+                                  "surface.regional_roughness_map upwind of the inflow faces (log-law profile or a geostrophic drive).",
+                                  unit="m", lo=0.0, lo_open=True, words=(AUTO,)),
+        "fetch_length": Key("number", None, "Fetch length L of wind.upstream_roughness = auto: the map's ln z0 is "
+                            "weighted by exp(-x/L) at x upwind of a face. Default: 100 times wind.height.",
+                            unit="m", lo=0.0, lo_open=True),
         "side_faces": Key("choice", "slip_wall", "The two faces parallel to a wind along x or y; not with a geostrophic drive.",
                           choices=("slip_wall", "periodic")),
     },
@@ -216,6 +221,16 @@ SPEC = {
                            "class code to roughness length (m)."),
             "default": Key("number", None, "Roughness length of a class the table does not hold. Absent: such a "
                            "class is refused.", unit="m", lo=0.0, lo_open=True),
+            "coordinates": Key("choice", AUTO, "As terrain.coordinates.", choices=(AUTO, "projected", "geographic")),
+        },
+        "regional_roughness_map": {
+            "file": Key("path", None, "A roughness map larger than the domain, for wind.upstream_roughness = auto: "
+                        "x y z0 points, or a land-cover raster (nodata points are left out). It should reach 5 "
+                        "wind.fetch_length upwind of the inflow faces: under 95 % of the fetch weight covered is noted, "
+                        "under 63 % refused."),
+            "format": Key("choice", AUTO, "As roughness_map.format.", choices=(AUTO, "xyz", "land_cover")),
+            "classes": Key("any", "esa_cci", "As roughness_map.classes."),
+            "default": Key("number", None, "As roughness_map.default.", unit="m", lo=0.0, lo_open=True),
             "coordinates": Key("choice", AUTO, "As terrain.coordinates.", choices=(AUTO, "projected", "geographic")),
         },
         "canopy": {
