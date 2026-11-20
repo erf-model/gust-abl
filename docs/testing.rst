@@ -2855,12 +2855,14 @@ Current tests
        and the reference speed asked for. Label ``regression``, about 70 s. Not on Windows; registered
        only when the configure's Python has PyYAML and numpy.
    * - ``gust_input_checker_selftest``, ``gust_case_selftest``, ``gust_dem_selftest``, ``gust_window_selftest``,
-       ``gust_library_selftest``
+       ``gust_library_selftest``, ``gust_resume_selftest``
      - The Python unit tests of the deck checker (standard library only), the case set-up tool, the terrain
        download (on tiles made in the test, no network), the case set-up window (offscreen; its window tests
        skip without PySide6 and pyqtgraph) and the wind library (on plotfiles written in the test: several boxes,
-       single and double precision, ghost cells, a sloping ground; log lines, refused runs and library files). The
-       last four need PyYAML and numpy. Label
+       single and double precision, ghost cells, a sloping ground; log lines, refused runs and library files), and
+       resumable sweeps (``run.sh`` with a fake gust: finished directions skipped; unfinished, not steady, changed
+       decks, data files or arguments, a missing patch plotfile and ``RESUME=0`` run again; the ``run.sh`` tests
+       skip on Windows). The last five need PyYAML and numpy. Label
        ``unit``.
        ``gust_case_selftest`` also checks that ``Tests/inputs_yaml_reference`` is what
        ``tools/make_gust_case.py --write-yaml-reference`` writes and that, uncommented, it is YAML holding every key

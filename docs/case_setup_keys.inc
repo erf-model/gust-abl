@@ -468,6 +468,10 @@
      - –
      - mpiexec -n {ranks}
      - The MPI command; {ranks} is replaced. Accepts text.
+   * - ``run.resume``
+     - –
+     - true
+     - Skip a wind direction whose runs reached GUST's steady verdict with the current decks, data files and run.sh arguments and wrote a plotfile after it, so a stopped sweep goes on where it stopped. false runs every direction (RESUME=0 ./run.sh does the same once). Accepts true or false.
 
 ``nests``: Nested patches.
 

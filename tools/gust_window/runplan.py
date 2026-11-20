@@ -11,7 +11,7 @@ import shlex
 import shutil
 import sys
 
-from gust_case import library
+from gust_case import library, resume
 from gust_case.builder import COLUMN_TABLE
 
 from .logparse import column_wind
@@ -49,10 +49,22 @@ def newest_checkpoint(folder, prefix, since=None):
     return best
 
 
-def steps(case_dir, runs):
-    """Yield the Steps of the case written in ``case_dir``; ``runs`` is the builder's Result.runs."""
+def steps(case_dir, runs, skip_finished=True, note=None):
+    """Yield the Steps of the case written in ``case_dir``; ``runs`` is the builder's Result.runs. With
+    ``skip_finished`` (run.resume) a direction that holds its answer for the current decks is skipped, as run.sh
+    skips it (gust_case/resume.py), and ``note`` (a callable) gets a line saying so."""
     for run in runs:
         base = os.path.normpath(os.path.join(case_dir, run["dir"]))
+        if skip_finished and resume.finished(base, run):
+            if note is not None:
+                note("%s: finished earlier with these decks and data files, skipped (run.resume = false runs it again)" % run["label"])
+            continue
+        try:
+            resume.start(base, run)
+        except FileNotFoundError as err:          # a deck of the direction is missing
+            raise RunError("%s: %s; write the case again" % (run["label"], err))
+        except OSError as err:                    # an old log held open by another program
+            raise RunError("%s: %s" % (run["label"], err))
         extra = []
         if run["column"]:
             yield Step("%s: column" % run["label"], os.path.join(base, "column"), ["inputs"])
