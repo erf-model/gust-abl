@@ -11,7 +11,7 @@ set-up, expected results and the full list of its CTests.
 |---|---|---|
 | `Neutral_Column` | `rt_steady_column` | The 1-D neutral column driven by a pressure-gradient force; a restart chain that must continue bit for bit. |
 | `Immersed_Column` | `rt_immersed_column_*` | The neutral column with the ground immersed in a flat mesh (`terrain.representation = immersed_forcing`) at four cut-cell solid fractions: the exact wall stress, the log law, and the body-fitted column at f = 0. |
-| `Immersed_Ridge_2D` | `rt_immersed_along_*`, `rt_immersed_ridge_*`, `rt_immersed_hill_*` (nightly) | A sloping immersed ground (ridge with the wind along and across it, round hill) against the same ground on a terrain-following mesh, with `terrain.immersed_slope = vertical` and `normal`. |
+| `Immersed_Ridge_2D` | `rt_immersed_along_*`, `rt_immersed_ridge_*`, `rt_immersed_hill_*` (nightly) | A sloping immersed ground (ridge with the wind along and across it, round hill) against the same ground on a terrain-following mesh. |
 | `Immersed_Ridge_Resolution` | none | The crest speed-up of a steep 2-D immersed ridge against its terrain-following partner as the column width and layer thickness change: the record behind the docs' grid-resolution guide. |
 | `Immersed_Open_Faces` | `rt_immersed_open_faces` | Flat immersed ground between an inflow and an outflow face at four cut-cell solid fractions, against the body-fitted channel: the steady verdict, the mass balance of the two faces, u and k in the outflow column. |
 | `Neutral_ABL_Flat` | `rt_steady_neutral_flat` | ERF's Neutral_ABL_Flat to steady, with ERF's `check_neutral.py --physics`. |

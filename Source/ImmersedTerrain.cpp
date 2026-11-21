@@ -87,10 +87,6 @@ BuildingsOptions immersed_terrain_options (const TerrainInputs& t, double z0)
     o.limiter_zone = 0;
     o.limiter_zone_acts = false;
     o.immersed_ground = true;
-    o.slope_normal = t.immersed_slope == "normal";
-    o.step_side_walls = t.immersed_side_walls == "steps" || t.immersed_side_walls == "steps_no_slip";
-    o.step_no_slip = t.immersed_side_walls == "steps_no_slip";
-    o.column_distance = t.immersed_wall_distance == "column_centre";
     return o;
 }
 
@@ -151,12 +147,11 @@ BuildingHeightMap immersed_terrain_map (const TerrainInputs& t, const amrex::Geo
 std::string immersed_terrain_hash (const TerrainInputs& t, double z0)
 {
     auto hx = [] (amrex::Real v) { return hexfloat_canonical(static_cast<double>(v)); };
+    // "slope vertical": the wall-law form of the immersed ground, now the only one. The text stays in the
+    // hashed string so that the checkpoints written while it was an input keep their hash.
     std::string s = std::string(kMagic) + " " + std::to_string(kVersion) + "\nflat_height " + hx(t.flat_height)
                     + "\nsmall_volfrac " + hx(t.small_volfrac) + "\nz0 " + hexfloat_canonical(z0) + "\nslope "
-                    + t.immersed_slope + "\ntype " + t.type + "\n";
-    // Only when on: a checkpoint written before this key keeps its hash.
-    if (t.immersed_side_walls != "off") { s += "side_walls " + t.immersed_side_walls + "\n"; }
-    if (t.immersed_wall_distance != "mean_height") { s += "wall_distance " + t.immersed_wall_distance + "\n"; }
+                    + "vertical" + "\ntype " + t.type + "\n";
     // The surface: what fill_terrain_surface reads for the type.
     if (t.type == "agnesi") {
         s += "hill " + hx(t.hill_height) + " " + hx(t.hill_half_width) + " " + t.hill_shape + "\n";
@@ -211,7 +206,9 @@ void check_immersed_terrain_restart (const std::string& dir, const std::string& 
     }
     if (active && rec != hash) {
         amrex::Abort(where + "the immersed ground's inputs (terrain.type and its keys, terrain.flat_height, "
-                             "terrain.small_volfrac, terrain.immersed_slope, terrain.immersed_side_walls, terrain.immersed_wall_distance or bc.surface_z0) differ from the checkpoint's "
+                             "terrain.small_volfrac or bc.surface_z0) differ from the checkpoint's, or the checkpoint "
+                             "was written with a wall-law form since removed (terrain.immersed_slope, "
+                             "terrain.immersed_side_walls or terrain.immersed_wall_distance) "
                              "(SHA-256 " + hash + " here, " + rec + " there)");
     }
 }

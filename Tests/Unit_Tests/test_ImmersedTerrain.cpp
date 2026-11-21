@@ -390,41 +390,6 @@ TEST (LogShear, ImmersedGroundIsExactFromTheCutCellUp)
     }
 }
 
-// A cell with only a side bit (terrain.immersed_side_walls = steps marks the cell beside a step so) is not a
-// cut cell: it takes the log-law gradient. The bit is set by hand on the first fluid cell above the cut
-// cell, where the central difference is 21 % high, so the closure's strain would show.
-TEST (LogShear, SideWallCellTakesTheLogLaw)
-{
-    const PCase c = ground_case(2);
-    gust::BuoyancyOptions buoy;
-    buoy.gravity = 0;
-    const double us = 0.35, f = 0.3;
-    Ground g(c, (2 + f) * kDz);
-    auto& wall = const_cast<amrex::MultiFab&>(g.b.wall());
-    for (amrex::MFIter mfi(wall, false); mfi.isValid(); ++mfi) {
-        const auto w = wall.array(mfi);
-        amrex::LoopOnCpu(mfi.validbox(), [&] (int i, int j, int k) {
-            if (i == 1 && j == 2 && k == 3) { w(i, j, k, gust::kWallMask) = static_cast<amrex::Real>(gust::kWallXlo); }
-        });
-    }
-    const double d1 = (1 - f) * kDz / 2, d2 = (1 - f) * kDz + kDz / 2;
-    auto dk = [&] (int k) { return k < 2 ? 0.01 * (k + 1) : (k == 2 ? d1 : d2 + (k - 3) * kDz); };
-    gust::State q;
-    gust::lamtest::define_state(q, c);
-    fill_by_level(q.u, [&] (int k) { return k < 2 ? 0.0 : log_law(us, dk(k)); });
-    for (amrex::MultiFab* mf : {&q.v, &q.w, &q.p, &q.tke}) { mf->setVal(0); }
-    q.theta.setVal(300);
-    amrex::MultiFab dist(c.ba, c.dm, 1, 1);
-    fill_by_level(dist, dk);
-    amrex::MultiFab N2, plain, S2;
-    gust::stratification_and_strain(q, buoy, c.geom, N2, plain);
-    gust::stratification_and_strain(q, buoy, c.geom, N2, S2);
-    gust::LogShear(dist, gust::Roughness(amrex::Real(kZ0)), &g.b).apply(q, c.geom, S2);
-    const double exact = us / (kKappa * (dk(3) + kZ0));
-    ASSERT_GT(std::abs(std::sqrt(value_at(plain, 1, 2, 3)) - exact), 0.05 * exact) << "the closure's strain is exact: the case tests nothing";
-    EXPECT_NEAR(std::sqrt(value_at(S2, 1, 2, 3)), exact, ltol * exact) << "the side-wall cell";
-}
-
 // turb.shear_stencil = log_law with a roughness map: each column's own z0 enters its gradient. With one
 // profile u(k) in every column and z0 = 0.05 (1 + i) m, sqrt(S2) in column i is
 // (u_{k+1} - u_{k-1}) / ((d_k + z0_i) ln((d_{k+1} + z0_i) / (d_{k-1} + z0_i))).

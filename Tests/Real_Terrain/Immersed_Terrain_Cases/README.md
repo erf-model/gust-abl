@@ -77,8 +77,8 @@ The full-size runs take minutes (Bolund, the ridge) to hours (Askervein, the But
 
 ## Expected Results
 Full-size runs, both representations with the same settings (one level, `zjacobi`,
-`turb.shear_stencil = log_law`, the recommended limiter set, `terrain.small_volfrac = 0.1`, side walls off,
-`terrain.immersed_wall_distance = mean_height`). Speed-up errors are against the measurements; the ridge is against
+`turb.shear_stencil = log_law`, the recommended limiter set, `terrain.small_volfrac = 0.1`, no side walls on the
+ground, the fluid's mean height above the ground as the wall distance). Speed-up errors are against the measurements; the ridge is against
 the wind-tunnel data.
 
 | Case | Measure | Body-fitted | Immersed | Iterations (body-fitted / immersed) |
@@ -95,9 +95,10 @@ The immersed ground is closer on Bolund 270 and the smooth ridge, about the same
 and further on Bolund 239, Askervein and the Butte. On Askervein and the Butte the hill tops are a few cut columns
 wide, and the immersed run is slower on the crests. The immersed runs take 1.0 to 2.5 times the iterations.
 
-On the Butte, `terrain.immersed_side_walls = steps` changes the speed at 3 m by 0.14 m/s rms (1082 iterations,
-rms error 6.09 m/s at the sensors). `terrain.immersed_wall_distance = column_centre` was tested on the 2-D ridge
-only (docs, Immersed terrain, Turbulence); its runs on the measured cases were stopped before they finished.
+On the Butte, side walls on the ground's steps (a form since removed from the code) changed the speed at 3 m by
+0.14 m/s rms (1082 iterations, rms error 6.09 m/s at the sensors). A wall distance from the column centre, also
+removed, was tested on the 2-D ridge only (docs, Immersed terrain); its runs on the measured cases were stopped
+before they finished.
 
 The rows above were run before wall cells lost their tolerance (docs, Immersed terrain, Geometry). With the current
 rule, Askervein (2 m layers) and the two ridges have the same wall cells, and a rerun of Askervein changes `u` by at

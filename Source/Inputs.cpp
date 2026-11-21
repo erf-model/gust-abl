@@ -93,8 +93,7 @@ Inputs parse_inputs ()
         auto& t = in.terrain;
         for (const char* key : {"type", "file", "smoothing", "gamma_m", "hill_height", "hill_half_width",
                                 "hill_shape", "idw_neighbors", "idw_power", "hierarchy_passes", "nest_blend_width",
-                                "representation", "flat_height", "small_volfrac", "immersed_slope", "immersed_side_walls",
-                                "immersed_wall_distance"}) {
+                                "representation", "flat_height", "small_volfrac"}) {
             if (pp.contains(key)) {
                 t.given.emplace_back(key);
                 if (pp.countval(key) != 1) {
@@ -116,9 +115,6 @@ Inputs parse_inputs ()
         pp.query("representation", t.representation);
         pp.query("flat_height", t.flat_height);
         pp.query("small_volfrac", t.small_volfrac);
-        pp.query("immersed_slope", t.immersed_slope);
-        pp.query("immersed_side_walls", t.immersed_side_walls);
-        pp.query("immersed_wall_distance", t.immersed_wall_distance);
         // The roughness map (bc.surface_z0_file, SurfaceRoughness.H) shares the IDW keys.
         t.idw_for_z0_map = amrex::ParmParse("bc").contains("surface_z0_file");
         // So do the canopy's maps (canopy.type = map, Canopy.H). Read as text
@@ -153,8 +149,7 @@ Inputs parse_inputs ()
                        "stretch_ratio", "zlevels_file", "hierarchy_levels"}},
              {"terrain", {"type", "file", "smoothing", "gamma_m", "hill_height", "hill_half_width",
                           "hill_shape", "idw_neighbors", "idw_power", "hierarchy_passes", "nest_blend_width",
-                          "representation", "flat_height", "small_volfrac", "immersed_slope", "immersed_side_walls",
-                          "immersed_wall_distance"}},
+                          "representation", "flat_height", "small_volfrac"}},
              {"io", {"plot_file", "chk_file", "restart", "write_plotfile", "write_checkpoint", "turb_plot_file",
                      "iteration_log", "column_guess_file"}}}) {
         amrex::ParmParse pp(ns);
@@ -302,19 +297,6 @@ std::vector<std::string> validate (const Inputs& in)
         err.emplace_back("terrain.representation must be body_fitted or immersed_forcing (got " + t.representation + ")");
     }
     if (immersed) {
-        if (t.immersed_slope != "vertical" && t.immersed_slope != "normal") {
-            err.emplace_back("terrain.immersed_slope must be vertical or normal (got " + t.immersed_slope + ")");
-        }
-        if (t.immersed_side_walls != "off" && t.immersed_side_walls != "steps" && t.immersed_side_walls != "steps_no_slip") {
-            err.emplace_back("terrain.immersed_side_walls must be off, steps or steps_no_slip (got " + t.immersed_side_walls + ")");
-        }
-        if (t.immersed_side_walls != "off" && t.immersed_slope == "normal") {
-            err.emplace_back("terrain.immersed_side_walls = " + t.immersed_side_walls + " needs terrain.immersed_slope = vertical: the normal "
-                             "form already puts the ground's stress on w, which the step walls would add again");
-        }
-        if (t.immersed_wall_distance != "mean_height" && t.immersed_wall_distance != "column_centre") {
-            err.emplace_back("terrain.immersed_wall_distance must be mean_height or column_centre (got " + t.immersed_wall_distance + ")");
-        }
         if (!std::isfinite(t.flat_height) || !(t.flat_height > 0)) {
             err.emplace_back("terrain.flat_height must be finite and > 0 with terrain.representation = immersed_forcing");
         } else if (std::isfinite(m.prob_hi[2]) && !(t.flat_height < m.prob_hi[2])) {
@@ -334,7 +316,7 @@ std::vector<std::string> validate (const Inputs& in)
             err.emplace_back("terrain.representation = immersed_forcing needs mesh.hierarchy_levels = 1 for now");
         }
     } else {
-        for (const char* k : {"flat_height", "small_volfrac", "immersed_slope", "immersed_side_walls", "immersed_wall_distance"}) {
+        for (const char* k : {"flat_height", "small_volfrac"}) {
             if (given(k)) {
                 err.emplace_back(std::string("terrain.") + k + " has no effect unless terrain.representation = immersed_forcing");
             }

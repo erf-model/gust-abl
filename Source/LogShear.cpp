@@ -93,8 +93,7 @@ void LogShear::apply (const State& q, const amrex::Geometry& geom, amrex::MultiF
             });
         } else {
             // An immersed ground: the fluid cells above the wall cell (the cut cell, or the first
-            // fluid cell over a ground on a layer's face: the cell the roof bit marks). A cell with only
-            // side bits (terrain.immersed_side_walls = steps) is not a cut cell and takes the log law.
+            // fluid cell over a ground on a layer's face: the cell the roof bit marks).
             const auto beta = m_b->beta().const_array(mfi);
             const auto wl = m_b->wall().const_array(mfi);
             amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept

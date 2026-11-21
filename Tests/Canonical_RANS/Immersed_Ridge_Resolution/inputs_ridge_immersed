@@ -66,4 +66,3 @@ io.turb_plot_file = ridge_immersed_turb
 io.chk_file       = ridge_immersed_chk
 turb.shear_stencil = log_law
 terrain.small_volfrac = 0.1
-terrain.immersed_slope = vertical

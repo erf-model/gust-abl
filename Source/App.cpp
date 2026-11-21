@@ -593,10 +593,7 @@ std::string run_domain (const DomainRole& role)
                            << state.z_phys_nd.max(state.z_phys_nd.nComp() - 1) << " m): "
                            << buildings.summary(mesh.detJ, geom, true) << "\n"
                            << "gust: immersed terrain: the form 7 wall law with bc.surface_z0 = " << buildings_opt.z0
-                           << (in.terrain.immersed_slope == "normal" ? " m at the fluid's mean distance from the ground along its normal"
-                                                                      : " m at the fluid's mean height above the ground")
-                           << " (terrain.immersed_slope = " << in.terrain.immersed_slope
-                           << "), the wall value of k in the cut cells\n";
+                           << " m at the fluid's mean height above the ground, the wall value of k in the cut cells\n";
         } else if (buildings_opt.active()) {
             buildings.build(buildings_opt, geom, state.z_phys_nd, ba, dm);
             amrex::Print() << "gust: buildings (buildings.type = " << buildings_opt.type_name << "): "

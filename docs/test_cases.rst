@@ -32,9 +32,8 @@ Steady cases
      - Ridge and round hill, immersed ground
      - A sloping ground immersed in a flat mesh against the terrain-following mesh (:doc:`immersed_terrain`): the
        wind along a ridge (the wall law on slopes up to 18°), across a ridge and over a round hill (crest speed and
-       lee minimum), with ``terrain.immersed_slope`` = ``vertical`` and ``normal``.
-     - ``rt_immersed_along_vertical``, ``_normal``; ``rt_immersed_ridge_vertical``, ``_normal``;
-       ``rt_immersed_hill_vertical``, ``_normal`` (nightly)
+       lee minimum).
+     - ``rt_immersed_along_vertical``, ``rt_immersed_ridge_vertical``; ``rt_immersed_hill_vertical`` (nightly)
    * - 2
      - Flat 3-D periodic (ERF ``Neutral_ABL_Flat``)
      - Horizontal directions, pressure, Coriolis forcing.
