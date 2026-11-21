@@ -862,6 +862,12 @@ TEST (ImmersedSurface, HashFollowsTheGroundsInputs)
     EXPECT_TRUE(changed([] (gust::TerrainInputs& e) { e.immersed_slope = "normal"; }));
     EXPECT_TRUE(changed([] (gust::TerrainInputs& e) { e.immersed_side_walls = "steps"; }));
     EXPECT_TRUE(changed([] (gust::TerrainInputs& e) { e.immersed_side_walls = "steps_no_slip"; }));
+    {
+        gust::TerrainInputs a = t, b = t;
+        a.immersed_side_walls = "steps";
+        b.immersed_side_walls = "steps_no_slip";
+        EXPECT_NE(gust::immersed_terrain_hash(a, kZ0), gust::immersed_terrain_hash(b, kZ0));
+    }
     EXPECT_TRUE(changed([] (gust::TerrainInputs& e) { e.immersed_wall_distance = "column_centre"; }));
     EXPECT_TRUE(changed([] (gust::TerrainInputs& e) { e.type = "flat"; }));
     EXPECT_TRUE(changed([] (gust::TerrainInputs& e) { e.hill_height = 61; }));

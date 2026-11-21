@@ -335,18 +335,21 @@ TEST (Inputs, ImmersedTerrainChecksNameTheInput)
     }
 }
 
-// The five keys are read from an inputs file.
+// The six keys are read from an inputs file.
 TEST (Inputs, ParsesTheImmersedTerrainKeys)
 {
     ScopedKeys guard{{{"terrain", "representation"}, {"terrain", "flat_height"}, {"terrain", "small_volfrac"},
-                      {"terrain", "immersed_slope"}, {"terrain", "immersed_side_walls"}}};
+                      {"terrain", "immersed_slope"}, {"terrain", "immersed_side_walls"},
+                      {"terrain", "immersed_wall_distance"}}};
     add_inputs_text("terrain.representation = immersed_forcing\nterrain.flat_height = 12.5\nterrain.small_volfrac = 0.01\n"
-                    "terrain.immersed_slope = normal\nterrain.immersed_side_walls = steps\n");
+                    "terrain.immersed_slope = normal\nterrain.immersed_side_walls = steps\n"
+                    "terrain.immersed_wall_distance = column_centre\n");
     const auto in = gust::parse_inputs();
     EXPECT_EQ(in.terrain.representation, "immersed_forcing");
     EXPECT_EQ(in.terrain.flat_height, amrex::Real(12.5));
     EXPECT_EQ(in.terrain.small_volfrac, amrex::Real(0.01));
     EXPECT_EQ(in.terrain.immersed_slope, "normal");
     EXPECT_EQ(in.terrain.immersed_side_walls, "steps");
-    EXPECT_EQ(in.terrain.given.size(), 5u);
+    EXPECT_EQ(in.terrain.immersed_wall_distance, "column_centre");
+    EXPECT_EQ(in.terrain.given.size(), 6u);
 }

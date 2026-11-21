@@ -194,9 +194,11 @@ gets a side wall toward a neighbouring column when the neighbour's cell in the s
 neighbour's footprint-mean ground (the mean of its four nodes) is higher than the cell's own by more than the
 layer's height; a cell between two such columns (a trench one column wide) has both walls. The wall law is a
 building side's form 7 law (:doc:`buildings`), blended with the next cell out on the open side as the roof is
-blended with the cell above, at the step's distances: the cell's fluid lies above its own ground and spans the
-column's width, so its centroid is half a column from the step whatever its solid fraction, and the reference
-cell's is 3/2 columns. There is no reference cell in a trench, where that cell is solid, or beyond a domain face
+blended with the cell above, at fixed distances from the step: half a column for the cell and 3/2 columns for the
+reference cell. These are the column centres. On a continuous ground the cell's fluid thins towards the step, and
+its centroid lies 0.54 to 1.0 columns from the step on a plane ramp (0.69 to 0.75 at half solid); half a column
+puts the wall law's distance at the near end of that range, which on 160 m columns with :math:`z_0 = 0.1` m gives
+about 12 % more :math:`u_*^2` than 0.75 columns. There is no reference cell in a trench, where that cell is solid, or beyond a domain face
 that is not periodic. Such a cell has no roof bit and takes the log-law shear of ``turb.shear_stencil``. The
 option needs ``terrain.immersed_slope = vertical``: the ``normal`` form already puts the ground's stress on
 :math:`w`. On a slope that rises by less than a layer per column nothing changes; on a flat ground the option is
@@ -277,7 +279,9 @@ its centre several times; on coarse columns the length scale and :math:`\nu_t` t
 
 with :math:`z_c` the cell centre's height, :math:`h_c` the ground's height at the column centre (the mean of the
 footprint's four ground nodes) and :math:`\Delta z` the layer's height. The other cells, and every cell on a ground
-that rises by less than a layer across a footprint, keep :math:`D` (bit-identical to ``mean_height``). This is the
+that rises by less than a layer across a footprint, keep :math:`D` (bit-identical to ``mean_height``). The switch is not continuous: where the span
+crosses the layer's height a cut cell's distance can drop by up to 0.1 :math:`\Delta z` (16 % of :math:`d` on a
+plane ramp), towards the shorter distance. This is the
 distance of AMR-Wind's partial-terrain closures (the cell centre above the ground at the column centre, floored at
 half a layer), applied here where the footprint is steep only. The wall law keeps :math:`d_1`. On the 2-D ridge
 above, with ``terrain.immersed_side_walls = steps``, at 10 m above the ground:
