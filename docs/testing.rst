@@ -1156,6 +1156,20 @@ with the unit-test flags, F8–F15 and F20–F23 against the CTests ``rt_frozen_
    * - F23
      - The levels do not extend θ below the ground
      - ``rt_frozen_theta`` (first-cell Rt of the file-profile run)
+   * - F24
+     - Frozen refused in a patch of a parent run (``init.first_guess = nest``)
+     - ``rt_nest_faces_frozen``, ``rt_nest_faces_frozen_building``, ``rt_nest_faces_frozen_inflow``,
+       ``abort_nest_faces_frozen_building_theta``
+   * - F25
+     - ``canopy.heat_frozen = blend`` accepted in a frozen patch
+     - ``abort_nest_faces_frozen_canopy_blend``
+   * - F26
+     - A frozen patch's θ reset to 300 K after the interpolation
+     - ``rt_nest_faces_frozen`` (θ against the parent's, level range), ``rt_nest_faces_frozen_building_theta``,
+       ``rt_nest_faces_frozen_inflow_theta``
+   * - F27
+     - Frozen accepted with the unsteady stage in a patch
+     - ``abort_nest_faces_frozen_unsteady``
 
 The one-line mutants of the physical time term (``Source/TimeTerm.cpp``, ``Source/Residual.cpp``), each run
 against ``TimeTerm.*`` on two ranks with the unit-test flags by ``tools/time_term_mutants.py`` (macOS arm64,
@@ -2044,9 +2058,9 @@ Current tests
    * - ``abort_simplec_theta_value``, ``abort_simplec_theta_newton``, ``abort_simplec_theta_restart``,
        ``abort_simplec_theta_no_sequencing``
      - ``simplec.theta = fixed`` is refused, naming the key; ``frozen`` is refused with ``steady.stage =
-       simplec_newton``, with ``io.restart`` and without grid sequencing, each naming the reason. Frozen θ with a
-       stratified column first guess and with nests runs in ``rt_nests_flat_abl_buoyant`` and
-       ``rt_nests_flat_abl_neutral``.
+       simplec_newton``, with ``io.restart`` and without grid sequencing or a parent run, each naming the reason.
+       Frozen θ with a stratified column first guess and with nests runs in ``rt_nests_flat_abl_buoyant`` and
+       ``rt_nests_flat_abl_neutral``; in a patch of a parent run in ``rt_nest_faces_frozen``.
    * - ``abort_sequencing_hold_value``, ``abort_sequencing_cfl_start_value``
      - ``steady.sequencing_hold = 2`` and ``steady.sequencing_cfl_start = last``: each refused, naming its input.
    * - ``rt_sequencing_hold_kept``, ``rt_sequencing_hold_released``, ``rt_sequencing_cfl_previous``
@@ -2204,6 +2218,17 @@ Current tests
      - The hill patch with a 75 m × 75 m × 20 m block clear of its nest faces (``building_inside.txt``) runs five iterations
        on two ranks in nine boxes and writes its checkpoint; the log must report solid cells (9 solid, 9 partial and 33 wall cells; solid volume 112 500 m³) (sub-phase 9.4, beyond the plan; before, buildings with a
        ``nest`` face stopped the run).
+   * - ``rt_nest_faces_frozen`` (fixture ``rt_nest_faces_frozen_parent``), ``rt_nest_faces_frozen_building``, ``_building_theta``, ``rt_nest_faces_frozen_inflow``, ``_inflow_theta``, ``abort_nest_faces_frozen_canopy_blend``, ``_building_theta``, ``_unsteady``
+     - ``simplec.theta = frozen`` in a patch of a parent run (beyond the plan). The hill parent with a sounding of 300 K
+       at the ground and 304 K at 800 m, θ solved, is steady in 85 iterations. Its patch, whose own sounding is 310 K to
+       330 K, runs for 1 iteration and to steady (109 iterations) on two ranks in nine boxes: the log names the
+       parent's θ as the held field; θ's residual is 0 in every iteration; θ is the same bit for bit in the two
+       runs; θ equals the parent's θ interpolated bilinearly on each level within 1e-10 K (1.1e-13 K); θ varies by
+       more than 0.01 K on every level (2.2e-2 K); the 2 × 2 means of u, v, w and k are within 0.15 m/s and
+       0.06 m²/s² of the parent (0.10 m/s, 0.038 m²/s²). With the block of ``building_inside.txt`` (5 iterations) and
+       with an inflow face on xlo and an outflow face on xhi (``inputs_hill_patch_inflow``, 20 iterations), θ is the
+       one-iteration run's bit for bit. ``canopy.heat_frozen = blend`` (``canopy_inside.txt``),
+       ``buildings.theta_mode = ambient`` and ``steady.stage = unsteady`` each stop the run, naming the key.
    * - ``rt_nests_one_process``
      - Nests in one run (``Tests/Canonical_RANS/Nests_One_Process``; PR-69): the hill parent of ``Nest_Faces`` with a
        Rayleigh layer on every field above 400 m, and two touching nests given by ``nest.names`` and their corners
@@ -2862,15 +2887,33 @@ Current tests
        ``table`` or ``full`` is refused. ``rt_iteration_table_columns`` (label ``regression``, about 15 s) pins
        the first two rows of the flat neutral case's table, which fixes the column of each residual.
    * - ``rt_case_setup_flat_sweep``, ``rt_case_setup_flat_nest``, ``rt_case_setup_column_target``,
-       ``rt_case_setup_column_axis``, ``rt_case_setup_hill``
+       ``rt_case_setup_column_axis``, ``rt_case_setup_hill``, ``rt_case_setup_upstream``
      - The case set-up tool end to end (``Tests/Infrastructure/Case_Setup``, :doc:`case_setup`): a YAML file
        becomes a case folder, its decks pass the deck checker, ``run.sh`` runs GUST on 2 ranks, and the result
        meets the closed forms the YAML file asks for. Not on Windows; registered only when the configure's Python
        has PyYAML and numpy.
-   * - ``gust_input_checker_selftest``, ``gust_case_selftest``, ``gust_dem_selftest``, ``gust_window_selftest``
+   * - ``rt_library_hill``
+     - The wind library (``Tests/Infrastructure/Library_Hill``, :doc:`case_setup`): a hill sweep of five
+       directions on 2 ranks; libraries of 260/280 and 265/275 degrees blended at 270 against the 270 run (more
+       than 4 cells from the faces, under 1 % and 0.4 % of the reference speed), the 260/280 library at 265 and
+       275 against those runs (1 %), the interior mean of k at 270 (0.5 %), a stored sector returned unchanged,
+       and the reference speed asked for. Label ``regression``, about 70 s. Not on Windows; registered
+       only when the configure's Python has PyYAML and numpy.
+   * - ``gust_input_checker_selftest``, ``gust_case_selftest``, ``gust_dem_selftest``, ``gust_window_selftest``,
+       ``gust_library_selftest``, ``gust_resume_selftest``, ``gust_fetch_selftest``
      - The Python unit tests of the deck checker (standard library only), the case set-up tool, the terrain
-       download (on tiles made in the test, no network) and the case set-up window (offscreen; its window tests
-       skip without PySide6 and pyqtgraph). The last three need PyYAML and numpy. Label ``unit``.
+       download (on tiles made in the test, no network), the case set-up window (offscreen; its window tests
+       skip without PySide6 and pyqtgraph) and the wind library (on plotfiles written in the test: several boxes,
+       single and double precision, ghost cells, a sloping ground; log lines, refused runs and library files), and
+       resumable sweeps (``run.sh`` with a fake gust: finished directions skipped; unfinished, not steady, changed
+       decks, data files or arguments, a missing patch plotfile and ``RESUME=0`` run again; the ``run.sh`` tests
+       skip on Windows), and the upstream roughness from a regional map (``wind.upstream_roughness = auto``: a
+       half-plane map, a uniform map, the closed form of the weight on a step map, two inflow faces, coverage, the
+       decks of a sweep and the refusals). The last six need PyYAML and numpy. Label
+       ``unit``.
+       ``gust_case_selftest`` also checks that ``Tests/inputs_yaml_reference`` is what
+       ``tools/make_gust_case.py --write-yaml-reference`` writes and that, uncommented, it is YAML holding every key
+       with its default.
    * - ``rt_coriolis_repeat_clean``, ``rt_askervein_210_clean``, ``buildings_defaults_fraction_stress_clean``,
        ``buildings_defaults_roof_stress_clean``, ``buildings_defaults_drag_clean``
      - Fixtures: they empty the run directories of the tests they are set up for, so no check reads an earlier run's

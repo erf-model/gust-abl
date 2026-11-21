@@ -436,7 +436,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 return
         self.tabs.setCurrentWidget(self.runner)
         self._busy(True)
-        self.runner.start(result.case_dir, result.runs, gust, r["ranks"], r["mpi_launcher"])
+        self.runner.start(result.case_dir, result.runs, gust, r["ranks"], r["mpi_launcher"], r["resume"])
 
     def _run_finished(self, ok, message):
         self._busy(self._thread is not None)

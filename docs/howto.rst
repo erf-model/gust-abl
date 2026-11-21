@@ -205,7 +205,9 @@ for bit. Other values, such as ``forcing.latitude``, ``forcing.ug`` and ``bc.inf
    * - ``frozen``
      - ``simplec.theta = frozen``
      - A stratified ``bc.theta_profile`` or table (``geostrophic_column``: a table), a neutral surface and column. The
-       limits of ``simplec.theta = frozen`` apply: grid sequencing, no restart, no Newton stage.
+       limits of ``simplec.theta = frozen`` apply: grid sequencing or a patch of a parent run, no restart, no Newton
+       stage. A patch with ``nest`` faces on its four sides holds the parent's :math:`\theta`: the deck still needs
+       ``bc.theta_profile``, which is then not used.
    * - ``surface_flux``
      - ``bc.surface_stability = heat_flux``
      - A surface layer with a non-zero ``bc.surface_heat_flux`` or ``init.column_mol``; a heat sink, an outflow face,

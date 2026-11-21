@@ -14,6 +14,7 @@ nothing is written into the source tree.
 | `Initialization` | The mass-consistent initial field: Askervein, and the hilltop speed-up trend against FastWindTerrain. | regression |
 | `Canonical_RANS` | The SIMPLEC stage to steady on ERF's canonical RANS cases: the neutral column (also with the ground immersed, `Immersed_Column`; a ridge and a round hill immersed, `Immersed_Ridge_2D`; flat immersed ground between an inflow and an outflow face, `Immersed_Open_Faces`), Neutral_ABL_Flat, Neutral_Hill_2D, Neutral_Hill_3D and its truly neutral variant, and the smooth plateau comparison case. Also the thin-cell aspect-ratio sweep (`Aspect_Ratio_Hill_2D`) steep terrain at an outflow face (`Outflow_Steep_Terrain`), the forest canopy's drag and k terms (`Canopy_Drag`) a dense canopy on steep terrain with an inflow face (`Forested_Escarpment`), the canopy validation (`Homogeneous_Canopy`, `Forest_Edge`, `Forested_Hill`), one block with the building terms on flat ground and on a ridge (`Building_Cube`, `Building_Hill`), a courtyard (`Building_Courtyard`), and the wind-tunnel cube of Snyder and Lawson (1994) against its measurements (`Snyder_Lawson_Cube`). | regression / nightly |
 | `Real_Terrain` | Askervein to steady, with a log-law inflow and in a conventionally neutral boundary layer. | regression |
+| `Real_Terrain_Python` | Real-terrain cases set up from a YAML file with `tools/fetch_terrain.py` and `tools/make_gust_case.py`: the AWAKEN area and the Columbia River Gorge. | examples (no CTest) |
 | `Paper` | `JWEIA2026`: the driver and figure scripts of the paper on the realizability sensor, over the `Real_Terrain` comparison cases. | scripts (no CTest) |
 | `Unit_Tests` | The GoogleTest suite (`unit_tests`) and its ERF golds. | unit |
 | `Supporting_Files` | Check scripts shared by more than one case, and the test-only drivers (`Tools/`). | assets |
@@ -33,3 +34,7 @@ README lists its CTest names.
 - `inputs_reference` is the master input reference: every input with its default, range and meaning, as comments
   to copy into a deck. It is generated from `docs/inputs.rst` (`tools/input_reference.py --write`) and checked by
   the CTest `input_reference_current`.
+- `inputs_yaml_reference` is the same for the YAML case description of `tools/make_gust_case.py`: every key with
+  its default, unit, range and meaning, as comments to copy into a case file. It is generated from the tool's key
+  table (`tools/make_gust_case.py --write-yaml-reference Tests/inputs_yaml_reference`) and checked by the CTest
+  `gust_case_selftest`.

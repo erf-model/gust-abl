@@ -14,8 +14,9 @@ check_sequencing_options):
   2 cells in x or y, with sequencing_drop_orders above residual_drop_orders,
   or with sequencing_cfl_start = previous and sequencing_hold = 1; the
   steady.sequencing_* keys without steady.sequencing = 1;
-- simplec.theta = frozen without grid sequencing on a fresh start
-  (Source/App.cpp);
+- simplec.theta = frozen without grid sequencing on a fresh start or a
+  parent run (init.first_guess = nest), and with the unsteady stage in a
+  patch (Source/App.cpp);
 - terrain.file missing for xyz and erf_grid or given for flat and agnesi;
   terrain.gamma_m without terrain.smoothing = 1; the terrain.hill_* keys
   without agnesi and agnesi without them; the terrain.idw_* keys when nothing
@@ -154,10 +155,14 @@ class HierarchyChecker(Checker):
                            "Remove it, or set mesh.hierarchy_levels.")
         if c.solve:
             self._sequencing(L, n, r)
-        if c.theta_frozen and not (c.sequencing and not c.restart and L > 1):
+        if c.theta_frozen and c.first_guess != "nest" and not (c.sequencing and not c.restart and L > 1):
             self.error("simplec.theta", "GUST stops: simplec.theta = frozen needs grid sequencing (steady.sequencing = 1, "
-                                        "mesh.hierarchy_levels > 1) on a fresh start.",
-                       "Set mesh.hierarchy_levels >= 2 and steady.sequencing = 1.")
+                                        "mesh.hierarchy_levels > 1) on a fresh start, or init.first_guess = nest.",
+                       "Set mesh.hierarchy_levels >= 2 and steady.sequencing = 1, or start the patch from its parent "
+                       "run (init.first_guess = nest).")
+        if c.theta_frozen and c.first_guess == "nest" and c.unsteady:
+            self.error("simplec.theta", "GUST stops: simplec.theta = frozen is not supported with steady.stage = unsteady "
+                                        "and init.first_guess = nest.", "Solve theta in the unsteady patch.")
         if c.solve and n and L == 1 and c.terrain_type in ("xyz", "erf_grid") and n[0] * n[1] * n[2] >= LARGE_MESH \
                 and not c.buildings and not c.unsteady:
             self.advise("mesh.hierarchy_levels", "A terrain mesh of %d cells is solved on one level." % (n[0] * n[1] * n[2]),

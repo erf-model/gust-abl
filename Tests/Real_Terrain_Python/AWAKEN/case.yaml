@@ -1,0 +1,27 @@
+# The AWAKEN area (American WAKE experimeNt) north of Enid, Oklahoma: gently
+# rolling ground, about 60 m of relief over the domain. tools/fetch_terrain.py
+# case.yaml writes dem.asc (SRTM 1 arc-second, AWS Terrain Tiles) beside this
+# file; tools/make_gust_case.py case.yaml then writes the case folder.
+case:
+  name: awaken
+  description: AWAKEN area, Oklahoma; 12.8 km square, 100 m cells, wind from the south
+domain:
+  center_lat_lon: [36.362, -97.405]
+  half_width: 6400.
+  top: 2000.
+terrain:
+  file: dem.asc
+  border:
+    flat_width: 500.
+    slope_width: 1000.
+    level: mean
+mesh:
+  cell_size: 100.
+  first_layer: 5.
+  stretch_ratio: 1.1
+wind:
+  speed: 8.
+  height: 80.
+  direction: 180.
+surface:
+  roughness: 0.05

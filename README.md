@@ -58,6 +58,7 @@ Python scripts in [`tools/`](tools/) set up and check a case without editing dec
 | Script | What it does |
 |---|---|
 | `make_gust_case.py case.yaml` | writes a case folder (decks, terrain, `run.sh`) from one short YAML description |
+| `make_gust_library.py build CASE_DIR` | turns a sweep's finished runs into a wind library; `query` blends it for any direction and speed |
 | `check_gust_inputs.py inputs` | checks a deck: unknown keys, ranges, settings that do not go together |
 | `fetch_terrain.py case.yaml` | downloads SRTM-based elevation tiles (AWS Terrain Tiles) for the case's domain |
 | `gust_gui.py [case.yaml]` | a window over the three: a form that starts with the basic settings (every key on request), a map of the domain and nests, the checker's findings, and a Run button that plots the residuals |

@@ -28,7 +28,7 @@ import numpy as np  # noqa: E402
 import yaml  # noqa: E402
 
 import make_gust_case  # noqa: E402
-from gust_case import CaseError, load_yaml, validate  # noqa: E402
+from gust_case import CaseError, load_yaml, resume, validate  # noqa: E402
 from gust_case.schema import SPEC  # noqa: E402
 from gust_window import logparse, runplan, values  # noqa: E402
 
@@ -193,6 +193,8 @@ class RunPlanTests(unittest.TestCase):
         self.dir = self._tmp.name
         for sub in ("column", "nest_a", "nest_b"):
             os.makedirs(os.path.join(self.dir, sub))
+        for rel in ("inputs", "column/inputs", "nest_a/inputs", "nest_b/inputs", resume.DATA):  # the record's files
+            self.write(rel, "# deck\n")
         self.runs = [{"dir": ".", "label": "wind from 240 degrees", "column": True, "wind_from_column": True,
                       "patches": ["a", "b"], "chk": "chk"}]
 
@@ -222,6 +224,27 @@ class RunPlanTests(unittest.TestCase):
         with self.assertRaises(StopIteration):
             next(gen)
 
+    def test_finished_direction_is_skipped_unless_resume_is_off(self):
+        """A direction whose runs reached the steady verdict with these decks yields no step (run.resume), and runs
+        again with skip_finished = False; the record is written when a direction starts."""
+        run = dict(self.runs[0], column=False, wind_from_column=False, patches=[])
+        gen = runplan.steps(self.dir, [run])
+        next(gen)
+        self.assertTrue(os.path.isfile(os.path.join(self.dir, resume.RECORD)))
+        os.makedirs(os.path.join(self.dir, "plt00012"))
+        self.write("plt00012/Header")
+        self.write("log.txt", "gust: steady after 12 iterations (12 over the run)\ngust: wrote plt00012\n")
+        notes = []
+        self.assertEqual(list(runplan.steps(self.dir, [run], note=notes.append)), [])
+        self.assertEqual(len(notes), 1)
+        self.assertIn("skipped", notes[0])
+        self.assertEqual(len(list(runplan.steps(self.dir, [run], skip_finished=False))), 1)
+
+    def test_missing_deck_is_named(self):
+        os.remove(os.path.join(self.dir, "nest_b", "inputs"))
+        with self.assertRaisesRegex(runplan.RunError, r"wind from 240 degrees: .*nest_b.*write the case again"):
+            next(runplan.steps(self.dir, self.runs))
+
     def test_missing_column_table(self):
         gen = runplan.steps(self.dir, self.runs)
         next(gen)
@@ -237,6 +260,16 @@ class RunPlanTests(unittest.TestCase):
         next(gen)
         with self.assertRaisesRegex(runplan.RunError, "wrote no checkpoint chk"):
             next(gen)
+
+    def test_collect_library_after_the_last_step(self):
+        self.assertEqual(runplan.collect_library(self.dir), "")          # no case_resolved.yaml: nothing to do
+        self.write("case_resolved.yaml", "case: {name: x}\nwind: {drive: inflow_only, direction: 0}\n")
+        self.assertEqual(runplan.collect_library(self.dir), "")          # no column run
+        self.write("case_resolved.yaml", "case: {name: x}\nwind: {drive: geostrophic_column, direction: 0, "
+                   "directions: null, speed: 8, height: 10}\n")
+        note = runplan.collect_library(self.dir)                          # a geostrophic drive, its column not run
+        self.assertTrue(note.startswith("library.json not written"), note)
+        self.assertIn("column_guess.dat", note)
 
     def test_find_gust(self):
         exe = "gust.exe" if sys.platform.startswith("win") else "gust"
@@ -581,6 +614,9 @@ class RunPanelTests(unittest.TestCase):
         self.dir = self._tmp.name
         for sub in ("column", "nest_a"):
             os.makedirs(os.path.join(self.dir, sub))
+        for rel in ("inputs", "column/inputs", "nest_a/inputs", resume.DATA):   # the resume record's files
+            with open(os.path.join(self.dir, rel), "w", encoding="utf-8") as out:
+                out.write("# deck\n")
         self.gust = os.path.join(self.dir, "fake_gust")
         with open(self.gust, "w", encoding="utf-8") as out:
             out.write(FAKE_GUST.format(python=sys.executable))

@@ -1,8 +1,8 @@
 # column_target's set-up with the wind along y (from 0 degrees) and along x
-# (from 270 degrees). The geostrophic wind turns with height, so a face parallel
-# to the 10 m wind has flow through it aloft: the tool makes it an inflow or an
-# outflow face, not a slip wall. check_case_setup.py: every 3-D cell's wind
-# against the column's table.
+# (from 270 degrees), and from 240 degrees for library.json. The geostrophic
+# wind turns with height, so a face parallel to the 10 m wind has flow through
+# it aloft: the tool makes it an inflow or an outflow face, not a slip wall.
+# check_case_setup.py: every 3-D cell's wind against the column's table.
 case:
   name: column_axis
 domain:
@@ -15,7 +15,7 @@ mesh:
 wind:
   speed: 8.
   height: 10.
-  directions: [0, 270]
+  directions: [0, 270, 240]   # 240: library.json's |G| off the axes
   drive: geostrophic_column
 atmosphere:
   latitude: 45.          # degrees north: the Coriolis parameter

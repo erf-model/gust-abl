@@ -485,8 +485,8 @@
 # canopy.heat_frozen = skip
 #     skip or blend; canopy.heat = fixed with simplec.theta = frozen only (refused otherwise). skip: the leaf heat
 #     is left out, with a warning. blend: in the canopy θ is set each iteration to θ_f + w(θ_l - θ_f), w = λ k/(ε +
-#     λ k), from the frozen θ_f (docs/canopy.rst). blend is refused with nest.names: a nest would blend the outer
-#     domain's blended θ again.
+#     λ k), from the frozen θ_f (docs/canopy.rst). blend is refused with nest.names and with init.first_guess =
+#     nest: a nest or a patch would blend the outer domain's or the parent run's θ again.
 
 # ==================================================================================================================
 # buildings
@@ -1016,10 +1016,12 @@
 #     steady column's θ with init.first_guess = column and a non-neutral init.column_stability) and is not solved
 #     (in a canopy with canopy.heat_frozen = blend, blended towards the leaves' θ, docs/canopy.rst); the momentum
 #     equations carry no buoyancy force, the closure keeps N^2 (docs/solution_algorithm.rst, prescribed potential
-#     temperature). Needs grid sequencing (steady.sequencing = 1, mesh.hierarchy_levels > 1) in the outer domain; a
-#     nest of nest.names holds the θ it starts from (the outer domain's, interpolated). Refused with steady.stage =
-#     simplec_newton and with io.restart. With frozen, theta in bc.rayleigh_fields and bc.zhi_theta_grad have no
-#     effect.
+#     temperature). Needs grid sequencing (steady.sequencing = 1, mesh.hierarchy_levels > 1) or init.first_guess =
+#     nest. A patch (init.first_guess = nest) holds the θ of its parent run (bc.nest_parent), interpolated, whether
+#     the parent solved θ or held it; a nest of nest.names holds the θ it starts from (the outer domain's,
+#     interpolated). Refused with steady.stage = simplec_newton, with io.restart, and in a patch with steady.stage =
+#     unsteady. With frozen, theta in bc.rayleigh_fields and bc.zhi_theta_grad have no effect, and in a patch with
+#     nest faces on its four sides bc.theta_profile is not used.
 
 # ==================================================================================================================
 # solver

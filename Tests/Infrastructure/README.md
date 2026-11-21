@@ -13,4 +13,5 @@ archives and the Kestrel scripts.
 | `Building_Field` | The building geometry from a height map: column volumes, wall mask, restart and refusals. |
 | `Reference_Archive` | `gust_refavg` end to end on copies of the smoke plotfile. |
 | `Case_Setup` | YAML case descriptions written by `tools/make_gust_case.py`, run through `run.sh` and checked against closed forms. |
+| `Library_Hill` | A hill sweep run through `run.sh`; wind libraries built from it are blended between directions and checked against the run in between. |
 | `Kestrel_Dryrun` | A dry run of the Kestrel submit and archive scripts with stub `module`/`sbatch`/`srun`. |

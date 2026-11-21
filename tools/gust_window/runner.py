@@ -9,7 +9,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from . import mapview  # noqa: F401  (pyqtgraph's white background)
 from .logparse import RESIDUALS, LogReader
-from .runplan import RunError, command, steps
+from .runplan import RunError, collect_library, command, steps
 
 STOP_GRACE_MS = 5000             # Stop: terminate (mpiexec passes it to the ranks), then kill after this
 
@@ -60,11 +60,13 @@ class RunPanel(QtWidgets.QWidget):
     def running(self):
         return self.process is not None
 
-    def start(self, case_dir, runs, gust, ranks, launcher):
-        """Run every step of the case written in ``case_dir`` with the executable ``gust``."""
+    def start(self, case_dir, runs, gust, ranks, launcher, skip_finished=True):
+        """Run every step of the case written in ``case_dir`` with the executable ``gust``; with ``skip_finished``
+        (run.resume) the directions that hold their answer are skipped, as run.sh skips them."""
         self.log.clear()
         self._gust, self._ranks, self._launcher = gust, ranks, launcher
-        self._steps = steps(case_dir, runs)
+        self._steps = steps(case_dir, runs, skip_finished, lambda text: self.log.appendPlainText("==== %s\n" % text))
+        self._case_dir = case_dir
         self._stopping = False
         self.stop_button.setEnabled(True)
         self._next(None)
@@ -73,9 +75,12 @@ class RunPanel(QtWidgets.QWidget):
         try:
             step = next(self._steps) if previous is None else self._steps.send(None)
         except StopIteration:
-            self._done(True, "All steps ended with status 0.")
+            note = collect_library(self._case_dir)
+            if note:
+                self.log.appendPlainText("==== %s\n" % note)
+            self._done(True, "All steps ended with status 0." + (" " + note if note else ""))
             return
-        except (RunError, OSError) as err:
+        except (RunError, OSError, ValueError) as err:
             self._done(False, str(err))
             return
         try:

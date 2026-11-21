@@ -167,6 +167,7 @@ set(CANOPY_CASE         ${CMAKE_CURRENT_SOURCE_DIR}/Infrastructure/Canopy_Field)
 set(REFAVG_CASE         ${CMAKE_CURRENT_SOURCE_DIR}/Infrastructure/Reference_Archive)
 set(KESTREL_CASE        ${CMAKE_CURRENT_SOURCE_DIR}/Infrastructure/Kestrel_Dryrun)
 set(CASE_SETUP_CASE     ${CMAKE_CURRENT_SOURCE_DIR}/Infrastructure/Case_Setup)
+set(LIBRARY_HILL_CASE   ${CMAKE_CURRENT_SOURCE_DIR}/Infrastructure/Library_Hill)
 set(MESH_CASE           ${CMAKE_CURRENT_SOURCE_DIR}/Discretization/Terrain_Mesh)
 set(HIERARCHY_CASE      ${CMAKE_CURRENT_SOURCE_DIR}/Discretization/Grid_Hierarchy)
 set(BC_CASE             ${CMAKE_CURRENT_SOURCE_DIR}/Discretization/Boundary_Fluxes)
@@ -1151,8 +1152,9 @@ gust_add_test(NAME abort_ri_gate_range NP 1 LABELS "regression;smoke"
               COMMAND $<TARGET_FILE:gust> ${HILL3D_NEUTRAL_CASE}/inputs_steady_hill3d_neutral
                       turb.ri_gate=2 ${GUST_TEST_AMREX_FLAGS})
 # simplec.theta: a bad value aborts naming the key; frozen aborts with the
-# Newton stage, with a restart and without grid sequencing. Frozen with a
-# stratified column first guess and with nests runs in rt_nests_flat_abl_*.
+# Newton stage, with a restart and without grid sequencing or a parent run.
+# Frozen with a stratified column first guess and with nests runs in
+# rt_nests_flat_abl_*; in a patch of a parent run, in rt_nest_faces_frozen.
 gust_add_test(NAME abort_simplec_theta_value NP 1 LABELS "regression;smoke"
               PREFIX ${EXPECT_ABORT} "simplec\\.theta = fixed: must be solve or frozen" --
               COMMAND $<TARGET_FILE:gust> ${HILL3D_NEUTRAL_CASE}/inputs_steady_hill3d_neutral
@@ -1630,6 +1632,78 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
                   PREFIX ${NESTF_CHECK} patch hill_parent_plt_final hill_zone 8 6 0.15 0.06 1e-8 1e-3 --
                   COMMAND $<TARGET_FILE:gust> ${NEST_FACES_CASE}/inputs_hill_patch bc.nest_relax_width=4
                           terrain.nest_blend_width=150 ${GUST_TEST_AMREX_FLAGS})
+    # simplec.theta = frozen in a patch (it holds the parent run's theta): a stably stratified hill parent with
+    # theta solved (300 K at the ground to 304 K at 800 m at the inflow; the hill bends the surfaces), then the
+    # patch for one iteration and to steady. check_nest_faces.py frozen lists the checks.
+    # The patch's own sounding differs from the parent's (310 K to 330 K): with nest faces on the four sides it is
+    # read and not used, and check 4 (theta against the parent's) says so.
+    set(NESTF_STABLE "bc.theta_profile_z=0. 800." "bc.theta_profile=300. 304.")
+    set(NESTF_OTHER "bc.theta_profile_z=0. 800." "bc.theta_profile=310. 330.")
+    gust_add_test(NAME rt_nest_faces_frozen_parent NP 2 LABELS "regression;smoke" RUN_DIR ${NESTF_DIR}
+                  FIXTURES_REQUIRED nest_faces_clean FIXTURES_SETUP nest_faces_frozen_parent
+                  PREFIX ${NESTF_CHECK} parent frozen_parent --
+                  COMMAND $<TARGET_FILE:gust> ${NEST_FACES_CASE}/inputs_hill_parent ${NESTF_STABLE}
+                          ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME rt_nest_faces_frozen NP 2 LABELS "regression;smoke" RUN_DIR ${NESTF_DIR}
+                  FIXTURES_REQUIRED nest_faces_frozen_parent FIXTURES_SETUP nest_faces_frozen_patch
+                  PREFIX ${NESTF_CHECK} frozen frozen_parent_plt_final frozen_patch 8 6 1e-10 0.01 0.15 0.06 --
+                  COMMAND $<TARGET_FILE:gust> ${NEST_FACES_CASE}/inputs_hill_patch_restart "mesh.max_grid_size=13 9"
+                          bc.nest_parent=frozen_parent_chk_final init.first_guess=nest ${NESTF_OTHER}
+                          ${GUST_TEST_AMREX_FLAGS})
+    # The leaves' blend in a patch with frozen theta: the parent run's theta would be blended again.
+    gust_add_test(NAME abort_nest_faces_frozen_canopy_blend NP 1 LABELS "regression;smoke" RUN_DIR ${NESTF_DIR}
+                  FIXTURES_REQUIRED nest_faces_frozen_parent
+                  PREFIX ${EXPECT_ABORT}
+                         "init\\.first_guess = nest is not supported with simplec\\.theta = frozen and canopy\\.heat_frozen = blend" --
+                  COMMAND $<TARGET_FILE:gust> ${NEST_FACES_CASE}/inputs_hill_patch_restart "mesh.max_grid_size=13 9"
+                          bc.nest_parent=frozen_parent_chk_final init.first_guess=nest ${NESTF_STABLE}
+                          steady.max_iterations=5 simplec.theta=frozen canopy.type=patches
+                          canopy.file=${NEST_FACES_CASE}/canopy_inside.txt canopy.heat=fixed canopy.leaf_theta=302
+                          canopy.heat_frozen=blend
+                          ${GUST_TEST_AMREX_FLAGS})
+    # A building in a patch with frozen theta (the two could not meet before: frozen theta needed grid sequencing,
+    # which buildings do not have): the run goes on, theta after 5 iterations is the one-iteration frozen patch's
+    # bit for bit, and buildings.theta_mode other than none is refused.
+    gust_add_test(NAME rt_nest_faces_frozen_building NP 2 LABELS "regression;smoke" RUN_DIR ${NESTF_DIR}
+                  FIXTURES_REQUIRED nest_faces_frozen_parent FIXTURES_SETUP nest_faces_frozen_building
+                  COMMAND $<TARGET_FILE:gust> ${NEST_FACES_CASE}/inputs_hill_patch_restart "mesh.max_grid_size=13 9"
+                          bc.nest_parent=frozen_parent_chk_final init.first_guess=nest ${NESTF_STABLE}
+                          steady.max_iterations=5 steady.sweep=zjacobi simplec.theta=frozen
+                          buildings.type=immersed_forcing buildings.format=xyz
+                          buildings.file=${NEST_FACES_CASE}/building_inside.txt io.plot_file=frozen_building_plt
+                          io.chk_file=frozen_building_chk ${GUST_TEST_AMREX_FLAGS})
+    set_tests_properties(rt_nest_faces_frozen_building PROPERTIES
+                         PASS_REGULAR_EXPRESSION "[1-9][0-9]* solid and [0-9]+ partial cells.*gust: wrote frozen_building_chk00005")
+    gust_add_test(NAME rt_nest_faces_frozen_building_theta NP 1 LABELS "regression;smoke" RUN_DIR ${NESTF_DIR}
+                  FIXTURES_REQUIRED "nest_faces_frozen_patch;nest_faces_frozen_building"
+                  COMMAND ${NESTF_CHECK} same theta frozen_building_plt00005 frozen_patch_one_plt_final)
+    gust_add_test(NAME abort_nest_faces_frozen_building_theta NP 1 LABELS "regression;smoke" RUN_DIR ${NESTF_DIR}
+                  FIXTURES_REQUIRED nest_faces_frozen_parent
+                  PREFIX ${EXPECT_ABORT} "buildings\\.theta_mode = ambient has no effect with simplec\\.theta = frozen" --
+                  COMMAND $<TARGET_FILE:gust> ${NEST_FACES_CASE}/inputs_hill_patch_restart "mesh.max_grid_size=13 9"
+                          bc.nest_parent=frozen_parent_chk_final init.first_guess=nest ${NESTF_STABLE}
+                          steady.max_iterations=5 steady.sweep=zjacobi simplec.theta=frozen
+                          buildings.type=immersed_forcing buildings.format=xyz
+                          buildings.file=${NEST_FACES_CASE}/building_inside.txt buildings.theta_mode=ambient
+                          ${GUST_TEST_AMREX_FLAGS})
+    # An inflow face on xlo and an outflow face on xhi (nest faces on ylo and yhi): the interior still holds the
+    # parent's theta (only the inflow face's ghost cells take bc.theta_profile's).
+    gust_add_test(NAME rt_nest_faces_frozen_inflow NP 2 LABELS "regression;smoke" RUN_DIR ${NESTF_DIR}
+                  FIXTURES_REQUIRED nest_faces_frozen_parent FIXTURES_SETUP nest_faces_frozen_inflow
+                  COMMAND $<TARGET_FILE:gust> ${NEST_FACES_CASE}/inputs_hill_patch_inflow "mesh.max_grid_size=13 9"
+                          bc.nest_parent=frozen_parent_chk_final init.first_guess=nest ${NESTF_STABLE}
+                          steady.max_iterations=20 simplec.theta=frozen io.plot_file=frozen_inflow_plt
+                          io.chk_file=frozen_inflow_chk ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME rt_nest_faces_frozen_inflow_theta NP 1 LABELS "regression;smoke" RUN_DIR ${NESTF_DIR}
+                  FIXTURES_REQUIRED "nest_faces_frozen_patch;nest_faces_frozen_inflow"
+                  COMMAND ${NESTF_CHECK} same theta frozen_inflow_plt00020 frozen_patch_one_plt_final)
+    # steady.stage = unsteady with frozen theta in a patch is refused (not tested).
+    gust_add_test(NAME abort_nest_faces_frozen_unsteady NP 1 LABELS "regression;smoke" RUN_DIR ${NESTF_DIR}
+                  PREFIX ${EXPECT_ABORT}
+                         "simplec\\.theta = frozen is not supported with steady\\.stage = unsteady and init\\.first_guess = nest" --
+                  COMMAND $<TARGET_FILE:gust> ${UNSTEADY_DECK} unsteady.dt=60 unsteady.stop_time=600
+                          io.write_checkpoint=0 init.first_guess=nest bc.nest_parent=frozen_parent_chk_final
+                          simplec.theta=frozen ${GUST_TEST_AMREX_FLAGS})
     set(NESTF_RESTART $<TARGET_FILE:gust> ${NEST_FACES_CASE}/inputs_hill_patch_restart "mesh.max_grid_size=13 9"
                       io.plot_file=hill_restart_plt io.chk_file=hill_restart_chk)
     foreach(pair a b)
@@ -3142,6 +3216,10 @@ if(NOT WIN32)
              COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/Real_Terrain/WindNinja2019/test_timed_run.sh)
     set_tests_properties(wn2019_timed_run PROPERTIES LABELS unit)
 endif()
+# The terrain and roughness converter of Tests/Real_Terrain/Bolund_Terrain_Files on small made-up grids.
+add_test(NAME rt_bolund_files_converter
+         COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/Real_Terrain/Bolund_Terrain_Files/to_gust_xyz.py selftest)
+set_tests_properties(rt_bolund_files_converter PROPERTIES LABELS unit)
 
 # The plotfile reader of the check scripts (extern_erf/erf_plotfile.py, a
 # local change): hand-made one-box plotfiles in float and double, little- and
@@ -3217,6 +3295,23 @@ if(_gust_case_python EQUAL 0)
              COMMAND ${Python3_EXECUTABLE} -m unittest -v test_gust_case
              WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/tools)
     set_tests_properties(gust_case_selftest PROPERTIES LABELS unit ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
+    # The wind library (tools/make_gust_library.py, tools/gust_library/) on plotfiles written in the test.
+    add_test(NAME gust_library_selftest
+             COMMAND ${Python3_EXECUTABLE} -m unittest -v test_gust_library
+             WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/tools)
+    set_tests_properties(gust_library_selftest PROPERTIES LABELS unit ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
+    # Resumable sweeps: run.sh and the window skip a finished direction (tools/gust_case/resume.py), with a fake
+    # gust; the run.sh tests skip on Windows.
+    add_test(NAME gust_resume_selftest
+             COMMAND ${Python3_EXECUTABLE} -m unittest -v test_gust_resume
+             WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/tools)
+    set_tests_properties(gust_resume_selftest PROPERTIES LABELS unit ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
+    # Upstream roughness per wind direction from a regional map (tools/gust_case/fetch.py,
+    # wind.upstream_roughness = auto) on maps made in the test.
+    add_test(NAME gust_fetch_selftest
+             COMMAND ${Python3_EXECUTABLE} -m unittest -v test_gust_fetch
+             WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/tools)
+    set_tests_properties(gust_fetch_selftest PROPERTIES LABELS unit ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
     # The terrain download (tools/fetch_terrain.py) on tiles made in the test: no network.
     add_test(NAME gust_dem_selftest
              COMMAND ${Python3_EXECUTABLE} -m unittest -v test_gust_dem
@@ -3244,18 +3339,30 @@ if(_gust_case_python EQUAL 0)
             string(JOIN " " _case_launch ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2 ${MPIEXEC_PREFLAGS}
                    ${GUST_MPIEXEC_PREFLAGS})
         endif()
-        foreach(case IN ITEMS flat_sweep flat_nest column_target column_axis hill)
+        foreach(case IN ITEMS flat_sweep flat_nest column_target column_axis hill upstream)
             set(_case_dir ${CMAKE_CURRENT_BINARY_DIR}/run/rt_case_setup_${case})
             file(MAKE_DIRECTORY ${_case_dir})
             add_test(NAME rt_case_setup_${case}
                      COMMAND ${Python3_EXECUTABLE} ${CASE_SETUP_CASE}/check_case_setup.py ${case}
-                             --gust $<TARGET_FILE:gust> --mpi "${_case_launch}" -- ${GUST_TEST_AMREX_FLAGS}
+                             --gust $<TARGET_FILE:gust> --mpi "${_case_launch}" --precision ${GUST_PRECISION}
+                             -- ${GUST_TEST_AMREX_FLAGS}
                      WORKING_DIRECTORY ${_case_dir})
             set_tests_properties(rt_case_setup_${case} PROPERTIES LABELS "regression;smoke" PROCESSORS 2
                                  ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
         endforeach()
+        # A wind library from a hill sweep: the blend at 270 of the 260 and 280 runs against the 270 run;
+        # Tests/Infrastructure/Library_Hill/README.md.
+        set(_case_dir ${CMAKE_CURRENT_BINARY_DIR}/run/rt_library_hill)
+        file(MAKE_DIRECTORY ${_case_dir})
+        add_test(NAME rt_library_hill
+                 COMMAND ${Python3_EXECUTABLE} ${LIBRARY_HILL_CASE}/check_library_hill.py
+                         --gust $<TARGET_FILE:gust> --mpi "${_case_launch}" -- ${GUST_TEST_AMREX_FLAGS}
+                 WORKING_DIRECTORY ${_case_dir})
+        set_tests_properties(rt_library_hill PROPERTIES LABELS regression PROCESSORS 2
+                             ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
     endif()
 else()
     message(STATUS "GUST: PyYAML or numpy not found for ${Python3_EXECUTABLE}; "
-                   "gust_case_selftest and rt_case_setup_* are not registered")
+                   "gust_case_selftest, gust_library_selftest, gust_resume_selftest, gust_fetch_selftest, rt_case_setup_* and "
+                   "rt_library_hill are not registered")
 endif()

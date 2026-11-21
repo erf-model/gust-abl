@@ -170,7 +170,8 @@ std::string run_domain (const DomainRole& role)
                              "solves theta)");
         }
         if (simplec.theta_frozen && !in.io.restart.empty()) {
-            err.emplace_back("simplec.theta = frozen is not supported with io.restart (theta is held at the first guess)");
+            err.emplace_back("simplec.theta = frozen is not supported with io.restart (theta is held at the first guess; restart with "
+                             "simplec.theta = solve, or start again from the first guess)");
         }
         if (newton) {
             newton_opt = read_newton_stage_options(sopt, copt);
@@ -352,6 +353,19 @@ std::string run_domain (const DomainRole& role)
     const bool nest_guess = iopt.first_guess == InitOptions::FirstGuess::nest;
     const bool nest_face = has_nest_face(bin);
     for (auto& e : check_nest_run(bin, in, nest_guess, solve && seq.enabled)) { err.push_back(std::move(e)); }
+    // A patch's frozen theta is the parent run's, which may already carry the leaves' heat; the patch's stage would
+    // then blend it again (the same reason as for nest.names, below).
+    if (solve && nest == nullptr && nest_guess && simplec.theta_frozen && canopy_opt.active() && canopy_opt.heat.on()
+        && canopy_opt.heat.frozen == CanopyFrozenHeat::blend) {
+        err.emplace_back("init.first_guess = nest is not supported with simplec.theta = frozen and canopy.heat_frozen = "
+                         "blend (the parent run's theta may already carry the leaves' heat, and the patch would blend it again; "
+                         "use canopy.heat_frozen = skip)");
+    }
+    // Frozen theta met the unsteady stage nowhere before (it needed grid sequencing, which that stage refuses).
+    if (solve && nest == nullptr && nest_guess && simplec.theta_frozen && unsteady) {
+        err.emplace_back("simplec.theta = frozen is not supported with steady.stage = unsteady and init.first_guess = nest "
+                         "(a held theta in an unsteady patch is not tested)");
+    }
     for (const auto& e : check_column_guess(iopt, sopt, fopt, bin, surf, surface_layer)) { err.push_back(e); }
     if (nest == nullptr && amrex::ParmParse("io").contains("column_guess_file") && iopt.first_guess != InitOptions::FirstGuess::column) {
         err.emplace_back("io.column_guess_file has no effect without init.first_guess = column");
@@ -496,11 +510,13 @@ std::string run_domain (const DomainRole& role)
     const amrex::BoxArray ba = hierarchy_box_array(in.mesh);
     // Grid sequencing runs the coarse levels on a fresh start only.
     const bool sequencing = solve && seq.enabled && in.io.restart.empty();
-    // A nest holds theta at its start, the parent's frozen theta interpolated (init.first_guess = nest).
-    if (simplec.theta_frozen && nest == nullptr && !(sequencing && in.mesh.hierarchy_levels > 1)) {
+    // A nest holds theta at its start: a joint run's nest the outer domain's frozen theta, interpolated; a patch
+    // that starts from a parent run (init.first_guess = nest) that run's theta, interpolated, whether the parent
+    // solved theta or held it.
+    if (simplec.theta_frozen && nest == nullptr && !nest_guess && !(sequencing && in.mesh.hierarchy_levels > 1)) {
         amrex::Abort(invalid + "\n  simplec.theta = frozen needs grid sequencing (steady.sequencing = 1, "
                      "mesh.hierarchy_levels > 1): the frozen theta is set from the inflow profile (or the stratified "
-                     "column) on the sequenced levels");
+                     "column) on the sequenced levels; or init.first_guess = nest: theta is held at the parent run's");
     }
     if (solve && sopt.sweep == SweepKind::lusgs) {
         // The overlap against the layout (LineSweeps.H), before any work;
@@ -592,9 +608,9 @@ std::string run_domain (const DomainRole& role)
                                << (buildings_opt.wall_speed == BuildingWallSpeed::open_faces ? "open_faces" : "all_faces");
             }
             amrex::Print() << ", buildings.wall_tke = " << (buildings_opt.wall_tke ? "on" : "off");
-            // theta's terms act where theta is solved: with simplec.theta = frozen it is data. (Not reached
-            // today: frozen theta needs mesh.hierarchy_levels > 1 and buildings need 1. The guards here, in
-            // building_heat below and in SimplecStage::compute_norms are for when buildings run on levels.)
+            // theta's terms act where theta is solved: with simplec.theta = frozen it is data. (Reached in
+            // a patch of a parent run, init.first_guess = nest: rt_nest_faces_frozen_building. The guards here, in
+            // building_heat below and in SimplecStage::compute_norms also serve buildings on sequenced levels.)
             const bool heat = buildings_opt.theta_mode != BuildingThetaMode::none && !simplec.theta_frozen;
             amrex::Print() << ", buildings.theta_mode = "
                            << (!heat ? "none" : buildings_opt.theta_mode == BuildingThetaMode::fixed ? "fixed" : "ambient");
@@ -775,6 +791,15 @@ std::string run_domain (const DomainRole& role)
             zero_ground_flux(state, mesh, geom);   // the patch's ground carries no flux, as in first_guess_state
             const InitResult r = correct_initial_state(iopt, bin, popt, mesh, geom, state);
             print_initializer(r, iopt, popt, "");
+            if (simplec.theta_frozen && nest == nullptr) {
+                // The patch of a parent run: the line the sequenced levels print (reset_frozen_theta, Sequencing.cpp).
+                const amrex::Real tmin = state.theta.min(0), tmax = state.theta.max(0);
+                const double tmean = static_cast<double>(state.theta.sum(0)) / static_cast<double>(ba.numPts());
+                char tl[200];
+                std::snprintf(tl, sizeof(tl), "gust: theta frozen at the parent run's theta (bc.nest_parent), interpolated: "
+                              "min %.15e, max %.15e, mean %.6f K", static_cast<double>(tmin), static_cast<double>(tmax), tmean);
+                amrex::Print() << tl << "\n";
+            }
         } else if (initialize && !sequencing) {
             const InitResult r = initialize_state(iopt, bin, popt, mesh, geom, state, nullptr, fopt.coriolis, column.get(),
                                                   column_sets_theta(iopt, surf));

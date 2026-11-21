@@ -10,6 +10,7 @@ Tests/Real_Terrain/Askervein_CNBL).
 """
 import contextlib
 import io
+import json
 import math
 import os
 import re
@@ -20,6 +21,7 @@ import unittest
 from unittest import mock
 
 import numpy as np
+import yaml
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
@@ -27,8 +29,8 @@ sys.path.insert(0, HERE)
 
 import make_gust_case  # noqa: E402
 import tiff_to_xyz  # noqa: E402
-from gust_case import CaseError, apply_override, build, key_table_rst, resolve, validate  # noqa: E402
-from gust_case import atmosphere, geo, grid, roughness, schema, terrain, wind  # noqa: E402
+from gust_case import CaseError, apply_override, build, key_reference_yaml, key_table_rst, resolve, validate  # noqa: E402
+from gust_case import atmosphere, geo, grid, library, roughness, schema, terrain, wind  # noqa: E402
 from gust_case.deck import Deck, format_value, read_deck  # noqa: E402
 
 
@@ -555,6 +557,31 @@ class SchemaTests(CaseDir):
             self.assertEqual(handle.read(), key_table_rst(),
                              "docs/case_setup_keys.inc is not what tools/make_gust_case.py --write-key-table writes")
 
+    def test_yaml_reference_is_current(self):
+        path = os.path.join(REPO, "Tests", "inputs_yaml_reference")
+        with open(path, encoding="utf-8") as handle:
+            self.assertEqual(handle.read(), key_reference_yaml(), "Tests/inputs_yaml_reference is not what "
+                             "tools/make_gust_case.py --write-yaml-reference writes")
+
+    def test_yaml_reference_uncommented_is_yaml_with_every_key_and_default(self):
+        lines = key_reference_yaml().splitlines(True)
+        self.assertTrue(all(line.startswith("#") or not line.strip() for line in lines))
+        data = yaml.safe_load("".join(line[2:] if line.startswith("# ") else line for line in lines))
+        for name, key in schema.iter_keys():
+            node = data
+            for part in name.split("."):
+                node = node[part[:-2]][0] if part.endswith("[]") else node[part]
+            if key.required or key.default is None:
+                self.assertIsNone(node, name)
+            elif key.default == "":
+                self.assertEqual(node, "", name)
+            elif isinstance(key.default, str) and not isinstance(node, str):
+                self.assertEqual(" ".join("%g" % v for v in (node if isinstance(node, list) else [node])),
+                                 key.default, name)
+            else:
+                self.assertEqual(node, list(key.default) if isinstance(key.default, tuple) else key.default, name)
+        self.assertEqual(sorted(data), sorted(schema.SPEC))
+
 
 class PlanTests(CaseDir):
     def test_cross_key_refusals_name_their_keys(self):
@@ -676,7 +703,7 @@ class BuilderTests(CaseDir):
         self.assertEqual(deck["forcing.gravity"], ["0."])
         self.assertNotIn("convection.hybrid_height", deck)       # no blend over flat ground
         self.assertEqual(sorted(os.listdir(result.case_dir)),
-                         [".gust_case_files", "case_resolved.yaml", "case_summary.txt", "inputs", "run.sh"])
+                         [".gust_case_data", ".gust_case_files", "case_resolved.yaml", "case_summary.txt", "inputs", "run.sh"])
         self.assertTrue(os.access(os.path.join(result.case_dir, "run.sh"), os.X_OK))
 
     def test_tool_decks_check_clean(self):
@@ -987,6 +1014,224 @@ class CommandLineTests(CaseDir):
         self.assertEqual(status, 0)
         for name, _ in schema.iter_keys():
             self.assertIn(name, out)
+
+
+class LibraryTests(CaseDir):
+    """library.json from the column runs (make_gust_case.py --collect). The column outputs are written here
+    with a profile linear in ln((z + z0) / z0) in u and v, W(z) = c1 L(z) + c2, so the wind at any height has a
+    closed form; c2 != 0 makes the direction turn with height."""
+
+    Z0, HEIGHT = 0.03, 10.0
+    L10 = math.log((HEIGHT + Z0) / Z0)
+    C1, C2 = complex(0.4 / L10, -8.0 / L10), complex(-0.4, 0.0)  # W(10 m) = (0, -8): 8 m/s from 0 degrees (north)
+    G = complex(-4.0, -11.0)                                     # the column's geostrophic wind for the wind from 0
+    LEVELS = (2.0, 6.0, 12.0, 30.0, 200.0, 1500.0)
+
+    def W(self, z, turn):
+        L = math.log((z + self.Z0) / self.Z0)
+        return (self.C1 * L + self.C2) * complex(math.cos(math.radians(turn)), math.sin(math.radians(turn)))
+
+    def write_column(self, folder, turn, ustar=0.4, adjusted=True, inv_L=0.0, heat_flux=0.0, scale=1.0, row=None):
+        column = os.path.join(folder, "column")
+        os.makedirs(column, exist_ok=True)
+        with open(os.path.join(column, "column_guess.dat"), "w", encoding="utf-8") as out:
+            out.write("# the converged column (init.first_guess = column): z u v theta k; u* %.6e m/s, 12 steps; "
+                      "surface heat flux %.6e K m/s, 1/L %.6e 1/m, surface theta 300.000000 K\n"
+                      % (ustar, heat_flux, inv_L))
+            out.write("0 0 0 300 0.1\n")
+            for z in self.LEVELS:
+                w = self.W(z, turn) * scale
+                out.write("%.17g %.17g %.17g 300 0.1\n" % (z, w.real, w.imag))
+            if row is not None:
+                out.write(row)
+        g = self.G * complex(math.cos(math.radians(turn)), math.sin(math.radians(turn)))
+        with open(os.path.join(column, "log.txt"), "w", encoding="utf-8") as out:
+            if adjusted:
+                # GUST prints G to 6 digits in this line and to 9 in the restart lines below it (App.cpp)
+                out.write("gust: column guess: target wind reached after 3 forcing adjustments; the run takes geostrophic "
+                          "wind (%.6g, %.6g) m/s and pressure gradient (0, 0) m/s^2\n" % (g.real, g.imag))
+                out.write("gust: column guess: a restart from this run's checkpoints needs these inputs in place of the "
+                          "init.* keys:\n  forcing.ug = %.9g\n  forcing.vg = %.9g\n" % (g.real, g.imag))
+            else:
+                out.write("gust: an unfinished column run\n  forcing.ug = 1\n  forcing.vg = 2\n")
+        return g
+
+    def sweep(self, directions=(0.0, 135.0), latitude=45.0, overwrite=False):
+        raw = changed(base_case(), wind__direction=None,
+                      wind__directions=list(directions) if isinstance(directions, (list, tuple)) else directions,
+                      wind__drive="geostrophic_column", atmosphere={"latitude": latitude})
+        return self.build(raw, overwrite=overwrite).case_dir
+
+    def one(self, **write):
+        """A one-direction sweep (from 0) with its column written; returns (case folder, its library entry)."""
+        case_dir = self.sweep(directions=[0.0], overwrite=True)
+        self.write_column(os.path.join(case_dir, "dir_000"), 0.0, **write)
+        return case_dir, library.collect(case_dir)["directions"][0]
+
+    def test_wind_at_height_g_and_turning_closed_form(self):
+        case_dir = self.sweep(directions=[0.0, 135.0])
+        # from 135 the flow turns by towards(135) - towards(0) = 135 - 270 = -135 degrees
+        for direction, turn in ((0.0, 0.0), (135.0, -135.0)):
+            self.write_column(os.path.join(case_dir, "dir_" + wind.direction_label(direction)), turn)
+        lib = library.collect(case_dir)
+        w10 = self.W(self.HEIGHT, 0.0)
+        self.assertAlmostEqual(abs(w10 - complex(0.0, -8.0)), 0.0, places=12)
+        # by hand: W(10 m) points to -y, G to (-4, -11): G is atan(4/11) clockwise of it
+        turning = -math.degrees(math.atan2(4.0, 11.0))
+        # the surface stress: the wind at the first centre (2 m), W(2) = c1 L(2) + c2
+        w2 = self.W(2.0, 0.0)
+        stress = math.degrees(math.atan2(self.G.imag, self.G.real) - math.atan2(w2.imag, w2.real))
+        for e, direction, turn in zip(lib["directions"], (0.0, 135.0), (0.0, -135.0)):
+            g = self.G * complex(math.cos(math.radians(turn)), math.sin(math.radians(turn)))
+            self.assertEqual(e["direction"], direction)
+            self.assertAlmostEqual(e["wind_at_height"]["speed"], 8.0, places=12)
+            self.assertAlmostEqual(library._angle(e["wind_at_height"]["direction"] - direction), 0.0, places=9)
+            self.assertAlmostEqual(e["geostrophic_wind"]["ug"], g.real, delta=1.0e-8 * abs(g))   # the 9 digits
+            self.assertAlmostEqual(e["geostrophic_wind"]["speed"], abs(self.G), delta=1.0e-8 * abs(self.G))
+            self.assertAlmostEqual(e["turning_deg"], turning, delta=1.0e-6)
+            self.assertAlmostEqual(e["turning_from_stress_deg"], library._angle(stress), delta=1.0e-6)
+            self.assertTrue(e["geostrophic_wind"]["adjusted_by_column"])
+            self.assertEqual((e["roughness"], e["latitude"]), (0.03, 45.0))     # from the column deck
+        # G from 0 points to (-4, -11): it comes from 20.0 degrees clockwise of north (east of north)
+        self.assertAlmostEqual(lib["directions"][0]["geostrophic_wind"]["direction"],
+                               math.degrees(math.atan2(4.0, 11.0)), places=6)
+        self.assertEqual([e["folder"] for e in lib["directions"]], ["dir_000", "dir_135"])
+
+    def test_below_the_first_cell_centre_the_log_law(self):
+        rows = [[0.0, 0, 0, 300, 0.1]] + [[z, self.W(z, 0).real, self.W(z, 0).imag, 300, 0.1] for z in self.LEVELS]
+        # GUST's wind_at below zc[0] (neutral): W(z1) ln((z + z0)/z0) / ln((z1 + z0)/z0)
+        f = math.log((1.0 + self.Z0) / self.Z0) / math.log((2.0 + self.Z0) / self.Z0)
+        u, v = library.wind_at_height(rows, 1.0, self.Z0)
+        self.assertAlmostEqual(u, f * self.W(2.0, 0).real, places=12)
+        self.assertAlmostEqual(v, f * self.W(2.0, 0).imag, places=12)
+        with self.assertRaisesRegex(CaseError, "stratified"):           # psi_m is not evaluated here
+            library.wind_at_height(rows, 1.0, self.Z0, inv_L=0.01)
+        u, v = library.wind_at_height(rows, 12.0, self.Z0, inv_L=0.01)  # a level: no psi_m needed above z1
+        self.assertAlmostEqual(complex(u, v), self.W(12.0, 0), places=12)
+        for height in (0.0, 1600.0):
+            with self.assertRaisesRegex(CaseError, "outside"):
+                library.wind_at_height(rows, height, self.Z0)
+
+    def test_drag_law_numbers_for_the_columns_ustar(self):
+        d = self.one(ustar=0.4)[1]["drag_law"]
+        # by hand: f = 2 (2 pi / 86400) sin 45, G = u*/kappa sqrt((ln(u*/(f z0)) - 1.8)^2 + 4.5^2)
+        self.assertAlmostEqual(d["speed"], 10.673988565180437, places=9)
+        self.assertAlmostEqual(d["turning_deg"], -24.28671580017051, places=9)   # clockwise in the north
+
+    def test_stratified_column_has_no_drag_law(self):
+        for header in ({"inv_L": 0.004}, {"heat_flux": -0.01}):
+            e = self.one(**header)[1]
+            self.assertIsNone(e["drag_law"])
+            self.assertIsNotNone(e["turning_deg"])
+
+    def test_southern_hemisphere_turns_the_other_way(self):
+        case_dir = self.sweep(directions=[0.0], latitude=-30.0)
+        self.write_column(os.path.join(case_dir, "dir_000"), 0.0)
+        self.assertGreater(library.collect(case_dir)["directions"][0]["drag_law"]["turning_deg"], 0.0)
+
+    def test_latitude_from_center_lat_lon(self):
+        # atmosphere.latitude left out: the case tool takes domain.center_lat_lon's, and so must the library
+        raw = changed(base_case(), wind__direction=None, wind__directions=[0.0], wind__drive="geostrophic_column",
+                      domain__center_lat_lon=[40.0, -105.0])
+        case_dir = self.build(raw).case_dir
+        self.write_column(os.path.join(case_dir, "dir_000"), 0.0)
+        e = library.collect(case_dir)["directions"][0]
+        self.assertEqual(e["latitude"], 40.0)
+        self.assertIsNotNone(e["drag_law"])
+
+    def test_start_stop_step_folders_and_single_direction(self):
+        case_dir = self.sweep(directions={"start": 0.0, "stop": 45.0, "step": 22.5})
+        for d in (0.0, 22.5, 45.0):
+            self.write_column(os.path.join(case_dir, "dir_" + wind.direction_label(d)), -d)
+        lib = library.collect(case_dir)
+        self.assertEqual([e["folder"] for e in lib["directions"]], ["dir_000", "dir_022p5", "dir_045"])
+        self.assertEqual([e["direction"] for e in lib["directions"]], [0.0, 22.5, 45.0])
+        raw = changed(base_case(), wind__direction=0.0, wind__drive="geostrophic_column", atmosphere={"latitude": 45.0},
+                      case__name="single")
+        single = self.build(raw).case_dir
+        self.write_column(single, 0.0)
+        e = library.collect(single)["directions"][0]
+        self.assertEqual((e["folder"], e["direction"]), (".", 0.0))
+        self.assertAlmostEqual(e["turning_deg"], -math.degrees(math.atan2(4.0, 11.0)), delta=1.0e-6)
+
+    def test_given_geostrophic_wind_read_from_the_column_deck(self):
+        raw = changed(base_case(), wind__drive="geostrophic_column", wind__speed=None, wind__height=None,
+                      atmosphere={"latitude": 45.0, "geostrophic_wind": [3.0, -9.0]})
+        case_dir = self.build(raw).case_dir
+        self.write_column(case_dir, 0.0, adjusted=False)
+        e = library.collect(case_dir)["directions"][0]
+        self.assertEqual((e["folder"], e["geostrophic_wind"]["ug"], e["geostrophic_wind"]["vg"]), (".", 3.0, -9.0))
+        self.assertFalse(e["geostrophic_wind"]["adjusted_by_column"])
+        self.assertIsNone(e["wind_at_height"])                           # no wind.height: no reference wind
+        self.assertIsNone(e["turning_deg"])
+
+    def test_write_replaces_the_summary_section(self):
+        case_dir = self.one()[0]
+        summary = os.path.join(case_dir, "case_summary.txt")
+        with open(summary, "a", encoding="utf-8") as out:                # a mention inside a line is not the section
+            out.write("note: see %s after run.sh\n" % library.SUMMARY_MARK)
+        for _ in range(2):
+            library.write(case_dir, library.collect(case_dir))
+        with open(summary, encoding="utf-8") as fh:
+            text = fh.read()
+        self.assertEqual(text.count("\n" + library.SUMMARY_MARK + "\n"), 1)
+        self.assertIn("note: see %s after run.sh\n" % library.SUMMARY_MARK, text)
+        self.assertTrue(text.startswith("Case t"))                     # the build's summary is kept
+        with open(os.path.join(case_dir, "library.json"), encoding="utf-8") as fh:
+            self.assertEqual(json.load(fh)["format_version"], 1)
+
+    def test_refusals(self):
+        case_dir = self.sweep(directions=[0.0])
+        folder = os.path.join(case_dir, "dir_000")
+        with self.assertRaisesRegex(CaseError, "run run.sh first"):      # not run yet
+            library.collect(case_dir)
+        for write, why in (({"adjusted": False}, "target wind reached"),    # an unfinished column: not the deck's G
+                           ({"scale": 1.01}, "not the 8 m/s"),               # a table from another run
+                           ({"row": "2000 nan 0 300 0.1\n"}, "not finite"),
+                           ({"row": "1500 1 0 300 0.1\n"}, "do not increase"),
+                           ({"row": "2000 1 0\n"}, "expected 5")):
+            self.write_column(folder, 0.0, **write)
+            with self.assertRaisesRegex(CaseError, why):
+                library.collect(case_dir)
+        self.write_column(folder, 0.0)
+        with self.assertRaises(ValueError):                              # NaN never reaches the json
+            library.write(case_dir, {"x": float("nan")})
+        flat = self.build(changed(base_case(), case__name="inflow")).case_dir
+        with self.assertRaisesRegex(CaseError, "no column run"):
+            library.collect(flat)
+
+    def test_run_script_collects_for_geostrophic_drives_only(self):
+        with open(os.path.join(self.sweep(), "run.sh"), encoding="utf-8") as fh:
+            script = fh.read()
+        self.assertIn('--collect . --quiet || echo', script)               # a failed collect leaves the runs' status
+        self.assertLess(script.index("dir_135"), script.index("--collect"))   # after the last run
+        self.assertLess(script.index("rm -f library.json"), script.index("dir_000"))   # the old one goes first
+        with open(os.path.join(self.build(changed(base_case(), case__name="inflow")).case_dir, "run.sh"),
+                  encoding="utf-8") as fh:
+            self.assertNotIn("library.json", fh.read())
+
+    def test_overwrite_removes_the_previous_library(self):
+        case_dir = self.one()[0]
+        library.write(case_dir, library.collect(case_dir))
+        raw = changed(base_case(), wind__direction=None, wind__directions=[0.0], wind__drive="geostrophic_column",
+                      atmosphere={"latitude": 45.0})
+        self.build(raw, overwrite=True)
+        self.assertFalse(os.path.exists(os.path.join(case_dir, "library.json")))
+
+    def test_command_line_collect(self):
+        case_dir = self.one()[0]
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            status = make_gust_case.main(["--collect", case_dir])
+        self.assertEqual((status, err.getvalue()), (0, ""))
+        self.assertIn(library.SUMMARY_MARK, out.getvalue())
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+            self.assertEqual(make_gust_case.main(["--collect", self.dir]), 2)   # not a case folder
+        for extra in (["case.yaml"], ["--overwrite"], ["--speed", "8"]):
+            with contextlib.redirect_stderr(io.StringIO()) as e, self.assertRaises(SystemExit) as caught:
+                make_gust_case.main(["--collect", case_dir] + extra)
+            self.assertEqual(caught.exception.code, 2)
+            self.assertIn("not with", e.getvalue())
 
 
 if __name__ == "__main__":

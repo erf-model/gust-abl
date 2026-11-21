@@ -127,6 +127,11 @@ class CanopyChecker(Checker):
                 self.error("nest.names", "GUST stops: nest.names is not supported with simplec.theta = frozen and "
                                          "canopy.heat_frozen = blend (a nest would blend the outer domain's blended "
                                          "theta again).", "Set canopy.heat_frozen = skip, or remove the nests.")
+            elif c.theta_frozen and c.s("canopy.heat_frozen") == "blend" and c.first_guess == "nest":
+                self.error("canopy.heat_frozen", "GUST stops: init.first_guess = nest is not supported with "
+                                                 "simplec.theta = frozen and canopy.heat_frozen = blend (the parent "
+                                                 "run's theta may already carry the leaves' heat).",
+                           "Set canopy.heat_frozen = skip.")
         if kind == "patches":
             if not c.s("canopy.file"):
                 self.error("canopy.file", "GUST stops: canopy.type = patches needs canopy.file.",

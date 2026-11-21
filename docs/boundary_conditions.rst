@@ -318,7 +318,9 @@ One face may hold parts where the parent's flow enters and parts where it leaves
 from the parent's field (``init.first_guess = nest``) or from a restart, and is refused with grid sequencing. A nest
 face may be combined with ``periodic`` and ``outflow`` faces; with an ``inflow`` face only if there is an
 ``outflow`` face as well. A lateral wall beside a nest face is refused: the parent's flow crosses that face, and the
-first guess is the parent's field.
+first guess is the parent's field. With ``simplec.theta = frozen`` the patch holds the parent's :math:`\theta`, as
+interpolated at the start (:doc:`solution_algorithm`, prescribed potential temperature); the nest faces' ghost layers
+hold the parent's :math:`\theta` as before.
 
 **Net flux.** With zero-gradient :math:`p'` on every face, the pressure correction can remove a divergence only if the
 flux through the boundary has no net. The parent conserves mass on its own cells, not on the patch's faces after

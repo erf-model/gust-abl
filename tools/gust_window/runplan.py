@@ -11,6 +11,7 @@ import shlex
 import shutil
 import sys
 
+from gust_case import library, resume
 from gust_case.builder import COLUMN_TABLE
 
 from .logparse import column_wind
@@ -48,10 +49,22 @@ def newest_checkpoint(folder, prefix, since=None):
     return best
 
 
-def steps(case_dir, runs):
-    """Yield the Steps of the case written in ``case_dir``; ``runs`` is the builder's Result.runs."""
+def steps(case_dir, runs, skip_finished=True, note=None):
+    """Yield the Steps of the case written in ``case_dir``; ``runs`` is the builder's Result.runs. With
+    ``skip_finished`` (run.resume) a direction that holds its answer for the current decks is skipped, as run.sh
+    skips it (gust_case/resume.py), and ``note`` (a callable) gets a line saying so."""
     for run in runs:
         base = os.path.normpath(os.path.join(case_dir, run["dir"]))
+        if skip_finished and resume.finished(base, run):
+            if note is not None:
+                note("%s: finished earlier with these decks and data files, skipped (run.resume = false runs it again)" % run["label"])
+            continue
+        try:
+            resume.start(base, run)
+        except FileNotFoundError as err:          # a deck of the direction is missing
+            raise RunError("%s: %s; write the case again" % (run["label"], err))
+        except OSError as err:                    # an old log held open by another program
+            raise RunError("%s: %s" % (run["label"], err))
         extra = []
         if run["column"]:
             yield Step("%s: column" % run["label"], os.path.join(base, "column"), ["inputs"])
@@ -78,6 +91,19 @@ def steps(case_dir, runs):
             for patch in run["patches"]:
                 yield Step("%s: patch %s" % (run["label"], patch), os.path.join(base, "nest_" + patch),
                            ["inputs", "bc.nest_parent=../%s" % parent] + extra)
+
+
+def collect_library(case_dir):
+    """After the last step: library.json and the case summary's Library section for a geostrophic drive, as run.sh
+    writes them (gust_case/library.py). Returns a line for the log ('' when the drive has no column run)."""
+    if not library.is_geostrophic(case_dir):
+        return ""
+    try:
+        path = library.write(case_dir, library.collect(case_dir))
+    except (library.CaseError, OSError, ValueError, KeyError) as err:
+        problems = err.problems if isinstance(err, library.CaseError) else [str(err)]
+        return "library.json not written: %s" % "; ".join(problems)
+    return "wrote %s" % path
 
 
 def find_gust(executable, case_dir, frozen_dir=None, given=True):

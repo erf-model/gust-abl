@@ -3,9 +3,9 @@
 
     check_case_setup.py CASE --gust EXE [--mpi "mpiexec -n 2"] [-- key=value ...]
 
-CASE is flat_sweep, flat_nest, column_target, column_axis or hill (the YAML file of that
-name beside this script). The run happens in the current directory: the YAML
-file is copied there (hill.asc is written there for the hill), the case folder
+CASE is flat_sweep, flat_nest, column_target, column_axis, hill or upstream (the YAML file
+of that name beside this script). The run happens in the current directory: the YAML
+file is copied there (hill.asc or regional.xyz is written there), the case folder
 is written with --overwrite, and run.sh runs with GUST=EXE and MPI=<--mpi>
 (empty: no launcher). The arguments after -- go to run.sh, which passes them
 to the 3-D runs.
@@ -18,15 +18,29 @@ The checks pin closed forms, not the code's own output:
   the column's stopping rule |R - 1| < 1e-4) along the asked direction, and
   the 3-D run that took the column's geostrophic wind meets it to 1 % and
   0.3 degrees, and its own column first guess, solved from the forcing
-  run.sh passed, has the table's wind at the top;
+  run.sh passed, has the table's wind at the top; library.json (run.sh's
+  --collect) holds wind.speed at wind.height (2e-4) along the asked direction
+  (0.01 degrees: the stopping rule allows 0.0057), G equal to the column log's
+  last forcing.ug and forcing.vg (the values run.sh passes on), and G turned
+  clockwise of the 10 m wind by 10 to 25 degrees (between half the neutral
+  drag law's angle and all of it, 23.5 degrees);
 - column_axis: with the 10 m wind along y and along x, every cell's wind of the
   3-D run is the column table's at its height to 4 % of the top wind (a face
   parallel to the 10 m wind made a slip wall gives 73 % from 0, 72 % from 270), and no lateral face
-  of the decks is a slip wall;
+  of the decks is a slip wall; library.json holds wind.speed at wind.height along the asked
+  direction from 0, 270 and 240 (a direction off the axes: a quarter turn is exact in floating
+  point), and the same |G| and turning angle for the three (the neutral column is
+  rotation-invariant: 1e-6 relative and 1e-4 degrees in double precision; 2e-4 and 0.0115
+  degrees, the bound of the stopping rule, with --precision SINGLE);
 - hill: GUST's ground follows the hill's formula (crest in the right cell,
-  relief to 2 %, RMS difference below 0.3 % of the relief).
+  relief to 2 %, RMS difference below 0.3 % of the relief);
+- upstream: wind.upstream_roughness = auto over a half-plane regional map that
+  also sets the ground: the wind from 270 degrees takes the map's 0.03 m west of
+  the domain (the decks' bc.inflow_z0 and the column's bc.surface_z0), and the
+  10 m wind more than 4 cells from the x faces varies by less than 1 % along x.
 """
 import argparse
+import json
 import math
 import os
 import re
@@ -64,6 +78,48 @@ def write_hill(path):
             y = GRID_Y0 + (j + 0.5) * GRID_CELL
             fh.write(" ".join("%.4f" % hill_height(GRID_X0 + (i + 0.5) * GRID_CELL, y) for i in range(GRID_N)))
             fh.write("\n")
+
+
+# The regional map of upstream.yaml: z0 = Z0 west of x = UPSTREAM_STEP, UPSTREAM_EAST east (m).
+UPSTREAM_STEP, UPSTREAM_EAST, UPSTREAM_REACH, UPSTREAM_SPACING = 1200.0, 1.0, 8000.0, 200.0
+
+
+def write_regional(path):
+    """regional.xyz: x y z0 points every UPSTREAM_SPACING out to UPSTREAM_REACH from the domain centre."""
+    n = int(round(UPSTREAM_REACH / UPSTREAM_SPACING))
+    with open(path, "w") as fh:
+        for j in range(-n, n + 1):
+            for i in range(-n, n + 1):
+                x = i * UPSTREAM_SPACING
+                fh.write("%.1f %.1f %g\n" % (x, j * UPSTREAM_SPACING, Z0 if x < UPSTREAM_STEP else UPSTREAM_EAST))
+
+
+def deck_value(path, key):
+    with open(path) as fh:
+        for ln in fh:
+            parts = ln.split()
+            if len(parts) >= 3 and parts[0] == key and parts[1] == "=":
+                return float(parts[2])
+    return float("nan")
+
+
+def check_upstream(folder):
+    """The decks take the map's z0 upwind of the inflow face; the 10 m wind (linear in ln(z + z0) between the cell
+    centres around it, mean over y) away from the inflow and outflow faces holds along x."""
+    check("bc.inflow_z0 of the 3-D deck (m)", deck_value(os.path.join(folder, "inputs"), "bc.inflow_z0"), Z0,
+          1e-9, "rel")
+    check("bc.surface_z0 of the column deck (m)",
+          deck_value(os.path.join(folder, "column", "inputs"), "bc.surface_z0"), Z0, 1e-9, "rel")
+    check("GUST's steady verdict", steady(folder), 1.0, 0.0, "abs")
+    hdr, data = erf_plotfile.read_fields(last_plotfile(folder), ["u", "v", "z"])
+    along_x = []
+    for i, plane in enumerate(data["z"]):
+        winds = [log_interp(column, [math.hypot(a, b) for a, b in zip(data["u"][i][j], data["v"][i][j])], HEIGHT)
+                 for j, column in enumerate(plane)]
+        along_x.append(sum(winds) / len(winds))
+    inner = along_x[4:-4]
+    check("(max - min) / max of the 10 m wind along x, 4 cells from the x faces", (max(inner) - min(inner)) / max(inner),
+          0.0, 1e-2, "abs")
 
 
 def check(name, value, target, tol, kind):
@@ -178,6 +234,54 @@ def check_column_axis(folder, label):
     check("%s: max |wind - column table| / top wind" % label, worst, 0.0, 4e-2, "abs")
 
 
+def log_forcing(log):
+    """The last forcing.ug and forcing.vg lines of a column log, as run.sh's awk reads them."""
+    found = {}
+    with open(log) as fh:
+        for line in fh:
+            parts = line.split()
+            if len(parts) >= 3 and parts[0] in ("forcing.ug", "forcing.vg") and parts[1] == "=":
+                found[parts[0]] = float(parts[2])
+    return found["forcing.ug"], found["forcing.vg"]
+
+
+def check_library(case_dir, directions, single=False):
+    """library.json: the reference wind is wind.speed from each asked direction, G is turned clockwise of it, and
+    |G| and the turning angle do not depend on the direction. GUST stops adjusting each column at |R - 1| < 1e-4
+    (R: the target over the column's wind), so each G is within 1e-4 (relative) and 1e-4 rad of the exact one:
+    two directions differ by at most 2e-4 and 0.0115 degrees. In double precision the columns agree far closer
+    (1e-9 measured), so the checks there are 1e-6 and 1e-4 degrees; in single precision the bound."""
+    path = os.path.join(case_dir, "library.json")
+    if not os.path.isfile(path):
+        check("library.json written by run.sh", 1.0, 0.0, 0.0, "abs")
+        return
+    g_tol, turn_tol = (2e-4, 0.0115) if single else (1e-6, 1e-4)
+    with open(path) as fh:
+        entries = json.load(fh)["directions"]
+    check("library.json: directions", float(len(entries)), float(len(directions)), 0.0, "abs")
+    for e, d in zip(entries, directions):
+        try:
+            check("library from %g: run folder" % d, float(e["folder"] in ("dir_%03d" % d, ".")), 1.0, 0.0, "abs")
+            check("library from %g: speed at %g m (m/s)" % (d, HEIGHT), e["wind_at_height"]["speed"], SPEED, 2e-4,
+                  "rel")
+            check("library from %g: direction error at %g m (degrees)" % (d, HEIGHT),
+                  angle_error(e["wind_at_height"]["direction"], d), 0.0, 0.01, "abs")
+            # G turned clockwise by between half the neutral drag law's angle and all of it (alpha = 23.5 degrees
+            # for this u* at 45 N; the faces of the decks are chosen from alpha / 2): a first guess along the
+            # asked wind, never adjusted, turns 0
+            check("library from %g: G turned clockwise of the reference wind by 10 to 25 degrees" % d,
+                  float(-25.0 < e["turning_deg"] < -10.0), 1.0, 0.0, "abs")
+            ug, vg = log_forcing(os.path.join(case_dir, e["folder"], "column", "log.txt"))
+            check("library from %g: G = the column log's last forcing.ug, forcing.vg (run.sh's)" % d,
+                  math.hypot(e["geostrophic_wind"]["ug"] - ug, e["geostrophic_wind"]["vg"] - vg), 0.0, 0.0, "abs")
+            check("library from %g: |G| against the first direction's" % d, e["geostrophic_wind"]["speed"],
+                  entries[0]["geostrophic_wind"]["speed"], g_tol, "rel")
+            check("library from %g: turning against the first direction's (degrees)" % d,
+                  abs(e["turning_deg"] - entries[0]["turning_deg"]), 0.0, turn_tol, "abs")
+        except (KeyError, TypeError) as err:
+            check("library from %g: entry complete (%s: %s)" % (d, type(err).__name__, err), 1.0, 0.0, 0.0, "abs")
+
+
 def check_hill(folder, top, first_layer):
     """The ground from the first cell centre: z = zeta + h (1 - zeta / top) (terrain.smoothing = 0)."""
     hdr, data = erf_plotfile.read_fields(last_plotfile(folder), ["z"])
@@ -209,15 +313,19 @@ def main():
         n = argv.index("--")
         argv, extra = argv[:n], argv[n + 1:]
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("case", choices=("flat_sweep", "flat_nest", "column_target", "column_axis", "hill"))
+    ap.add_argument("case", choices=("flat_sweep", "flat_nest", "column_target", "column_axis", "hill", "upstream"))
     ap.add_argument("--gust", required=True, help="the GUST executable")
     ap.add_argument("--mpi", default="", help="the launcher run.sh puts before GUST (empty: none)")
+    ap.add_argument("--precision", choices=("DOUBLE", "SINGLE"), default="DOUBLE", help="GUST's precision "
+                    "(GUST_PRECISION): the library's direction-invariance tolerances")
     opts = ap.parse_args(argv)
 
     yaml_file = opts.case + ".yaml"
     shutil.copyfile(os.path.join(HERE, yaml_file), yaml_file)
     if opts.case == "hill":
         write_hill("hill.asc")
+    if opts.case == "upstream":
+        write_regional("regional.xyz")
     if os.path.isdir(opts.case):
         shutil.rmtree(opts.case)
     tool = os.path.join(ROOT, "tools", "make_gust_case.py")
@@ -245,9 +353,13 @@ def main():
         speed, direction, _ = wind_at_height(opts.case)
         check("3-D run: speed at %g m (m/s)" % HEIGHT, speed, SPEED, 1e-2, "rel")
         check("3-D run: direction error (degrees)", angle_error(direction, towards(240.0)), 0.0, 0.3, "abs")
+        check_library(opts.case, (240.0,), opts.precision == "SINGLE")
     elif opts.case == "column_axis":
         for d in (0.0, 270.0):
             check_column_axis(os.path.join(opts.case, "dir_%03d" % d), "from %g" % d)
+        check_library(opts.case, (0.0, 270.0, 240.0), opts.precision == "SINGLE")
+    elif opts.case == "upstream":
+        check_upstream(opts.case)
     else:
         check_hill(opts.case, 1500.0, 4.0)
 

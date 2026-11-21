@@ -408,7 +408,7 @@ inflow.
 The solid cells' rows are left out of the residual norm of :math:`\theta` and of the count of ``steady.confidence``,
 as those of :math:`k` (`Turbulence`_). With ``simplec.theta = frozen`` :math:`\theta` is data and these terms do not
 act; the key is then refused when given as ``ambient`` or ``fixed`` (frozen :math:`\theta` needs grid sequencing,
-which buildings do not have yet, so the two do not meet today). On the three building cases of the tests, which are
+which buildings do not have yet, or a patch of a parent run, ``init.first_guess = nest``, which may hold buildings). On the three building cases of the tests, which are
 neutral with gravity off, ``ambient`` and ``none`` give the same velocities and :math:`k` bit for bit in the same
 number of iterations; :math:`\theta` differs by up to 0.007 K, its drift from 300 K without these terms. A checkpoint written before these terms
 restarts with ``buildings.theta_mode = none`` and is refused with the others; ``buildings.theta_surface`` is part of

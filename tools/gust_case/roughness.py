@@ -82,8 +82,10 @@ class RoughnessMap:
             np.savetxt(out, np.column_stack([self.x, self.y, self.z0]), fmt=["%.3f", "%.3f", "%.6g"])
 
 
-def prepare(path, fmt, coordinates, classes, default, frame, margin, point_spacing, key="surface.roughness_map"):
-    """The roughness map of the domain, in the case frame."""
+def prepare(path, fmt, coordinates, classes, default, frame, margin, point_spacing, key="surface.roughness_map",
+            drop_unclassed=False):
+    """The roughness map of the domain, in the case frame. With ``drop_unclassed``, raster points with no value
+    (nodata) are left out and counted in the notes, rather than refused."""
     file_key = key + ".file"
     if not os.path.isfile(path):
         raise CaseError("%s = %s: no such file" % (file_key, path))
@@ -108,9 +110,17 @@ def prepare(path, fmt, coordinates, classes, default, frame, margin, point_spaci
         geographic = coordinates == "geographic" or (coordinates == "auto" and raster.is_geographic())
         cx, cy, codes, spacing = terrain_mod.raster_points(raster, frame, geographic, margin, file_key,
                                                            stride_spacing=point_spacing)
+        notes = []
+        if drop_unclassed:
+            valued = np.isfinite(codes)
+            if not np.all(valued):
+                notes.append("%s: %d points with no value left out" % (os.path.basename(path), int(np.sum(~valued))))
+                cx, cy, codes = cx[valued], cy[valued], codes[valued]
+            if cx.size == 0:
+                raise CaseError("%s = %s: no points with a value inside the domain" % (file_key, path))
         z0 = classes_to_roughness(codes, class_table(classes, key + ".classes"), default, key)
-        notes = ["%s: land cover at about %.4g m, %d points, z0 %.4g .. %.4g m"
-                 % (os.path.basename(path), spacing, cx.size, z0.min(), z0.max())]
+        notes.insert(0, "%s: land cover at about %.4g m, %d points, z0 %.4g .. %.4g m"
+                     % (os.path.basename(path), spacing, cx.size, z0.min(), z0.max()))
     if cx.size == 0:
         raise CaseError("%s = %s: no points inside the domain" % (file_key, path))
     if not (np.all(np.isfinite(z0)) and np.all(z0 > 0.0)):
