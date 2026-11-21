@@ -648,7 +648,7 @@ TEST (ImmersedSurface, StepSideWallsOnlyWhereTheGroundDropsMoreThanALayer)
         auto h = [] (double x, double) { return 21.0 + 1.2 * x; };
         Surface off(c, h), steps(c, h, "vertical", "steps");
         const int side = gust::kWallXlo | gust::kWallXhi | gust::kWallYlo | gust::kWallYhi;
-        long n_side = 0, n_bad = 0, n_off_side = 0, n_roof_changed = 0, n_dist_bad = 0, n_at_face = 0;
+        amrex::Long n_side = 0, n_bad = 0, n_off_side = 0, n_roof_changed = 0, n_dist_bad = 0, n_at_face = 0;
         const double dxd = 10;
         for (amrex::MFIter mfi(steps.b.wall(), false); mfi.isValid(); ++mfi) {
             const auto ws = steps.b.wall().const_array(mfi);
@@ -673,7 +673,7 @@ TEST (ImmersedSurface, StepSideWallsOnlyWhereTheGroundDropsMoreThanALayer)
                 }
             });
         }
-        for (long* v : {&n_side, &n_bad, &n_off_side, &n_roof_changed, &n_dist_bad, &n_at_face}) { amrex::ParallelDescriptor::ReduceLongSum(*v); }
+        for (amrex::Long* v : {&n_side, &n_bad, &n_off_side, &n_roof_changed, &n_dist_bad, &n_at_face}) { amrex::ParallelDescriptor::ReduceLongSum(*v); }
         EXPECT_GT(n_side, 0) << "the steep ramp has steps: the case tests nothing otherwise";
         EXPECT_EQ(n_bad, 0) << "side bits where the next column is not solid, or missing, boxes " << mgs;
         EXPECT_EQ(n_off_side, 0) << "off has no side walls";
@@ -707,7 +707,7 @@ TEST (ImmersedSurface, NoSlipStepsDiffuseToTheSolidCell)
             amrex::MultiFab::Subtract(open[d], ns.b.beta_face(d), 0, 0, 1, 0);
             open[d].FillBoundary(c.geom.periodicity());
         }
-        long n_mark = 0, n_mark_bad = 0, n_bits_differ = 0;
+        amrex::Long n_mark = 0, n_mark_bad = 0, n_bits_differ = 0;
         for (amrex::MFIter mfi(mark, false); mfi.isValid(); ++mfi) {
             const auto m = mark.array(mfi);
             const auto f = ns.law.no_slip_faces(0).const_array(mfi);
@@ -723,7 +723,7 @@ TEST (ImmersedSurface, NoSlipStepsDiffuseToTheSolidCell)
             });
         }
         mark.FillBoundary(c.geom.periodicity());
-        for (long* v : {&n_mark, &n_mark_bad, &n_bits_differ}) { amrex::ParallelDescriptor::ReduceLongSum(*v); }
+        for (amrex::Long* v : {&n_mark, &n_mark_bad, &n_bits_differ}) { amrex::ParallelDescriptor::ReduceLongSum(*v); }
         EXPECT_GT(n_mark, 0) << "the steep ramp has steps";
         EXPECT_EQ(n_mark_bad, 0) << "the marked faces, boxes " << mgs;
         EXPECT_EQ(n_bits_differ, 0) << "the step bits are those of steps";
@@ -749,7 +749,7 @@ TEST (ImmersedSurface, NoSlipStepsDiffuseToTheSolidCell)
         };
         auto Gn = closed(ns);
         auto Gs = closed(st);
-        long n_two = 0, n_flux_bad = 0;
+        amrex::Long n_two = 0, n_flux_bad = 0;
         for (const int a : {1, 2}) {
             const int di = (a == 1) ? 0 : 0, dj = (a == 1) ? 1 : 0, dk = (a == 2) ? 1 : 0;
             for (amrex::MFIter mfi(Gn[a][0], false); mfi.isValid(); ++mfi) {
@@ -766,7 +766,7 @@ TEST (ImmersedSurface, NoSlipStepsDiffuseToTheSolidCell)
                 });
             }
         }
-        for (long* v : {&n_two, &n_flux_bad}) { amrex::ParallelDescriptor::ReduceLongSum(*v); }
+        for (amrex::Long* v : {&n_two, &n_flux_bad}) { amrex::ParallelDescriptor::ReduceLongSum(*v); }
         EXPECT_GT(n_two, 0) << "edges between two step faces: the factor 2 is not tested otherwise";
         EXPECT_EQ(n_flux_bad, 0) << "the tangential fluxes across x faces, boxes " << mgs;
 
@@ -781,7 +781,7 @@ TEST (ImmersedSurface, NoSlipStepsDiffuseToTheSolidCell)
         st.law.update(u, v, w);
         off.law.update(u, v, w);
         double ns_off = 0, st_gain = 1e300;
-        long n_side_cells = 0;
+        amrex::Long n_side_cells = 0;
         for (amrex::MFIter mfi(off.law.rate(), false); mfi.isValid(); ++mfi) {
             const auto rn = ns.law.rate().const_array(mfi);
             const auto rs = st.law.rate().const_array(mfi);
@@ -811,7 +811,7 @@ TEST (ImmersedSurface, NoSlipStepsDiffuseToTheSolidCell)
             return A;
         };
         const amrex::MultiFab An = implicit(ns), As = implicit(st);
-        long n_row_bad = 0, n_rows = 0;
+        amrex::Long n_row_bad = 0, n_rows = 0;
         for (amrex::MFIter mfi(An, false); mfi.isValid(); ++mfi) {
             const auto an = An.const_array(mfi);
             const auto as = As.const_array(mfi);
@@ -832,7 +832,7 @@ TEST (ImmersedSurface, NoSlipStepsDiffuseToTheSolidCell)
                     || std::abs(static_cast<double>(an(i, j, k, gust::coef_P) - as(i, j, k, gust::coef_P)) - dP) > 10 * tol) { ++n_row_bad; }
             });
         }
-        for (long* v : {&n_rows, &n_row_bad}) { amrex::ParallelDescriptor::ReduceLongSum(*v); }
+        for (amrex::Long* v : {&n_rows, &n_row_bad}) { amrex::ParallelDescriptor::ReduceLongSum(*v); }
         EXPECT_GT(n_rows, 0) << "rows next to a step face";
         EXPECT_EQ(n_row_bad, 0) << "the implicit couplings of v, boxes " << mgs << (rising ? " rising" : " falling");
       }
@@ -868,7 +868,7 @@ TEST (ImmersedSurface, ColumnCentreDistanceOnlyWhereTheFootprintSpansMoreThanALa
             auto h = [] (double x, double) { return 21.0 + 1.2 * x; };
             const Surface mh(c, h, "vertical", side), cc(c, h, "vertical", side, "column_centre");
             const amrex::MultiFab dm = dist(c, mh), dc = dist(c, cc);
-            long n_fluid = 0, n_bad = 0, n_smaller = 0;
+            amrex::Long n_fluid = 0, n_bad = 0, n_smaller = 0;
             for (amrex::MFIter mfi(dc, false); mfi.isValid(); ++mfi) {
                 const auto am = dm.const_array(mfi);
                 const auto ac = dc.const_array(mfi);
@@ -885,7 +885,7 @@ TEST (ImmersedSurface, ColumnCentreDistanceOnlyWhereTheFootprintSpansMoreThanALa
                     if (std::abs(static_cast<double>(ac(i, j, k)) - want) > tol * 100) { ++n_bad; }
                 });
             }
-            for (long* v : {&n_fluid, &n_bad, &n_smaller}) { amrex::ParallelDescriptor::ReduceLongSum(*v); }
+            for (amrex::Long* v : {&n_fluid, &n_bad, &n_smaller}) { amrex::ParallelDescriptor::ReduceLongSum(*v); }
             EXPECT_GT(n_fluid, 0);
             EXPECT_GT(n_smaller, 0) << "the column centre is nowhere nearer: the case tests nothing";
             EXPECT_EQ(n_bad, 0) << "the column-centre distance, side walls " << side << " boxes " << mgs;
