@@ -437,6 +437,31 @@ void extend_theta_below_ground (amrex::MultiFab& theta, const amrex::MultiFab& z
     amrex::Gpu::streamSynchronize();
 }
 
+//! The normal velocity on the inflow faces normal to d is 0 where the face is solid (set_solid_faces).
+//! Only the face points: the ghost layers beyond keep the profile.
+void zero_solid_inflow_faces (amrex::MultiFab& vel, const amrex::MultiFab& solid, int d, const BoundaryInputs& in,
+                              const amrex::Geometry& geom)
+{
+    const amrex::Box& dom = geom.Domain();
+    for (const bool lo : {true, false}) {
+        const amrex::Orientation o(d, lo ? amrex::Orientation::low : amrex::Orientation::high);
+        if (in.face[o] != FaceType::inflow) { continue; }
+        const int face = lo ? dom.smallEnd(d) : dom.bigEnd(d) + 1;
+        for (amrex::MFIter mfi(vel, false); mfi.isValid(); ++mfi) {
+            amrex::Box fb = mfi.validbox();
+            if (fb.smallEnd(d) > face || fb.bigEnd(d) < face) { continue; }
+            fb.setSmall(d, face);
+            fb.setBig(d, face);
+            const auto a = vel.array(mfi);
+            const auto b = solid.const_array(mfi);
+            amrex::ParallelFor(fb, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+            {
+                if (b(i, j, k) == amrex::Real(1)) { a(i, j, k) = 0; }
+            });
+        }
+    }
+}
+
 } // namespace
 
 void BoundaryConditions::fill_ghosts (State& q, const SurfaceLayerOptions* surface_opt, const BuoyancyOptions& buoyancy,
@@ -505,6 +530,9 @@ void BoundaryConditions::fill_ghosts (State& q, const SurfaceLayerOptions* surfa
         // v there, so it comes after. The p, theta and k fills do not read w.
         fill_direction(q, d, m_in, m_geom, prof, m_coriolis, gg, homogeneous);
         if (m_nest != nullptr) { m_nest->fill(q, d, homogeneous); }
+        if (d < 2 && !homogeneous && m_solid_face[static_cast<std::size_t>(d)] != nullptr) {
+            zero_solid_inflow_faces((d == 0) ? q.u : q.v, *m_solid_face[static_cast<std::size_t>(d)], d, m_in, m_geom);
+        }
         if (d == 2) { fill_no_flux_w(q, m_in, m_geom); }
     }
     if (m_theta_ground_extension && !homogeneous) { extend_theta_below_ground(q.theta, q.z_phys_nd, m_geom); }

@@ -3,8 +3,52 @@
 #include "Stencil_K.H"
 
 #include <cmath>
+#include <limits>
 
 namespace gust {
+
+void apply_cut_cell_strain (const Buildings& b, amrex::Real z0, const State& q, const amrex::Geometry& geom, amrex::MultiFab& S2)
+{
+    using namespace stencil;
+    const auto dxinv = geom.InvCellSizeArray();
+    const int klo = geom.Domain().smallEnd(2), khi = geom.Domain().bigEnd(2);
+    for (amrex::MFIter mfi(S2, false); mfi.isValid(); ++mfi) {
+        const amrex::Box bx = amrex::grow(mfi.validbox(), amrex::IntVect(1, 1, 0));
+        const auto s2 = S2.array(mfi);
+        const auto u = q.u.const_array(mfi);
+        const auto v = q.v.const_array(mfi);
+        const auto w = q.w.const_array(mfi);
+        const auto z = q.z_phys_nd.const_array(mfi);
+        const auto beta = b.beta().const_array(mfi);
+        const auto wl = b.wall().const_array(mfi);
+        // The cut cell itself: the wall law's gradient at its fluid centroid, u* / (kappa (d1 + z0)) along its
+        // wind, as the body-fitted ground's first cell has it (BoundaryConditions.cpp: ground_gradients). The
+        // closure's difference reads the solid cell below (u = 0). kappa cancels (u* = kappa U / ln).
+        amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+        {
+            if (k < klo || k > khi) { return; }
+            if (!(beta(i, j, k) < amrex::Real(1) && (static_cast<int>(wl(i, j, k, kWallMask)) & kWallRoof) != 0)) { return; }
+            auto uc = [&] (int kk) { return amrex::Real(0.5) * (u(i, j, kk) + u(i + 1, j, kk)); };
+            auto vc = [&] (int kk) { return amrex::Real(0.5) * (v(i, j, kk) + v(i, j + 1, kk)); };
+            const amrex::Real d1 = wl(i, j, k, kWallD1z), d2 = wl(i, j, k, kWallD2z);
+            const amrex::Real uo = uc(k), vo = vc(k);
+            const amrex::Real own = std::sqrt(uo * uo + vo * vo);
+            const amrex::Real ref = k < khi ? std::sqrt(uc(k + 1) * uc(k + 1) + vc(k + 1) * vc(k + 1)) : amrex::Real(0);
+            const amrex::Real us_k = std::sqrt(form7_ustar2_exact(own, ref, beta(i, j, k), d1, d2, z0, amrex::Real(1)));
+            // No division by a zero speed: a cut cell at rest has no wind direction, and its gradient is 0
+            // (us_k is not 0 there when the cell above has wind).
+            const amrex::Real g = own > amrex::Real(0) ? us_k / ((d1 + z0) * own) : amrex::Real(0);
+            const amrex::Real gu = g * uo, gv = g * vo;
+            const Metric m = metric_at<CC>(z, i, j, k, dxinv);
+            const auto Gu = grad_at<XF, CC>(u, i, j, k, m, dxinv);
+            const auto Gv = grad_at<YF, CC>(v, i, j, k, m, dxinv);
+            const auto Gw = grad_at<ZF, CC>(w, i, j, k, m, dxinv);
+            const amrex::Real e_old = Gu[2] + Gw[0], f_old = Gv[2] + Gw[1];
+            const amrex::Real e_new = gu + Gw[0], f_new = gv + Gw[1];
+            s2(i, j, k) = amrex::max(amrex::Real(0), s2(i, j, k) + (e_new * e_new - e_old * e_old) + (f_new * f_new - f_old * f_old));
+        });
+    }
+}
 
 ImmersedStrain::ImmersedStrain (const BuildingForcing& law, amrex::Real z0) : m_b(law.geometry()), m_z0(z0)
 {
@@ -65,6 +109,7 @@ void ImmersedStrain::apply (const State& q, const amrex::Geometry& geom, amrex::
             s2(i, j, k) = amrex::max(amrex::Real(0), s2(i, j, k) + (e_new * e_new - e_old * e_old) + (f_new * f_new - f_old * f_old));
         });
     }
+    apply_cut_cell_strain(*m_b, m_z0, q, geom, S2);
 }
 
 }   // namespace gust

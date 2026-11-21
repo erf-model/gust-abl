@@ -60,7 +60,7 @@ Development status
      - Available at refinement 2 2 1 with the steady stages. Buildings are refused in a deck with ``nest.names``;
        a patch that is run separately with ``nest`` faces accepts them.
    * - Immersed terrain on a flat mesh (:doc:`immersed_terrain`)
-     - In progress: flat ground, neutral and laterally periodic only
+     - In progress: neutral, one mesh level, laterally periodic or with inflow and outflow faces
    * - Nonlinear FAS multigrid
      - Not pursued. The grid hierarchy serves grid sequencing only.
 

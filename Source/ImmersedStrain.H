@@ -15,7 +15,11 @@
 // h = z_{k+1} - z_k, and f2 = dz_c / 2, f3 = dz_c + dz_k / 2, f4 = f3 + h the centres of the same
 // cells over a flat ground at the cut cell's bottom face. With beta = 0 (d1 = f2, d2 = f3) it is the
 // closure's central difference (u_{k+1} - u_c) / (2 dz_k) (Stencil_K.H; f4 - f2 = 2 dz_k on uniform
-// layers), so a flat ground at a cell face is unchanged, on stretched layers too. The cut cell keeps the closure's S2: its k is the wall value (BuildingTke). S2 changes
+// layers), so a flat ground at a cell face is unchanged, on stretched layers too.
+// In the cut cell itself (apply_cut_cell_strain) the vertical gradient is the wall law's at its fluid
+// centroid, u* / (kappa (d1 + z0)), as the body-fitted ground's first cell has it: the closure's
+// difference reads the solid cell below. Its k is the wall value (BuildingTke); S2 there acts through
+// turb.realizability. S2 changes
 // by the difference of the (u, z) and (v, z) terms of 2 S_ij S_ij, the other gradients as the
 // closure has them. This follows the rule of ERF's erf.if_flat_wall_dissipation and kynema-sgf
 // #2067 (an immersed wall repeats the flat ground's discretisation), applied to the shear.
@@ -25,13 +29,17 @@
 
 namespace gust {
 
+//! S2 in the cut cells of the immersed ground b (roughness length z0, m, > 0): the (u, z) and (v, z)
+//! terms with the wall law's gradient. On S2's valid cells and lateral ghost ring.
+void apply_cut_cell_strain (const Buildings& b, amrex::Real z0, const State& q, const amrex::Geometry& geom, amrex::MultiFab& S2);
+
 class ImmersedStrain final : public StrainCorrection
 {
 public:
     //! law: the immersed ground's wall law (law.immersed_ground()), whose geometry must outlive
     //! this object. z0: the ground's roughness length (m), > 0.
     ImmersedStrain (const BuildingForcing& law, amrex::Real z0);
-    //! S2 in the first full cell above each cut cell, on S2's valid cells and lateral ghost ring.
+    //! S2 in each cut cell and in the first full cell above it, on S2's valid cells and lateral ghost ring.
     void apply (const State& q, const amrex::Geometry& geom, amrex::MultiFab& S2) const override;
 
 private:

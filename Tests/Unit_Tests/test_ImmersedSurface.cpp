@@ -9,6 +9,7 @@
 //   beyond the plan: a flat surface gives the fields of PR-87's flat ground; normal on a slope takes
 //   the distance along the normal, the speed parallel to the ground (w included) and the slope's area.
 #include "BuildingForcing.H"
+#include "BuildingTke.H"
 #include "Buildings_K.H"
 #include "Closure.H"
 #include "ImmersedSurface_K.H"
@@ -57,12 +58,15 @@ amrex::MultiFab with_ground (const PCase& c, const std::function<double(double, 
     return z;
 }
 
-gust::TerrainInputs immersed (const std::string& slope = "vertical")
+gust::TerrainInputs immersed (const std::string& slope = "vertical", const std::string& side = "off",
+                              const std::string& wall_distance = "mean_height")
 {
     gust::TerrainInputs t;
     t.representation = "immersed_forcing";
     t.flat_height = 25;
     t.immersed_slope = slope;
+    t.immersed_side_walls = side;
+    t.immersed_wall_distance = wall_distance;
     return t;
 }
 
@@ -90,9 +94,10 @@ struct Surface
     gust::Buildings b;
     gust::BuildingForcing law;
     amrex::MultiFab z;
-    Surface (const PCase& c, const std::function<double(double, double)>& h, const std::string& slope = "vertical")
+    Surface (const PCase& c, const std::function<double(double, double)>& h, const std::string& slope = "vertical",
+             const std::string& side = "off", const std::string& wall_distance = "mean_height")
     {
-        opt = gust::immersed_terrain_options(immersed(slope), kZ0);
+        opt = gust::immersed_terrain_options(immersed(slope, side, wall_distance), kZ0);
         z = with_ground(c, h);
         b.build_from_surface(opt, "test", c.geom, z, c.ba, c.dm);
         law.build(b, opt, c.geom, c.mesh.detJ);
@@ -571,6 +576,276 @@ TEST (ImmersedSurface, NormalTakesTheSlopesDistanceSpeedAndArea)
 }
 
 // The restart record follows every input of the ground.
+// terrain.immersed_side_walls = steps. A ramp along x on 10 m cells and layers: at 0.5 m per metre the ground rises
+// 5 m per column, less than a layer, so no cell gets a side wall (the wall fields equal those of off, bit for bit);
+// on a flat ground the same. At 1.2 m per metre it rises 12 m per column: a cell that is not solid has a side wall
+// exactly where the next column up (+x) is solid in its layer, with the step's distances, and keeps
+// its roof bit as with off. The wall is on the high x face (Xhi). With off no cell has a side bit.
+TEST (ImmersedSurface, StepSideWallsOnlyWhereTheGroundDropsMoreThanALayer)
+{
+    for (const int mgs : {8, 4}) {
+        const PCase c = gust::lamtest::flat_case(16, 8, 24, 160, 80, 240, false, false, mgs);
+        auto equal_walls = [] (const amrex::MultiFab& a, const amrex::MultiFab& b) {
+            amrex::MultiFab d(a.boxArray(), a.DistributionMap(), a.nComp(), 0);
+            amrex::MultiFab::Copy(d, a, 0, 0, a.nComp(), 0);
+            amrex::MultiFab::Subtract(d, b, 0, 0, a.nComp(), 0);
+            double m = 0;
+            for (int n = 0; n < a.nComp(); ++n) { m = std::max(m, static_cast<double>(d.norminf(n))); }
+            return m == 0;
+        };
+        for (const double slope : {0.0, 0.5}) {
+            auto h = [=] (double x, double) { return 21.0 + slope * x; };
+            Surface off(c, h), steps(c, h, "vertical", "steps");
+            EXPECT_TRUE(equal_walls(off.b.wall(), steps.b.wall())) << "slope " << slope << " boxes " << mgs;
+        }
+        auto h = [] (double x, double) { return 21.0 + 1.2 * x; };
+        Surface off(c, h), steps(c, h, "vertical", "steps");
+        const int side = gust::kWallXlo | gust::kWallXhi | gust::kWallYlo | gust::kWallYhi;
+        long n_side = 0, n_bad = 0, n_off_side = 0, n_roof_changed = 0, n_dist_bad = 0, n_at_face = 0;
+        const double dxd = 10;
+        for (amrex::MFIter mfi(steps.b.wall(), false); mfi.isValid(); ++mfi) {
+            const auto ws = steps.b.wall().const_array(mfi);
+            const auto wo = off.b.wall().const_array(mfi);
+            const auto br = steps.b.beta().const_array(mfi);
+            amrex::LoopOnCpu(mfi.validbox(), [&] (int i, int j, int k) {
+                const int ms = static_cast<int>(ws(i, j, k, gust::kWallMask)), mo = static_cast<int>(wo(i, j, k, gust::kWallMask));
+                const double own = static_cast<double>(br(i, j, k));
+                const bool want = own < 1 && br(i + 1, j, k) >= 1;
+                if ((mo & side) != 0) { ++n_off_side; }
+                if ((ms & gust::kWallRoof) != (mo & gust::kWallRoof)) { ++n_roof_changed; }
+                if (((ms & gust::kWallXhi) != 0) != want || (ms & (gust::kWallXlo | gust::kWallYlo | gust::kWallYhi)) != 0) { ++n_bad; }
+                if ((ms & gust::kWallXhi) != 0) {
+                    ++n_side;
+                    // The step's distances: half a column to the cell's fluid, 3/2 to the reference,
+                    // none at the low x face (not periodic: the reference would be the ghost image).
+                    const double d1 = 0.5 * dxd;
+                    const double d2 = (i > 0 && br(i - 1, j, k) < 1) ? 1.5 * dxd : 0.0;
+                    if (i == 0) { ++n_at_face; }
+                    if (std::abs(static_cast<double>(ws(i, j, k, gust::kWallD1x)) - d1) > tol * dxd
+                        || std::abs(static_cast<double>(ws(i, j, k, gust::kWallD2x)) - d2) > tol * dxd) { ++n_dist_bad; }
+                }
+            });
+        }
+        for (long* v : {&n_side, &n_bad, &n_off_side, &n_roof_changed, &n_dist_bad, &n_at_face}) { amrex::ParallelDescriptor::ReduceLongSum(*v); }
+        EXPECT_GT(n_side, 0) << "the steep ramp has steps: the case tests nothing otherwise";
+        EXPECT_EQ(n_bad, 0) << "side bits where the next column is not solid, or missing, boxes " << mgs;
+        EXPECT_EQ(n_off_side, 0) << "off has no side walls";
+        EXPECT_EQ(n_roof_changed, 0) << "the roof bits are those of off";
+        EXPECT_EQ(n_dist_bad, 0) << "the side's distances";
+        EXPECT_GT(n_at_face, 0) << "no wall at the low x face: the domain-face case is not tested";
+    }
+}
+
+// terrain.immersed_side_walls = steps_no_slip on the steep ramp of the test above. The step bits are those of steps.
+// The marked faces are the x faces between a cell with the high x bit and the solid cell beyond it, and no domain
+// face. The tangential fluxes across x faces (v and w) take the factor 2 on a marked face (the solid cell's zero half a
+// column away) and the open part elsewhere; steps takes the open part (0 on a step face). The side cells take no wall
+// law (their rate on v is 0, with steps it is not), and the implicit couplings take the same factors, a_P growing by
+// the added part.
+TEST (ImmersedSurface, NoSlipStepsDiffuseToTheSolidCell)
+{
+    for (const int mgs : {8, 4}) {
+      for (const bool rising : {true, false}) {   // steps on the high x faces, then on the low ones
+        const PCase c = gust::lamtest::flat_case(16, 8, 24, 160, 80, 240, false, false, mgs);
+        auto h = [=] (double x, double) { return 21.0 + 1.2 * (rising ? x : 160 - x); };
+        Surface ns(c, h, "vertical", "steps_no_slip"), st(c, h, "vertical", "steps");
+        const int nx = c.geom.Domain().bigEnd(0) + 1;
+        // The open parts (1 - beta on the faces) and the expected marks, from the wall bits, with one ghost layer.
+        std::array<amrex::MultiFab, 3> open;
+        amrex::MultiFab mark(ns.b.beta_face(0).boxArray(), c.dm, 1, 1);
+        mark.setVal(0);
+        for (int d = 0; d < 3; ++d) {
+            open[d].define(ns.b.beta_face(d).boxArray(), c.dm, 1, 1);
+            open[d].setVal(1);
+            amrex::MultiFab::Subtract(open[d], ns.b.beta_face(d), 0, 0, 1, 0);
+            open[d].FillBoundary(c.geom.periodicity());
+        }
+        long n_mark = 0, n_mark_bad = 0, n_bits_differ = 0;
+        for (amrex::MFIter mfi(mark, false); mfi.isValid(); ++mfi) {
+            const auto m = mark.array(mfi);
+            const auto f = ns.law.no_slip_faces(0).const_array(mfi);
+            const auto wn = ns.b.wall().const_array(mfi);
+            const auto ws = st.b.wall().const_array(mfi);
+            amrex::LoopOnCpu(mfi.validbox(), [&] (int i, int j, int k) {
+                const bool want = (i > 0 && (static_cast<int>(wn(i - 1, j, k, gust::kWallMask)) & gust::kWallXhi) != 0)
+                                  || (i < nx && (static_cast<int>(wn(i, j, k, gust::kWallMask)) & gust::kWallXlo) != 0);
+                m(i, j, k) = want ? 1 : 0;
+                if (want) { ++n_mark; }
+                if ((static_cast<double>(f(i, j, k)) == 1.0) != want) { ++n_mark_bad; }
+                if (i < nx && wn(i, j, k, gust::kWallMask) != ws(i, j, k, gust::kWallMask)) { ++n_bits_differ; }
+            });
+        }
+        mark.FillBoundary(c.geom.periodicity());
+        for (long* v : {&n_mark, &n_mark_bad, &n_bits_differ}) { amrex::ParallelDescriptor::ReduceLongSum(*v); }
+        EXPECT_GT(n_mark, 0) << "the steep ramp has steps";
+        EXPECT_EQ(n_mark_bad, 0) << "the marked faces, boxes " << mgs;
+        EXPECT_EQ(n_bits_differ, 0) << "the step bits are those of steps";
+        const double y_marks = max_over(ns.law.no_slip_faces(1), [] (const auto& a, int i, int j, int k) { return std::abs(static_cast<double>(a(i, j, k))); });
+        EXPECT_EQ(y_marks, 0.0) << "a ramp along x has no y steps";
+
+        // The fluxes: all 1, then closed by each law.
+        const amrex::Array<const amrex::MultiFab*, 3> op{&open[0], &open[1], &open[2]};
+        auto closed = [&] (const Surface& s) {
+            amrex::Array<amrex::Array<amrex::MultiFab, 3>, 3> G;
+            for (int a = 0; a < 3; ++a) {
+                for (int d = 0; d < 3; ++d) {
+                    amrex::IntVect t(0);
+                    t[a] = 1;
+                    t[d] = 1;
+                    if (a == d) { t = amrex::IntVect(0); }
+                    G[a][d].define(amrex::convert(c.ba, t), c.dm, 1, 0);
+                    G[a][d].setVal(1);
+                }
+            }
+            s.law.close_viscous_fluxes(op, G);
+            return G;
+        };
+        auto Gn = closed(ns);
+        auto Gs = closed(st);
+        long n_two = 0, n_flux_bad = 0;
+        for (const int a : {1, 2}) {
+            const int di = (a == 1) ? 0 : 0, dj = (a == 1) ? 1 : 0, dk = (a == 2) ? 1 : 0;
+            for (amrex::MFIter mfi(Gn[a][0], false); mfi.isValid(); ++mfi) {
+                const auto gn = Gn[a][0].const_array(mfi);
+                const auto gs = Gs[a][0].const_array(mfi);
+                const auto o = open[0].const_array(mfi);
+                const auto m = mark.const_array(mfi);
+                amrex::LoopOnCpu(mfi.validbox(), [&] (int i, int j, int k) {
+                    auto fac = [&] (int ii, int jj, int kk) { return m(ii, jj, kk) == 1 ? 2.0 : static_cast<double>(o(ii, jj, kk)); };
+                    const double want_n = 0.5 * (fac(i - di, j - dj, k - dk) + fac(i, j, k));
+                    const double want_s = 0.5 * (static_cast<double>(o(i - di, j - dj, k - dk)) + static_cast<double>(o(i, j, k)));
+                    if (want_n == 2.0) { ++n_two; }
+                    if (std::abs(static_cast<double>(gn(i, j, k)) - want_n) > tol || std::abs(static_cast<double>(gs(i, j, k)) - want_s) > tol) { ++n_flux_bad; }
+                });
+            }
+        }
+        for (long* v : {&n_two, &n_flux_bad}) { amrex::ParallelDescriptor::ReduceLongSum(*v); }
+        EXPECT_GT(n_two, 0) << "edges between two step faces: the factor 2 is not tested otherwise";
+        EXPECT_EQ(n_flux_bad, 0) << "the tangential fluxes across x faces, boxes " << mgs;
+
+        // The rates: the side cells take no law with no slip, so the rates are those of off (the roofs' alone);
+        // with steps the side cells' rate on v exceeds off's.
+        Surface off(c, h);
+        amrex::MultiFab u(c.mesh.ax.boxArray(), c.dm, 1, 1), v(c.mesh.ay.boxArray(), c.dm, 1, 1), w(c.mesh.az.boxArray(), c.dm, 1, 1);
+        u.setVal(0);
+        v.setVal(2);
+        w.setVal(1);
+        ns.law.update(u, v, w);
+        st.law.update(u, v, w);
+        off.law.update(u, v, w);
+        double ns_off = 0, st_gain = 1e300;
+        long n_side_cells = 0;
+        for (amrex::MFIter mfi(off.law.rate(), false); mfi.isValid(); ++mfi) {
+            const auto rn = ns.law.rate().const_array(mfi);
+            const auto rs = st.law.rate().const_array(mfi);
+            const auto ro = off.law.rate().const_array(mfi);
+            const auto wl = st.b.wall().const_array(mfi);
+            amrex::LoopOnCpu(mfi.validbox(), [&] (int i, int j, int k) {
+                for (int n = 0; n < 3; ++n) { ns_off = std::max(ns_off, std::abs(static_cast<double>(rn(i, j, k, n) - ro(i, j, k, n)))); }
+                if ((static_cast<int>(wl(i, j, k, gust::kWallMask)) & (gust::kWallXlo | gust::kWallXhi)) != 0) {
+                    ++n_side_cells;
+                    st_gain = std::min(st_gain, static_cast<double>(rs(i, j, k, 1) - ro(i, j, k, 1)));
+                }
+            });
+        }
+        amrex::ParallelDescriptor::ReduceRealMax(ns_off);
+        amrex::ParallelDescriptor::ReduceRealMin(st_gain);
+        amrex::ParallelDescriptor::ReduceLongSum(n_side_cells);
+        EXPECT_GT(n_side_cells, 0);
+        EXPECT_EQ(ns_off, 0.0) << "no wall law on a no-slip step: the rates are off's";
+        EXPECT_GT(st_gain, 0.0) << "steps: the law acts on every side cell";
+
+        // The implicit couplings of v: XM and XP take the factors, a_P grows by the part above 1.
+        auto implicit = [&] (const Surface& s) {
+            amrex::MultiFab A(c.mesh.ay.boxArray(), c.dm, gust::n_implicit_coefs, 0);
+            A.setVal(1);
+            A.setVal(6, gust::coef_P, 1);
+            s.law.add_to_implicit(1, op, A);
+            return A;
+        };
+        const amrex::MultiFab An = implicit(ns), As = implicit(st);
+        long n_row_bad = 0, n_rows = 0;
+        for (amrex::MFIter mfi(An, false); mfi.isValid(); ++mfi) {
+            const auto an = An.const_array(mfi);
+            const auto as = As.const_array(mfi);
+            const auto o = open[0].const_array(mfi);
+            const auto m = mark.const_array(mfi);
+            const auto rn = ns.law.rate().const_array(mfi, 1);
+            const auto rs = st.law.rate().const_array(mfi, 1);
+            const auto bf = ns.b.beta_face(1).const_array(mfi);
+            amrex::LoopOnCpu(mfi.validbox(), [&] (int i, int j, int k) {
+                if (static_cast<double>(bf(i, j, k)) == 1.0) { return; }   // a blocked face: the identity in both
+                auto fac = [&] (int ii, int jj, int kk) { return m(ii, jj, kk) == 1 ? 2.0 : static_cast<double>(o(ii, jj, kk)); };
+                const double flo = 0.5 * (fac(i, j - 1, k) + fac(i, j, k));
+                const double fhi = 0.5 * (fac(i + 1, j - 1, k) + fac(i + 1, j, k));
+                const double dr = 0.5 * (static_cast<double>(rn(i, j - 1, k) + rn(i, j, k)) - static_cast<double>(rs(i, j - 1, k) + rs(i, j, k)));
+                const double dP = dr + std::max(flo - 1, 0.0) + std::max(fhi - 1, 0.0);
+                if (flo > 1 || fhi > 1) { ++n_rows; }
+                if (std::abs(static_cast<double>(an(i, j, k, gust::coef_XM)) - flo) > tol || std::abs(static_cast<double>(an(i, j, k, gust::coef_XP)) - fhi) > tol
+                    || std::abs(static_cast<double>(an(i, j, k, gust::coef_P) - as(i, j, k, gust::coef_P)) - dP) > 10 * tol) { ++n_row_bad; }
+            });
+        }
+        for (long* v : {&n_rows, &n_row_bad}) { amrex::ParallelDescriptor::ReduceLongSum(*v); }
+        EXPECT_GT(n_rows, 0) << "rows next to a step face";
+        EXPECT_EQ(n_row_bad, 0) << "the implicit couplings of v, boxes " << mgs << (rising ? " rising" : " falling");
+      }
+    }
+}
+
+// terrain.immersed_wall_distance = column_centre. Ramps along x on 10 m cells and layers. At 0.5 m per metre the
+// ground spans 5 m across a footprint, less than the layer: the distances equal mean_height's, bit for bit, and so
+// on a flat ground. At 1.2 m per metre it spans 12 m: in every cell that is not solid the distance is
+// min(d_mean, max(z_c - h_c, dz / 2)), with z_c the cell centre's height and h_c = 21 + 1.2 x_c the ground's at the
+// column centre (closed form on a straight ramp); somewhere the column centre gives the smaller value. With and
+// without step side walls, on one box and several.
+TEST (ImmersedSurface, ColumnCentreDistanceOnlyWhereTheFootprintSpansMoreThanALayer)
+{
+    const amrex::Real floor = amrex::Real(1e-6), cmu0 = amrex::Real(0.5477);
+    auto dist = [&] (const PCase& c, const Surface& s) {
+        gust::BuildingTke t;
+        t.build(s.b, s.law, s.opt, c.geom, s.z, floor, cmu0);
+        amrex::MultiFab d(c.ba, c.dm, 1, 0);
+        amrex::MultiFab::Copy(d, t.distance(), 0, 0, 1, 0);
+        return d;
+    };
+    for (const int mgs : {8, 4}) {
+        const PCase c = gust::lamtest::flat_case(16, 8, 24, 160, 80, 240, false, false, mgs);
+        for (const double slope : {0.0, 0.5}) {
+            auto h = [=] (double x, double) { return 21.0 + slope * x; };
+            const Surface mh(c, h), cc(c, h, "vertical", "off", "column_centre");
+            amrex::MultiFab a = dist(c, mh), b = dist(c, cc);
+            amrex::MultiFab::Subtract(a, b, 0, 0, 1, 0);
+            EXPECT_EQ(static_cast<double>(a.norminf(0)), 0.0) << "slope " << slope << " boxes " << mgs;
+        }
+        for (const std::string side : {"off", "steps"}) {
+            auto h = [] (double x, double) { return 21.0 + 1.2 * x; };
+            const Surface mh(c, h, "vertical", side), cc(c, h, "vertical", side, "column_centre");
+            const amrex::MultiFab dm = dist(c, mh), dc = dist(c, cc);
+            long n_fluid = 0, n_bad = 0, n_smaller = 0;
+            for (amrex::MFIter mfi(dc, false); mfi.isValid(); ++mfi) {
+                const auto am = dm.const_array(mfi);
+                const auto ac = dc.const_array(mfi);
+                const auto bt = cc.b.beta().const_array(mfi);
+                amrex::LoopOnCpu(mfi.validbox(), [&] (int i, int j, int k) {
+                    if (static_cast<double>(bt(i, j, k)) >= 1) {
+                        if (ac(i, j, k) != am(i, j, k)) { ++n_bad; }   // solid cells keep theirs
+                        return;
+                    }
+                    ++n_fluid;
+                    const double zc = 10.0 * (k + 0.5), hc = 21.0 + 1.2 * 10.0 * (i + 0.5);
+                    const double want = std::min(static_cast<double>(am(i, j, k)), std::max(zc - hc, 5.0));
+                    if (want < static_cast<double>(am(i, j, k)) - 1e-3) { ++n_smaller; }
+                    if (std::abs(static_cast<double>(ac(i, j, k)) - want) > tol * 100) { ++n_bad; }
+                });
+            }
+            for (long* v : {&n_fluid, &n_bad, &n_smaller}) { amrex::ParallelDescriptor::ReduceLongSum(*v); }
+            EXPECT_GT(n_fluid, 0);
+            EXPECT_GT(n_smaller, 0) << "the column centre is nowhere nearer: the case tests nothing";
+            EXPECT_EQ(n_bad, 0) << "the column-centre distance, side walls " << side << " boxes " << mgs;
+        }
+    }
+}
+
 TEST (ImmersedSurface, HashFollowsTheGroundsInputs)
 {
     gust::TerrainInputs t = immersed();
@@ -585,6 +860,9 @@ TEST (ImmersedSurface, HashFollowsTheGroundsInputs)
         return gust::immersed_terrain_hash(e, kZ0) != base;
     };
     EXPECT_TRUE(changed([] (gust::TerrainInputs& e) { e.immersed_slope = "normal"; }));
+    EXPECT_TRUE(changed([] (gust::TerrainInputs& e) { e.immersed_side_walls = "steps"; }));
+    EXPECT_TRUE(changed([] (gust::TerrainInputs& e) { e.immersed_side_walls = "steps_no_slip"; }));
+    EXPECT_TRUE(changed([] (gust::TerrainInputs& e) { e.immersed_wall_distance = "column_centre"; }));
     EXPECT_TRUE(changed([] (gust::TerrainInputs& e) { e.type = "flat"; }));
     EXPECT_TRUE(changed([] (gust::TerrainInputs& e) { e.hill_height = 61; }));
     EXPECT_TRUE(changed([] (gust::TerrainInputs& e) { e.hill_half_width = 41; }));

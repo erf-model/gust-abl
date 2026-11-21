@@ -173,6 +173,37 @@ bool solid_face_rectangle (const amrex::Real mid[3], const amrex::Real hs[3], co
     return true;
 }
 
+// terrain.immersed_wall_distance = column_centre. Where the ground under a cell's footprint spans more than the
+// cell's layer (its four ground nodes differ by more), the mean fluid height above the ground (surface()) counts
+// the deep corner of the footprint and exceeds the cell's height above the ground below its centre. There the
+// distance is the smaller of the two: the cell centre's height above the ground at the column centre (the mean of
+// the four ground nodes), at least half the layer. Elsewhere it is unchanged. Valid cells (the caller fills the
+// ghosts); solid cells keep theirs. z_nd's last component holds the ground's height at layer k0.
+void column_centre_distance (amrex::MultiFab& dist, const amrex::MultiFab& beta, const amrex::MultiFab& z_nd,
+                             const amrex::Geometry& geom)
+{
+    const int k0 = geom.Domain().smallEnd(2);
+    const int gc = z_nd.nComp() - 1;
+    for (amrex::MFIter mfi(dist, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
+        const auto d = dist.array(mfi);
+        const auto z = z_nd.const_array(mfi);
+        const auto bt = beta.const_array(mfi);
+        amrex::ParallelFor(mfi.tilebox(), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+        {
+            if (bt(i, j, k) >= amrex::Real(1)) { return; }
+            const amrex::Real q = amrex::Real(0.25);
+            const amrex::Real zb = q * (z(i, j, k) + z(i + 1, j, k) + z(i, j + 1, k) + z(i + 1, j + 1, k));
+            const amrex::Real zt = q * (z(i, j, k + 1) + z(i + 1, j, k + 1) + z(i, j + 1, k + 1) + z(i + 1, j + 1, k + 1));
+            const amrex::Real g0 = z(i, j, k0, gc), g1 = z(i + 1, j, k0, gc), g2 = z(i, j + 1, k0, gc), g3 = z(i + 1, j + 1, k0, gc);
+            const amrex::Real span = amrex::max(amrex::max(g0, g1), amrex::max(g2, g3)) - amrex::min(amrex::min(g0, g1), amrex::min(g2, g3));
+            if (!(span > zt - zb)) { return; }
+            const amrex::Real hc = q * (g0 + g1 + g2 + g3);
+            const amrex::Real dc = amrex::max(amrex::Real(0.5) * (zb + zt) - hc, amrex::Real(0.5) * (zt - zb));
+            d(i, j, k) = amrex::min(d(i, j, k), dc);
+        });
+    }
+}
+
 } // namespace
 
 void BuildingTke::build (const Buildings& b, const BuildingForcing& law, const BuildingsOptions& opt, const amrex::Geometry& geom,
@@ -432,6 +463,8 @@ void BuildingTke::build (const Buildings& b, const BuildingForcing& law, const B
     // A ground that is a continuous surface: the fluid's mean height above it, which the cells'
     // rectangles above do not give on a slope (on a flat ground the two agree).
     if (b.from_surface()) { amrex::MultiFab::Copy(m_dist, b.surface(), kSurfaceHeight, 0, 1, 0); }
+    // terrain.immersed_wall_distance = column_centre: on a ground steeper than the layer across a footprint.
+    if (b.from_surface() && opt.column_distance) { column_centre_distance(m_dist, b.beta(), z_nd, geom); }
     m_dist.FillBoundary(geom.periodicity());
     m_hb.define(ba, dm, 1, 1);
     m_hb.setVal(0);

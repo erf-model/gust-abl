@@ -612,7 +612,7 @@ void Buildings::build_from_map (const BuildingsOptions& opt, const BuildingHeigh
     image_ghost_columns(m_wall, geom);
 }
 
-std::string Buildings::summary (const amrex::MultiFab& detJ, const amrex::Geometry& geom) const
+std::string Buildings::summary (const amrex::MultiFab& detJ, const amrex::Geometry& geom, bool ground) const
 {
     if (!m_active) { return ""; }
     const auto dx = geom.CellSizeArray();
@@ -648,11 +648,13 @@ std::string Buildings::summary (const amrex::MultiFab& detJ, const amrex::Geomet
     std::ostringstream os;
     os.precision(6);
     os << solid << " solid and " << partial << " partial cells, " << walls << " wall cells, solid volume " << volume << " m^3";
-    if (onface > 0) {
+    // An immersed ground always meets the side faces, and its cut cells with no wall are thin by intent
+    // (terrain.small_volfrac): the two warnings are for buildings.
+    if (onface > 0 && !ground) {
         os << "\ngust: WARNING: buildings: " << onface << " cells with a building lie on a non-periodic side face of the "
            << "domain; keep buildings away from inflow and outflow faces";
     }
-    if (thin > 0) {
+    if (thin > 0 && !ground) {
         os << "\ngust: WARNING: buildings: " << thin << " partial cells have no wall: a building thinner than a cell "
            << "has opposite sides in one cell; refine the mesh around it";
     }

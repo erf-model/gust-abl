@@ -204,6 +204,12 @@ public:
     //! without an immersed ground. Public because it launches device kernels.
     [[nodiscard]] const amrex::MultiFab& centroid_spacing () const { return m_spacing; }
     void make_centroid_spacing ();
+    //! terrain.immersed_side_walls = steps_no_slip: 1 on the x (d = 0) and y (d = 1) faces between a cell with a
+    //! step bit and its solid neighbour, else 0 (one ghost layer); empty without the option. Across such a face the
+    //! tangential velocities diffuse to the solid cell's zero over half a column (twice the face's coupling), in
+    //! place of the wall law's stress.
+    [[nodiscard]] const amrex::MultiFab& no_slip_faces (int d) const { return m_no_slip[static_cast<std::size_t>(d)]; }
+    void make_no_slip_faces ();
 
 private:
     const Buildings* m_b{nullptr};
@@ -217,6 +223,8 @@ private:
     bool m_immersed_ground{false};
     bool m_slope_normal{false};
     amrex::MultiFab m_spacing;
+    bool m_step_no_slip{false};
+    std::array<amrex::MultiFab, 2> m_no_slip;
 };
 
 //! How many fluid cells have no open path to the largest-index region. Aborts are

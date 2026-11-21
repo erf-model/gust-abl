@@ -1319,9 +1319,12 @@ unit-test flags by ``tools/unsteady_output_mutants.py`` (macOS arm64, AppleClang
      - ``ProbeFileOnRestart``
 
 The one-line mutants of the immersed ground (``Source/BuildingForcing.H``, ``Source/BuildingForcing.cpp``,
-``Source/ImmersedStrain.cpp``, ``Source/Residual.cpp``, ``Source/ImmersedTerrain.cpp`` and ``Source/Inputs.cpp``),
-each run against ``ImmersedTerrain.*`` and ``Inputs.ImmersedTerrain*`` on one rank, with a rebuild from the restored
-sources between two mutants (macOS arm64, AppleClang). All 15 are killed.
+``Source/ImmersedStrain.cpp``, ``Source/Residual.cpp``, ``Source/ImmersedTerrain.cpp``, ``Source/Inputs.cpp``,
+``Source/Sequencing.cpp``, ``Source/Heights_K.H`` and ``Source/LogShear.cpp``),
+each run against ``ImmersedTerrain.*``, ``LogShear.*`` and ``Inputs.ImmersedTerrain*`` on one rank, with a rebuild
+from the restored sources between two mutants (macOS arm64, AppleClang). All 18 are killed. IT9 (the check of
+``mesh.is_periodic`` dropped) is retired: the check was removed when inflow and outflow faces were allowed, and
+``Inputs.ImmersedTerrainChecksNameTheInput`` now requires that such a deck is accepted.
 
 .. list-table::
    :header-rows: 1
@@ -1354,9 +1357,6 @@ sources between two mutants (macOS arm64, AppleClang). All 15 are killed.
    * - IT8
      - The refusal of ``solver.poisson_backend = mlmg`` dropped
      - ``RefusesWhatItDoesNotSupport``
-   * - IT9
-     - The check of ``mesh.is_periodic`` dropped
-     - ``Inputs.ImmersedTerrainChecksNameTheInput``
    * - IT10
      - A restart with another ground accepted
      - CTest ``abort_immersed_restart_changed``
@@ -1375,6 +1375,24 @@ sources between two mutants (macOS arm64, AppleClang). All 15 are killed.
    * - IT15
      - The refusal of ``buildings.type`` dropped
      - CTest ``abort_immersed_buildings``
+   * - IT16
+     - The solid inflow faces not set to 0 (``set_solid_faces`` not called)
+     - ``InflowIsZeroOnSolidFaces``; CTests ``rt_immersed_open_faces`` and the four ``rt_immersed_open_faces_*``
+   * - IT17
+     - The cut layer's height taken at the layer's centre (the centroid branch never taken)
+     - ``HeightInTheCutLayerIsItsOpenCentroid``; CTest ``rt_immersed_askervein_coarse``
+   * - IT18
+     - The wall law's gradient in the cut cell not applied (``ImmersedStrain::apply``)
+     - ``StrainCorrectionFollowsTheFlatGround``
+   * - IT19
+     - The wall law's gradient in the cut cell not applied (``LogShear::apply``)
+     - ``LogShear.ImmersedGroundIsExactFromTheCutCellUp``
+   * - IT20
+     - The absolute Rayleigh height measured from the mesh's lower face (``zorg = 0`` in ``damping_coef``)
+     - ``AbsoluteRayleighHeightIsFromTheTerrainZero``
+   * - IT21
+     - The refusal of ``bc.outflow_transport = from_velocity`` dropped
+     - ``RefusesWhatItDoesNotSupport``
 
 IT1 to IT9 were run with a scripted pass over the sources (each change, a rebuild, the named tests, the file
 restored and touched), and IT10 to IT15 the same way against the CTests; the scripts are not in the repository.
@@ -1393,17 +1411,17 @@ are killed.
      - Failing tests
    * - LS1
      - The central difference :math:`d_{k+1} - d_{k-1}` in the place of the log length
-     - ``LogProfileGivesTheLogLawGradient``, ``ImmersedGroundStartsAboveTheCutCell``, ``RoughnessMapEntersByColumn``;
+     - ``LogProfileGivesTheLogLawGradient``, ``ImmersedGroundIsExactFromTheCutCellUp``, ``RoughnessMapEntersByColumn``;
        CTest ``rt_log_shear_column_f0``, ``rt_log_shear_column_f07``
    * - LS2
      - :math:`z_0` not added to the distance
      - the same three unit tests
    * - LS3
      - Immersed ground: the wall cell not left out
-     - ``ImmersedGroundStartsAboveTheCutCell``
+     - ``ImmersedGroundIsExactFromTheCutCellUp``
    * - LS4
      - Immersed ground: the solid cells not left out
-     - ``ImmersedGroundStartsAboveTheCutCell``
+     - ``ImmersedGroundIsExactFromTheCutCellUp``
    * - LS5
      - The gradient of :math:`v` taken from :math:`u`
      - the same three unit tests
@@ -1418,7 +1436,7 @@ are killed.
      - the same three unit tests
    * - LS9
      - The cell under the top cell left out
-     - ``LogProfileGivesTheLogLawGradient``, ``ImmersedGroundStartsAboveTheCutCell``
+     - ``LogProfileGivesTheLogLawGradient``, ``ImmersedGroundIsExactFromTheCutCellUp``
 
 LS1 to LS9 were run the same way; the scripts are not in the repository.
 
@@ -1833,12 +1851,39 @@ Current tests
        ridge and over the hill are the measured differences with a margin (the case's README). The ``_normal``
        test reads the body-fitted plotfile of the ``_vertical`` test. Mutant: the wall cell's distance halved fails
        ``rt_immersed_along_vertical`` (7.4 % against 2 %).
+   * - ``rt_immersed_open_faces``
+     - Flat immersed ground between an inflow and an outflow face (``Tests/Canonical_RANS/Immersed_Open_Faces``,
+       :doc:`immersed_terrain`) at cut-cell solid fractions 0, 0.5, 0.95 and 1 with ``turb.shear_stencil = log_law``
+       and ``terrain.small_volfrac = 0.1``, on one rank: the steady verdict, the flux through the outflow face equal
+       to that through the inflow face within 1e-6, and the outflow column within 1.5 % in :math:`u` and 8 % in
+       :math:`k` of the body-fitted channel at equal height above the ground (measured: 0.8 % and 5.5 % at 0.5).
+       Double precision only.
+   * - ``rt_immersed_open_faces_sponge``, ``rt_immersed_open_faces_power_law``,
+       ``rt_immersed_open_faces_wall_velocity``, ``rt_immersed_open_faces_rayleigh_absolute``
+     - The same channel and setting at solid fractions 0.5 and 0.95 with one option of the open faces each, against
+       the body-fitted channel with that option: a sponge (320 m, 0.05), a power-law inflow, no-slip side walls
+       moving at 8 m/s, and Rayleigh damping of :math:`u, v, w, k` above 700 m at the absolute height. Same checks;
+       limits 1.5 % and 8 % (2 % and 10 % with the side walls; measured at most 0.83 % and 5.7 %, 1.41 % and
+       8.7 % with the walls). The fluxes are the means over :math:`y`. At most 1000 iterations. Double precision
+       only. Mutant: the solid inflow faces not set to 0 fails all four at 0.95 (no steady verdict, flux difference
+       7.6e-5).
+   * - ``rt_immersed_askervein_coarse`` (``nightly``)
+     - Askervein at 32 x 32 columns as a pair on four ranks (``Tests/Real_Terrain/Immersed_Terrain_Cases``):
+       terrain-following mesh against the immersed ground, each with its own layers. Both reach the steady verdict;
+       the speed at 10 m above the ground is compared over the columns more than 1000 m from the side faces and on
+       the highest ground: rms difference below 22 % (measured 20.1 %), highest ground below 52 % (measured
+       -48.7 %), of the mean body-fitted speed. The limits detect a change; at 188 m columns the hill top is a few
+       cut columns wide. Label ``nightly`` (4.5 minutes on an idle laptop, up to 50 on a loaded one). Double
+       precision only. Mutant: the cut layer's height at the layer's centre fails it (the immersed run stops in
+       its first pressure solve). The cut cell's wall-law shear removed moves the rms difference by 0.2 points
+       only; its unit tests catch it.
    * - ``rt_log_shear_column_f0``, ``rt_log_shear_column_f03``, ``rt_log_shear_column_f07``, ``rt_log_shear_column_f09``
      - The same columns with ``turb.shear_stencil = log_law`` (:ref:`log-shear`): the wall stress to 1e-5, the cut
        cell within 0.2 % of the log law, the three cells above it within 0.5 %, and their :math:`k` within 1 %,
        1.5 % and 2 % of the local balance :math:`u_*^2 (1 - d/D)/C_{\mu 0}^2` (``central``: 13 to 22 % above it in
        the first). At 0 the immersed column equals the body-fitted column with the option to 1e-6. Double precision
-       only.
+       only. At 0.9 the run solves the pressure to ``simplec.pressure_reltol = 1e-6``: with the default 1e-3 its
+       :math:`u` and :math:`w` residuals level off near 2e-8.
    * - ``abort_shear_stencil_value``, ``abort_shear_stencil_buildings``, ``abort_shear_stencil_tucker``,
        ``abort_shear_stencil_no_surface_layer``
      - The refusals of ``turb.shear_stencil``: a value that is not ``central`` or ``log_law``, buildings, the Tucker
@@ -2847,15 +2892,25 @@ GoogleTest suite
      - Check
    * - ``ImmersedTerrain.ExactLawReturnsTheLogProfilesUstar``, ``ImmersedTerrain.CentroidSpacingAcrossTheCutCellsTopFace``,
        ``ImmersedTerrain.StrainCorrectionFollowsTheFlatGround``, ``ImmersedTerrain.BodyForcesActOnTheOpenPart``,
-       ``ImmersedTerrain.RefusesWhatItDoesNotSupport``, ``ImmersedTerrain.RestartRecordRefusesAChangedGround``
+       ``ImmersedTerrain.RefusesWhatItDoesNotSupport``, ``ImmersedTerrain.RestartRecordRefusesAChangedGround``,
+       ``ImmersedTerrain.HeightInTheCutLayerIsItsOpenCentroid``, ``ImmersedTerrain.InflowIsZeroOnSolidFaces``,
+       ``ImmersedTerrain.AbsoluteRayleighHeightIsFromTheTerrainZero``
      - The immersed ground (:doc:`immersed_terrain`): the wall law at the exact distances returns :math:`u_*` of a
        log profile, also below 10 :math:`z_0`; the spacing :math:`s` at a cut cell of solid fraction 0.7, in the
        viscous flux and in the implicit rows, with the diagonal equal to the sum of the couplings, on boxes of 4
        and of 2 cells; the strain correction is the identity at solid fraction 0 and gives
-       :math:`R\,u_*/(\kappa (d_2 + z_0))` on a log profile at 0.3, 0.7 and 0.9; a body force on the cut cell's
+       :math:`R\,u_*/(\kappa (d_2 + z_0))` on a log profile at 0.3, 0.7 and 0.9, and the cut cell takes the wall
+       law's gradient :math:`u_*/(\kappa (d_1 + z_0))`; a body force on the cut cell's
        faces is the open fraction times the force and zero on solid faces; each refusal names its input; the
        restart record changes with ``terrain.flat_height``, ``terrain.small_volfrac`` and ``bc.surface_z0`` and
-       refuses a changed ground and a changed representation.
+       refuses a changed ground and a changed representation; the height above the ground in a cut layer is half
+       its open height at the cell centre and at the x and y faces (solid fractions 0.3 and 0.9), and the centre's
+       height elsewhere; with a layer promoted to solid by ``terrain.small_volfrac`` the inflow profile's wind on
+       that layer's inflow faces is 0 and the faces above keep the profile, on boxes of 4 and of 2 cells. With
+       ``bc.rayleigh_height = absolute`` the Rayleigh coefficient on :math:`w` follows
+       :math:`0.05 \sin^2(\tfrac{\pi}{2}(z_a - 150)/(z_{top} - h_f - 150))` with :math:`z_a` the height above the
+       terrain's zero, :math:`h_f` = 25 m below the mesh's lower face, in the seven layers from 155 to 215 m, on boxes
+       of 4 and of 2 cells.
    * - ``ImmersedSurface.MomentsMatchAQuadrature``, ``ImmersedSurface.TiltedPlaneMatchesTheClosedForm``,
        ``ImmersedSurface.FlatSurfaceGivesTheFlatGroundsFields``, ``ImmersedSurface.HeightAboveTheGroundOnAnAgnesiHill``,
        ``ImmersedSurface.EveryConsumerReadsTheHelper``, ``ImmersedSurface.NormalOnFlatGroundIsBitIdenticalToVertical``,
@@ -2875,7 +2930,7 @@ GoogleTest suite
        file's heights above ``terrain.flat_height``.
    * - ``Inputs.ImmersedTerrainChecksNameTheInput``, ``Inputs.ParsesTheImmersedTerrainKeys``
      - The four ``terrain`` keys of the immersed ground are read, and each of their range checks and refusals names
-       its input; a hill passes with either ``terrain.immersed_slope``.
+       its input; a hill passes with either ``terrain.immersed_slope``; a deck with inflow and outflow faces passes.
    * - ``Reference.ArchiveRoundTripVerifies``, ``Reference.DamagedArchivesAreRefused``
      - A reference archive written, verified and loaded: fields bit-identical to the average, metadata and field
        statistics unchanged; a changed byte, a missing file, an extra file, edited AU, and data changed together

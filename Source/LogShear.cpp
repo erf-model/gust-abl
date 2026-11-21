@@ -1,5 +1,7 @@
 #include "LogShear.H"
 
+#include "ImmersedStrain.H"
+
 #include "Stencil_K.H"
 
 #include <cmath>
@@ -55,6 +57,10 @@ LogShear::LogShear (const amrex::MultiFab& dist, const Roughness& rough, const B
     if (dist.nGrowVect()[0] < 1 || dist.nGrowVect()[1] < 1) { amrex::Abort("gust: LogShear: the wall distance needs one lateral ghost cell"); }
     // One lateral ghost cell (apply's cells), none in z: the stencil stays inside the domain.
     m_len.define(dist.boxArray(), dist.DistributionMap(), 1, amrex::IntVect(1, 1, 0));
+    if (m_b != nullptr) {
+        if (rough.map != nullptr) { amrex::Abort("gust: turb.shear_stencil = log_law: an immersed ground needs a uniform bc.surface_z0"); }
+        m_z0 = rough.z0;
+    }
     if (rough.map == nullptr) {
         if (!(rough.z0 > 0)) { amrex::Abort("gust: turb.shear_stencil = log_law needs a roughness length z0 > 0 (bc.surface_z0)"); }
         add_roughness<UniformZ0>(m_len, dist, rough);
@@ -87,17 +93,20 @@ void LogShear::apply (const State& q, const amrex::Geometry& geom, amrex::MultiF
             });
         } else {
             // An immersed ground: the fluid cells above the wall cell (the cut cell, or the first
-            // fluid cell over a ground on a layer's face: the cell the wall mask marks).
+            // fluid cell over a ground on a layer's face: the cell the roof bit marks). A cell with only
+            // side bits (terrain.immersed_side_walls = steps) is not a cut cell and takes the log law.
             const auto beta = m_b->beta().const_array(mfi);
             const auto wl = m_b->wall().const_array(mfi);
             amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
             {
                 if (beta(i, j, k) >= amrex::Real(1)) { return; }
-                if (static_cast<int>(wl(i, j, k, kWallMask)) != 0) { return; }
+                if ((static_cast<int>(wl(i, j, k, kWallMask)) & (kWallRoof | kWallUnder)) != 0) { return; }
                 log_shear_cell(i, j, k, u, v, w, z, d, s2, dxinv);
             });
         }
     }
+    // The cut cells of an immersed ground: the wall law's gradient (ImmersedStrain.H).
+    if (m_b != nullptr) { apply_cut_cell_strain(*m_b, m_z0, q, geom, S2); }
 }
 
 }   // namespace gust

@@ -5,17 +5,20 @@
 //   cut cell's top face span the distance between the fluid centroids, in the implicit rows (a_P =
 //   sum a_nb kept) and in the viscous fluxes; the strain correction is the identity for a ground on a
 //   cell face and the log-law gradient times the flat ground's error above a cut cell; the body
-//   forces act on the open part of each face; the refusals of check_immersed_terrain; the restart record.
+//   forces act on the open part of each face; theta is not conducted through the ground; the refusals of check_immersed_terrain; the restart record.
 // turb.shear_stencil = log_law (LogShear.H): the strain of an exact log profile is the log-law gradient
 // in every cell above the wall cell, over a body-fitted ground and above the cut cell of an immersed
-// one, where the central difference is 21 % high in the second cell; the wall cell, the cut cell and
-// the top cell keep the closure's strain.
+// one, where the central difference is 21 % high in the second cell; the body-fitted wall cell and
+// the top cell keep the closure's strain, the cut cell takes the wall law's gradient.
+#include "BoundaryConditions.H"
 #include "BuildingForcing.H"
 #include "Closure.H"
+#include "Heights_K.H"
 #include "ImmersedStrain.H"
 #include "ImmersedTerrain.H"
 #include "ImplicitOperator.H"
 #include "LogShear.H"
+#include "MassFlux.H"
 #include "LaminarTestHelpers.H"
 #include "Residual.H"
 #include "SurfaceRoughness.H"
@@ -36,6 +39,7 @@
 #include <fstream>
 #include <functional>
 #include <stdexcept>
+#include <array>
 #include <string>
 #include <type_traits>
 
@@ -246,13 +250,13 @@ TEST (ImmersedTerrain, StrainCorrectionFollowsTheFlatGround)
         amrex::MultiFab N2, S2;
         gust::stratification_and_strain(q, buoy, c.geom, N2, S2);
         if (fix) { gust::ImmersedStrain(g.law, amrex::Real(kZ0)).apply(q, c.geom, S2); }
-        return value_at(S2, 1, 2, 3);
+        return std::array<double, 2>{value_at(S2, 1, 2, 3), value_at(S2, 1, 2, 2)};   // above the cut cell; the cut cell
     };
     // beta = 0: d1 = dz / 2 and d2 = 3 dz / 2 are the flat ground's centres.
     auto any = [] (int k) { return 0.3 * k * k + std::sin(double(k)); };
-    const double plain = strain(2 * kDz, any, false);
+    const double plain = strain(2 * kDz, any, false)[0];
     ASSERT_GT(plain, 0);
-    EXPECT_NEAR(strain(2 * kDz, any, true), plain, 1e3 * rtol * plain);
+    EXPECT_NEAR(strain(2 * kDz, any, true)[0], plain, 1e3 * rtol * plain);
 
     const double us = 0.35;
     for (const double f : {0.3, 0.7, 0.9}) {
@@ -264,7 +268,47 @@ TEST (ImmersedTerrain, StrainCorrectionFollowsTheFlatGround)
         const double f2 = kDz / 2, f3 = 1.5 * kDz, f4 = 2.5 * kDz;
         const double R = (f3 + kZ0) * std::log((f4 + kZ0) / (f2 + kZ0)) / (f4 - f2);
         const double dudz = R * us / (kKappa * (d2 + kZ0));
-        EXPECT_NEAR(std::sqrt(strain((2 + f) * kDz, ulog, true)), dudz, 1e3 * rtol * dudz) << "f " << f;
+        const auto with = strain((2 + f) * kDz, ulog, true);
+        EXPECT_NEAR(std::sqrt(with[0]), dudz, 1e3 * rtol * dudz) << "f " << f;
+        // The cut cell: the wall law's gradient at its fluid centroid; the closure's difference (which reads the
+        // solid cell below) differs from it.
+        const double wall = us / (kKappa * (d1 + kZ0));
+        EXPECT_NEAR(std::sqrt(with[1]), wall, ltol * wall) << "cut cell, f " << f;
+        EXPECT_GT(std::abs(std::sqrt(strain((2 + f) * kDz, ulog, false)[1]) - wall), 0.05 * wall) << "cut cell, f " << f;
+    }
+}
+
+// A point centred in the layer the ground cuts stands at the centroid of the layer's open part, half the open
+// height; the other points keep their height above the ground (below it: negative), and w's faces theirs.
+TEST (ImmersedTerrain, HeightInTheCutLayerIsItsOpenCentroid)
+{
+    const PCase c = ground_case(2);
+    for (const double f : {0.3, 0.9}) {
+        gust::State q;
+        q.define(c.ba, c.dm, true);
+        amrex::MultiFab::Copy(q.z_phys_nd, c.z, 0, 0, 1, c.z.nGrow());
+        gust::fill_immersed_ground(q.z_phys_nd, c.geom, terrain((2 + f) * kDz));
+        const double ground = (2 + f) * kDz;
+        // The largest error over all ranks: an EXPECT inside the loop would not fail on a non-root rank.
+        amrex::Real err = 0;
+        for (amrex::MFIter mfi(q.z_phys_nd, false); mfi.isValid(); ++mfi) {
+            const amrex::Box zb = mfi.fabbox();
+            const gust::NodeZ nz{q.z_phys_nd.const_array(mfi), amrex::lbound(zb), amrex::ubound(zb)};
+            const amrex::Box bx = amrex::enclosedCells(mfi.validbox());
+            amrex::LoopOnCpu(bx, [&] (int i, int j, int k) {
+                const double centre = (k + 0.5) * kDz - ground;
+                const double want = k == 2 ? 0.5 * (1 - f) * kDz : centre;
+                for (const double h : {double(gust::height_above_ground<gust::stencil::CC>(nz, i, j, k, 0)),
+                                       double(gust::height_above_ground<gust::stencil::XF>(nz, i, j, k, 0)),
+                                       double(gust::height_above_ground<gust::stencil::YF>(nz, i, j, k, 0))}) {
+                    err = std::max(err, amrex::Real(std::abs(h - want)));
+                }
+                const double hw = gust::height_above_ground<gust::stencil::ZF>(nz, i, j, k, 0);
+                err = std::max(err, amrex::Real(std::abs(hw - (k * kDz - ground))));
+            });
+        }
+        amrex::ParallelDescriptor::ReduceRealMax(err);
+        EXPECT_LT(err, 1e3 * rtol * kDz) << "f " << f;
     }
 }
 
@@ -308,10 +352,11 @@ TEST (LogShear, LogProfileGivesTheLogLawGradient)
 }
 
 // turb.shear_stencil = log_law above an immersed ground with solid fraction f in layer 2: the solid
-// layers and the cut cell (f = 0: the first fluid cell) keep the closure's strain; from the cell above,
-// the exact log profile at the fluid centroids' distances gives u* / (kappa (d + z0)). The solid layers hold
-// a distance that grows upward (1 and 2 cm), so that only the solid fraction keeps them out.
-TEST (LogShear, ImmersedGroundStartsAboveTheCutCell)
+// layers keep the closure's strain; in the cut cell (f = 0: the first fluid cell) and every cell above,
+// the exact log profile at the fluid centroids' distances gives u* / (kappa (d + z0)). The cut cell has the
+// wall law's gradient (apply_cut_cell_strain), which differs from the closure's difference there. The solid
+// layers hold a distance that grows upward (1 and 2 cm), so that only the solid fraction keeps them out.
+TEST (LogShear, ImmersedGroundIsExactFromTheCutCellUp)
 {
     const PCase c = ground_case(2);
     gust::BuoyancyOptions buoy;
@@ -333,13 +378,51 @@ TEST (LogShear, ImmersedGroundStartsAboveTheCutCell)
         gust::stratification_and_strain(q, buoy, c.geom, N2, S2);
         gust::LogShear(dist, gust::Roughness(amrex::Real(kZ0)), &g.b).apply(q, c.geom, S2);
         for (int i = 0; i < 4; ++i) {
-            for (int k = 0; k <= 2; ++k) { EXPECT_EQ(value_at(S2, i, 2, k), value_at(plain, i, 2, k)) << "f " << f << " layer " << k; }
-            for (int k = 3; k < 23; ++k) {
+            for (int k = 0; k < 2; ++k) { EXPECT_EQ(value_at(S2, i, 2, k), value_at(plain, i, 2, k)) << "f " << f << " layer " << k; }
+            // The cut cell: the wall law's gradient at its fluid centroid, not the closure's difference (which
+            // reads the solid cell below).
+            for (int k = 2; k < 23; ++k) {
                 const double exact = us / (kKappa * (dk(k) + kZ0));
                 EXPECT_NEAR(std::sqrt(value_at(S2, i, 2, k)), exact, ltol * exact) << "f " << f << " " << i << " " << k;
             }
+            EXPECT_GT(std::abs(value_at(S2, i, 2, 2) - value_at(plain, i, 2, 2)), 0.05 * value_at(plain, i, 2, 2)) << "f " << f;
         }
     }
+}
+
+// A cell with only a side bit (terrain.immersed_side_walls = steps marks the cell beside a step so) is not a
+// cut cell: it takes the log-law gradient. The bit is set by hand on the first fluid cell above the cut
+// cell, where the central difference is 21 % high, so the closure's strain would show.
+TEST (LogShear, SideWallCellTakesTheLogLaw)
+{
+    const PCase c = ground_case(2);
+    gust::BuoyancyOptions buoy;
+    buoy.gravity = 0;
+    const double us = 0.35, f = 0.3;
+    Ground g(c, (2 + f) * kDz);
+    auto& wall = const_cast<amrex::MultiFab&>(g.b.wall());
+    for (amrex::MFIter mfi(wall, false); mfi.isValid(); ++mfi) {
+        const auto w = wall.array(mfi);
+        amrex::LoopOnCpu(mfi.validbox(), [&] (int i, int j, int k) {
+            if (i == 1 && j == 2 && k == 3) { w(i, j, k, gust::kWallMask) = static_cast<amrex::Real>(gust::kWallXlo); }
+        });
+    }
+    const double d1 = (1 - f) * kDz / 2, d2 = (1 - f) * kDz + kDz / 2;
+    auto dk = [&] (int k) { return k < 2 ? 0.01 * (k + 1) : (k == 2 ? d1 : d2 + (k - 3) * kDz); };
+    gust::State q;
+    gust::lamtest::define_state(q, c);
+    fill_by_level(q.u, [&] (int k) { return k < 2 ? 0.0 : log_law(us, dk(k)); });
+    for (amrex::MultiFab* mf : {&q.v, &q.w, &q.p, &q.tke}) { mf->setVal(0); }
+    q.theta.setVal(300);
+    amrex::MultiFab dist(c.ba, c.dm, 1, 1);
+    fill_by_level(dist, dk);
+    amrex::MultiFab N2, plain, S2;
+    gust::stratification_and_strain(q, buoy, c.geom, N2, plain);
+    gust::stratification_and_strain(q, buoy, c.geom, N2, S2);
+    gust::LogShear(dist, gust::Roughness(amrex::Real(kZ0)), &g.b).apply(q, c.geom, S2);
+    const double exact = us / (kKappa * (dk(3) + kZ0));
+    ASSERT_GT(std::abs(std::sqrt(value_at(plain, 1, 2, 3)) - exact), 0.05 * exact) << "the closure's strain is exact: the case tests nothing";
+    EXPECT_NEAR(std::sqrt(value_at(S2, 1, 2, 3)), exact, ltol * exact) << "the side-wall cell";
 }
 
 // turb.shear_stencil = log_law with a roughness map: each column's own z0 enters its gradient. With one
@@ -421,6 +504,122 @@ TEST (ImmersedTerrain, BodyForcesActOnTheOpenPart)
     }
 }
 
+// The immersed ground takes no heat: theta is not conducted through the solid part of a face. The cut cell's
+// residual of theta and its implicit row do not read theta in the solid cell below; the first fluid cell's
+// row is unchanged. Without the closure the solid cells would carry heat in and out of the air.
+TEST (ImmersedTerrain, ThetaIsNotConductedThroughTheGround)
+{
+    for (const int mgs : {4, 2}) {
+        PCase c = ground_case(mgs);
+        const double f = 0.7;
+        Ground g(c, (2 + f) * kDz);
+        gust::lamtest::Laminar lam;
+        lam.make(c, 1.0, gust::FaceType::slip_wall, gust::FaceType::slip_wall);
+        c.mesh.set_open_faces(g.b.beta_face(0), g.b.beta_face(1), g.b.beta_face(2), g.b.beta(), c.geom);
+        lam.in.buildings = &g.law;
+        auto R_theta = [&] (double solid, int k) {
+            gust::State q;
+            gust::lamtest::define_state(q, c);
+            for (amrex::MultiFab* mf : {&q.u, &q.v, &q.w, &q.p, &q.tke}) { mf->setVal(0); }
+            fill_by_level(q.theta, [&] (int kk) { return kk <= 1 ? solid : 300 + 0.01 * (kk + 0.5) * kDz; });
+            gust::ResidualFields R;
+            gust::residual(q, lam.in, c.mesh, c.geom, R);
+            return value_at(R.theta, 1, 2, k);
+        };
+        const double cut = R_theta(300, 2), hot = R_theta(400, 2);
+        ASSERT_GT(std::abs(cut), 1e-6) << "no flux through the cut cell's top face: the case tests nothing otherwise";
+        EXPECT_EQ(hot, cut) << "the cut cell's residual reads the solid's theta, max_grid_size " << mgs;
+        EXPECT_EQ(R_theta(400, 3), R_theta(300, 3)) << "the first fluid cell, max_grid_size " << mgs;
+
+        gust::State q;
+        gust::lamtest::define_state(q, c);
+        for (amrex::MultiFab* mf : {&q.u, &q.v, &q.w}) { mf->setVal(0); }
+        amrex::Array<amrex::MultiFab, AMREX_SPACEDIM> F;
+        gust::transport_fluxes(q.u, q.v, q.w, q.z_phys_nd, c.mesh, c.geom, F);
+        amrex::MultiFab A;
+        gust::implicit_rows({&F[0], &F[1], &F[2]}, q.z_phys_nd, lam.in, gust::Equation::theta, c.mesh, c.geom, A);
+        EXPECT_EQ(value_at(A, 1, 2, 2, gust::coef_ZM), 0.0) << "the coupling to the solid below, max_grid_size " << mgs;
+        EXPECT_GT(value_at(A, 1, 2, 2, gust::coef_ZP), 0.0) << "the coupling to the air above stays";
+        EXPECT_GT(value_at(A, 1, 2, 2, gust::coef_XM), 0.0) << "the open part of the side face stays";
+    }
+}
+
+// An inflow face over an immersed ground: the normal velocity is 0 on the solid faces. A layer whose open part
+// is below terrain.small_volfrac is solid but still has a height above the ground, so the profile alone would
+// give its inflow face a wind, which the solid rows of the residual (they ask for 0) could never remove.
+TEST (ImmersedTerrain, InflowIsZeroOnSolidFaces)
+{
+    for (const int mgs : {4, 2}) {
+        PCase c = gust::lamtest::flat_case(4, 4, 24, 40, 40, 240, false, true, mgs);
+        gust::TerrainInputs t = terrain(2.95 * kDz);   // layer 2 is 5 % open
+        t.small_volfrac = amrex::Real(0.1);
+        const gust::BuildingsOptions opt = gust::immersed_terrain_options(t, kZ0);
+        gust::Buildings b;
+        b.build_from_map(opt, gust::immersed_terrain_map(t, c.geom), "terrain.flat_height", c.geom, c.z, c.ba, c.dm);
+        gust::State q;
+        q.define(c.ba, c.dm, true);
+        amrex::MultiFab::Copy(q.z_phys_nd, c.z, 0, 0, 1, c.z.nGrow());
+        gust::fill_immersed_ground(q.z_phys_nd, c.geom, t);
+        for (amrex::MultiFab* mf : {&q.u, &q.v, &q.w, &q.p, &q.tke}) { mf->setVal(1); }
+        q.theta.setVal(300);
+        gust::BoundaryInputs in;
+        in.face = {gust::FaceType::inflow, gust::FaceType::periodic, gust::FaceType::slip_wall,
+                   gust::FaceType::outflow, gust::FaceType::periodic, gust::FaceType::slip_wall};
+        gust::BoundaryConditions bc(in, c.geom, c.mesh, gust::CoriolisOptions{});
+        const gust::BuoyancyOptions buoy{};
+        bc.fill_ghosts(q, nullptr, buoy);
+        const double without = value_at(q.u, 0, 1, 2);
+        ASSERT_GT(without, 0.1) << "the profile gives the solid layer's face a wind: the case tests nothing otherwise";
+        bc.set_solid_faces(&b.beta_face(0), &b.beta_face(1));
+        bc.fill_ghosts(q, nullptr, buoy);
+        ASSERT_EQ(value_at(b.beta_face(0), 0, 1, 2), 1.0) << "the 5 % layer is solid";
+        for (int k = 0; k < 3; ++k) { EXPECT_EQ(value_at(q.u, 0, 1, k), 0.0) << "solid inflow face, k = " << k << ", max_grid_size " << mgs; }
+        EXPECT_GT(value_at(q.u, 0, 1, 3), 0.1) << "the first open layer keeps the profile";
+        EXPECT_EQ(value_at(q.u, 4, 1, 2), 1.0) << "the outflow face is not touched";
+    }
+}
+
+// bc.rayleigh_height = absolute over an immersed ground: the layer starts bc.rayleigh_zdamp above the
+// terrain's zero, as on a mesh that follows the terrain, not above the mesh's lower face (terrain.flat_height
+// below it), and its ramp ends at the top level. w alone is damped (towards 0), so R.w is the coefficient.
+TEST (ImmersedTerrain, AbsoluteRayleighHeightIsFromTheTerrainZero)
+{
+    for (const int mgs : {4, 2}) {
+        PCase c = gust::lamtest::flat_case(4, 4, 24, 40, 40, 240, false, true, mgs);
+        const double hf = 2.5 * kDz;   // the terrain's zero, 25 m above the mesh's lower face
+        gust::State q;
+        q.define(c.ba, c.dm, true);
+        amrex::MultiFab::Copy(q.z_phys_nd, c.z, 0, 0, 1, c.z.nGrow());
+        gust::fill_immersed_ground(q.z_phys_nd, c.geom, terrain(hf));
+        for (amrex::MultiFab* mf : {&q.u, &q.v, &q.p, &q.tke}) { mf->setVal(1); }
+        q.w.setVal(1);
+        q.theta.setVal(300);
+        gust::BoundaryInputs in;
+        in.face = {gust::FaceType::inflow, gust::FaceType::periodic, gust::FaceType::slip_wall,
+                   gust::FaceType::outflow, gust::FaceType::periodic, gust::FaceType::slip_wall};
+        in.rayleigh_zdamp = 150;
+        in.rayleigh_dampcoef = amrex::Real(0.05);
+        in.rayleigh_fields = {false, false, true, false, false};
+        in.height_origin = static_cast<amrex::Real>(hf);   // as App.cpp sets it for terrain.flat_height
+        gust::BoundaryConditions bc(in, c.geom, c.mesh, gust::CoriolisOptions{});
+        gust::ResidualFields R;
+        R.define(c.ba, c.dm);
+        for (auto& f : R.fields()) { f.mf->setVal(0.0); }
+        bc.add_damping(q, R);
+        double err = 0;
+        int damped = 0;
+        for (int k = 0; k <= 24; ++k) {
+            const double za = k * kDz - hf;   // the w point's height above the terrain's zero
+            const double s = std::sin(0.5 * M_PI * (za - 150) / (240 - hf - 150));
+            const double expect = za > 150 ? 0.05 * s * s : 0.0;
+            damped += expect > 0 ? 1 : 0;
+            err = std::max(err, std::abs(value_at(R.w, 1, 1, k) - expect));
+        }
+        ASSERT_EQ(damped, 7) << "the w points 155 to 215 m above the terrain's zero are in the layer";
+        EXPECT_LT(err, 1e-12) << "max_grid_size " << mgs;
+    }
+}
+
 // The refusals that need other namespaces; nothing without a solve.
 TEST (ImmersedTerrain, RefusesWhatItDoesNotSupport)
 {
@@ -440,6 +639,7 @@ TEST (ImmersedTerrain, RefusesWhatItDoesNotSupport)
         {[] (auto& x) { x.unsteady = true; }, "steady.stage = unsteady"},
         {[] (auto& x) { x.canopy = true; }, "canopy.type"},
         {[] (auto& x) { x.stratified = true; }, "bc.theta_profile"},
+        {[] (auto& x) { x.outflow_from_velocity = true; }, "bc.outflow_transport"},
         {[] (auto& x) { x.column_guess = true; }, "init.first_guess = column"},
         {[] (auto& x) { x.probes = true; }, "steady.probes_file"},
         {[] (auto& x) { x.zref_given = true; }, "bc.surface_zref"},

@@ -261,6 +261,9 @@ LevelSolver::LevelSolver (const RunSetup& s, const Mesh& mesh, const amrex::Geom
     if (inject != nullptr && newton) { amrex::Abort("gust: LevelSolver: the nests' injection needs the SIMPLEC stage"); }
     bc.set_theta_ground_extension(s.simplec.theta_frozen);
     bc.set_nest_faces(s.nest);
+    if (buildings != nullptr && buildings->immersed_ground() && buildings->geometry() != nullptr) {
+        bc.set_solid_faces(&buildings->geometry()->beta_face(0), &buildings->geometry()->beta_face(1));
+    }
     if (canopy_in != nullptr && canopy_fine_detJ != nullptr) {
         canopy_field.restrict_from(*canopy_in, *canopy_fine_detJ, geom, mesh, ba, dm);
         canopy = &canopy_field;

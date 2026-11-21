@@ -25,7 +25,7 @@ namespace {
 struct DampingCoef
 {
     bool rayleigh, sponge;
-    amrex::Real zd, rc, ztop, sw, inv_w, ss;
+    amrex::Real zd, rc, ztop, zorg, sw, inv_w, ss;
     amrex::GpuArray<amrex::Real, 3> plo, phi;
     amrex::GpuArray<int, 4> lateral;   //!< xlo, xhi, ylo, yhi hold an inflow or outflow
     //! The Rayleigh part alone (1/s).
@@ -70,7 +70,10 @@ DampingCoef damping_coef (const BoundaryInputs& in, const amrex::Geometry& geom,
     DampingCoef d{};
     d.zd = in.rayleigh_zdamp;
     d.rc = in.rayleigh_dampcoef;
-    d.ztop = ztop;
+    // An absolute height is measured from the terrain's zero, height_origin above the mesh's lower face
+    // (an immersed ground); with bc.rayleigh_height = above_ground the ramp's end stays the top level.
+    d.zorg = in.rayleigh_above_ground ? amrex::Real(0) : in.height_origin;
+    d.ztop = ztop - d.zorg;
     d.sw = in.sponge_width;
     d.ss = in.sponge_strength;
     d.rayleigh = d.zd > 0;
@@ -135,7 +138,7 @@ void BoundaryConditions::add_damping (const State& q, ResidualFields& R) const
                 // anomaly over a crest), u and v towards the profile, w to 0.
                 // The sponge relaxes towards the inflow profile (the height
                 // above the ground, as the inflow itself).
-                const amrex::Real zr = above_ground ? h : zc;   // the layer's height coordinate
+                const amrex::Real zr = above_ground ? h : zc - coef.zorg;   // the layer's height coordinate
                 const amrex::Real cr = with_rayleigh ? coef.rayleigh_part(zr) : amrex::Real(0);
                 const amrex::Real cs = coef.sponge_part(x, y);
                 if (cr > 0) {
@@ -184,7 +187,7 @@ BoundaryConditions::CanopyZoneCounts BoundaryConditions::canopy_in_boundary_zone
             point_heights(stencil::CC, nz, i, j, k, klo, h, zc);
             const amrex::Real x = plo[0] + (i + amrex::Real(0.5)) * dx[0];
             const amrex::Real y = plo[1] + (j + amrex::Real(0.5)) * dx[1];
-            const bool damped = (rayleigh_to_profile && coef.rayleigh_part(above_ground ? h : zc) > 0) || coef.sponge_part(x, y) > 0;
+            const bool damped = (rayleigh_to_profile && coef.rayleigh_part(above_ground ? h : zc - coef.zorg) > 0) || coef.sponge_part(x, y) > 0;
             return {inflow ? amrex::Long(1) : amrex::Long(0), damped ? amrex::Long(1) : amrex::Long(0)};
         });
     }
@@ -218,7 +221,7 @@ void BoundaryConditions::add_damping_to_implicit (Equation eq, Loc loc, const am
             point_heights(tt, nz, i, j, k, klo, h, zc);
             const amrex::Real x = plo[0] + (i + (nx ? 0 : amrex::Real(0.5))) * dx[0];
             const amrex::Real y = plo[1] + (j + (ny ? 0 : amrex::Real(0.5))) * dx[1];
-            a(i, j, k, coef_P) += (with_rayleigh ? coef.rayleigh_part(above_ground ? h : zc) : amrex::Real(0)) + coef.sponge_part(x, y);
+            a(i, j, k, coef_P) += (with_rayleigh ? coef.rayleigh_part(above_ground ? h : zc - coef.zorg) : amrex::Real(0)) + coef.sponge_part(x, y);
         });
     }
 }

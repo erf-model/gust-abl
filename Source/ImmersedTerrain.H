@@ -5,7 +5,7 @@
 // docs/immersed_terrain.rst). The mesh does not follow the ground: the cells below
 // terrain.flat_height are solid, the cut cell carries ERF's form-7 wall law (BuildingForcing.H with
 // an immersed ground) and the first full cell above it repeats the flat ground's shear
-// (ImmersedStrain.H). PR-87 covers a flat ground in a neutral, laterally periodic run.
+// (ImmersedStrain.H). The run is neutral, laterally periodic or with inflow and outflow faces.
 
 #include "Buildings.H"
 #include "Inputs.H"
@@ -38,6 +38,7 @@ struct ImmersedTerrainFacts
     bool zref_given{false};          //!< bc.surface_zref given
     bool floor_given{false};         //!< bc.surface_denominator_floor given
     bool wall_k_source{false};       //!< bc.surface_wall_k = source
+    bool outflow_from_velocity{false};  //!< bc.outflow_transport = from_velocity
 };
 
 //! The refusals of terrain.representation = immersed_forcing that need other namespaces
@@ -67,11 +68,11 @@ std::string check_immersed_ground_extent (const amrex::MultiFab& z_nd, double fi
 BuildingsOptions immersed_terrain_options (const TerrainInputs& t, double z0);
 
 //! The ground as a height map in memory: one tile of height t.flat_height whose edges are the
-//! domain's x and y faces (the domain is periodic in x and y: validate).
+//! domain's x and y faces (with a terrain file: the terrain's heights).
 BuildingHeightMap immersed_terrain_map (const TerrainInputs& t, const amrex::Geometry& geom);
 
-//! The SHA-256 of what fixes the immersed ground: flat_height, small_volfrac, immersed_slope, z0,
-//! the terrain's type and what the type reads (the hill's size and shape; the file's contents and
+//! The SHA-256 of what fixes the immersed ground: flat_height, small_volfrac, immersed_slope,
+//! immersed_side_walls (when not off), immersed_wall_distance (when not mean_height), z0, the terrain's type and what the type reads (the hill's size and shape; the file's contents and
 //! the IDW choices). Reads terrain.file on the calling rank.
 std::string immersed_terrain_hash (const TerrainInputs& t, double z0);
 

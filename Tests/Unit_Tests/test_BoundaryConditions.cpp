@@ -1263,6 +1263,17 @@ TEST(BoundaryDamping, RayleighEndsAtTheTopLevelOfAStretchedMesh)
     ASSERT_EQ(err.size(), 1u);
     EXPECT_NE(err[0].find("bc.rayleigh_zdamp = 610"), std::string::npos) << err[0];
     EXPECT_NE(err[0].find("the top level 606.5"), std::string::npos) << err[0];
+    // Absolute heights from a terrain zero 100 m above the mesh's lower face (an immersed ground's
+    // terrain.flat_height): the top is 100 m lower, so a start the mesh alone allows is refused.
+    in.rayleigh_zdamp = 550;
+    EXPECT_TRUE(gust::check_boundary_inputs(in, c.geom, kNoCoriolis, c.mesh.zlevels().back()).empty());
+    in.height_origin = 100;
+    const auto err_origin = gust::check_boundary_inputs(in, c.geom, kNoCoriolis, c.mesh.zlevels().back());
+    ASSERT_EQ(err_origin.size(), 1u);
+    EXPECT_NE(err_origin[0].find("the top level 506.5"), std::string::npos) << err_origin[0];
+    in.rayleigh_above_ground = true;
+    EXPECT_TRUE(gust::check_boundary_inputs(in, c.geom, kNoCoriolis, c.mesh.zlevels().back()).empty())
+        << "heights above the ground are not shifted";
 }
 
 // ---------------------------------------------------------------------------

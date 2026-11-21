@@ -122,6 +122,8 @@ std::string run_domain (const DomainRole& role)
     bool surface_layer = false;
     if (initialize || solve) {
         bin = read_boundary_inputs();
+        // Absolute heights from the terrain's zero, as on a mesh that follows the terrain.
+        if (in.terrain.representation == "immersed_forcing") { bin.height_origin = in.terrain.flat_height; }
         if (nest != nullptr) {
             apply_nest_boundary_inputs(role.parent_chk, in.mesh.is_periodic,
                                        read_nest_options().damping == NestDamping::outer, bin);
@@ -296,6 +298,7 @@ std::string run_domain (const DomainRole& role)
         itf.wall_k_source = surf.wall_k == SurfaceLayerOptions::WallK::source;
         itf.column_guess = iopt.first_guess == InitOptions::FirstGuess::column;
         itf.probes = !sopt.probes_file.empty();
+        itf.outflow_from_velocity = (initialize || solve) && !bin.outflow_mirror_transport;
         for (auto& e : check_immersed_terrain(itf)) { err.push_back(std::move(e)); }
     }
     // turb.closure = none (laminar, Closure.H): the options that model turbulence, or need the k-L closure, are refused.
@@ -572,7 +575,7 @@ std::string run_domain (const DomainRole& role)
                            << " m, terrain.small_volfrac = " << in.terrain.small_volfrac << ", ground from "
                            << state.z_phys_nd.min(state.z_phys_nd.nComp() - 1) << " m to "
                            << state.z_phys_nd.max(state.z_phys_nd.nComp() - 1) << " m): "
-                           << buildings.summary(mesh.detJ, geom) << "\n"
+                           << buildings.summary(mesh.detJ, geom, true) << "\n"
                            << "gust: immersed terrain: the form 7 wall law with bc.surface_z0 = " << buildings_opt.z0
                            << (in.terrain.immersed_slope == "normal" ? " m at the fluid's mean distance from the ground along its normal"
                                                                       : " m at the fluid's mean height above the ground")

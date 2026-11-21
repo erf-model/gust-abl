@@ -44,6 +44,14 @@
 
 namespace gust {
 
+//! G[d], the diffusive flux of a scalar through the d-faces: times the open part of each face. Used
+//! by BuildingTheta and, for theta, by the immersed ground (heat-free: no flux through its surface).
+void close_scalar_fluxes (const amrex::Array<const amrex::MultiFab*, AMREX_SPACEDIM>& open,
+                          amrex::Array<amrex::MultiFab, AMREX_SPACEDIM>& G);
+//! The same in a scalar's implicit couplings: each neighbour's coefficient times the open part
+//! of the face between; a_P is left as it is.
+void close_scalar_couplings (const amrex::Array<const amrex::MultiFab*, AMREX_SPACEDIM>& open, amrex::MultiFab& A);
+
 //! The theta terms of one level's buildings.
 class BuildingTheta
 {

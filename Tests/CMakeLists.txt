@@ -214,7 +214,8 @@ if(_gust_numpy EQUAL 0)
     set(GUST_PYTHON_NUMPY ON)
 else()
     set(GUST_PYTHON_NUMPY OFF)
-    message(STATUS "GUST: numpy not found for ${Python3_EXECUTABLE}; rt_nests_two_way and "
+    message(STATUS "GUST: numpy not found for ${Python3_EXECUTABLE}; rt_nests_two_way, "
+                   "rt_immersed_open_faces, rt_immersed_askervein_coarse and "
                    "speed_difference_selftest are not registered")
 endif()
 
@@ -2243,12 +2244,16 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
                          --body-fitted ${IMMERSED_COLUMN_CASE}/inputs_body_fitted_column --
                   COMMAND $<TARGET_FILE:gust> ${IMMERSED_COLUMN_CASE}/inputs_immersed_column turb.shear_stencil=log_law
                           ${GUST_TEST_AMREX_FLAGS})
-    foreach(_f 0.3 0.7 0.9)
+    # f = 0.9 solves the pressure to simplec.pressure_reltol = 1e-6: with the default 1e-3 each solve leaves a
+    # uniform w near 1e-10 and the u and w residuals level off near 2e-8, above steady.residual_tol (README.md).
+    foreach(_case "0.3;" "0.7;" "0.9;simplec.pressure_reltol=1e-6")
+        list(GET _case 0 _f)
+        list(SUBLIST _case 1 -1 _key)
         string(REPLACE "." "" _tag ${_f})
         gust_add_test(NAME rt_log_shear_column_f${_tag} NP 2 LABELS "regression"
                       PREFIX ${Python3_EXECUTABLE} ${IMMERSED_COLUMN_CASE}/check_immersed_column.py --f ${_f} --cut-max 0.2 --log-shear --
                       COMMAND $<TARGET_FILE:gust> ${IMMERSED_COLUMN_CASE}/inputs_immersed_column turb.shear_stencil=log_law
-                              ${GUST_TEST_AMREX_FLAGS})
+                              ${_key} ${GUST_TEST_AMREX_FLAGS})
     endforeach()
     # The refusals of turb.shear_stencil.
     gust_add_test(NAME abort_shear_stencil_value NP 1 LABELS "regression;smoke"
@@ -2290,6 +2295,54 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
                              --reuse ${_limits} --body-fitted ${IMMERSED_RIDGE_CASE}/inputs_body_fitted_${_tag} --
                       COMMAND $<TARGET_FILE:gust> ${IMMERSED_RIDGE_CASE}/inputs_immersed_${_tag} ${GUST_TEST_AMREX_FLAGS})
     endforeach()
+    if(GUST_PYTHON_NUMPY)
+        # An immersed flat ground between an inflow and an outflow face against the body-fitted
+        # run (Immersed_Open_Faces/README.md), one rank per run: the ground on a layer's face
+        # (solid fraction 0 and 1), in mid-layer (0.5), and in a layer that
+        # terrain.small_volfrac = 0.1 turns solid (0.95), whose inflow faces must carry no wind.
+        # Each run reaches the steady verdict, the outflow flux equals the inflow flux to 1e-6,
+        # and u and tke in the outflow column are within 1.5 % and 8 % of the body-fitted column.
+        add_test(NAME rt_immersed_open_faces
+                 COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Immersed_Open_Faces/sweep_flat.py
+                         $<TARGET_FILE:gust> ${CMAKE_CURRENT_BINARY_DIR}/run/rt_immersed_open_faces --fresh --limits 1.5 8
+                         turb.shear_stencil=log_law terrain.small_volfrac=0.1 ${GUST_TEST_AMREX_FLAGS} 0 0.5 0.95 1)
+        set_tests_properties(rt_immersed_open_faces PROPERTIES LABELS "regression")
+        # The same channel with the face options the case above does not set, at F = 0.5 (a cut cell) and
+        # 0.95 (merged into the ground, solid inflow faces): a lateral sponge, a power-law inflow, no-slip
+        # side walls with a wall velocity, and a Rayleigh layer at an absolute height (measured from the
+        # terrain's zero on both meshes). The side walls make the outflow column differ from the log law
+        # near the wall; their limits are 2 % and 10 % (measured 1.4 % and 8.7 % at F = 0.5).
+        set(OPEN_FACE_OPTIONS
+            "sponge|1.5|8|bc.sponge_width=320|bc.sponge_strength=0.05"
+            "power_law|1.5|8|bc.inflow_profile=power_law|bc.inflow_ustar=|bc.inflow_z0=|bc.inflow_speed=8|bc.inflow_zref=10|bc.inflow_alpha=0.143"
+            "wall_velocity|2|10|mesh.is_periodic=0 0 0|bc.ylo=no_slip_wall|bc.yhi=no_slip_wall|bc.ylo_wall_velocity=8 0 0|bc.yhi_wall_velocity=8 0 0"
+            "rayleigh_absolute|1.5|8|bc.rayleigh_zdamp=700|bc.rayleigh_dampcoef=0.05|bc.rayleigh_fields=u v w tke")
+        foreach(opt IN LISTS OPEN_FACE_OPTIONS)
+            string(REPLACE "|" ";" parts "${opt}")
+            list(POP_FRONT parts name du dk)
+            add_test(NAME rt_immersed_open_faces_${name}
+                     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Immersed_Open_Faces/sweep_flat.py
+                             $<TARGET_FILE:gust> ${CMAKE_CURRENT_BINARY_DIR}/run/rt_immersed_open_faces_${name} --fresh
+                             --limits ${du} ${dk} turb.shear_stencil=log_law terrain.small_volfrac=0.1 steady.max_iterations=1000
+                             ${parts} ${GUST_TEST_AMREX_FLAGS} 0.5 0.95)
+            set_tests_properties(rt_immersed_open_faces_${name} PROPERTIES LABELS "regression")
+        endforeach()
+        # A real terrain immersed between two inflow and two outflow faces against the mesh that
+        # follows it (Real_Terrain/Immersed_Terrain_Cases/README.md): the Askervein pair of that
+        # folder on 32 x 32 columns, four ranks. Both runs reach the steady verdict; the speed at
+        # 10 m above the ground differs by a measured margin (the limits detect a change).
+        set(IMMERSED_CASES ${CMAKE_CURRENT_SOURCE_DIR}/Real_Terrain/Immersed_Terrain_Cases)
+        gust_add_test(NAME rt_immersed_askervein_coarse NP 4 LABELS "nightly"
+                      PREFIX ${Python3_EXECUTABLE} ${IMMERSED_CASES}/check_coarse_pair.py
+                             --body-fitted ${IMMERSED_CASES}/inputs_askervein_210_body_fitted --n-cell "32 32"
+                             --agl 10 --z0 0.03 --border 1000 --rms 22 --top 52
+                             --key terrain.file=${PROJECT_SOURCE_DIR}/extern_erf/askervein.txt
+                             --key mesh.zlevels_file=${IMMERSED_CASES}/zlevels_askervein.txt --
+                      COMMAND $<TARGET_FILE:gust> ${IMMERSED_CASES}/inputs_askervein_210_immersed mesh.max_grid_size=16
+                              ${GUST_TEST_AMREX_FLAGS})
+        # 4.5 minutes on an idle laptop, up to 50 on a loaded one (the immersed run takes 401 iterations).
+        set_tests_properties(rt_immersed_askervein_coarse PROPERTIES TIMEOUT 3600)
+    endif()
     # The iteration table's columns (io.iteration_log = table) on the flat ABL,
     # whose second row has all six residuals non-zero and distinct: the row
     # pins which residual sits in which column (u, v, w, tke, theta, p), the

@@ -15,7 +15,7 @@ namespace gust {
 namespace {
 
 constexpr const char* kMagic = "gust_immersed_terrain";
-constexpr int kVersion = 2;   // 1: PR-87, a flat ground (flat_height, small_volfrac, z0)
+constexpr int kVersion = 2;   // 1: a flat ground (flat_height, small_volfrac, z0)
 
 void bcast_string (std::string& s)
 {
@@ -50,6 +50,10 @@ std::vector<std::string> check_immersed_terrain (const ImmersedTerrainFacts& f)
     if (f.zref_given) { err.push_back("bc.surface_zref has no effect with " + rep + " (the wall law reads the cut cell and the cell above it)"); }
     if (f.floor_given) { err.push_back("bc.surface_denominator_floor has no effect with " + rep + " (the wall law has no floor)"); }
     if (f.wall_k_source) { err.push_back(rep + " needs bc.surface_wall_k = dirichlet (the cut cell holds the wall value of k)"); }
+    if (f.outflow_from_velocity) {
+        err.push_back(rep + " needs bc.outflow_transport = mirror (from_velocity, kept to continue runs of v1.0.0, slows the"
+                            " cut cell at an outflow face)");
+    }
     if (f.laminar) { err.push_back(rep + " needs turb.closure = kl (the immersed ground is a wall law)"); }
     return err;
 }
@@ -83,6 +87,9 @@ BuildingsOptions immersed_terrain_options (const TerrainInputs& t, double z0)
     o.limiter_zone_acts = false;
     o.immersed_ground = true;
     o.slope_normal = t.immersed_slope == "normal";
+    o.step_side_walls = t.immersed_side_walls == "steps" || t.immersed_side_walls == "steps_no_slip";
+    o.step_no_slip = t.immersed_side_walls == "steps_no_slip";
+    o.column_distance = t.immersed_wall_distance == "column_centre";
     return o;
 }
 
@@ -146,6 +153,9 @@ std::string immersed_terrain_hash (const TerrainInputs& t, double z0)
     std::string s = std::string(kMagic) + " " + std::to_string(kVersion) + "\nflat_height " + hx(t.flat_height)
                     + "\nsmall_volfrac " + hx(t.small_volfrac) + "\nz0 " + hexfloat_canonical(z0) + "\nslope "
                     + t.immersed_slope + "\ntype " + t.type + "\n";
+    // Only when on: a checkpoint written before this key keeps its hash.
+    if (t.immersed_side_walls != "off") { s += "side_walls " + t.immersed_side_walls + "\n"; }
+    if (t.immersed_wall_distance != "mean_height") { s += "wall_distance " + t.immersed_wall_distance + "\n"; }
     // The surface: what fill_terrain_surface reads for the type.
     if (t.type == "agnesi") {
         s += "hill " + hx(t.hill_height) + " " + hx(t.hill_half_width) + " " + t.hill_shape + "\n";
@@ -200,7 +210,7 @@ void check_immersed_terrain_restart (const std::string& dir, const std::string& 
     }
     if (active && rec != hash) {
         amrex::Abort(where + "the immersed ground's inputs (terrain.type and its keys, terrain.flat_height, "
-                             "terrain.small_volfrac, terrain.immersed_slope or bc.surface_z0) differ from the checkpoint's "
+                             "terrain.small_volfrac, terrain.immersed_slope, terrain.immersed_side_walls, terrain.immersed_wall_distance or bc.surface_z0) differ from the checkpoint's "
                              "(SHA-256 " + hash + " here, " + rec + " there)");
     }
 }

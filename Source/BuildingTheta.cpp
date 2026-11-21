@@ -58,17 +58,41 @@ void BuildingTheta::build (const Buildings& b, const BuildingForcing& law, const
     }
 }
 
-void BuildingTheta::close_fluxes (const amrex::Array<const amrex::MultiFab*, AMREX_SPACEDIM>& open,
-                                  amrex::Array<amrex::MultiFab, AMREX_SPACEDIM>& Gt) const
+void close_scalar_fluxes (const amrex::Array<const amrex::MultiFab*, AMREX_SPACEDIM>& open,
+                          amrex::Array<amrex::MultiFab, AMREX_SPACEDIM>& G)
 {
     for (int d = 0; d < 3; ++d) {
-        amrex::MultiFab& G = Gt[static_cast<std::size_t>(d)];
-        for (amrex::MFIter mfi(G, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
-            const auto g = G.array(mfi);
+        amrex::MultiFab& F = G[static_cast<std::size_t>(d)];
+        for (amrex::MFIter mfi(F, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
+            const auto g = F.array(mfi);
             const auto o = open[static_cast<std::size_t>(d)]->const_array(mfi);
             amrex::ParallelFor(mfi.tilebox(), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept { g(i, j, k) *= o(i, j, k); });
         }
     }
+}
+
+void close_scalar_couplings (const amrex::Array<const amrex::MultiFab*, AMREX_SPACEDIM>& open, amrex::MultiFab& A)
+{
+    // The whole coupling is scaled and a_P keeps the closed part, so the row stays diagonally dominant.
+    for (int d = 0; d < 3; ++d) {
+        const int ei = (d == 0) ? 1 : 0, ej = (d == 1) ? 1 : 0, ek = (d == 2) ? 1 : 0;
+        const int lo = coef_XM + 2 * d, hi = lo + 1;
+        for (amrex::MFIter mfi(A, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
+            const auto a = A.array(mfi);
+            const auto o = open[static_cast<std::size_t>(d)]->const_array(mfi);
+            amrex::ParallelFor(mfi.tilebox(), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+            {
+                a(i, j, k, lo) *= o(i, j, k);
+                a(i, j, k, hi) *= o(i + ei, j + ej, k + ek);
+            });
+        }
+    }
+}
+
+void BuildingTheta::close_fluxes (const amrex::Array<const amrex::MultiFab*, AMREX_SPACEDIM>& open,
+                                  amrex::Array<amrex::MultiFab, AMREX_SPACEDIM>& Gt) const
+{
+    close_scalar_fluxes(open, Gt);
 }
 
 void BuildingTheta::apply_rows (const amrex::MultiFab& theta, amrex::MultiFab& Rt) const
@@ -89,21 +113,8 @@ void BuildingTheta::apply_rows (const amrex::MultiFab& theta, amrex::MultiFab& R
 
 void BuildingTheta::add_to_implicit (const amrex::Array<const amrex::MultiFab*, AMREX_SPACEDIM>& open, amrex::MultiFab& A) const
 {
-    // The couplings through the closed parts of the faces, as close_fluxes: the whole
-    // coupling is scaled and a_P keeps the closed part, so the row stays diagonally dominant.
-    for (int d = 0; d < 3; ++d) {
-        const int ei = (d == 0) ? 1 : 0, ej = (d == 1) ? 1 : 0, ek = (d == 2) ? 1 : 0;
-        const int lo = coef_XM + 2 * d, hi = lo + 1;
-        for (amrex::MFIter mfi(A, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
-            const auto a = A.array(mfi);
-            const auto o = open[static_cast<std::size_t>(d)]->const_array(mfi);
-            amrex::ParallelFor(mfi.tilebox(), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
-            {
-                a(i, j, k, lo) *= o(i, j, k);
-                a(i, j, k, hi) *= o(i + ei, j + ej, k + ek);
-            });
-        }
-    }
+    // The couplings through the closed parts of the faces, as close_fluxes.
+    close_scalar_couplings(open, A);
     for (amrex::MFIter mfi(A, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
         const auto a = A.array(mfi);
         const ThetaRow c{m_b->beta().const_array(mfi), m_b->wall().const_array(mfi), m_law->rate().const_array(mfi), m_tb.const_array(mfi)};

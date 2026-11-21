@@ -23,8 +23,9 @@ Every deck uses the recommended turbulence setting (docs/turbulence_model.rst: `
 The immersed decks set `solver.poisson_backend = gmres_fft` (the multigrid backend is refused with an immersed
 ground). The stop rule is four orders of residual drop.
 
-The plan's test was a tilted flat channel. A uniform slope cannot be periodic, and open faces are not yet
-supported with an immersed ground, so the wind along a ridge takes its place: the ground slopes across the wind,
+The plan's test was a tilted flat channel. A uniform slope cannot be periodic, and open faces were not
+supported with an immersed ground when these decks were written (they are now: `../Immersed_Open_Faces`), so the
+wind along a ridge takes its place: the ground slopes across the wind,
 and there is no flow over it.
 
 ## Files
