@@ -163,7 +163,9 @@ in every cell between the wall cell and the top cell (``Source/LogShear.cpp``). 
 from the ground it tends to the central difference: on uniform layers of thickness :math:`\Delta` the two differ by
 the factor :math:`1 + \Delta^2/(3 d^2)`. :math:`z_0` is the column's roughness length (``bc.surface_z0`` or the map
 of ``bc.surface_z0_file``). The other gradients in :math:`S^2`, the momentum equations and the wall cell are as
-before. The default is ``central``, so existing results do not change.
+before. The cut cell of an immersed ground takes the wall law's gradient with either stencil
+(:doc:`immersed_terrain`, Turbulence). The default is ``central``, so body-fitted results do not change; immersed
+results change through the cut cell's gradient.
 
 **Measured.** A neutral column driven by a geostrophic wind of 10 m/s (:math:`f_c` = 1e-4 1/s, layers of
 15.625 m, :math:`z_0` = 0.1 m, ``turb.max_geom_lscale = 30``, ``turb.face_mean = logarithmic``, a slip top near

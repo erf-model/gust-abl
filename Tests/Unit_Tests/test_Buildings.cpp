@@ -276,6 +276,8 @@ TEST (Buildings, WallMasksAndDistancesEqualHandValues)
     EXPECT_EQ(mask(0, 5, 2), 0);
     EXPECT_EQ(mask(4, 5, 2), kWallXlo);
     EXPECT_NE(b.summary(c.mesh.detJ, c.geom).find("non-periodic side face"), std::string::npos);
+    // An immersed ground always meets the side faces: its summary has neither note.
+    EXPECT_EQ(b.summary(c.mesh.detJ, c.geom, true).find("WARNING"), std::string::npos);
 }
 
 TEST (Buildings, SameBitsOnEveryLayoutAcrossAPeriodicSeam)

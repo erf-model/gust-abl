@@ -39,6 +39,9 @@ void BuildingForcing::build (const Buildings& b, const BuildingsOptions& opt, co
     }
     m_spacing.clear();   // a rebuild without an immersed ground keeps no spacing
     if (m_immersed_ground && wall_law()) { make_centroid_spacing(); }
+    m_step_no_slip = opt.immersed_ground && opt.step_side_walls && opt.step_no_slip && side_law();
+    for (auto& f : m_no_slip) { f.clear(); }
+    if (m_step_no_slip) { make_no_slip_faces(); }
     // The weight of each face in a cell's speed: 0 on a fixed row with buildings.wall_speed =
     // open_faces, else 1. A fixed row is a blocked face (fraction 1), but for w on the ground,
     // which is the boundary conditions' row (its value follows the slope). One ghost layer:
@@ -193,7 +196,9 @@ void BuildingForcing::update (const amrex::MultiFab& u, const amrex::MultiFab& v
     } else {
         roof_rates<FlooredLaw>(*m_b, m_weight, *m_detJ, m_geom, u, v, z0, kappa, umin, m_rate);
     }
-    if (side_law()) {
+    if (side_law() && !m_step_no_slip) {
+        // With terrain.immersed_side_walls = steps_no_slip the side bits take no law: their faces diffuse
+        // to the solid cell (close_viscous_fluxes).
         // Sides normal to x: on v and w. The reference cell is the next one out along x. Only a
         // partial cell weighs it (beta > 0), and such a cell has one wall along x, facing away
         // from a cell that is not solid (Buildings_K.H: wall_on_low_side).
@@ -330,6 +335,22 @@ void BuildingForcing::close_viscous_fluxes (const amrex::Array<const amrex::Mult
             // The flux's point lies between the d-faces of the two cells of c's row.
             const int di = (c == 0) ? 1 : 0, dj = (c == 1) ? 1 : 0, dk = (c == 2) ? 1 : 0;
             amrex::MultiFab& Gcd = G[static_cast<std::size_t>(c)][static_cast<std::size_t>(d)];
+            if (m_step_no_slip && d < 2) {
+                // No slip on the step faces: the face's factor is 2 there (the solid cell's zero half a
+                // column away), the open part elsewhere.
+                for (amrex::MFIter mfi(Gcd, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
+                    const auto g = Gcd.array(mfi);
+                    const auto o = open[static_cast<std::size_t>(d)]->const_array(mfi);
+                    const auto ns = m_no_slip[static_cast<std::size_t>(d)].const_array(mfi);
+                    amrex::ParallelFor(mfi.tilebox(), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+                    {
+                        const amrex::Real fa = ns(i - di, j - dj, k - dk) * amrex::Real(2) + (1 - ns(i - di, j - dj, k - dk)) * o(i - di, j - dj, k - dk);
+                        const amrex::Real fb = ns(i, j, k) * amrex::Real(2) + (1 - ns(i, j, k)) * o(i, j, k);
+                        g(i, j, k) *= amrex::Real(0.5) * (fa + fb);
+                    });
+                }
+                continue;
+            }
             for (amrex::MFIter mfi(Gcd, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
                 const auto g = Gcd.array(mfi);
                 const auto o = open[static_cast<std::size_t>(d)]->const_array(mfi);
@@ -355,6 +376,37 @@ void BuildingForcing::close_viscous_fluxes (const amrex::Array<const amrex::Mult
                 });
             }
         }
+    }
+}
+
+void BuildingForcing::make_no_slip_faces ()
+{
+    // The x face i is a step face when cell i has the low x bit or cell i - 1 the high one (the step kernel
+    // sets the bit on the cell that is not solid); y likewise. On the valid faces, then the ghost layer by
+    // FillBoundary (periodic images; outside a non-periodic side 0: no step there).
+    const amrex::MultiFab& wall = m_b->wall();
+    for (int d = 0; d < 2; ++d) {
+        amrex::MultiFab& f = m_no_slip[static_cast<std::size_t>(d)];
+        f.define(m_b->beta_face(d).boxArray(), m_b->beta_face(d).DistributionMap(), 1, 1);
+        f.setVal(0.0);
+        const int di = (d == 0) ? 1 : 0, dj = (d == 1) ? 1 : 0;
+        const int blo = (d == 0) ? kWallXlo : kWallYlo, bhi = (d == 0) ? kWallXhi : kWallYhi;
+        // A face on a non-periodic side is the domain's: the wall's ghost column there copies the nearest
+        // domain column (image_ghost_columns), so its bits are not read.
+        const bool per = m_geom.isPeriodic(d);
+        const int nlo = m_geom.Domain().smallEnd(d), nhi = m_geom.Domain().bigEnd(d) + 1;
+        for (amrex::MFIter mfi(f, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
+            const auto a = f.array(mfi);
+            const auto wl = wall.const_array(mfi);
+            amrex::ParallelFor(mfi.tilebox(), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+            {
+                const int n = (d == 0) ? i : j;
+                const int own = (per || n < nhi) ? static_cast<int>(wl(i, j, k, kWallMask)) : 0;
+                const int low = (per || n > nlo) ? static_cast<int>(wl(i - di, j - dj, k, kWallMask)) : 0;
+                a(i, j, k) = ((own & blo) != 0 || (low & bhi) != 0) ? amrex::Real(1) : amrex::Real(0);
+            });
+        }
+        f.FillBoundary(m_geom.periodicity());
     }
 }
 
@@ -426,6 +478,26 @@ void BuildingForcing::add_to_implicit (int c, const amrex::Array<const amrex::Mu
             if (d == c) { continue; }
             const int ei = (d == 0) ? 1 : 0, ej = (d == 1) ? 1 : 0, ek = (d == 2) ? 1 : 0;
             const int lo = coef_XM + 2 * d, hi = lo + 1;
+            if (m_step_no_slip && d < 2) {
+                // The no-slip factors of close_viscous_fluxes. Where a factor exceeds 1, a_P grows by the
+                // added coupling (the flux to the solid cell's zero is implicit in the own value).
+                for (amrex::MFIter mfi(A, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
+                    const auto a = A.array(mfi);
+                    const auto o = open[static_cast<std::size_t>(d)]->const_array(mfi);
+                    const auto ns = m_no_slip[static_cast<std::size_t>(d)].const_array(mfi);
+                    amrex::ParallelFor(mfi.tilebox(), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+                    {
+                        auto f = [&] (int ii, int jj, int kk) { return ns(ii, jj, kk) * amrex::Real(2) + (1 - ns(ii, jj, kk)) * o(ii, jj, kk); };
+                        const amrex::Real flo = amrex::Real(0.5) * (f(i - di, j - dj, k - dk) + f(i, j, k));
+                        const amrex::Real fhi = amrex::Real(0.5) * (f(i - di + ei, j - dj + ej, k - dk + ek) + f(i + ei, j + ej, k + ek));
+                        a(i, j, k, coef_P) += amrex::max(flo - 1, amrex::Real(0)) * a(i, j, k, lo)
+                                              + amrex::max(fhi - 1, amrex::Real(0)) * a(i, j, k, hi);
+                        a(i, j, k, lo) *= flo;
+                        a(i, j, k, hi) *= fhi;
+                    });
+                }
+                continue;
+            }
             for (amrex::MFIter mfi(A, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
                 const auto a = A.array(mfi);
                 const auto o = open[static_cast<std::size_t>(d)]->const_array(mfi);

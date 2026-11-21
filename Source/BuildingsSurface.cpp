@@ -179,9 +179,9 @@ void Buildings::build_from_surface (const BuildingsOptions& opt, const std::stri
     }
 
     // The wall cells: the ground is the wall below a cell (the roof bit) wherever the blocked part
-    // of its low face exceeds that of its high face, or a fluid cell's low face is blocked. The
-    // ground has no side walls: on a slope the differences of the x and y faces are the same
-    // surface, whose area the low and high z faces already count.
+    // of its low face exceeds that of its high face, or a fluid cell's low face is blocked. By
+    // default the ground has no side walls: on a slope the differences of the x and y faces are the
+    // same surface, whose area the low and high z faces already count.
     const double wall_tol = small;
     m_wall.clear();
     m_wall.define(cell_ba, dm, kNumWallComps, 1);
@@ -204,6 +204,56 @@ void Buildings::build_from_surface (const BuildingsOptions& opt, const std::stri
             const bool ok = k < ktop && br(i, j, k + 1) < amrex::Real(1);
             w(i, j, k, kWallD2z) = ok ? s(i, j, k + 1, kSurfaceHeight) : amrex::Real(0);
         });
+    }
+    // terrain.immersed_side_walls = steps: a side wall on the x or y face of a cell that is not
+    // solid where the next column's ground stands more than the layer's thickness above its own (the
+    // means over the two footprints, which are the means of their four nodes) and the next column's
+    // cell in the layer is solid. On a slope that rises by less than a layer per column nothing
+    // changes. The wall law is a building side's (form 7) with the step's distances; a cell between
+    // two steps (a trench one column wide) has both walls.
+    if (opt.step_side_walls) {
+        if (z_nd.nGrow() < 1) { amrex::Abort("gust: Buildings::build_from_surface: terrain.immersed_side_walls = steps needs node heights with a ghost layer"); }
+        const amrex::Dim3 dlo = amrex::lbound(geom.Domain()), dhi = amrex::ubound(geom.Domain());
+        const bool perx = geom.isPeriodic(0), pery = geom.isPeriodic(1);
+        for (amrex::MFIter mfi(m_wall, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
+            const auto w = m_wall.array(mfi);
+            const auto br = m_beta.const_array(mfi);
+            const SurfaceNodes z{z_nd.const_array(mfi), k0, gc};
+            amrex::ParallelFor(mfi.tilebox(), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+            {
+                const double own = static_cast<double>(br(i, j, k));
+                if (own == 1) { return; }
+                auto mean = [&] (int ii, int jj) { return 0.25 * (z.g(ii, jj) + z.g(ii + 1, jj) + z.g(ii, jj + 1) + z.g(ii + 1, jj + 1)); };
+                const double h = mean(i, j), dz = z.h4(i, j, k + 1) - z.h4(i, j, k);
+                auto step = [&] (int ii, int jj) { return br(ii, jj, k) >= amrex::Real(1) && mean(ii, jj) - h > dz; };
+                const int xbit = (step(i - 1, j) ? kWallXlo : 0) | (step(i + 1, j) ? kWallXhi : 0);
+                const int ybit = (step(i, j - 1) ? kWallYlo : 0) | (step(i, j + 1) ? kWallYhi : 0);
+                // The form 7 law with the step's geometry: the cell's fluid lies above its own ground and
+                // spans the column's width, so its centroid is half a column from the step whatever its
+                // solid fraction, and the reference cell (the next one out on the open side) 3/2 columns.
+                // No reference in a trench (both sides walls), where it is solid, or outside a domain
+                // face that is not periodic (its ghost is an image of the edge column).
+                auto d2 = [&] (int ii, int jj, bool inside, double dn) {
+                    return (inside && br(ii, jj, k) < amrex::Real(1)) ? 1.5 * dn : 0.0;
+                };
+                if (xbit != 0) {
+                    const bool two = xbit == (kWallXlo | kWallXhi);
+                    const int ir = xbit == kWallXlo ? i + 1 : i - 1;
+                    const bool inside = !two && (perx || (ir >= dlo.x && ir <= dhi.x));
+                    w(i, j, k, kWallD1x) = static_cast<amrex::Real>(0.5 * dxd);
+                    w(i, j, k, kWallD2x) = static_cast<amrex::Real>(d2(ir, j, inside, dxd));
+                }
+                if (ybit != 0) {
+                    const bool two = ybit == (kWallYlo | kWallYhi);
+                    const int jr = ybit == kWallYlo ? j + 1 : j - 1;
+                    const bool inside = !two && (pery || (jr >= dlo.y && jr <= dhi.y));
+                    w(i, j, k, kWallD1y) = static_cast<amrex::Real>(0.5 * dyd);
+                    w(i, j, k, kWallD2y) = static_cast<amrex::Real>(d2(i, jr, inside, dyd));
+                }
+                const int mask = static_cast<int>(w(i, j, k, kWallMask)) | xbit | ybit;
+                w(i, j, k, kWallMask) = static_cast<amrex::Real>(mask);
+            });
+        }
     }
     amrex::Gpu::streamSynchronize();
     image_ghost_columns(m_wall, geom);

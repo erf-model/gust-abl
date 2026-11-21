@@ -121,6 +121,12 @@ Quick reference
    * - ``terrain.immersed_slope``
      - ``vertical``
      - Wall law of a sloping immersed ground: vertical distances, or along the normal
+   * - ``terrain.immersed_side_walls``
+     - ``off``
+     - Side walls of an immersed ground: none, or where the ground drops by more than a layer (wall law or no slip)
+   * - ``terrain.immersed_wall_distance``
+     - ``mean_height``
+     - Closure distance on an immersed ground: mean fluid height, or the column centre's on steep footprints
    * - **Initial conditions** (`init`_)
      -
      -
@@ -695,7 +701,7 @@ Quick reference
      - ``body_fitted``
      - ``body_fitted`` (the mesh follows the ground) or ``immersed_forcing`` (the mesh is flat and the ground is an
        immersed surface with the form 7 wall law, :doc:`immersed_terrain`). ``immersed_forcing`` needs
-       ``mesh.is_periodic = 1 1 0``, ``mesh.hierarchy_levels = 1``,
+       ``mesh.hierarchy_levels = 1``,
        ``bc.zlo = surface_layer``, ``bc.surface_stability = neutral``, ``bc.surface_wall_k = dirichlet``,
        ``turb.closure = kl`` and, in a stage, ``steady.sweep = zjacobi``. It refuses ``bc.surface_z0_file``,
        ``bc.surface_zref``, ``bc.surface_denominator_floor``, a non-uniform ``bc.theta_profile``,
@@ -721,6 +727,23 @@ Quick reference
        ground's horizontal area (ERF's form). ``normal``: the distances along the ground's normal, the speed
        parallel to the ground (:math:`w` included) and the slope's area (:doc:`immersed_terrain`, Slope). The two
        are bit-identical on a flat ground. May not change across a restart.
+   * - ``terrain.immersed_side_walls``
+     - ``off``
+     - ``off``, ``steps`` or ``steps_no_slip``; ``immersed_forcing`` only (refused when given with ``body_fitted``). ``off``: the ground
+       is the roof of its wall cells only. ``steps``: also a wall law on the x or y face of a cell that is not solid
+       toward a column whose cell in the same layer is solid and whose mean ground stands more than the layer's
+       height above its own (:doc:`immersed_terrain`, Side walls). ``steps_no_slip``: the same faces, with the tangential
+       velocities diffusing to the solid cell's zero over half a column in place of the wall law. Both need
+       ``terrain.immersed_slope = vertical``. No
+       effect where no column rises by more than a layer. May not change across a restart.
+   * - ``terrain.immersed_wall_distance``
+     - ``mean_height``
+     - ``mean_height`` or ``column_centre``; ``immersed_forcing`` only (refused when given with ``body_fitted``). The
+       turbulence model's distance to the ground. ``mean_height``: the mean height of the cell's fluid above the
+       ground. ``column_centre``: where the ground under a cell's footprint spans more than the layer, the smaller
+       of that and the cell centre's height above the ground at the column centre, at least half the layer
+       (:doc:`immersed_terrain`, Turbulence). The wall law is unchanged. No effect where no footprint spans more than
+       a layer. May not change across a restart.
 
 ``init``
 --------
@@ -895,6 +918,8 @@ types, the inflow profile and the sounding; the other keys act in the SIMPLEC st
      - ``0`` (off)
      - In [0, top level): start height of the Rayleigh layer (m); > 0 needs ``bc.rayleigh_dampcoef`` > 0. The top
        level is ``mesh.prob_hi`` z, or where the layers end with ``mesh.stretch_ratio`` or ``mesh.zlevels_file``.
+       With ``terrain.representation = immersed_forcing`` and absolute heights the limit is the top level minus
+       ``terrain.flat_height``, since heights are measured from the terrain's zero.
    * - ``bc.rayleigh_dampcoef``
      - ``0``
      - Finite, ≥ 0 (1/s); needs ``bc.rayleigh_zdamp`` > 0.
@@ -907,7 +932,9 @@ types, the inflow profile and the sounding; the other keys act in the SIMPLEC st
    * - ``bc.rayleigh_height``
      - ``absolute``
      - ``absolute`` or ``above_ground``: the height used for the layer's coefficient and for θ's reference
-       (:math:`u, v, k` always use the height above the ground).
+       (:math:`u, v, k` always use the height above the ground). ``absolute`` is measured from the terrain's zero:
+       on an immersed ground (``terrain.representation = immersed_forcing``) that is ``terrain.flat_height`` above
+       the mesh's lower face.
    * - ``bc.sponge_width``
      - ``0`` (off)
      - Finite, ≥ 0 (m); > 0 needs an inflow or outflow face and ``bc.sponge_strength`` > 0. Refused with a ``nest``
@@ -921,7 +948,7 @@ types, the inflow profile and the sounding; the other keys act in the SIMPLEC st
        has the transport fluxes of the cell inside it, mirrored through the face (the normal flux continued linearly
        through its face value), so it has that cell's divergence. ``from_velocity``: the fluxes are computed from the
        ghost cells' copied velocities and their own geometry, the only choice up to v1.0.0. The velocity ghosts are the
-       same either way (:doc:`boundary_conditions`).
+       same either way (:doc:`boundary_conditions`). ``from_velocity`` is refused with ``terrain.representation = immersed_forcing``.
    * - ``bc.surface_z0``
      - 0.1 m
      - Finite, > 0. Roughness length of the wall model. The ``bc.surface_*`` keys need ``bc.zlo = surface_layer``.

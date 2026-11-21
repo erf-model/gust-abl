@@ -14,6 +14,7 @@ Askervein hill run to steady on ERF's grid (`extern_erf/askervein.txt`). The fol
 | `Bolund_Terrain_Files` | `rt_bolund_files_converter` | A deck that names a terrain file and a roughness-map file (Bolund, 270°), and `to_gust_xyz.py`, which writes both from GeoTIFF, ESRI ASCII, Surfer ASCII or point files. |
 | `Columbia_Gorge` | (comparison case) | Two-way nesting over the Columbia River Gorge at the WFIP2 site: the 200 m outer domain and a 100 m nest across the river and the Columbia Hills, one way and joint, against the uniform 100 m run. |
 | `WindNinja2019` | (comparison case) | Askervein, Bolund cases 1, 3, 4 and Big Southern Butte against the observations and WindNinja curves of Wagenbrenner et al. (2019); GUST - Fast and GUST - CFD. |
+| `Immersed_Terrain_Cases` | `rt_immersed_askervein_coarse` | Bolund, Askervein, the Ishihara-Zhou ridge and Big Southern Butte as pairs in the same settings: terrain-following mesh against the ground immersed in a flat mesh (comparison cases); the CTest runs a coarse Askervein pair. |
 | `IshiharaZhou` | (comparison case) | The steep 2-D ridge of Ishihara and Zhou (2025), smooth and rough, against the wind tunnel. |
 | `RUSHIL` | (comparison case) | The RUSHIL 2-D hills (a/H = 3, 5, 8) against the wind tunnel (ERCOFTAC AC5-05). |
 | `URANS_Averages` | `rt_urans_mean_option` | The time mean of the unsteady run against the steady run of the same deck: RUSHIL Hill 5 and Askervein with ERF's setup (comparison cases); the CTest checks the `--mean` option of the readers. |

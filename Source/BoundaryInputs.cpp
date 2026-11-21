@@ -259,9 +259,11 @@ std::vector<std::string> check_boundary_inputs (const BoundaryInputs& in, const 
     } else if (given("zhi_theta_grad") && in.face[5] == FaceType::no_slip_wall) {
         err.emplace_back("bc.zhi_theta_grad has no effect with bc.zhi = no_slip_wall");
     }
-    if (std::isnan(in.rayleigh_zdamp) || !(in.rayleigh_zdamp >= 0 && in.rayleigh_zdamp < ztop)) {
+    // Absolute heights are measured from the terrain's zero (height_origin above the mesh's lower face).
+    const amrex::Real ztop_abs = in.rayleigh_above_ground ? ztop : ztop - in.height_origin;
+    if (std::isnan(in.rayleigh_zdamp) || !(in.rayleigh_zdamp >= 0 && in.rayleigh_zdamp < ztop_abs)) {
         char top[64];
-        std::snprintf(top, sizeof(top), "%.1f", static_cast<double>(ztop));
+        std::snprintf(top, sizeof(top), "%.1f", static_cast<double>(ztop_abs));
         err.emplace_back("bc.rayleigh_zdamp = " + std::to_string(in.rayleigh_zdamp) + ": must be in [0, the top level "
                          + top + " m) (0: off)");
     }

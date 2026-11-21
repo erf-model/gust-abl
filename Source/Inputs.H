@@ -109,6 +109,14 @@ struct TerrainInputs
     //! ground, the horizontal speed, the footprint's area); normal: the distance along the ground's
     //! normal, the speed parallel to the ground and the ground's area (ImmersedSlope.H).
     std::string immersed_slope{"vertical"};
+    //! immersed_forcing: side walls on the ground. off: the ground is the roof of its wall cells only (its
+    //! horizontal area); steps: also a wall law on the x and y faces of a cut cell whose face on the wall side is
+    //! wholly blocked, where the ground drops by more than a layer to the next column (BuildingsSurface.cpp).
+    std::string immersed_side_walls{"off"};
+    //! immersed_forcing: the turbulence model's distance to the ground. mean_height: the mean height of the cell's
+    //! fluid above the ground; column_centre: where the ground under the footprint spans more than the layer, the
+    //! smaller of that and the cell centre's height above the ground at the column centre (BuildingTke.cpp).
+    std::string immersed_wall_distance{"mean_height"};
     //! Keys given in the inputs (a key with no effect for the chosen type is an error).
     std::vector<std::string> given;
 };

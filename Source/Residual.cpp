@@ -304,6 +304,9 @@ void residual (const State& q, const ResidualInputs& in, const Mesh& mesh, const
     if (in.building_theta != nullptr) {
         if (in.buildings == nullptr) { amrex::Abort("gust: residual: the buildings' theta terms (building_theta) need their wall law (buildings)"); }
         in.building_theta->close_fluxes({&mesh.open_fraction(0), &mesh.open_fraction(1), &mesh.open_fraction(2)}, Gt);
+    } else if (in.buildings != nullptr && in.buildings->immersed_ground()) {
+        // The immersed ground takes no heat: theta is not conducted through the solid part of a face, as for k.
+        close_scalar_fluxes({&mesh.open_fraction(0), &mesh.open_fraction(1), &mesh.open_fraction(2)}, Gt);
     }
     if (in.flux_probe != nullptr) {
         for (int c = 0; c < 3; ++c) { in.flux_probe->take(c, FluxPart::diffusive, Gm[c], nullptr); }
@@ -487,6 +490,8 @@ void implicit_rows (const amrex::Array<const amrex::MultiFab*, AMREX_SPACEDIM>& 
     }
     if (in.building_theta != nullptr && eq == Equation::theta) {
         in.building_theta->add_to_implicit({&mesh.open_fraction(0), &mesh.open_fraction(1), &mesh.open_fraction(2)}, A);
+    } else if (in.buildings != nullptr && in.buildings->immersed_ground() && eq == Equation::theta) {
+        close_scalar_couplings({&mesh.open_fraction(0), &mesh.open_fraction(1), &mesh.open_fraction(2)}, A);
     }
     if (in.building_tke != nullptr && eq == Equation::tke) {
         in.building_tke->add_to_implicit({&mesh.open_fraction(0), &mesh.open_fraction(1), &mesh.open_fraction(2)}, A,

@@ -114,7 +114,10 @@ fractions above 0.995 as solid, so such cells occur.
 two ranks; f = 0 runs twice.
 
 With `turb.shear_stencil = log_law`: `rt_log_shear_column_f0` (with the body-fitted comparison),
-`rt_log_shear_column_f03`, `rt_log_shear_column_f07`, `rt_log_shear_column_f09`, the same cost. The option's
+`rt_log_shear_column_f03`, `rt_log_shear_column_f07`, `rt_log_shear_column_f09`, the same cost.
+`rt_log_shear_column_f09` solves the pressure to `simplec.pressure_reltol = 1e-6` (2703 iterations): from the
+first guess, with the cut layer's centroid height, the default 1e-3 leaves a uniform w near 1e-10 after each
+solve, and the u and w residuals level off near 2e-8, above `steady.residual_tol = 1e-8`. The option's
 refusals (smoke): `abort_shear_stencil_value`, `abort_shear_stencil_buildings`, `abort_shear_stencil_tucker` and
 `abort_shear_stencil_no_surface_layer` stop naming the input.
 

@@ -121,7 +121,8 @@ give the CTest names.
      - ``Nest_Faces``, ``Nest_Validation``, ``Nest_Shapes``, ``Nests_One_Process``, ``Nests_Two_Way``,
        ``Nests_Flat_ABL``, and ``Askervein_Nest`` and ``Columbia_Gorge`` on real terrain
    * - Immersed terrain (:doc:`immersed_terrain`)
-     - ``Immersed_Column`` (case 1b above)
+     - ``Immersed_Column`` (case 1b above), ``Immersed_Ridge_2D``, ``Immersed_Open_Faces``, and
+       ``Immersed_Terrain_Cases`` on real terrain
 
 Transient cases
 ---------------

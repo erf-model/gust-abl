@@ -129,6 +129,11 @@ struct BoundaryInputs
     //! absolute (ERF) or above the local ground (a layer that follows a
     //! tall ridge).
     bool rayleigh_above_ground{false};
+    //! The height of the terrain's zero in the mesh's frame (m), from which absolute heights
+    //! (bc.rayleigh_zdamp with bc.rayleigh_height = absolute) are measured: terrain.flat_height on an
+    //! immersed ground (terrain.representation = immersed_forcing), whose mesh starts that far below
+    //! the terrain's zero; 0 on a mesh that follows the terrain. Not a key.
+    amrex::Real height_origin{0};
     //! bc.outflow_transport: the transport fluxes of the ghost cells outside
     //! an outflow face are the mirror image of the edge cells' (mirror, the
     //! default; outflow_transport), or computed from the ghosts' own
@@ -280,6 +285,13 @@ public:
     //! when a face is nest (fill_ghosts aborts without it).
     void set_nest_faces (const NestFaces* nest) { m_nest = nest; }
 
+    //! The solid fractions of the x and y faces of an immersed ground (Buildings::beta_face; buildings decks pass none),
+    //! which must outlive this object and its copies; null: none. An inflow face's normal velocity is then 0
+    //! where the face is solid (fraction 1), not the profile's value: the solid rows of the momentum residual
+    //! (BuildingForcing::apply_rows) ask for 0 there, and a cell made solid by buildings.small_volfrac still
+    //! has a height above the ground, so the profile alone would give it a wind.
+    void set_solid_faces (const amrex::MultiFab* fx, const amrex::MultiFab* fy) { m_solid_face = {fx, fy}; }
+
     //! The slabs outside the domain of one layout, each with the box that
     //! owns it (the ghost-copy exchange at the end of fill_ghosts).
     struct GhostSlabs
@@ -302,6 +314,7 @@ private:
     InflowProfile m_profile;
     bool m_theta_ground_extension{false};   //!< set_theta_ground_extension
     const NestFaces* m_nest{nullptr};       //!< set_nest_faces
+    std::array<const amrex::MultiFab*, 2> m_solid_face{nullptr, nullptr};   //!< set_solid_faces
     //! Built once per layout: a new BoxArray per fill would rebuild AMReX's
     //! copy pattern every time. The cache holds its layouts (no id reuse).
     mutable std::vector<GhostSlabs> m_ghost_slabs;

@@ -16,7 +16,9 @@
 // difference of the (u, z) and (v, z) terms of 2 S_ij S_ij, the other gradients as the closure has
 // them. The wall cell keeps the closure's S2: its k is the wall value. With an immersed ground this
 // takes the place of ImmersedStrain (its factor R, the flat ground's central-difference error, is 1
-// here); solid cells and cut cells are left as they are.
+// here); solid cells are left as they are, and the cut cell takes the wall law's gradient
+// (apply_cut_cell_strain, ImmersedStrain.H). A fluid cell with a side wall only (sloping ground) keeps
+// the closure's S2.
 
 #include "Buildings.H"
 #include "Closure.H"
@@ -38,6 +40,7 @@ public:
 private:
     amrex::MultiFab m_len;   //!< d + z0
     const Buildings* m_b;
+    amrex::Real m_z0 = 0;    //!< the immersed ground's uniform z0 (its cut cells, ImmersedStrain.H)
 };
 
 }   // namespace gust

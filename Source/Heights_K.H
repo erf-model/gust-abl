@@ -49,20 +49,29 @@ struct NodeZ
 
 //! Height of the point (i, j, k) of type T: its node-mean height minus the
 //! node-mean ground under its footprint (NodeZ::ground at the ground layer klo).
+//! A point centred in a layer that an immersed ground cuts takes the height of the centroid of the
+//! layer's part above the ground, half the open height (the inflow profile, the first guess and the
+//! damping heights then read the fluid's height, as the wall law does).
 template <int T>
 AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
 amrex::Real height_above_ground (const NodeZ& z, int i, int j, int k, int klo) noexcept
 {
     using namespace stencil;
     constexpr int nx = nodal(T, 0) ? 1 : 2, ny = nodal(T, 1) ? 1 : 2, nz = nodal(T, 2) ? 1 : 2;
-    amrex::Real zp = 0, zg = 0;
+    amrex::Real zp = 0, zg = 0, zb = 0, zt = 0;
     for (int a = 0; a < nx; ++a) {
         for (int b = 0; b < ny; ++b) {
             zg += z.ground(i + a, j + b, klo);
             for (int c = 0; c < nz; ++c) { zp += z(i + a, j + b, k + c); }
+            zb += z(i + a, j + b, k);
+            zt += z(i + a, j + b, k + nz - 1);
         }
     }
-    return zp / (nx * ny * nz) - zg / (nx * ny);
+    zg /= (nx * ny);
+    // A point whose layer is cut by an immersed ground: the centroid of the layer's part above the ground.
+    // (On a body-fitted mesh no layer is cut: the ground is the lowest nodes.)
+    if (nz == 2 && zg * (nx * ny) > zb && zg * (nx * ny) < zt) { return amrex::Real(0.5) * (zt / (nx * ny) - zg); }
+    return zp / (nx * ny * nz) - zg;
 }
 
 //! Vertical height of the point (its node mean), for the gradient fills.
