@@ -2899,8 +2899,16 @@ Current tests
        275 against those runs (1 %), the interior mean of k at 270 (0.5 %), a stored sector returned unchanged,
        and the reference speed asked for. Label ``regression``, about 70 s. Not on Windows; registered
        only when the configure's Python has PyYAML and numpy.
+   * - ``rt_library_ensemble``
+     - Ensemble statistics and WindNinja-format grids of the wind library
+       (``Tests/Infrastructure/Library_Ensemble``, :doc:`case_setup`): a hill sweep of four directions on 4 ranks,
+       placed by ``domain.center_lat_lon``; the statistics over 8 members in every column at 10 m and 50 m equal
+       those computed from the runs' plotfiles (1e-12), the grids' header, UTM corner (1e-6 m), north row first
+       and values, the ``.prj`` (UTM zone 13N), the CSV at the hilltop, and the ground grid's centroid at the
+       hill's top (1 m). Label ``regression``, about 16 s. Not on Windows; registered only when the configure's
+       Python has PyYAML and numpy.
    * - ``gust_input_checker_selftest``, ``gust_case_selftest``, ``gust_dem_selftest``, ``gust_window_selftest``,
-       ``gust_library_selftest``, ``gust_resume_selftest``, ``gust_fetch_selftest``
+       ``gust_library_selftest``, ``gust_ensemble_selftest``, ``gust_resume_selftest``, ``gust_fetch_selftest``
      - The Python unit tests of the deck checker (standard library only), the case set-up tool, the terrain
        download (on tiles made in the test, no network), the case set-up window (offscreen; its window tests
        skip without PySide6 and pyqtgraph) and the wind library (on plotfiles written in the test: several boxes,
@@ -2909,7 +2917,10 @@ Current tests
        decks, data files or arguments, a missing patch plotfile and ``RESUME=0`` run again; the ``run.sh`` tests
        skip on Windows), and the upstream roughness from a regional map (``wind.upstream_roughness = auto``: a
        half-plane map, a uniform map, the closed form of the weight on a step map, two inflow faces, coverage, the
-       decks of a sweep and the refusals). The last six need PyYAML and numpy. Label
+       decks of a sweep and the refusals), and the library's ensemble statistics and WindNinja-format grids (a
+       hand-written two-sector library: closed-form mean, spread, percentiles, exceedance and reversal; the grid
+       header, corner, ``.prj`` and a round trip; the command line's refusals). The last seven need PyYAML and
+       numpy. Label
        ``unit``.
        ``gust_case_selftest`` also checks that ``Tests/inputs_yaml_reference`` is what
        ``tools/make_gust_case.py --write-yaml-reference`` writes and that, uncommented, it is YAML holding every key

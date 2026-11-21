@@ -6,6 +6,8 @@ and pyqtgraph and are skipped without them; they run with QT_QPA_PLATFORM=offscr
     UT-12.3.1  the form has one widget per key of the schema (test_one_widget_per_key)
     UT-12.3.2  a YAML file read into the form and saved again is unchanged (test_yaml_round_trip_*)
     UT-12.3.3  a refused key marks its own field (test_refused_key_marks_*)
+    LibraryTabTests  the Library tab: one wind and a distribution drawn and exported; skipped without
+                     PySide6
 
     cd tools && python3 -m unittest -v test_gust_window
 """
@@ -680,6 +682,123 @@ class RunPanelTests(unittest.TestCase):
         self.assertFalse(outcome[0][0])
         self.assertIn("ended with status 3", outcome[0][1])
         self.assertFalse(os.path.exists(os.path.join(self.dir, "nest_a", "args.txt")))
+
+
+@unittest.skipUnless(HAVE_QT, "PySide6 or pyqtgraph is not installed")
+class LibraryTabTests(unittest.TestCase):
+    """the Library tab on a hand-written two-sector library (tools/test_gust_ensemble.py)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+
+    def setUp(self):
+        import test_gust_ensemble as ens
+        self.ens = ens
+        self._tmp = tempfile.TemporaryDirectory()
+        self.case = os.path.join(self._tmp.name, "case")
+        ens.write_library(self.case, ens.domain(center_lat_lon=[43.40, -113.03]))
+        from gust_window.librarytab import LibraryTab
+        self.tab = LibraryTab()
+        self.addCleanup(self.tab.deleteLater)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_tab_in_the_window(self):
+        from gust_window.window import MainWindow
+        w = MainWindow()
+        self.addCleanup(w.deleteLater)
+        self.assertEqual([w.tabs.tabText(i) for i in range(w.tabs.count())],
+                         ["Map", "Findings", "Summary", "Run", "Library"])
+        self.assertIs(w.tabs.widget(4), w.library)
+
+    def test_one_wind_shows_and_exports(self):
+        tab = self.tab
+        self.assertFalse(tab.show_button.isEnabled())
+        tab.set_folder(self.case)
+        self.assertEqual([tab.height.itemText(i) for i in range(tab.height.count())], ["10", "40"])
+        tab.direction.setValue(90.0)
+        tab.speed.setValue(10.0)
+        fields = tab.compute()
+        self.assertEqual(list(fields), ["speed", "direction", "u", "v", "w", "k"])
+        w = tab.lib.wind(90.0, 10.0, 10.0)
+        np.testing.assert_allclose(fields["speed"], np.hypot(w["u"], w["v"]), rtol=1e-14)
+        self.assertEqual(fields["direction"][0, 0], 90.0)
+        self.assertEqual(fields["direction"][self.ens.REVERSED], 270.0)
+        self.assertTrue(tab.grids_button.isEnabled())
+        out = os.path.join(self._tmp.name, "out")
+        tab.units.setCurrentText("kph")
+        files = tab.export_grids(out)
+        self.assertEqual(sorted(os.path.basename(f) for f in files),
+                         ["twosector_90deg_10mps_10m_agl_%s" % s for s in ("ang.asc", "ang.prj", "vel.asc", "vel.prj")])
+        from gust_library import grids
+        _, vel, _, _ = grids.read_grid(os.path.join(out, "twosector_90deg_10mps_10m_agl_vel.asc"))
+        np.testing.assert_allclose(vel, 3.6 * fields["speed"], rtol=1e-8)
+
+    def test_distribution_and_refusal_in_the_caption(self):
+        tab = self.tab
+        tab.set_folder(self.case)
+        tab.mode.setCurrentText("Distribution")
+        self.assertTrue(tab.members.isVisibleTo(tab) and not tab.direction.isVisibleTo(tab))
+        tab.members.setPlainText("0 6 1\n90 10 3\n")
+        tab.thresholds.setText("6.5")
+        fields = tab.compute()
+        self.assertEqual(list(fields), ["mean_speed", "std_speed", "mean_u", "mean_v", "mean_direction", "p10", "p50", "p90",
+                                        "pexceed_6p5", "preversal"])
+        expect = self.ens.ensemble.ensemble(tab.lib, [(0.0, 6.0, 1.0), (90.0, 10.0, 3.0)], 10.0, (10, 50, 90), (6.5,))
+        for name in fields:
+            np.testing.assert_array_equal(fields[name], expect[name])
+        points = os.path.join(self._tmp.name, "pts.txt")
+        with open(points, "w") as fh:
+            fh.write("12.5 12.5 mast\n")
+        tab.export_points(points, self._tmp.name)
+        self.assertTrue(os.path.isfile(os.path.join(self._tmp.name, "twosector_ensemble_10m_agl_points.csv")))
+        tab.members.setPlainText("0 6 -1\n")
+        self.assertIsNone(tab.compute())
+        self.assertIn("weights must be 0 or more", tab.caption.text())
+        self.assertFalse(tab.grids_button.isEnabled())
+
+    def test_folder_without_a_library(self):
+        self.tab.set_folder(self._tmp.name)
+        self.assertIn("build the library first", self.tab.caption.text())
+        self.assertFalse(self.tab.show_button.isEnabled())
+
+    def test_default_units_are_mps(self):
+        self.assertEqual(self.tab.units.currentText(), "mps")
+
+    def test_export_is_the_wind_shown(self):
+        """Boxes changed after Show: the files are named and sampled from the wind shown, not the boxes."""
+        tab = self.tab
+        tab.set_folder(self.case)
+        tab.direction.setValue(90.0)
+        tab.speed.setValue(10.0)
+        fields = tab.compute()
+        tab.direction.setValue(0.0)
+        tab.speed.setValue(5.0)
+        out = os.path.join(self._tmp.name, "out")
+        tab.export_grids(out)
+        from gust_library import grids
+        _, vel, _, _ = grids.read_grid(os.path.join(out, "twosector_90deg_10mps_10m_agl_vel.asc"))
+        np.testing.assert_allclose(vel, fields["speed"], rtol=1e-8)
+        points = os.path.join(self._tmp.name, "pts.txt")
+        with open(points, "w") as fh:
+            fh.write("12.5 12.5 mast\n")
+        tab.export_points(points, out)
+        with open(os.path.join(out, "twosector_90deg_10mps_10m_agl_points.csv")) as fh:
+            row = dict(zip(*[line.strip().split(",") for line in fh]))
+        w = tab.lib.wind(90.0, 10.0, 10.0)
+        i, j = list(self.ens.X).index(12.5), list(self.ens.Y).index(12.5)
+        self.assertAlmostEqual(float(row["speed"]), float(np.hypot(w["u"], w["v"])[i, j]), places=9)
+
+    def test_failed_load_drops_the_library_loaded_before(self):
+        tab = self.tab
+        tab.set_folder(self.case)
+        self.assertIsNotNone(tab.compute())
+        tab.set_folder(self._tmp.name)
+        self.assertIsNone(tab.lib)
+        self.assertFalse(tab.show_button.isEnabled())
+        self.assertFalse(tab.grids_button.isEnabled())
 
 
 if __name__ == "__main__":
