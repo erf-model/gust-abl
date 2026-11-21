@@ -514,6 +514,149 @@ the reference point); ``--out`` writes the fields at the height (``u``, ``v``, `
 
 Exit status of ``make_gust_library.py``: 0 done; 2 refused, with the option or run folder named.
 
+**Ensemble statistics.** ``ensemble`` gives statistics of the wind over a distribution of directions and speeds,
+from the library alone (no new runs):
+
+.. code-block:: bash
+
+   tools/make_gust_library.py ensemble CASE_DIR --height 10 --members members.txt [--percentiles 10 50 90]
+       [--thresholds 10 15] [--grids DIR] [--points points.txt] [--out stats.npz]
+   tools/make_gust_library.py ensemble CASE_DIR --height 10 --directions 240 270 300 --direction-weights 1 2 1
+       --speeds 5 10 --speed-weights 3 1
+
+A member is a direction (degrees the wind comes from, the sweep's inflow direction), a speed :math:`S` at the
+reference point and first height (as in ``query``) and a weight. ``--members`` reads one member per line,
+``direction speed [weight]`` (weight 1 when left out; spaces or commas; ``#`` starts a comment). Otherwise every
+``--directions`` is taken with every ``--speeds``, weighted by the product of ``--direction-weights`` and
+``--speed-weights`` (independent distributions; equal weights when left out). The weights :math:`w_i` are divided
+by their sum. Each member's wind is the query's, :math:`\mathbf{u}_i = \mathbf{u}(\theta_i, S_i)`, with local speed
+:math:`s_i = |\mathbf{u}_i|` (horizontal). Per column, at the height:
+
+.. math::
+
+   \bar s = \sum_i w_i s_i, \qquad
+   \sigma_s = \Big(\sum_i w_i (s_i - \bar s)^2\Big)^{1/2}, \qquad
+   \bar{\mathbf{u}} = \sum_i w_i \mathbf{u}_i,
+
+   s_P = \min\Big\{ s_j : w_j > 0,\ \sum_{i:\, s_i \le s_j} w_i \ge P/100 \Big\}, \qquad
+   p_T = \sum_{i:\, s_i > T} w_i, \qquad
+   p_\mathrm{rev} = \sum_{i:\, \mathbf{u}_i \cdot \mathbf{e}_i < 0} w_i,
+
+where :math:`\mathbf{e}_i` is the unit vector towards which a wind from :math:`\theta_i` blows. :math:`s_P` is a
+weighted percentile without interpolation between members; a member of weight 0 is never a percentile, and the
+cumulative weight counts as reaching :math:`P/100` within :math:`\max(10^{-12}, 4 n \epsilon)` for :math:`n`
+members (the rounding of a sum of :math:`n` weights). :math:`p_T` is the probability of a speed above
+:math:`T`, and :math:`p_\mathrm{rev}` the probability of a reversal: the local wind blows against the member's own
+inflow direction, as in a recirculation. The direction of the vector mean :math:`\bar{\mathbf{u}}` is the mean
+direction (no data where :math:`|\bar{\mathbf{u}}| \le 10^{-12}\,\bar s`, directions that cancel). The statistics hold only as far as the members' winds do:
+each member is a blend and scaling of the library's runs, with the limits below.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 14 56
+
+   * - Option
+     - Default
+     - Effect
+   * - ``--members FILE``
+     - none
+     - The members, one per line. Refused together with ``--directions``/``--speeds``.
+   * - ``--directions D ...``, ``--speeds S ...``
+     - none
+     - Every direction with every speed. Each speed must be above 0 m/s.
+   * - ``--direction-weights W ...``, ``--speed-weights W ...``
+     - equal
+     - One weight per direction (per speed); each finite and 0 or more, with a sum above 0.
+   * - ``--percentiles P ...``
+     - 10 50 90
+     - Weighted percentiles of the speed, each in (0, 100], each once (kept to 12 digits in the names).
+       ``--percentiles`` with no values gives none.
+   * - ``--thresholds T ...``
+     - none
+     - Speeds (m/s, 0 or more, each once) for the probability of a speed above each.
+   * - ``--out FILE``
+     - none
+     - The statistics (``mean_speed``, ``std_speed``, ``mean_u``, ``mean_v``, ``mean_direction``, ``p<P>``,
+       ``pexceed_<T>``, ``preversal``, ``x``, ``y``) as a ``.npz`` file; a ``.`` in :math:`P` or :math:`T` is
+       written ``p`` (``pexceed_7p5``). ``mean_u`` and ``mean_v`` are in this file and the CSV, not written as
+       grids.
+
+A weight, speed or direction that is not a finite number, a negative weight, weights that sum to 0, and a
+percentile or threshold out of range are refused, with the option named (exit status 2). A member whose
+direction the library cannot give (a neighbouring run without GUST's steady verdict) is refused with the member's
+number and direction. The weights of ``--members`` need not sum to 1. The columns are taken a few rows at a time,
+so the memory does not grow with the number of members times the columns.
+
+**WindNinja-format output.** ``query`` and ``ensemble`` write the wind at the height as WindNinja writes its
+output grids, for fire models and GIS:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 14 56
+
+   * - Option
+     - Default
+     - Effect
+   * - ``--grids DIR``
+     - none
+     - ESRI ASCII grids in ``DIR``: ``<prefix>_vel.asc`` (speed) and ``<prefix>_ang.asc`` (the direction the wind
+       comes from, degrees clockwise from north), each with a ``.prj``. For ``ensemble``, ``_vel`` is the mean
+       speed :math:`\bar s`, ``_ang`` the direction of the vector mean, and each other statistic gets
+       ``<prefix>_<name>.asc`` (``std_speed``, ``p50``, ``pexceed_10``, ``preversal``, ...).
+   * - ``--points FILE``
+     - none
+     - A CSV ``<prefix>_points.csv`` (in ``DIR``, or the current folder) of the values at the points of ``FILE``:
+       one point per line, ``x y [name]`` (m, case frame). Columns: ``name``, ``x``, ``y``, ``easting``,
+       ``northing`` (the case frame's origin added), ``height``, then ``u``, ``v``, ``w``, ``k``, ``speed``,
+       ``direction`` (``query``) or the statistics (``ensemble``). Speeds in m/s. For ``ensemble`` the statistics
+       at a point are those of the members' winds at the point, not interpolated from the column statistics.
+   * - ``--prefix TEXT``
+     - from the case
+     - The start of the file names; by default ``<case>_<D>deg_<S>mps_<H>m_agl`` (``query``) or
+       ``<case>_ensemble_<H>m_agl``.
+   * - ``--speed-units``
+     - ``mps``
+     - The units of every speed grid: ``_vel``, and for ``ensemble`` also ``std_speed`` and ``p<P>``: ``mps``,
+       ``mph`` or ``kph``. Probabilities and directions have no units; the CSV stays in m/s. WindNinja writes m/s
+       by default; some fire models read mph or km/h.
+   * - ``--prj FILE``
+     - none
+     - A projection file copied beside each grid, in place of the one written from ``domain.center_lat_lon``. It
+       is read once before any grid is written, so it may be one of the outputs.
+
+``--prj`` and ``--speed-units`` other than ``mps`` without ``--grids``, ``--prefix`` without ``--grids`` or
+``--points``, a ``--prj`` file that does not exist and a ``--grids`` that is a file are refused before anything
+is read. Everything else ``--grids`` and ``--points`` can refuse (the columns, the points file) is checked before
+the first file is written.
+
+The grids' cells are the library's columns: ``cellsize`` is the mesh cell, the corner (``xllcorner``,
+``yllcorner``) is half a cell beyond the first column centre, the first row written is the north row, and the
+no-data value is -9999. An ASCII grid has square cells: for a mesh with :math:`\Delta x \ne \Delta y` the fields
+are resampled bilinearly onto square cells of :math:`h = \min(\Delta x, \Delta y)` from the domain's south-west
+corner (the value at the outermost column centre beyond it), and the tool prints how. The direction is taken from
+the resampled components. Columns of uneven spacing are refused. The corner is
+placed on the map from the case folder's ``case_resolved.yaml``: the case frame's origin (the domain centre, or
+its south-west corner with ``domain.origin``) in UTM for a centre given as ``domain.center_lat_lon``, and then the
+``.prj`` is the ESRI text of WGS 84 / UTM in that zone; or in the projected frame of ``domain.center``, whose
+projection the tool does not know, so no ``.prj`` is written unless ``--prj`` gives one. Without
+``case_resolved.yaml`` (a ``wind_library/`` folder copied alone) the corner is in the case frame. Directions are
+relative to the grid's north (the projection's northing); the meridian convergence of UTM is not removed. It is
+about :math:`\Delta\lambda \sin\phi`: 0.75 degree at 100 km from the central meridian at 40 degrees latitude,
+up to about 2 degrees at the edge of the zone, and more with a ``domain.utm_zone`` other than the centre's own.
+The members' directions are in the same grid frame, while station winds are reported from true north; the
+difference is the same convergence. The same is available from Python:
+
+.. code-block:: python
+
+   from gust_library import Library, ensemble, grids
+   lib = Library("CASE_DIR")
+   st = ensemble.ensemble(lib, ensemble.parse(["240 5 1", "270 10 2"]), 10.0, percentiles=(50,), thresholds=(8,))
+   grids.export_grids(lib, "out", "mycase", st, ("mean_speed", "mean_u", "mean_v"), ["p50", "preversal"],
+                      speed_names=ensemble.speed_names((50,)))
+
+``Tests/Infrastructure/Library_Ensemble`` (CTest ``rt_library_ensemble``, 4 ranks) checks the statistics against
+the runs and the grids' corner against the map.
+
 **Accuracy and limits.** ``Tests/Infrastructure/Library_Hill`` (CTest ``rt_library_hill``, 2 ranks) blends a
 library at 270 degrees and compares it with the 270 degree run, over a 60 m Gaussian hill with 50 m cells. The
 horizontal-wind differences, as a percentage of :math:`S`, 4 cells or more from the lateral faces:
@@ -742,6 +885,14 @@ The case set-up window
   folder; ``run.ranks`` above 1 uses ``run.mpi_launcher``. **Stop** asks the step to end and ends it after 5 s if
   it has not; the steps after it do not run. As ``run.sh``, it skips the directions that already hold their answer
   (`Stopping and going on`_) unless ``run.resume = false``.
+- **Library** tab: the wind library of a case folder (filled in after **Write case**; **Browse** picks another).
+  Choose the height and either **One wind** (a direction and a speed at the reference point, as ``query``) or
+  **Distribution** (members typed as ``direction speed [weight]`` lines, percentiles and thresholds, as
+  ``ensemble``), then **Show** draws the chosen field on the case frame. **Export grids** writes the WindNinja-format
+  grids of `A wind library from a sweep`_ (in the speed units chosen) and **Export points** the CSV at the points of a
+  file. Both export what the last **Show** drew. A refusal shows above the map. The tab has no ``--prj``: for a
+  centre given as ``domain.center`` it writes no ``.prj`` (use ``make_gust_library.py --prj``). The tab reads a
+  library; ``make_gust_library.py build`` writes it.
 
 On Windows, the window can be frozen into a folder with PyInstaller (``tools/gust_gui.spec``: one folder, no console
 window, rasterio left out):

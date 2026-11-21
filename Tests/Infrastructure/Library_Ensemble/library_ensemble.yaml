@@ -1,0 +1,26 @@
+# A Gaussian hill (written by check_library_ensemble.py as hill.asc, in UTM metres
+# around domain.center_lat_lon) under a neutral log-law inflow, run from four
+# directions 90 degrees apart. A wind library of the four runs gives ensemble
+# statistics and WindNinja-format grids, checked against the runs and the map.
+case:
+  name: library_ensemble
+domain:
+  center_lat_lon: [40.0, -105.5]
+  half_width: 1000.      # m from the centre to each face
+  top: 1000.             # m
+terrain:
+  file: hill.asc
+  coordinates: projected
+mesh:
+  cell_size: 50.         # m
+  layers: 20
+  first_layer: 4.        # m
+  max_grid_size: 16      # 40 x 40 columns in 9 boxes of uneven size, over 4 ranks
+wind:
+  speed: 8.              # m/s at wind.height
+  height: 10.            # m
+  directions: [0., 90., 180., 270.]
+surface:
+  roughness: 0.03        # m
+solver:
+  max_iterations: 800

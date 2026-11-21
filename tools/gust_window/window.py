@@ -1,4 +1,5 @@
-"""The main window: the case form on the left; the map, the findings, the summary and the run on the right."""
+"""The main window: the case form on the left; the map, the findings, the summary, the run and the wind library on
+the right."""
 import datetime
 import os
 
@@ -10,6 +11,7 @@ from gust_case import dem
 
 from . import values
 from .form import CaseForm
+from .librarytab import LibraryTab
 from .mapview import PlanView
 from .runner import RunPanel
 from .runplan import find_gust
@@ -117,6 +119,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.tabs.addTab(self.findings, "Findings")
         self.tabs.addTab(self.summary, "Summary")
         self.tabs.addTab(self.runner, "Run")
+        self.library = LibraryTab()
+        self.tabs.addTab(self.library, "Library")
         split = QtWidgets.QSplitter()
         split.addWidget(self.form)
         split.addWidget(self.tabs)
@@ -340,6 +344,7 @@ class MainWindow(QtWidgets.QMainWindow):
             overwrite = True
         result = self._build(dry_run=False, overwrite=overwrite)
         if result is not None:
+            self.library.set_folder(result.case_dir)
             self.tabs.setCurrentWidget(self.findings if result.errors or result.warnings else self.summary)
             self.statusBar().showMessage("Wrote %s: the deck checker found %d error%s and %d warning%s"
                                          % (result.case_dir, result.errors, "" if result.errors == 1 else "s",

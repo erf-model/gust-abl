@@ -4,6 +4,8 @@
     query.py      Library(path).wind(direction, speed, height): the two neighbouring sectors blended
     sample.py     fields at heights above the ground and at a point
     plotfile.py   GUST plotfiles (cell fields and node heights) as numpy arrays
+    ensemble.py   statistics over a distribution of directions and speeds (no new runs)
+    grids.py      WindNinja-format output: ESRI ASCII grids with a .prj, and CSV at points
 
 tools/make_gust_library.py is the command line; docs/case_setup.rst describes
 the files and the conventions.
