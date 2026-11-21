@@ -141,6 +141,18 @@ bool wall_on_low_side (double f_lo, double f_hi, double beta, double tol) noexce
     return f_lo - f_hi > tol || (beta == 0 && f_lo > tol);
 }
 
+//! The roof of an immersed ground (Buildings::build_from_surface): the ground is the wall below a cell
+//! that is not solid wherever its low z face is more blocked than its high one, with no tolerance. The
+//! ground is a height field, so the blocked part of the z faces does not grow with height in a column,
+//! and the roofs' areas (wall_area_fraction: f_lo - f_hi, or f_lo in a fluid cell, whose high face is
+//! then open) add up the column to the blocked part of its lowest open face, 1: every column has its
+//! whole footprint as roof, as the first fluid cell above blanked terrain has it. The buildings' test
+//! (wall_on_low_side) keeps its tolerance: a building's roof is one jump of the face fraction, but on a
+//! slope the jump spreads over the cut cells of the column, by about 1/n per layer over n layers, and a
+//! tolerance above that drops the roof of every one of them.
+AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
+bool ground_roof (double f_lo, double f_hi) noexcept { return f_lo > f_hi; }
+
 //! The fluid-centroid distance of a wall cell from its wall, along the normal.
 AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
 double wall_d1 (double beta, double dn) noexcept { return 0.5 * (1 - beta) * dn; }

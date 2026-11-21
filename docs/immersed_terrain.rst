@@ -88,9 +88,13 @@ cells is open, as for buildings.
 
 **Wall cells.** A cell is a wall cell where the blocked part of its low z face exceeds that of its high z face (or,
 in a fluid cell, where its low face is blocked). The difference is the horizontal area of ground in the cell, as a
-part of the footprint; over a column these areas add to 1. On a slope a column has several wall cells. The ground has
-no side walls: the differences of the x and y faces are the same surface, whose area the z faces already count. A
-vertical step in the terrain's data becomes a slope across one cell.
+part of the footprint; over a column these areas add to 1. On a slope a column has several wall cells. The test has
+no tolerance, unlike the buildings' wall cells, which need the difference to exceed ``buildings.small_volfrac``: on a
+slope that rises through :math:`n` layers across a column the blocked part changes by about :math:`1/n` per layer,
+and a tolerance above that drops most of the column's roof (with a tolerance of 0.1, a slope of 0.15 on 80 m
+columns of 1 m layers keeps a third of its footprint as roof; unit test
+``ImmersedSurface.RoofsAddToTheFootprintOnASlopeThroughManyLayers``). The ground has no side walls: the
+differences of the x and y faces are the same surface, whose area the z faces already count. A vertical step in the terrain's data becomes a slope across one cell.
 
 **Closure of the faces.** Before the rounding, the open parts of a cell's faces close: a uniform wind parallel to
 a plane ground has no net flux through them, and the same holds for the four-triangle surface. The rounding of
@@ -371,9 +375,10 @@ A checkpoint of an immersed run holds a file ``ImmersedTerrain`` with a hash of 
 hill's inputs, or the terrain file's contents and its interpolation inputs), ``terrain.flat_height``,
 ``terrain.small_volfrac``, ``terrain.immersed_slope`` and ``bc.surface_z0``. A restart with another value of one of
 them, or with the other ``terrain.representation``, stops naming ``io.restart``. The ground's heights are not in
-the checkpoint: a restart computes them from the inputs, which the hash pins. The record's version is 2; a
-checkpoint written before sloping grounds (version 1) is refused, with a message naming the two versions. A restart reads the ``bc`` inputs in a stage only, so a
-restart of an immersed run names a ``steady.stage``.
+the checkpoint: a restart computes them from the inputs, which the hash pins. The record's version is 3; a
+checkpoint written before sloping grounds (version 1) or before the wall-cell test lost its tolerance (version 2) is
+refused, with a message naming the two versions. A restart reads the ``bc`` inputs in a stage only, so a restart of
+an immersed run names a ``steady.stage``.
 
 Verification
 ------------
@@ -629,6 +634,69 @@ inflow profile in solid cells too; those cells stay at rest, as the solid cells'
 ``bc.rayleigh_height = absolute`` (the default) the height is measured from the terrain's zero, as on a mesh that
 follows the terrain: the immersed mesh starts :math:`h_f` = ``terrain.flat_height`` below it, and that offset is
 taken out (unit test ``ImmersedTerrain.AbsoluteRayleighHeightIsFromTheTerrainZero``).
+
+Grid resolution
+---------------
+
+The horizontal velocity lives on the column faces. Where the ground rises by :math:`\Delta h` across a column, every
+layer of that column below the downstream node's ground has its downstream face shut (the faces are exact for the
+piecewise-linear ground, `Geometry`_), so the air must turn up inside one column. On a terrain-following mesh it
+follows the slope. The immersed ground therefore needs columns narrow enough that :math:`\Delta h` is small near the
+crest; the layer thickness matters much less.
+
+``Tests/Canonical_RANS/Immersed_Ridge_Resolution`` measures this on a 2-D Witch of Agnesi ridge, 200 m high with
+half-width 500 m (largest slope 0.26), periodic, with the measured cases' settings (``terrain.small_volfrac`` = 0.1,
+``turb.shear_stencil = log_law``). The crest speed-up at 10 m above the ground, :math:`\Delta S_{10}`, is the speed
+over the run's own far-field speed at that height, minus 1. Layers of 2 m:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 10 18 26 16 16
+
+   * - dx (m)
+     - :math:`\Delta h` per column (m)
+     - Crest :math:`\Delta S_{10}`, terrain-following / immersed
+     - Gap at 10 m
+     - Gap at 40 m
+   * - 64
+     - 17
+     - 1.133 / 0.652
+     - −0.48
+     - −0.10
+   * - 32
+     - 8
+     - 1.148 / 0.857
+     - −0.29
+     - −0.05
+   * - 16
+     - 4
+     - 1.159 / 1.032
+     - −0.12
+     - −0.02
+
+The terrain-following value changes by 0.03 over the sweep. The immersed one shrinks its gap by a factor of 1.6 to
+2.4 per halving of dx, about first order. Each run is divided by its own far field, and the immersed far field is
+slower by 3.0, 2.6 and 1.6 % at dx = 64, 32 and 16 m; the crest speed at 10 m, immersed over terrain-following, is
+0.751, 0.842 and 0.928. At dx = 64 m, layers of 2, 8, 16 and 32 m (aspect ratios dx/dz from 32 to 2) give the same
+immersed crest value at 40 m, 0.71, and values from 0.51 to 0.65 at 10 m with no monotone trend. The immersed lee minimum is deeper than the
+terrain-following one at every dx and converges more slowly than the crest. The extra :math:`k` above the crest
+(1.87 against 0.97 m²/s² at dx = 64 m) follows the shear at the top of the slow layer, not the other way round:
+capping the shear production there removed most of the extra :math:`k` and left the speed gap.
+
+Askervein (wind from 210°, ``Tests/Real_Terrain/Immersed_Terrain_Cases``, dx = 23.4 m, largest slope 0.41 along the
+wind, :math:`\Delta h` up to 9.7 m) shows the same pattern. At the hilltop, 10 m above the ground, the speed-up is
+0.71 terrain-following and 0.48 immersed (gap −0.22) and :math:`k` is 2.0 times larger; at 40 m the gap is −0.04.
+Averaged over the columns, the gap at 10 m is −0.12 on the windward slopes (slope above 0.15), −0.34 on the lee slopes
+and −0.015 on the flat ground, and it correlates with the slope along the wind (+0.50 over the hill). The steepest
+columns rise 9.7 m, about twice the guide below and close to the ridge at dx = 32 m (8 m per column, gap −0.29). With
+2 m layers, the wall-cell rule without a tolerance (`Geometry`_) leaves this run unchanged (the same 70827 wall cells;
+364 against 363 iterations; largest change in :math:`u` 0.002 m/s). The numbers come from
+``Tests/Real_Terrain/Immersed_Terrain_Cases/compare_fields.py``.
+
+**Guide.** Choose dx so that the ground rises by about 5 m or less across one column on the slopes that matter
+(dx :math:`\lesssim` 5 m divided by the largest slope); on the ridge this leaves a crest gap of about −0.12 at
+10 m. The layers can then be a few metres thick. Expect the lee to need finer columns than the crest. The guide
+comes from one ridge, on which the rise per column and the columns per half-width change together.
 
 Limits
 ------

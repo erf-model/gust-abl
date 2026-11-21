@@ -201,7 +201,8 @@ void BuildingForcing::update (const amrex::MultiFab& u, const amrex::MultiFab& v
         // to the solid cell (close_viscous_fluxes).
         // Sides normal to x: on v and w. The reference cell is the next one out along x. Only a
         // partial cell weighs it (beta > 0), and such a cell has one wall along x, facing away
-        // from a cell that is not solid (Buildings_K.H: wall_on_low_side).
+        // from a cell that is not solid (Buildings_K.H: wall_on_low_side; an immersed ground has no
+        // side walls by default, and its roofs follow ground_roof).
         const amrex::Real dx = m_geom.CellSize(0), dy = m_geom.CellSize(1);
         for (amrex::MFIter mfi(m_rate, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
             const auto r = m_rate.array(mfi);

@@ -142,10 +142,10 @@ amrex::Real open_face_mean (amrex::Real a, amrex::Real b, amrex::Real wa, amrex:
 
 //! The part of a cell's face area that a wall takes: in a fluid cell (beta = 0) the blocked part
 //! f_wall of the face the wall lies on; in a partly solid cell the difference from the opposite
-//! face's blocked part, which is the area facing that way (Buildings_K.H: wall_on_low_side). On
-//! a slope the solid fraction of a roof's cells changes a little from column to column, so they
-//! carry a side bit with a small such area; the whole face's fraction would count the building's
-//! own cross-section as a wall.
+//! face's blocked part, which is the area facing that way (Buildings_K.H: wall_on_low_side; for an
+//! immersed ground's roof, ground_roof). On a slope the solid fraction of a roof's cells changes a
+//! little from column to column, so they carry a side bit with a small such area; the whole face's
+//! fraction would count the building's own cross-section as a wall.
 AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
 amrex::Real wall_area_fraction (amrex::Real f_wall, amrex::Real f_opposite, amrex::Real beta) noexcept
 {

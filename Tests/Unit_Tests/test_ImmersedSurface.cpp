@@ -344,7 +344,9 @@ TEST (ImmersedSurface, TiltedPlaneMatchesTheClosedForm)
                 EXPECT_LT(max_over(g.b.wall(), [&] (const auto& a, int i, int j, int k) {
                     const int n = along(i, j);
                     const double own = p.beta(n, k);
-                    const bool wall = own < 1 && gust::wall_on_low_side(p.below(n, k), k < 23 ? p.below(n, k + 1) : 0.0, own, p.small);
+                    // The closed form, written out rather than through gust::ground_roof: a roof wherever the
+                    // low face is more blocked than the high one.
+                    const bool wall = own < 1 && p.below(n, k) > (k < 23 ? p.below(n, k + 1) : 0.0);
                     const double mask = std::abs(static_cast<double>(a(i, j, k, gust::kWallMask)) - (wall ? gust::kWallRoof : 0));
                     if (!wall) { return mask; }
                     const double d1 = std::abs(static_cast<double>(a(i, j, k, gust::kWallD1z)) - p.height(n, k));
@@ -375,6 +377,51 @@ TEST (ImmersedSurface, TiltedPlaneMatchesTheClosedForm)
                 EXPECT_LT(worst, tol);
                 EXPECT_GE(cut, 64.0);   // a cut cell in every column at least
             }
+        }
+    }
+}
+
+// Beyond the plan: a slope that rises through many layers across a column keeps its whole footprint
+// as roof with any terrain.small_volfrac. 0.15 over 80 m columns of 1 m layers: 12 cut cells, about
+// 1/12 of the footprint each. The buildings' test (wall_on_low_side) with a tolerance of 0.1 keeps a
+// third of the footprint as roof (the test fails with it at every terrain.small_volfrac here).
+TEST (ImmersedSurface, RoofsAddToTheFootprintOnASlopeThroughManyLayers)
+{
+    for (const int mgs : {8, 4}) {
+        const PCase c = gust::lamtest::flat_case(8, 8, 128, 640, 640, 128, false, false, mgs);
+        for (const double small : {0.005, 0.1, 0.3}) {
+            SCOPED_TRACE("boxes of " + std::to_string(mgs) + ", terrain.small_volfrac " + std::to_string(small));
+            gust::TerrainInputs t = immersed();
+            t.small_volfrac = static_cast<amrex::Real>(small);
+            const gust::BuildingsOptions opt = gust::immersed_terrain_options(t, kZ0);
+            const amrex::MultiFab z = with_ground(c, [] (double x, double) { return 4.0 + 0.15 * x; });
+            gust::Buildings b;
+            b.build_from_surface(opt, "test", c.geom, z, c.ba, c.dm);
+            double worst = 0, steep = 0;
+            for (amrex::MFIter mfi(b.beta(), false); mfi.isValid(); ++mfi) {
+                const auto be = b.beta().const_array(mfi);
+                const auto fz = b.beta_face(2).const_array(mfi);
+                const auto wl = b.wall().const_array(mfi);
+                const amrex::Box bx = mfi.validbox();
+                for (int j = bx.smallEnd(1); j <= bx.bigEnd(1); ++j) {
+                    for (int i = bx.smallEnd(0); i <= bx.bigEnd(0); ++i) {
+                        double sum = 0;
+                        int cut = 0;
+                        for (int k = 0; k < 128; ++k) {
+                            if (wl(i, j, k, gust::kWallMask) > 0) {
+                                sum += static_cast<double>(gust::wall_area_fraction(fz(i, j, k), fz(i, j, k + 1), be(i, j, k)));
+                            }
+                            if (be(i, j, k) > 0 && be(i, j, k) < 1) { ++cut; }
+                        }
+                        worst = std::max(worst, std::abs(sum - 1));
+                        if (cut >= 4) { steep += 1; }
+                    }
+                }
+            }
+            amrex::ParallelDescriptor::ReduceRealMax(worst);
+            amrex::ParallelDescriptor::ReduceRealSum(steep);
+            EXPECT_LT(worst, tol);
+            EXPECT_EQ(steep, 64.0) << "a column with fewer than 4 cut cells: the case does not spread the roof";
         }
     }
 }
