@@ -15,7 +15,8 @@ namespace gust {
 namespace {
 
 constexpr const char* kMagic = "gust_immersed_terrain";
-constexpr int kVersion = 2;   // 1: a flat ground (flat_height, small_volfrac, z0)
+constexpr int kVersion = 3;   // 1: a flat ground (flat_height, small_volfrac, z0); 2: roofs with the
+                              // buildings' tolerance; 3: roofs with none (ground_roof)
 
 void bcast_string (std::string& s)
 {

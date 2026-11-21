@@ -30,6 +30,7 @@ ground, since the ground can cut any of them. The Butte decks have half the hori
 | `compare_masts.py` | Bolund and Askervein: both runs against the masts; sections of speed and k. |
 | `compare_ridge.py` | The ridge: both runs against the wind-tunnel stations. |
 | `compare_butte.py` | The Butte: runs against the 3 m sensors and against each other. |
+| `compare_fields.py` | Any pair: speed-up and k at 10 and 40 m above the ground, column by column, immersed against body-fitted, by region (slopes, upper hill, flat ground). |
 | `check_coarse_pair.py` | The CTest: a coarse pair of one case, run and compared. |
 
 ## Data and acknowledgements
@@ -67,6 +68,11 @@ python3 compare_masts.py bolund_270 <body-fitted folder> <immersed folder> bolun
 python3 compare_ridge.py smooth <body-fitted folder> <immersed folder> ridge_smooth.png <data>
 python3 compare_butte.py butte.png <data> body_fitted=<folder> immersed=<folder>
 ```
+For any pair, the speed-up and k at 10 and 40 m above the ground by region (the flat height is the immersed deck's
+`terrain.flat_height`, the wind direction is the case's, in degrees):
+```bash
+python3 compare_fields.py --body-fitted <body-fitted folder> --immersed <immersed folder> --flat 3 --wind-dir 210
+```
 The full-size runs take minutes (Bolund, the ridge) to hours (Askervein, the Butte) on four ranks.
 
 ## Expected Results
@@ -92,6 +98,11 @@ wide, and the immersed run is slower on the crests. The immersed runs take 1.0 t
 On the Butte, `terrain.immersed_side_walls = steps` changes the speed at 3 m by 0.14 m/s rms (1082 iterations,
 rms error 6.09 m/s at the sensors). `terrain.immersed_wall_distance = column_centre` was tested on the 2-D ridge
 only (docs, Immersed terrain, Turbulence); its runs on the measured cases were stopped before they finished.
+
+The rows above were run before wall cells lost their tolerance (docs, Immersed terrain, Geometry). With the current
+rule, Askervein (2 m layers) and the two ridges have the same wall cells, and a rerun of Askervein changes `u` by at
+most 0.002 m/s (364 iterations). Bolund gains 29 wall cells (34199 to 34228) and the Butte 1058 (25759 to 26817);
+those rows have not been rerun.
 
 ## CTest
 | Name | Label | What it checks |

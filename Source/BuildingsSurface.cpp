@@ -179,10 +179,10 @@ void Buildings::build_from_surface (const BuildingsOptions& opt, const std::stri
     }
 
     // The wall cells: the ground is the wall below a cell (the roof bit) wherever the blocked part
-    // of its low face exceeds that of its high face, or a fluid cell's low face is blocked. By
-    // default the ground has no side walls: on a slope the differences of the x and y faces are the
-    // same surface, whose area the low and high z faces already count.
-    const double wall_tol = small;
+    // of its low face exceeds that of its high face, with no tolerance (ground_roof), so the roofs
+    // of a column add to its footprint. By default the ground has no side walls: on a slope the
+    // differences of the x and y faces are the same surface, whose area the low and high z faces
+    // already count.
     m_wall.clear();
     m_wall.define(cell_ba, dm, kNumWallComps, 1);
     m_wall.setVal(0);
@@ -196,7 +196,7 @@ void Buildings::build_from_surface (const BuildingsOptions& opt, const std::stri
             const double own = static_cast<double>(br(i, j, k));
             if (own == 1) { return; }
             const double zl = static_cast<double>(fz(i, j, k)), zh = static_cast<double>(fz(i, j, k + 1));
-            if (!wall_on_low_side(zl, zh, own, wall_tol)) { return; }
+            if (!ground_roof(zl, zh)) { return; }
             w(i, j, k, kWallMask) = static_cast<amrex::Real>(kWallRoof);
             // The distances of the wall law: the mean heights above the ground of the cell's fluid
             // and of the fluid of the cell above (0 when that one is solid or outside the domain).

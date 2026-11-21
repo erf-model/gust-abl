@@ -306,7 +306,7 @@ Quick reference
      - CSV of the force on the buildings per unit density (m⁴/s²)
    * - ``buildings.small_volfrac``
      - ``0.005``
-     - Solid fractions within this of 0 or 1 become 0 or 1
+     - Solid fractions within this of 0 or 1 become 0 or 1; also the smallest face-fraction difference that makes a wall cell
    * - ``buildings.z0``
      - ``0.1``
      - Roughness of the wall law on buildings and, with ``buildings.wall_tke = on``, of the closure's length beside their walls (m)
@@ -719,7 +719,9 @@ Quick reference
    * - ``terrain.small_volfrac``
      - ``0.005``
      - ≥ 1e-4 and < 0.5; ``immersed_forcing`` only. A solid fraction below it becomes 0 and one within it of 1 becomes
-       1, as with ``buildings.small_volfrac``. May not change across a restart.
+       1, as with ``buildings.small_volfrac``, so it still decides which cells are solid. Unlike
+       ``buildings.small_volfrac`` it is not a tolerance of the wall-cell test: every cell that is not solid and whose
+       low z face is more blocked than its high one is a wall cell. May not change across a restart.
    * - ``terrain.immersed_slope``
      - ``vertical``
      - ``vertical`` or ``normal``; ``immersed_forcing`` only (refused when given with ``body_fitted``). ``vertical``:
@@ -1148,7 +1150,7 @@ refuses buildings other than those of the run it continues.
      - A file name, not empty: the CSV ``t,Fx,Fy,Fz`` of the force on the buildings per unit density (m⁴/s²), from the momentum residual over their blocked faces (:doc:`buildings`, Force on the buildings). One row after a steady solve; with ``steady.stage = unsteady`` one at the start and one per step, and a restart keeps the rows up to the checkpoint's time. Needs ``steady.stage``.
    * - ``buildings.small_volfrac``
      - ``0.005``
-     - In [0, 0.5). Below it a fraction is 0, within it of 1 the fraction is 1. At 0, round-off alone is clipped.
+     - In [0, 0.5). Below it a fraction is 0, within it of 1 the fraction is 1. At 0, round-off alone is clipped. A cell is a wall cell only where the blocked parts of two opposite faces differ by more than it.
    * - ``buildings.z0``
      - ``0.1``
      - Finite and > 0 (m). Refused with ``buildings.wall_form = drag``. The law reads distances below ``10 z0`` as ``10 z0`` (:doc:`buildings`, Limits). With ``buildings.wall_tke = on`` it is also the roughness in the closure's length beside a wall (:doc:`buildings`, Length scale).

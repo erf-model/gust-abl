@@ -112,7 +112,9 @@
 #
 # terrain.small_volfrac = 0.005
 #     ≥ 1e-4 and < 0.5; immersed_forcing only. A solid fraction below it becomes 0 and one within it of 1 becomes 1,
-#     as with buildings.small_volfrac. May not change across a restart.
+#     as with buildings.small_volfrac, so it still decides which cells are solid. Unlike buildings.small_volfrac it
+#     is not a tolerance of the wall-cell test: every cell that is not solid and whose low z face is more blocked
+#     than its high one is a wall cell. May not change across a restart.
 #
 # terrain.immersed_slope = vertical
 #     vertical or normal; immersed_forcing only (refused when given with body_fitted). vertical: the wall law of a
@@ -516,7 +518,8 @@
 #     to the checkpoint's time. Needs steady.stage.
 #
 # buildings.small_volfrac = 0.005
-#     In [0, 0.5). Below it a fraction is 0, within it of 1 the fraction is 1. At 0, round-off alone is clipped.
+#     In [0, 0.5). Below it a fraction is 0, within it of 1 the fraction is 1. At 0, round-off alone is clipped. A
+#     cell is a wall cell only where the blocked parts of two opposite faces differ by more than it.
 #
 # buildings.z0 = 0.1
 #     Finite and > 0 (m). Refused with buildings.wall_form = drag. The law reads distances below 10 z0 as 10 z0
