@@ -288,7 +288,7 @@ TEST (Inputs, ImmersedTerrainChecksNameTheInput)
     }
     struct Case { const char* key; void (*mutate)(gust::Inputs&); };
     const Case cases[] = {
-        {"terrain.representation must be body_fitted or immersed_forcing", [] (gust::Inputs& in) { in.terrain.representation = "immersed"; }},
+        {"terrain.representation must be body_fitted, immersed_forcing or hybrid", [] (gust::Inputs& in) { in.terrain.representation = "immersed"; }},
         {"terrain.flat_height must be finite and > 0", [] (gust::Inputs& in) { in.terrain.flat_height = 0; }},
         {"terrain.flat_height must be finite and > 0", [] (gust::Inputs& in) {
              in.terrain.flat_height = std::numeric_limits<amrex::Real>::quiet_NaN(); }},
@@ -312,6 +312,79 @@ TEST (Inputs, ImmersedTerrainChecksNameTheInput)
         EXPECT_EQ(err.size(), 1u) << c.key;
         EXPECT_TRUE(any_mentions(err, c.key)) << c.key;
     }
+}
+
+// terrain.representation = hybrid (HybridTerrain.H): the immersed checks apply, the mesh may be smoothed
+// aloft, and terrain.hybrid_half_width is range-checked and refused with another representation.
+TEST (Inputs, HybridTerrainChecksNameTheInput)
+{
+    auto hybrid = [] () {
+        auto in = valid_inputs();
+        in.mesh.is_periodic = {1, 1, 0};
+        in.terrain.representation = "hybrid";
+        in.terrain.flat_height = 2;
+        in.terrain.given = {"flat_height"};
+        in.terrain.hybrid_half_width = 128;
+        in.terrain.type = "agnesi";
+        in.terrain.hill_height = 50;
+        in.terrain.hill_half_width = 100;
+        return in;
+    };
+    EXPECT_TRUE(gust::validate(hybrid()).empty());
+    {
+        auto in = hybrid();
+        in.terrain.hybrid_half_width = 0;   // h_s = h
+        in.terrain.given.emplace_back("smoothing");
+        in.terrain.given.emplace_back("gamma_m");
+        EXPECT_TRUE(gust::validate(in).empty());
+    }
+    {
+        auto in = hybrid();
+        in.terrain.given.clear();   // flat_height and hybrid_half_width take their defaults (apply_hybrid_defaults)
+        EXPECT_TRUE(gust::validate(in).empty());
+    }
+    {
+        auto in = hybrid();
+        in.terrain.flat_height = 0;   // the lower face is the ground where the envelope meets the terrain
+        EXPECT_TRUE(gust::validate(in).empty());
+    }
+    struct Case { const char* key; void (*mutate)(gust::Inputs&); };
+    const Case cases[] = {
+        {"terrain.hybrid_half_width must be finite, >= 0", [] (gust::Inputs& in) { in.terrain.hybrid_half_width = -1; }},
+        {"terrain.hybrid_half_width must be finite, >= 0", [] (gust::Inputs& in) {
+             in.terrain.hybrid_half_width = std::numeric_limits<amrex::Real>::quiet_NaN(); }},
+        {"terrain.hybrid_half_width must be finite, >= 0", [] (gust::Inputs& in) { in.terrain.hybrid_half_width = 1e7; }},
+        {"terrain.flat_height must be finite and >= 0 with terrain.representation = hybrid", [] (gust::Inputs& in) {
+             in.terrain.flat_height = -0.5; }},
+        {"terrain.flat_height must be finite and >= 0 with terrain.representation = hybrid", [] (gust::Inputs& in) {
+             in.terrain.flat_height = std::numeric_limits<amrex::Real>::quiet_NaN(); }},
+        {"terrain.nest_blend_width has no effect with terrain.representation = hybrid", [] (gust::Inputs& in) {
+             in.terrain.given.emplace_back("nest_blend_width"); }},
+        {"terrain.representation = hybrid needs mesh.hierarchy_levels = 1", [] (gust::Inputs& in) { in.mesh.hierarchy_levels = 2; }},
+        {"terrain.hybrid_half_width has no effect unless terrain.representation = hybrid", [] (gust::Inputs& in) {
+             in.terrain.representation = "immersed_forcing"; in.terrain.given.emplace_back("hybrid_half_width"); }},
+        {"terrain.flat_height must be finite and > 0 with terrain.representation = immersed_forcing", [] (gust::Inputs& in) {
+             in.terrain.representation = "immersed_forcing"; in.terrain.flat_height = 0; in.terrain.hybrid_half_width = 0; }},
+        {"terrain.hybrid_half_width has no effect unless terrain.representation = hybrid", [] (gust::Inputs& in) {
+             in.terrain.representation = "body_fitted"; in.terrain.given = {"hybrid_half_width"}; }},
+    };
+    for (const auto& c : cases) {
+        auto in = hybrid();
+        c.mutate(in);
+        const auto err = gust::validate(in);
+        EXPECT_EQ(err.size(), 1u) << c.key;
+        EXPECT_TRUE(any_mentions(err, c.key)) << c.key;
+    }
+}
+
+TEST (Inputs, ParsesTheHybridKeys)
+{
+    ScopedKeys guard{{{"terrain", "representation"}, {"terrain", "flat_height"}, {"terrain", "hybrid_half_width"}}};
+    add_inputs_text("terrain.representation = hybrid\nterrain.flat_height = 2.5\nterrain.hybrid_half_width = 256\n");
+    const auto in = gust::parse_inputs();
+    EXPECT_EQ(in.terrain.representation, "hybrid");
+    EXPECT_EQ(in.terrain.hybrid_half_width, amrex::Real(256));
+    EXPECT_EQ(in.terrain.given.size(), 3u);
 }
 
 // The three keys are read from an inputs file.

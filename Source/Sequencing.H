@@ -209,6 +209,8 @@ public:
     //! The surface-layer options of this level: the run's, with z0_map set to z0_map_field when there is a map.
     SurfaceLayerOptions surf;
     amrex::MultiFab z0_map_field;  //!< the roughness map (empty without bc.surface_z0_file)
+    //! A hybrid mesh's columns whose lower face lies inside the terrain (surf.immersed_columns; else empty).
+    amrex::MultiFab immersed_columns;
     Canopy canopy_field;           //!< a coarse level's canopy (restricted from level 0)
     //! This level's canopy: the run's on level 0, canopy_field on a coarse level; null without one.
     const Canopy* canopy{nullptr};

@@ -18,7 +18,8 @@ namespace gust {
 namespace {
 
 //! The mesh's levels (node means over a cell's footprint or a face's edge) and the ground's height
-//! at the nodes of a column, in double.
+//! at the nodes of a column, in double. A flat mesh (terrain.representation = immersed_forcing): each
+//! level is one height, and the ground is measured from it as it stands (gk, above).
 struct SurfaceNodes
 {
     amrex::Array4<amrex::Real const> z;
@@ -41,13 +42,121 @@ struct SurfaceNodes
     {
         return 0.5 * (static_cast<double>(z(i, j, k)) + static_cast<double>(z(i + 1, j, k)));
     }
-    //! The means of (t - h)_+^n over the footprint of cell (i, j).
+    //! The ground at node (i, j) as seen from level k at the reference height ref: on a flat mesh the
+    //! ground itself.
     AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
-    SurfaceMoments moments (int i, int j, double t) const noexcept
-    {
-        return footprint_moments(g(i, j), g(i + 1, j), g(i + 1, j + 1), g(i, j + 1), t);
-    }
+    double gk (int i, int j, int /*k*/, double /*ref*/) const noexcept { return g(i, j); }
 };
+
+//! A mesh whose levels slope (terrain.representation = hybrid, HybridTerrain.H): the ground is measured
+//! from each node's own height on level k, shifted to the reference ref (the level's mean over the
+//! footprint or the edge), so that (t - gk) at the reference t = ref is the node's z_k - g, and the
+//! moments of footprint_moments and segment_depth integrate the height above the ground along the
+//! sloping level. On a flat level gk is the ground again (to round-off).
+struct SlopedNodes : SurfaceNodes
+{
+    AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
+    double gk (int i, int j, int k, double ref) const noexcept { return g(i, j) - (static_cast<double>(z(i, j, k)) - ref); }
+};
+
+//! The node view of one box's node heights.
+template <class N>
+N make_nodes (const amrex::Array4<amrex::Real const>& z, int k0, int gc)
+{
+    N n;
+    n.z = z;
+    n.k0 = k0;
+    n.gc = gc;
+    return n;
+}
+
+//! The means of (t - h)_+^n over the footprint of cell (i, j), the ground seen from level k at ref.
+template <class N>
+AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
+SurfaceMoments footprint (const N& z, int i, int j, int k, double ref, double t) noexcept
+{
+    return footprint_moments(z.gk(i, j, k, ref), z.gk(i + 1, j, k, ref), z.gk(i + 1, j + 1, k, ref), z.gk(i, j + 1, k, ref), t);
+}
+
+//! The cells: the solid fraction, and the surface's fields from the unclipped geometry.
+template <class N>
+void surface_cells (amrex::MultiFab& beta, amrex::MultiFab& surface, const amrex::MultiFab& z_nd, int k0, int gc, double dxd,
+                    double dyd, double small)
+{
+    for (amrex::MFIter mfi(beta, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
+        const auto b = beta.array(mfi);
+        const auto s = surface.array(mfi);
+        const N z = make_nodes<N>(z_nd.const_array(mfi), k0, gc);
+        amrex::ParallelFor(mfi.tilebox(), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+        {
+            const double zb = z.h4(i, j, k), zt = z.h4(i, j, k + 1), dz = zt - zb;
+            const SurfaceMoments mb = footprint(z, i, j, k, zb, zb), mt = footprint(z, i, j, k + 1, zt, zt);
+            const double frac = clip_fraction(solid_fraction(mb.m1, mt.m1, zb, zt), small);
+            b(i, j, k) = static_cast<amrex::Real>(frac);
+            // The mean height of the cell's fluid above the ground; half the layer in a solid cell,
+            // which has no fluid (a positive length for the closure's solid rows).
+            const double depth = mt.m1 - mb.m1;
+            const bool fluid = frac < 1 && depth > 0;
+            s(i, j, k, kSurfaceHeight) = static_cast<amrex::Real>(fluid ? fluid_height(mb, mt) : 0.5 * dz);
+            // The ground's mean slope over the footprint, from its four nodes.
+            const double h00 = z.g(i, j), h10 = z.g(i + 1, j), h11 = z.g(i + 1, j + 1), h01 = z.g(i, j + 1);
+            s(i, j, k, kSurfaceSlopeX) = static_cast<amrex::Real>(((h10 - h00) + (h11 - h01)) / (2 * dxd));
+            s(i, j, k, kSurfaceSlopeY) = static_cast<amrex::Real>(((h01 - h00) + (h11 - h10)) / (2 * dyd));
+        });
+    }
+    amrex::Gpu::streamSynchronize();
+}
+
+//! The blocked fractions of the faces normal to d.
+template <class N>
+void surface_faces (int d, amrex::MultiFab& bf, const amrex::MultiFab& beta, const amrex::MultiFab& z_nd, int k0, int gc,
+                    double small, double ztol)
+{
+    const amrex::IntVect e = amrex::IntVect::TheDimensionVector(d);
+    const int ei = e[0], ej = e[1], ek = e[2];
+    for (amrex::MFIter mfi(bf, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
+        const amrex::Box bx = mfi.tilebox();
+        const auto a = bf.array(mfi);
+        const auto b = beta.const_array(mfi);
+        const N z = make_nodes<N>(z_nd.const_array(mfi), k0, gc);
+        // A face next to a solid cell is blocked and one between two fluid cells open, as the
+        // buildings' faces: faces and cells agree after the clipping.
+        auto finish = [=] AMREX_GPU_DEVICE (int i, int j, int k, double m) noexcept
+        {
+            const double lo = static_cast<double>(b(i - ei, j - ej, k - ek)), hi = static_cast<double>(b(i, j, k));
+            if (lo == 1 || hi == 1) { return amrex::Real(1); }
+            if (lo == 0 && hi == 0) { return amrex::Real(0); }
+            return static_cast<amrex::Real>(clip_fraction(amrex::min(1.0, amrex::max(0.0, m)), small));
+        };
+        if (d == 0) {
+            // The ground along the face's edge runs linearly between its two nodes.
+            amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+            {
+                const double zb = z.hx(i, j, k), zt = z.hx(i, j, k + 1);
+                const double open = (segment_depth(z.gk(i, j, k + 1, zt), z.gk(i, j + 1, k + 1, zt), zt)
+                                     - segment_depth(z.gk(i, j, k, zb), z.gk(i, j + 1, k, zb), zb)) / (zt - zb);
+                a(i, j, k) = finish(i, j, k, 1 - open);
+            });
+        } else if (d == 1) {
+            amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+            {
+                const double zb = z.hy(i, j, k), zt = z.hy(i, j, k + 1);
+                const double open = (segment_depth(z.gk(i, j, k + 1, zt), z.gk(i + 1, j, k + 1, zt), zt)
+                                     - segment_depth(z.gk(i, j, k, zb), z.gk(i + 1, j, k, zb), zb)) / (zt - zb);
+                a(i, j, k) = finish(i, j, k, 1 - open);
+            });
+        } else {
+            // The part of the footprint whose ground lies at or above the face (ztol: a flat
+            // ground on a face blocks it).
+            amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+            {
+                const double zf = z.h4(i, j, k);
+                a(i, j, k) = finish(i, j, k, 1 - footprint(z, i, j, k, zf, zf - ztol).m0);
+            });
+        }
+    }
+    amrex::Gpu::streamSynchronize();
+}
 
 } // namespace
 
@@ -83,28 +192,13 @@ void Buildings::build_from_surface (const BuildingsOptions& opt, const std::stri
     m_surface.clear();
     m_surface.define(cell_ba, dm, kNumSurfaceComps, 1);
     m_surface.setVal(0);
-    for (amrex::MFIter mfi(m_beta, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
-        const auto b = m_beta.array(mfi);
-        const auto s = m_surface.array(mfi);
-        const SurfaceNodes z{z_nd.const_array(mfi), k0, gc};
-        amrex::ParallelFor(mfi.tilebox(), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
-        {
-            const double zb = z.h4(i, j, k), zt = z.h4(i, j, k + 1), dz = zt - zb;
-            const SurfaceMoments mb = z.moments(i, j, zb), mt = z.moments(i, j, zt);
-            const double beta = clip_fraction(solid_fraction(mb.m1, mt.m1, zb, zt), small);
-            b(i, j, k) = static_cast<amrex::Real>(beta);
-            // The mean height of the cell's fluid above the ground; half the layer in a solid cell,
-            // which has no fluid (a positive length for the closure's solid rows).
-            const double depth = mt.m1 - mb.m1;
-            const bool fluid = beta < 1 && depth > 0;
-            s(i, j, k, kSurfaceHeight) = static_cast<amrex::Real>(fluid ? fluid_height(mb, mt) : 0.5 * dz);
-            // The ground's mean slope over the footprint, from its four nodes.
-            const double h00 = z.g(i, j), h10 = z.g(i + 1, j), h11 = z.g(i + 1, j + 1), h01 = z.g(i, j + 1);
-            s(i, j, k, kSurfaceSlopeX) = static_cast<amrex::Real>(((h10 - h00) + (h11 - h01)) / (2 * dxd));
-            s(i, j, k, kSurfaceSlopeY) = static_cast<amrex::Real>(((h01 - h00) + (h11 - h10)) / (2 * dyd));
-        });
+    // A hybrid mesh's levels slope: its own kernels (SlopedNodes).
+    m_hybrid_mesh = opt.hybrid_mesh;
+    if (opt.hybrid_mesh) {
+        surface_cells<SlopedNodes>(m_beta, m_surface, z_nd, k0, gc, dxd, dyd, small);
+    } else {
+        surface_cells<SurfaceNodes>(m_beta, m_surface, z_nd, k0, gc, dxd, dyd, small);
     }
-    amrex::Gpu::streamSynchronize();
     image_ghost_columns(m_beta, geom);
     image_ghost_columns(m_surface, geom);
 
@@ -133,47 +227,11 @@ void Buildings::build_from_surface (const BuildingsOptions& opt, const std::stri
         bf.clear();
         bf.define(amrex::convert(cell_ba, nodal), dm, 1, 0);
         bf.setVal(0);
-        const amrex::IntVect e = amrex::IntVect::TheDimensionVector(d);
-        const int ei = e[0], ej = e[1], ek = e[2];
-        for (amrex::MFIter mfi(bf, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
-            const amrex::Box bx = mfi.tilebox();
-            const auto a = bf.array(mfi);
-            const auto b = m_beta.const_array(mfi);
-            const SurfaceNodes z{z_nd.const_array(mfi), k0, gc};
-            // A face next to a solid cell is blocked and one between two fluid cells open, as the
-            // buildings' faces: faces and cells agree after the clipping.
-            auto finish = [=] AMREX_GPU_DEVICE (int i, int j, int k, double m) noexcept
-            {
-                const double lo = static_cast<double>(b(i - ei, j - ej, k - ek)), hi = static_cast<double>(b(i, j, k));
-                if (lo == 1 || hi == 1) { return amrex::Real(1); }
-                if (lo == 0 && hi == 0) { return amrex::Real(0); }
-                return static_cast<amrex::Real>(clip_fraction(amrex::min(1.0, amrex::max(0.0, m)), small));
-            };
-            if (d == 0) {
-                // The ground along the face's edge runs linearly between its two nodes.
-                amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
-                {
-                    const double zb = z.hx(i, j, k), zt = z.hx(i, j, k + 1);
-                    const double open = (segment_depth(z.g(i, j), z.g(i, j + 1), zt) - segment_depth(z.g(i, j), z.g(i, j + 1), zb)) / (zt - zb);
-                    a(i, j, k) = finish(i, j, k, 1 - open);
-                });
-            } else if (d == 1) {
-                amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
-                {
-                    const double zb = z.hy(i, j, k), zt = z.hy(i, j, k + 1);
-                    const double open = (segment_depth(z.g(i, j), z.g(i + 1, j), zt) - segment_depth(z.g(i, j), z.g(i + 1, j), zb)) / (zt - zb);
-                    a(i, j, k) = finish(i, j, k, 1 - open);
-                });
-            } else {
-                // The part of the footprint whose ground lies at or above the face (ztol: a flat
-                // ground on a face blocks it).
-                amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
-                {
-                    a(i, j, k) = finish(i, j, k, 1 - z.moments(i, j, z.h4(i, j, k) - ztol).m0);
-                });
-            }
+        if (opt.hybrid_mesh) {
+            surface_faces<SlopedNodes>(d, bf, m_beta, z_nd, k0, gc, small, ztol);
+        } else {
+            surface_faces<SurfaceNodes>(d, bf, m_beta, z_nd, k0, gc, small, ztol);
         }
-        amrex::Gpu::streamSynchronize();
         // Every copy of a face on a box edge or a periodic seam holds one value.
         bf.OverrideSync(geom.periodicity());
     }

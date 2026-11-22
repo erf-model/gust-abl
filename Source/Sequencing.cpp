@@ -2,6 +2,8 @@
 
 #include "CanopyTke.H"
 #include "ColumnGuess.H"
+#include "HybridTerrain.H"
+#include "SurfaceRoughness.H"
 
 #include "WallDistance.H"
 
@@ -283,6 +285,14 @@ LevelSolver::LevelSolver (const RunSetup& s, const Mesh& mesh, const amrex::Geom
         amrex::Print() << "gust: " << label << "surface z0 map ("
                        << (z0_fine == nullptr ? "bc.surface_z0_file" : "geometric mean of level 0") << "): "
                        << roughness_summary(z0_map_field) << "\n";
+    }
+    if (s.surface_layer && buildings != nullptr && buildings->geometry() != nullptr && buildings->geometry()->hybrid_mesh()) {
+        // A hybrid mesh: the surface layer acts at the lower face only where it is the ground.
+        const amrex::Long n = hybrid_immersed_columns(buildings->geometry()->beta(), ground_slab(ba), dm, 1, immersed_columns);
+        surf.immersed_columns = &immersed_columns;
+        amrex::Print() << "gust: " << label << "hybrid mesh: the surface layer acts at the lower face of "
+                       << geom.Domain().numPts() / geom.Domain().length(2) - n << " columns; in " << n
+                       << " the lower face lies inside the terrain, whose immersed wall law acts above it\n";
     }
     if (s.copt.wall_distance == WallDistanceKind::tucker) {
         dist.define(ba, dm, 1, 1);

@@ -96,17 +96,26 @@ struct TerrainInputs
     //! A nested patch (NestFaces.H): the width (m) over which the ground goes
     //! from the parent's on a nest face to the patch's own; 0: no blend.
     amrex::Real nest_blend_width{0};
-    //! body_fitted (the mesh follows the ground) or immersed_forcing (a flat mesh with the ground
+    //! body_fitted (the mesh follows the ground), immersed_forcing (a flat mesh with the ground
     //! immersed in it, at flat_height plus the terrain's height: ImmersedTerrain.H,
-    //! docs/immersed_terrain.rst).
+    //! docs/immersed_terrain.rst) or hybrid (the mesh follows a smoothed lower envelope of the ground,
+    //! HybridTerrain.H, and the ground is immersed in it at flat_height above the envelope's zero).
     std::string representation{"body_fitted"};
-    //! immersed_forcing: the height above the mesh bottom (m) of the terrain's zero level (the ground
-    //! itself with terrain.type = flat), > 0 and below the top.
+    //! hybrid: the half-width (m) of the square over which the envelope takes its running minimum and
+    //! then its running mean (HybridTerrain.H); 0: the mesh follows the ground. Finite, >= 0 and at most
+    //! the domain's larger lateral length. Not given: 2 cells (apply_hybrid_defaults).
+    amrex::Real hybrid_half_width{0};
+    //! immersed_forcing and hybrid: the height above the mesh bottom (m) of the terrain's zero level (the
+    //! ground itself with terrain.type = flat), > 0 and below the top; with hybrid the mesh bottom is the
+    //! envelope, so the ground lies at least this far above it, and 0 is allowed. hybrid without the key:
+    //! the first layer's thickness (apply_hybrid_defaults).
     amrex::Real flat_height{0};
-    //! immersed_forcing: solid fractions below it are fluid and above 1 - it solid, in [1e-4, 0.5).
+    //! immersed_forcing and hybrid: solid fractions below it are fluid and above 1 - it solid, in [1e-4, 0.5).
     amrex::Real small_volfrac{amrex::Real(0.005)};
     //! Keys given in the inputs (a key with no effect for the chosen type is an error).
     std::vector<std::string> given;
+    //! The ground is immersed in the mesh: terrain.representation = immersed_forcing or hybrid.
+    [[nodiscard]] bool ground_immersed () const { return representation == "immersed_forcing" || representation == "hybrid"; }
 };
 
 struct IOInputs

@@ -44,6 +44,7 @@ add_executable(unit_tests
     Unit_Tests/test_BuildingForcing.cpp
     Unit_Tests/test_ImmersedTerrain.cpp
     Unit_Tests/test_ImmersedSurface.cpp
+    Unit_Tests/test_HybridTerrain.cpp
     Unit_Tests/test_BuildingLoads.cpp
     Unit_Tests/test_BuildingTheta.cpp
     Unit_Tests/test_BuildingTke.cpp
@@ -898,6 +899,29 @@ gust_add_test(NAME abort_immersed_restart_body_fitted NP 1 LABELS "regression;sm
               FIXTURES_REQUIRED immersed_ground
               PREFIX ${EXPECT_ABORT} "io\\.restart = immersed_ground_chk00001: the checkpoint's ground is immersed" --
               COMMAND $<TARGET_FILE:gust> ${IMMERSED_GROUND_CASE}/inputs_restart_body_fitted ${GUST_TEST_AMREX_FLAGS})
+# The hybrid mesh (terrain.representation = hybrid) on the 2-D ridge, without terrain.flat_height and
+# terrain.hybrid_half_width: the run logs both defaults and writes a checkpoint; a restart on another
+# layout and three ranks with the defaults again is accepted (the restart hash takes their values);
+# a width of 100 m gives the same node count (2) but is refused by the restart hash.
+set(HYBRID_GROUND_DIR ${CMAKE_CURRENT_BINARY_DIR}/run/hybrid_ground)
+add_test(NAME hybrid_ground_clean
+         COMMAND ${Python3_EXECUTABLE} -c
+                 "import shutil, os, sys; shutil.rmtree(sys.argv[1], ignore_errors=True); os.makedirs(sys.argv[1])"
+                 ${HYBRID_GROUND_DIR})
+set_tests_properties(hybrid_ground_clean PROPERTIES LABELS "regression;smoke" FIXTURES_SETUP hybrid_ground_clean)
+gust_add_test(NAME hybrid_ground_run NP 2 LABELS "regression;smoke" RUN_DIR ${HYBRID_GROUND_DIR}
+              FIXTURES_REQUIRED hybrid_ground_clean FIXTURES_SETUP hybrid_ground
+              PREFIX ${EXPECT_ABORT} --success "gust: terrain\\.hybrid_half_width = 80 m \\(default: 2 cells\\)" --
+              COMMAND $<TARGET_FILE:gust> ${IMMERSED_RIDGE_CASE}/inputs_hybrid_ground ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME hybrid_ground_restart NP 3 LABELS "regression;smoke" RUN_DIR ${HYBRID_GROUND_DIR}
+              FIXTURES_REQUIRED hybrid_ground
+              PREFIX ${EXPECT_ABORT} --success "restarted from hybrid_ground_chk00002 at step 2" --
+              COMMAND $<TARGET_FILE:gust> ${IMMERSED_RIDGE_CASE}/inputs_hybrid_restart ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_hybrid_restart_width NP 1 LABELS "regression;smoke" RUN_DIR ${HYBRID_GROUND_DIR}
+              FIXTURES_REQUIRED hybrid_ground
+              PREFIX ${EXPECT_ABORT} "io\\.restart = hybrid_ground_chk00002: the immersed ground.s inputs .* differ" --
+              COMMAND $<TARGET_FILE:gust> ${IMMERSED_RIDGE_CASE}/inputs_hybrid_restart terrain.hybrid_half_width=100
+                      io.write_plotfile=0 ${GUST_TEST_AMREX_FLAGS})
 # The ground inside the mesh's first layer, a combination the ground does not support (with no stage
 # too), and a surface key with no effect are refused.
 gust_add_test(NAME abort_immersed_first_layer NP 1 LABELS "regression;smoke"
@@ -3242,6 +3266,18 @@ if(_gust_scipy EQUAL 0)
     set_tests_properties(nest_placement_selftest PROPERTIES LABELS unit ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
 else()
     message(STATUS "GUST: numpy or scipy not found for ${Python3_EXECUTABLE}; nest_placement_selftest is not registered")
+endif()
+
+# The hybrid half-width recommender (tools/hybrid_width.py) on analytic ridges; it needs numpy.
+execute_process(COMMAND ${Python3_EXECUTABLE} -c "import numpy"
+                RESULT_VARIABLE _gust_numpy_hw OUTPUT_QUIET ERROR_QUIET)
+if(_gust_numpy_hw EQUAL 0)
+    add_test(NAME hybrid_width_selftest
+             COMMAND ${Python3_EXECUTABLE} -m unittest -v test_hybrid_width
+             WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/tools)
+    set_tests_properties(hybrid_width_selftest PROPERTIES LABELS unit ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
+else()
+    message(STATUS "GUST: numpy not found for ${Python3_EXECUTABLE}; hybrid_width_selftest is not registered")
 endif()
 
 # --- The extern_erf drift check's own tests -----------------------------------

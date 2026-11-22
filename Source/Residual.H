@@ -231,6 +231,7 @@ struct ResidualWorkspace
     //! Convective fluxes, one set per location, indexed by the Loc value (cell 0, x 1, y 2, z 4; the rest stay empty).
     amrex::Array<amrex::Array<amrex::MultiFab, AMREX_SPACEDIM>, 8> Gc;
     amrex::MultiFab theta_ref, d, omega;
+    amrex::MultiFab p_solid;      //!< a hybrid mesh: p with the solid cells given the fluid value above them
     SurfaceState ss;              //!< the wall state, when the caller gives none
     ClosureFields cf;             //!< the closure's fields, when the caller gives none
     ClosureScratch closure;

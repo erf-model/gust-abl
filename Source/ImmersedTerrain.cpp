@@ -32,7 +32,7 @@ void bcast_string (std::string& s)
 std::vector<std::string> check_immersed_terrain (const ImmersedTerrainFacts& f)
 {
     std::vector<std::string> err;
-    const std::string rep = "terrain.representation = immersed_forcing";
+    const std::string rep = "terrain.representation = " + f.representation;
     if (!f.surface_layer) { err.push_back(rep + " needs bc.zlo = surface_layer (the wall law acts at the immersed ground)"); }
     if (!f.neutral) { err.push_back(rep + " needs bc.surface_stability = neutral for now"); }
     if (f.z0_map) { err.push_back(rep + " needs a uniform bc.surface_z0 for now (no bc.surface_z0_file)"); }
@@ -62,16 +62,22 @@ std::vector<std::string> check_immersed_terrain (const ImmersedTerrainFacts& f)
 std::string check_immersed_terrain_height (const TerrainInputs& t, double first_layer_top, double top_layer_bottom)
 {
     const double h = static_cast<double>(t.flat_height);
+    if (t.representation == "hybrid") {
+        // The lower face may be the ground (the columns where the envelope meets the terrain).
+        if (h >= 0 && h <= top_layer_bottom) { return {}; }
+        return "terrain.flat_height must lie between 0 and the bottom of the mesh's top layer (" + std::to_string(top_layer_bottom)
+               + " m) with terrain.representation = hybrid (got " + std::to_string(h) + ")";
+    }
     if (h >= first_layer_top && h <= top_layer_bottom) { return {}; }
     return "terrain.flat_height must lie between the top of the mesh's first layer (" + std::to_string(first_layer_top)
            + " m) and the bottom of its top layer (" + std::to_string(top_layer_bottom)
-           + " m) with terrain.representation = immersed_forcing (got " + std::to_string(h) + ")";
+           + " m) with terrain.representation = " + t.representation + " (got " + std::to_string(h) + ")";
 }
 
 BuildingsOptions immersed_terrain_options (const TerrainInputs& t, double z0)
 {
-    if (t.representation != "immersed_forcing") {
-        amrex::Abort("gust: immersed_terrain_options needs terrain.representation = immersed_forcing");
+    if (!t.ground_immersed()) {
+        amrex::Abort("gust: immersed_terrain_options needs terrain.representation = immersed_forcing or hybrid");
     }
     BuildingsOptions o;
     o.type = BuildingsType::immersed_forcing;
@@ -87,6 +93,7 @@ BuildingsOptions immersed_terrain_options (const TerrainInputs& t, double z0)
     o.limiter_zone = 0;
     o.limiter_zone_acts = false;
     o.immersed_ground = true;
+    o.hybrid_mesh = t.representation == "hybrid";
     return o;
 }
 
@@ -152,6 +159,8 @@ std::string immersed_terrain_hash (const TerrainInputs& t, double z0)
     std::string s = std::string(kMagic) + " " + std::to_string(kVersion) + "\nflat_height " + hx(t.flat_height)
                     + "\nsmall_volfrac " + hx(t.small_volfrac) + "\nz0 " + hexfloat_canonical(z0) + "\nslope "
                     + "vertical" + "\ntype " + t.type + "\n";
+    // Only for a hybrid mesh: an immersed_forcing checkpoint keeps its hash.
+    if (t.representation == "hybrid") { s += "hybrid " + hx(t.hybrid_half_width) + "\n"; }
     // The surface: what fill_terrain_surface reads for the type.
     if (t.type == "agnesi") {
         s += "hill " + hx(t.hill_height) + " " + hx(t.hill_half_width) + " " + t.hill_shape + "\n";
@@ -202,13 +211,13 @@ void check_immersed_terrain_restart (const std::string& dir, const std::string& 
         amrex::Abort(where + "the checkpoint's ground is body-fitted; a restart cannot change terrain.representation");
     }
     if (!active && !rec.empty()) {
-        amrex::Abort(where + "the checkpoint's ground is immersed; give terrain.representation = immersed_forcing and its inputs");
+        amrex::Abort(where + "the checkpoint's ground is immersed; give its terrain.representation (immersed_forcing or hybrid) and its inputs");
     }
     if (active && rec != hash) {
-        amrex::Abort(where + "the immersed ground's inputs (terrain.type and its keys, terrain.flat_height, "
-                             "terrain.small_volfrac or bc.surface_z0) differ from the checkpoint's, or the checkpoint "
-                             "was written with a wall-law form since removed (terrain.immersed_slope, "
-                             "terrain.immersed_side_walls or terrain.immersed_wall_distance) "
+        amrex::Abort(where + "the immersed ground's inputs (terrain.representation, terrain.type and its keys, "
+                             "terrain.flat_height, terrain.small_volfrac, terrain.hybrid_half_width or bc.surface_z0) "
+                             "differ from the checkpoint's, or the checkpoint was written with a wall-law form since "
+                             "removed (terrain.immersed_slope, terrain.immersed_side_walls or terrain.immersed_wall_distance) "
                              "(SHA-256 " + hash + " here, " + rec + " there)");
     }
 }

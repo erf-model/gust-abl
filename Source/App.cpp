@@ -24,6 +24,7 @@
 #include "NestFaces.H"
 #include "NestParent.H"
 #include "Nests.H"
+#include "HybridTerrain.H"
 #include "ImmersedTerrain.H"
 #include "Inputs.H"
 #include "Mesh.H"
@@ -89,6 +90,10 @@ std::string run_domain (const DomainRole& role)
     // A joint restart (JointRecord.H): a nest restarts from the checkpoint the record names.
     if (nest != nullptr && role.resume != nullptr) { in.io.restart = role.resume->chk; }
     auto err = validate(in);
+    // The hybrid mesh's defaults need valid mesh inputs (HybridTerrain.H).
+    if (err.empty()) {
+        for (const auto& line : apply_hybrid_defaults(in)) { amrex::Print() << "gust: " << line << "\n"; }
+    }
     InitOptions iopt = read_init_options();
     SteadyOptions sopt = read_steady_options();
     SequencingOptions seq = read_sequencing_options();
@@ -123,7 +128,7 @@ std::string run_domain (const DomainRole& role)
     if (initialize || solve) {
         bin = read_boundary_inputs();
         // Absolute heights from the terrain's zero, as on a mesh that follows the terrain.
-        if (in.terrain.representation == "immersed_forcing") { bin.height_origin = in.terrain.flat_height; }
+        if (in.terrain.ground_immersed()) { bin.height_origin = in.terrain.flat_height; }
         if (nest != nullptr) {
             apply_nest_boundary_inputs(role.parent_chk, in.mesh.is_periodic,
                                        read_nest_options().damping == NestDamping::outer, bin);
@@ -273,9 +278,10 @@ std::string run_domain (const DomainRole& role)
             err.emplace_back("solver.poisson_backend = mlmg cannot solve with buildings (no solid cells in its operator); use gmres_mlmg or gmres_fft");
         }
     }
-    // The ground immersed on a flat mesh (ImmersedTerrain.H): the refusals that need other namespaces.
-    if (in.terrain.representation == "immersed_forcing") {
+    // The ground immersed in the mesh (ImmersedTerrain.H): the refusals that need other namespaces.
+    if (in.terrain.ground_immersed()) {
         ImmersedTerrainFacts itf;
+        itf.representation = in.terrain.representation;
         itf.surface_layer = surface_layer;
         itf.neutral = surf.stability == SurfaceLayerOptions::Stability::neutral;
         itf.z0_map = !surf.z0_file.empty();
@@ -498,9 +504,11 @@ std::string run_domain (const DomainRole& role)
             amrex::Abort(all);
         }
     }
-    // terrain.representation = immersed_forcing (ImmersedTerrain.H): the inputs are valid, so the ground takes the
-    // buildings' wall law from here on, through options of its own; its restart record is its own (immersed_hash).
-    const bool immersed = in.terrain.representation == "immersed_forcing";
+    // terrain.representation = immersed_forcing or hybrid (ImmersedTerrain.H, HybridTerrain.H): the inputs are valid,
+    // so the ground takes the buildings' wall law from here on, through options of its own; its restart record is its
+    // own (immersed_hash).
+    const bool immersed = in.terrain.ground_immersed();
+    const bool hybrid = in.terrain.representation == "hybrid";
     std::string immersed_hash;
     if (immersed) {
         buildings_opt = immersed_terrain_options(in.terrain, surf.z0);
@@ -582,11 +590,35 @@ std::string run_domain (const DomainRole& role)
             if (!low.empty()) { amrex::Abort("gust: " + low); }
             // The ground's height at the nodes, from the inputs (a restart's too: its record pins them).
             fill_immersed_ground(state.z_phys_nd, geom, in.terrain);
-            const std::string out = check_immersed_ground_extent(state.z_phys_nd, static_cast<double>(zl[1]),
-                                                                 static_cast<double>(zl[zl.size() - 2]));
+            // A hybrid mesh's layers follow the envelope: the ground against each column's own nodes.
+            const std::string out = hybrid ? check_hybrid_ground_extent(state.z_phys_nd, geom)
+                                           : check_immersed_ground_extent(state.z_phys_nd, static_cast<double>(zl[1]),
+                                                                          static_cast<double>(zl[zl.size() - 2]));
             if (!out.empty()) { amrex::Abort("gust: " + out); }
-            buildings.build_from_surface(buildings_opt, "terrain.representation = immersed_forcing", geom, state.z_phys_nd, ba, dm);
-            amrex::Print() << "gust: immersed terrain (terrain.representation = immersed_forcing, terrain.type = "
+            const std::string rep = "terrain.representation = " + in.terrain.representation;
+            buildings.build_from_surface(buildings_opt, rep, geom, state.z_phys_nd, ba, dm);
+            if (hybrid) {
+                const HybridGap gap = hybrid_gap(state.z_phys_nd, zl);
+                const amrex::IntVect p = hybrid_envelope_nodes(in.terrain.hybrid_half_width, geom);
+                amrex::Print() << "gust: hybrid mesh (terrain.hybrid_half_width = " << in.terrain.hybrid_half_width << " m: "
+                               << p[0] << " x " << p[1] << " nodes): the mesh follows the terrain's lower envelope; the gap "
+                               << "to the ground runs from " << gap.min << " m to " << gap.max
+                               << " m, and the layers keep the first one's thickness to " << gap.uniform_top
+                               << " m above the mesh's lower face"
+                               << (gap.max > gap.uniform_top ? " (the largest gap reaches above them)" : "") << "\n";
+                // tools/hybrid_width.py's upper end: a largest gap above 0.2 of the relief cuts many layers.
+                const amrex::Real relief = state.z_phys_nd.max(state.z_phys_nd.nComp() - 1)
+                                         - state.z_phys_nd.min(state.z_phys_nd.nComp() - 1);
+                // The envelope's own gap: the ground's height above the lower face less terrain.flat_height.
+                const amrex::Real excess = gap.max - in.terrain.flat_height;
+                if (relief > 0 && excess > amrex::Real(0.2) * relief) {
+                    amrex::Print() << "gust: warning: the largest gap of the envelope below the terrain (" << excess
+                                   << " m) is more than 0.2 of the "
+                                   << "ground's height range (" << relief << " m); tools/hybrid_width.py gives the "
+                                   << "range of terrain.hybrid_half_width for this terrain and spacing\n";
+                }
+            }
+            amrex::Print() << "gust: immersed terrain (" << rep << ", terrain.type = "
                            << in.terrain.type << ", terrain.flat_height = " << in.terrain.flat_height
                            << " m, terrain.small_volfrac = " << in.terrain.small_volfrac << ", ground from "
                            << state.z_phys_nd.min(state.z_phys_nd.nComp() - 1) << " m to "

@@ -30,6 +30,32 @@ void check_slab (const char* op, const SurfaceState& s, const amrex::MultiFab& l
     }
 }
 
+void check_immersed_columns (const char* op, const amrex::MultiFab& m, const SurfaceState& s)
+{
+    if (m.boxArray() != s.ustar.boxArray() || m.DistributionMap() != s.ustar.DistributionMap() || m.nGrow() < s.ustar.nGrow()) {
+        amrex::Abort(std::string("gust: ") + op + ": the hybrid mesh's immersed columns are not on the surface state's layout");
+    }
+}
+
+// A hybrid mesh's columns whose lower face lies inside the terrain (SurfaceLayerOptions::immersed_columns):
+// no stress on the lower face, in the ghost columns too (the ground fluxes read them).
+void clear_immersed_columns (const amrex::MultiFab& mask, SurfaceState& s)
+{
+    check_immersed_columns("compute_surface_state", mask, s);
+    for (amrex::MFIter mfi(s.ustar, false); mfi.isValid(); ++mfi) {
+        const auto m = mask.const_array(mfi);
+        const auto ta = s.tau.array(mfi);
+        const auto dg = s.drag.array(mfi);
+        amrex::ParallelFor(mfi.growntilebox(amrex::IntVect(1, 1, 0)), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+        {
+            if (m(i, j, k) > amrex::Real(0)) {
+                for (int n = 0; n < 3; ++n) { ta(i, j, k, n) = 0; }
+                dg(i, j, k) = 0;
+            }
+        });
+    }
+}
+
 // Vertical height of the centre of cell (i, j, k) above the column's ground
 // (the mean of its four ground nodes, at the domain's low z, klo).
 struct Column
@@ -454,6 +480,7 @@ void compute_surface_state (const State& q, const SurfaceLayerOptions& opt, cons
                      + std::to_string(bad) + " columns (surface layer heat_flux = " + std::to_string(opt.heat_flux)
                      + (opt.z0_map != nullptr ? ", z0 from bc.surface_z0_file" : ", z0 = " + std::to_string(opt.z0)) + ")");
     }
+    if (opt.immersed_columns != nullptr) { clear_immersed_columns(*opt.immersed_columns, s); }
 }
 
 void set_ground_fluxes (const SurfaceState& s, const SurfaceLayerOptions& opt, amrex::MultiFab& Gu,
@@ -503,7 +530,15 @@ void apply_wall_k (const SurfaceState& s, const SurfaceLayerOptions& opt, const 
         const auto d0 = s.d0.const_array(mfi);
         const auto kw = s.kwall.const_array(mfi);
         const amrex::Real us_min = kWallKUstarMin;   // by value for device code
-        if (dirichlet) {
+        if (opt.immersed_columns != nullptr) {
+            // A hybrid mesh: no wall row where the lower face lies inside the terrain (dirichlet only, Inputs.cpp).
+            const auto m = opt.immersed_columns->const_array(mfi);
+            amrex::ParallelFor(cb, [=] AMREX_GPU_DEVICE (int i, int j, int) noexcept
+            {
+                if (m(i, j, k0) > amrex::Real(0)) { return; }
+                r(i, j, k0) = amrex::max(us(i, j, k0), us_min) / d0(i, j, k0) * (t(i, j, k0) - kw(i, j, k0));
+            });
+        } else if (dirichlet) {
             amrex::ParallelFor(cb, [=] AMREX_GPU_DEVICE (int i, int j, int) noexcept
             {
                 r(i, j, k0) = amrex::max(us(i, j, k0), us_min) / d0(i, j, k0) * (t(i, j, k0) - kw(i, j, k0));
@@ -568,7 +603,15 @@ void apply_wall_k_to_implicit (const SurfaceState& s, const SurfaceLayerOptions&
         const auto us = s.ustar.const_array(mfi);
         const auto d0 = s.d0.const_array(mfi);
         const amrex::Real us_min = kWallKUstarMin;   // by value for device code
-        if (dirichlet) {
+        if (opt.immersed_columns != nullptr) {
+            const auto m = opt.immersed_columns->const_array(mfi);
+            amrex::ParallelFor(cb, [=] AMREX_GPU_DEVICE (int i, int j, int) noexcept
+            {
+                if (m(i, j, k0) > amrex::Real(0)) { return; }
+                for (int n = 0; n < n_implicit_coefs; ++n) { a(i, j, k0, n) = 0; }
+                a(i, j, k0, coef_P) = amrex::max(us(i, j, k0), us_min) / d0(i, j, k0);
+            });
+        } else if (dirichlet) {
             amrex::ParallelFor(cb, [=] AMREX_GPU_DEVICE (int i, int j, int) noexcept
             {
                 for (int n = 0; n < n_implicit_coefs; ++n) { a(i, j, k0, n) = 0; }
