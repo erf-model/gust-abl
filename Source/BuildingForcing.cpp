@@ -31,6 +31,8 @@ void BuildingForcing::build (const Buildings& b, const BuildingsOptions& opt, co
     m_rate.define(b.beta().boxArray(), b.beta().DistributionMap(), kNumBuildingRates, 1);
     m_rate.setVal(0.0);
     m_immersed_ground = opt.immersed_ground;
+    m_k_towards = opt.wall_tke && opt.wall_k_bound == BuildingWallKBound::impinging && side_law() && !opt.immersed_ground;
+    m_k_cell_mean = opt.wall_tke && opt.wall_k_speed == BuildingWallKSpeed::cell_mean && side_law() && !opt.immersed_ground;
     m_spacing.clear();   // a rebuild without an immersed ground keeps no spacing
     if (m_immersed_ground && wall_law()) { make_centroid_spacing(); }
     // The weight of each face in a cell's speed: 0 on a fixed row with buildings.wall_speed =
@@ -171,6 +173,102 @@ void roof_rates (const Buildings& b, const std::array<amrex::MultiFab, 3>& weigh
     }
 }
 
+//! buildings.wall_k_bound = impinging: in each wall cell, for its walls along x, y and z, the share of the
+//! reference cell's kinetic energy that moves towards the wall (towards_wall_share), from the means of the
+//! reference cell's faces; the larger of the two where a cell has walls on both sides (with fully blocked
+//! faces their reference cells are solid and at rest; with partly blocked ones both walls take the larger
+//! share). A reference cell above or below the domain's layers gives 0; one beyond a lateral face is a ghost
+//! cell and holds the boundary condition's values, as for the law's reference speed.
+void towards_wall_shares (const Buildings& b, const amrex::Geometry& geom, const amrex::MultiFab& u, const amrex::MultiFab& v,
+                          const amrex::MultiFab& w, amrex::MultiFab& rate_mf)
+{
+    const int klo = geom.Domain().smallEnd(2), khi = geom.Domain().bigEnd(2);
+    for (amrex::MFIter mfi(rate_mf, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
+        const auto r = rate_mf.array(mfi);
+        const auto uu = u.const_array(mfi);
+        const auto vv = v.const_array(mfi);
+        const auto ww = w.const_array(mfi);
+        const auto beta = b.beta().const_array(mfi);
+        const auto wl = b.wall().const_array(mfi);
+        amrex::ParallelFor(mfi.tilebox(), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+        {
+            const int mask = static_cast<int>(wl(i, j, k, kWallMask));
+            if (beta(i, j, k) >= amrex::Real(1) || mask == 0) { return; }
+            const amrex::Real half = amrex::Real(0.5);
+            auto uc = [&] (int ii, int jj, int kk) { return half * (uu(ii, jj, kk) + uu(ii + 1, jj, kk)); };
+            auto vc = [&] (int ii, int jj, int kk) { return half * (vv(ii, jj, kk) + vv(ii, jj + 1, kk)); };
+            auto wc = [&] (int ii, int jj, int kk) { return half * (ww(ii, jj, kk) + ww(ii, jj, kk + 1)); };
+            amrex::Real sx = 0, sy = 0, sz = 0;
+            // A wall on the cell's low side: towards it is the negative direction.
+            if ((mask & kWallXlo) != 0) { sx = amrex::max(sx, towards_wall_share(-uc(i + 1, j, k), vc(i + 1, j, k), wc(i + 1, j, k))); }
+            if ((mask & kWallXhi) != 0) { sx = amrex::max(sx, towards_wall_share(uc(i - 1, j, k), vc(i - 1, j, k), wc(i - 1, j, k))); }
+            if ((mask & kWallYlo) != 0) { sy = amrex::max(sy, towards_wall_share(-vc(i, j + 1, k), uc(i, j + 1, k), wc(i, j + 1, k))); }
+            if ((mask & kWallYhi) != 0) { sy = amrex::max(sy, towards_wall_share(vc(i, j - 1, k), uc(i, j - 1, k), wc(i, j - 1, k))); }
+            if ((mask & kWallRoof) != 0 && k < khi) { sz = amrex::max(sz, towards_wall_share(-wc(i, j, k + 1), uc(i, j, k + 1), vc(i, j, k + 1))); }
+            if ((mask & kWallUnder) != 0 && k > klo) { sz = amrex::max(sz, towards_wall_share(wc(i, j, k - 1), uc(i, j, k - 1), vc(i, j, k - 1))); }
+            r(i, j, k, kBuildingTowardsX) = sx;
+            r(i, j, k, kBuildingTowardsY) = sy;
+            r(i, j, k, kBuildingTowardsZ) = sz;
+        });
+    }
+}
+
+//! buildings.wall_k_speed = cell_mean: the largest u*^2 of each wall cell's walls at the cell's
+//! root-mean-square speeds (cell_mean_square), in component kBuildingUstar2K. The distances, the
+//! reference cells and the floor are the law's (roof_rates and the sides' kernels of update).
+void wall_k_ustar2 (const Buildings& b, const std::array<amrex::MultiFab, 3>& weight, const amrex::Geometry& geom,
+                    const amrex::MultiFab& u, const amrex::MultiFab& v, const amrex::MultiFab& w, amrex::Real z0,
+                    amrex::Real kappa, amrex::MultiFab& rate_mf)
+{
+    const int klo = geom.Domain().smallEnd(2), khi = geom.Domain().bigEnd(2);
+    for (amrex::MFIter mfi(rate_mf, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
+        const auto r = rate_mf.array(mfi);
+        const auto uu = u.const_array(mfi);
+        const auto vv = v.const_array(mfi);
+        const auto ww = w.const_array(mfi);
+        const auto beta = b.beta().const_array(mfi);
+        const auto wx = weight[0].const_array(mfi);
+        const auto wy = weight[1].const_array(mfi);
+        const auto wz = weight[2].const_array(mfi);
+        const auto wl = b.wall().const_array(mfi);
+        amrex::ParallelFor(mfi.tilebox(), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+        {
+            const int mask = static_cast<int>(wl(i, j, k, kWallMask));
+            if (beta(i, j, k) >= amrex::Real(1) || mask == 0) { return; }
+            auto u2 = [&] (int ii, int jj, int kk) { return cell_mean_square(uu(ii, jj, kk), uu(ii + 1, jj, kk), wx(ii, jj, kk), wx(ii + 1, jj, kk)); };
+            auto v2 = [&] (int ii, int jj, int kk) { return cell_mean_square(vv(ii, jj, kk), vv(ii, jj + 1, kk), wy(ii, jj, kk), wy(ii, jj + 1, kk)); };
+            auto w2 = [&] (int ii, int jj, int kk) { return cell_mean_square(ww(ii, jj, kk), ww(ii, jj, kk + 1), wz(ii, jj, kk), wz(ii, jj, kk + 1)); };
+            const amrex::Real b0 = beta(i, j, k);
+            amrex::Real top = 0;
+            if ((mask & (kWallRoof | kWallUnder)) != 0) {
+                const amrex::Real own = std::sqrt(u2(i, j, k) + v2(i, j, k));
+                const amrex::Real d1 = wl(i, j, k, kWallD1z), d2 = wl(i, j, k, kWallD2z);
+                if ((mask & kWallRoof) != 0) {
+                    const amrex::Real ref = k < khi ? std::sqrt(u2(i, j, k + 1) + v2(i, j, k + 1)) : amrex::Real(0);
+                    top = amrex::max(top, form7_ustar2(own, ref, b0, d1, d2, z0, kappa));
+                }
+                if ((mask & kWallUnder) != 0) {
+                    const amrex::Real ref = k > klo ? std::sqrt(u2(i, j, k - 1) + v2(i, j, k - 1)) : amrex::Real(0);
+                    top = amrex::max(top, form7_ustar2(own, ref, b0, d1, d2, z0, kappa));
+                }
+            }
+            if ((mask & (kWallXlo | kWallXhi)) != 0) {
+                const amrex::Real own = std::sqrt(v2(i, j, k) + w2(i, j, k));
+                const amrex::Real d1 = wl(i, j, k, kWallD1x), d2 = wl(i, j, k, kWallD2x);
+                if ((mask & kWallXlo) != 0) { top = amrex::max(top, form7_ustar2(own, std::sqrt(v2(i + 1, j, k) + w2(i + 1, j, k)), b0, d1, d2, z0, kappa)); }
+                if ((mask & kWallXhi) != 0) { top = amrex::max(top, form7_ustar2(own, std::sqrt(v2(i - 1, j, k) + w2(i - 1, j, k)), b0, d1, d2, z0, kappa)); }
+            }
+            if ((mask & (kWallYlo | kWallYhi)) != 0) {
+                const amrex::Real own = std::sqrt(u2(i, j, k) + w2(i, j, k));
+                const amrex::Real d1 = wl(i, j, k, kWallD1y), d2 = wl(i, j, k, kWallD2y);
+                if ((mask & kWallYlo) != 0) { top = amrex::max(top, form7_ustar2(own, std::sqrt(u2(i, j + 1, k) + w2(i, j + 1, k)), b0, d1, d2, z0, kappa)); }
+                if ((mask & kWallYhi) != 0) { top = amrex::max(top, form7_ustar2(own, std::sqrt(u2(i, j - 1, k) + w2(i, j - 1, k)), b0, d1, d2, z0, kappa)); }
+            }
+            r(i, j, k, kBuildingUstar2K) = top;
+        });
+    }
+}
+
 }   // namespace
 
 void BuildingForcing::update (const amrex::MultiFab& u, const amrex::MultiFab& v, const amrex::MultiFab& w)
@@ -286,6 +384,8 @@ void BuildingForcing::update (const amrex::MultiFab& u, const amrex::MultiFab& v
             });
         }
     }
+    if (m_k_cell_mean) { wall_k_ustar2(*m_b, m_weight, m_geom, u, v, w, z0, kappa, m_rate); }
+    if (m_k_towards) { towards_wall_shares(*m_b, m_geom, u, v, w, m_rate); }
     m_rate.FillBoundary(m_geom.periodicity());
 }
 

@@ -146,6 +146,8 @@ buildings.z0 real 1 >0
 buildings.wall_form fraction_stress,roof_stress,drag 1
 buildings.wall_speed open_faces,all_faces 1
 buildings.wall_tke on,off 1
+buildings.wall_k_bound none,impinging 1
+buildings.wall_k_speed law,cell_mean 1
 buildings.theta_mode none,ambient,fixed 1
 buildings.theta_surface real 1 >0
 buildings.limiter_zone real 1 0|>=0.5&<=20

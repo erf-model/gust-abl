@@ -535,6 +535,20 @@
 #     nearest building wall, each with its own roughness. off: the closure does not see the buildings. on is refused
 #     unless buildings.wall_form = fraction_stress.
 #
+# buildings.wall_k_bound = none
+#     none or impinging. none: the wall value of k is the wall law's, max(u*^2 / Cmu0^2, turb.tke_floor). impinging:
+#     it is no lower than, for each of the cell's walls, the k of the next cell out along the wall's normal times
+#     the share of that cell's kinetic energy that moves towards the wall (0 where the flow leaves the wall or runs
+#     along it); see docs/buildings.rst, Turbulence. Refused when given without buildings.wall_tke = on. A restart
+#     with another value is refused; a checkpoint written before this key continues with none.
+#
+# buildings.wall_k_speed = law
+#     law or cell_mean. law: the wall value of k reads the wall law's u*^2 (buildings.wall_speed). cell_mean: it
+#     reads the law at the cell's root-mean-square speed, where a component with one fixed face has a third of the
+#     open face's square; the stress is unchanged, and so are cells with no fixed face. Refused when given without
+#     buildings.wall_tke = on, and cell_mean is refused unless buildings.wall_speed = open_faces. A restart with
+#     another value is refused; a checkpoint written before this key continues with law.
+#
 # buildings.theta_mode =    # ambient with buildings.wall_form = fraction_stress, else none
 #     none, ambient or fixed. ambient and fixed: solid cells hold theta at the walls' temperature, each wall
 #     exchanges heat with its cell by the form 7 law for a given surface temperature (neutral, with the wall law's

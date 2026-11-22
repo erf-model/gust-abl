@@ -23,7 +23,7 @@ namespace gust {
 
 namespace {
 
-const char* const kBuildingsKeys[] = {"type", "file", "format", "small_volfrac", "z0", "wall_form", "wall_tke", "wall_speed", "theta_mode", "theta_surface",
+const char* const kBuildingsKeys[] = {"type", "file", "format", "small_volfrac", "z0", "wall_form", "wall_tke", "wall_speed", "wall_k_bound", "wall_k_speed", "theta_mode", "theta_surface",
                                      "limiter_zone", "force_file"};
 constexpr const char* kBuildingsMagic = "gust_buildings";
 constexpr int kBuildingsVersion = 1;
@@ -240,6 +240,10 @@ BuildingsOptions read_buildings_options ()
                          : (opt.wall_speed_name == "all_faces" ? BuildingWallSpeed::all_faces : BuildingWallSpeed::open_faces);
     pp.query("wall_tke", opt.wall_tke_name);
     opt.wall_tke = opt.wall_tke_name.empty() ? opt.wall_form == BuildingWallForm::fraction_stress : opt.wall_tke_name == "on";
+    pp.query("wall_k_bound", opt.wall_k_bound_name);
+    opt.wall_k_bound = opt.wall_k_bound_name == "impinging" ? BuildingWallKBound::impinging : BuildingWallKBound::none;
+    pp.query("wall_k_speed", opt.wall_k_speed_name);
+    opt.wall_k_speed = opt.wall_k_speed_name == "cell_mean" ? BuildingWallKSpeed::cell_mean : BuildingWallKSpeed::law;
     pp.query("theta_mode", opt.theta_mode_name);
     if (opt.theta_mode_name.empty()) {
         opt.theta_mode = opt.wall_form == BuildingWallForm::fraction_stress ? BuildingThetaMode::ambient : BuildingThetaMode::none;
@@ -297,6 +301,19 @@ std::vector<std::string> check_buildings_options (const BuildingsOptions& opt)
         err.emplace_back("buildings.wall_speed must be open_faces or all_faces (got " + opt.wall_speed_name + ")");
     } else if (opt.wall_form == BuildingWallForm::drag && has(opt.given, "wall_speed")) {
         err.emplace_back("buildings.wall_speed has no effect with buildings.wall_form = drag (no wall law)");
+    }
+    if (!opt.wall_k_bound_name.empty() && opt.wall_k_bound_name != "none" && opt.wall_k_bound_name != "impinging") {
+        err.emplace_back("buildings.wall_k_bound must be none or impinging (got " + opt.wall_k_bound_name + ")");
+    } else if (has(opt.given, "wall_k_bound") && !opt.wall_tke) {
+        err.emplace_back("buildings.wall_k_bound has no effect without buildings.wall_tke = on (no wall value of k)");
+    }
+    if (!opt.wall_k_speed_name.empty() && opt.wall_k_speed_name != "law" && opt.wall_k_speed_name != "cell_mean") {
+        err.emplace_back("buildings.wall_k_speed must be law or cell_mean (got " + opt.wall_k_speed_name + ")");
+    } else if (has(opt.given, "wall_k_speed") && !opt.wall_tke) {
+        err.emplace_back("buildings.wall_k_speed has no effect without buildings.wall_tke = on (no wall value of k)");
+    } else if (opt.wall_k_speed == BuildingWallKSpeed::cell_mean && opt.wall_speed != BuildingWallSpeed::open_faces) {
+        err.emplace_back("buildings.wall_k_speed = cell_mean needs buildings.wall_speed = open_faces (it reads the fixed faces "
+                         "that speed skips; with all_faces the wall value of k already takes the mean with them)");
     }
     if (!opt.theta_mode_name.empty() && opt.theta_mode_name != "none" && opt.theta_mode_name != "ambient" && opt.theta_mode_name != "fixed") {
         err.emplace_back("buildings.theta_mode must be none, ambient or fixed (got " + opt.theta_mode_name + ")");
@@ -393,6 +410,8 @@ std::string Buildings::hash_inputs (const BuildingsOptions& opt)
     // terms: a line only when they act, so a checkpoint from before them continues with
     // buildings.theta_mode = none. The lee options' zone adds a line only where it acts (with
     // turb.realizability), so a checkpoint from before it continues with buildings.limiter_zone = 0.
+    // The wall value of k: a line for each of buildings.wall_k_bound = impinging and
+    // buildings.wall_k_speed = cell_mean, so a checkpoint from before them continues with none and law.
     const std::string law = opt.wall_form == BuildingWallForm::roof_stress ? "fraction_stress"
                           : opt.wall_form == BuildingWallForm::fraction_stress ? "fraction_stress_sides" : opt.wall_form_name;
     return sha256_hex(std::string(kBuildingsMagic) + " " + std::to_string(kBuildingsVersion) + "\ntype " + opt.type_name
@@ -402,7 +421,9 @@ std::string Buildings::hash_inputs (const BuildingsOptions& opt)
                       + (opt.wall_form != BuildingWallForm::fraction_stress || opt.theta_mode == BuildingThetaMode::none ? std::string()
                          : opt.theta_mode == BuildingThetaMode::fixed ? "theta_mode fixed " + hexfloat(opt.theta_surface) + "\n"
                                                                       : std::string("theta_mode ambient\n"))
-                      + (opt.limiter_zone_acts ? "limiter_zone " + hexfloat(opt.limiter_zone) + "\n" : std::string()));
+                      + (opt.limiter_zone_acts ? "limiter_zone " + hexfloat(opt.limiter_zone) + "\n" : std::string())
+                      + ((opt.wall_tke && opt.wall_k_bound == BuildingWallKBound::impinging) ? "wall_k_bound impinging\n" : "")
+                      + ((opt.wall_tke && opt.wall_k_speed == BuildingWallKSpeed::cell_mean) ? "wall_k_speed cell_mean\n" : ""));
 }
 
 void Buildings::build (const BuildingsOptions& opt, const amrex::Geometry& geom, const amrex::MultiFab& z_nd,
@@ -699,7 +720,8 @@ void Buildings::check_restart (const std::string& dir, const std::string& hash)
     }
     if (active && rec != hash) {
         amrex::Abort(where + "the buildings inputs differ from the checkpoint's (buildings.type, buildings.format, buildings.file contents, "
-                             "buildings.small_volfrac, buildings.z0, buildings.wall_form, buildings.wall_tke, buildings.wall_speed, buildings.theta_mode, "
+                             "buildings.small_volfrac, buildings.z0, buildings.wall_form, buildings.wall_tke, buildings.wall_k_bound, buildings.wall_k_speed, buildings.wall_speed, "
+                             "buildings.theta_mode, "
                              "buildings.theta_surface, buildings.limiter_zone (with turb.realizability); a checkpoint written with "
                              "fraction_stress before the sides had the wall law continues with buildings.wall_form = roof_stress, "
                              "one from before k had building terms with buildings.wall_tke = off, one from before the wall law "

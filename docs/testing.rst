@@ -1488,6 +1488,64 @@ which has been removed with its tests (:ref:`immersed-slope-forms`); they are no
      - The footprint's centre height from two opposite corners only
      - ``MomentsMatchAQuadrature`` (the twisted footprint)
 
+The one-line mutants of the wall value of :math:`k` beside buildings (``buildings.wall_k_bound``,
+``buildings.wall_k_speed``: ``Source/BuildingTke.cpp``, ``Source/BuildingForcing.H``, ``Source/BuildingForcing.cpp``
+and ``Source/Buildings.cpp``), each run against ``BuildingTke.*`` and ``BuildingLaw.*`` on two ranks with the
+unit-test flags by ``tools/wall_k_mutants.py`` (macOS arm64, AppleClang). All 15 are killed.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 6 50 44
+
+   * - Mutant
+     - Change
+     - Failing tests
+   * - K1
+     - The bound dropped: the law's value alone
+     - ``ImpingingBoundTakesTheKTheFlowCarriesOntoTheWall``
+   * - K2
+     - A wall at low x reads the :math:`k` of the cell at lower x, not the one out along its normal
+     - ``ImpingingBoundTakesTheKTheFlowCarriesOntoTheWall``
+   * - K3
+     - A roof takes the share of the walls along y
+     - ``ImpingingBoundTakesTheKTheFlowCarriesOntoTheWall``
+   * - K4
+     - A fixed face: half of the open face's square in place of a third
+     - ``OpenFaceMeanAndCellsBelowTheFloor``, ``CellMeanSpeedInACornerCellIsAThirdOfTheOpenFaces``
+   * - K5
+     - The rows of :math:`k` read the law's :math:`u_*^2` with ``cell_mean``
+     - ``CellMeanSpeedInACornerCellIsAThirdOfTheOpenFaces``
+   * - K6
+     - No line in the restart hash for ``buildings.wall_k_bound = impinging``
+     - ``OptionDefaultsAndRefusals``
+   * - K7
+     - ``cell_mean`` accepted with ``buildings.wall_speed = all_faces``
+     - ``OptionDefaultsAndRefusals``
+   * - K8
+     - The side at high y takes the open face's speed with ``cell_mean``
+     - ``CellMeanSpeedInACornerCellIsAThirdOfTheOpenFaces``
+   * - K9
+     - A flow that leaves the wall counts as one towards it
+     - ``OpenFaceMeanAndCellsBelowTheFloor``, ``ImpingingBoundTakesTheKTheFlowCarriesOntoTheWall``
+   * - K10
+     - The share is of the speed, not of the kinetic energy
+     - ``OpenFaceMeanAndCellsBelowTheFloor``, ``ImpingingBoundTakesTheKTheFlowCarriesOntoTheWall``
+   * - K11
+     - A side at high y takes towards as the positive y of a side at low y
+     - ``ImpingingBoundTakesTheKTheFlowCarriesOntoTheWall``
+   * - K12
+     - The roof's share reads the wall cell, not the cell above
+     - ``ImpingingBoundTakesTheKTheFlowCarriesOntoTheWall``
+   * - K13
+     - The shares are not filled
+     - ``ImpingingBoundTakesTheKTheFlowCarriesOntoTheWall``
+   * - K14
+     - The share of a side at low x reads the wall cell's own wind
+     - ``ImpingingBoundTakesTheKTheFlowCarriesOntoTheWall``
+   * - K15
+     - No line in the restart hash for ``wall_k_speed = cell_mean``
+     - ``OptionDefaultsAndRefusals``
+
 The one-line mutants of the force on the buildings and the laminar closure (``Source/BuildingLoads.cpp``,
 ``Source/Residual.cpp`` and ``Source/Closure.cpp``), each run against ``BuildingLoads.*`` and ``Closure.Laminar*`` on
 two ranks with the unit-test flags by ``tools/building_loads_mutants.py`` (macOS arm64, AppleClang). All 9 are killed.
@@ -1903,12 +1961,15 @@ Current tests
        ``buildings_restart``, ``buildings_restart_matches``, ``abort_buildings_restart_changed``,
        ``abort_buildings_restart_none``, ``abort_buildings_inputs``, ``abort_buildings_type``,
        ``abort_buildings_wall_inputs``, ``abort_buildings_wall_tke_form``, ``abort_buildings_z0_with_drag``,
+       ``abort_buildings_wall_k_inputs``, ``abort_buildings_wall_k_no_tke``, ``abort_buildings_wall_k_speed_all_faces``,
        ``abort_buildings_restart_theta``, ``abort_buildings_theta_inputs``, ``abort_buildings_theta_surface``,
        ``abort_buildings_theta_surface_missing``, ``abort_buildings_theta_surface_unused``, ``abort_buildings_theta_form``,
        ``buildings_defaults_fraction_stress``, ``buildings_defaults_roof_stress``, ``buildings_defaults_drag`` (each with its ``_clean``)
      - The building geometry (:doc:`buildings`): each column's volume against the height map, the wall mask, a restart on
        another layout, the refusals (those of ``buildings.theta_mode`` and ``buildings.theta_surface`` among them, and a
-       restart without theta's terms of a checkpoint written with them), and the defaults of ``buildings.wall_speed``, ``buildings.wall_tke`` and ``buildings.theta_mode`` with each
+       restart without theta's terms of a checkpoint written with them; those of ``buildings.wall_k_bound`` and
+       ``buildings.wall_k_speed``: a value outside the list, either key without ``buildings.wall_tke = on``, and
+       ``cell_mean`` with ``buildings.wall_speed = all_faces``), and the defaults of ``buildings.wall_speed``, ``buildings.wall_tke``, ``buildings.wall_k_bound``, ``buildings.wall_k_speed`` and ``buildings.theta_mode`` with each
        ``buildings.wall_form``, as the log gives them.
    * - ``snyder_cube_plain_clean``, ``snyder_cube_plain_run``, ``snyder_cube_plain_compare``,
        ``snyder_cube_lee_clean``, ``snyder_cube_lee_run``, ``snyder_cube_lee_compare``,
@@ -1930,12 +1991,14 @@ Current tests
      - ``buildings.limiter_zone`` out of its range, without ``buildings.wall_tke = on``, and given without
        ``turb.realizability`` > 0: each refusal's message.
    * - ``building_courtyard_clean``, ``building_courtyard_run``, ``building_courtyard_flow``,
-       ``building_courtyard_all_faces_clean``, ``building_courtyard_all_faces_run``, ``building_courtyard_all_faces_flow``
+       ``building_courtyard_all_faces_clean``, ``building_courtyard_all_faces_run``, ``building_courtyard_all_faces_flow``,
+       ``building_courtyard_k_cell_mean_clean``, ``building_courtyard_k_cell_mean_run``, ``building_courtyard_k_cell_mean_flow``
      - A courtyard open to the wind (``Tests/Canonical_RANS/Building_Courtyard``), whose inner corners are cells with two
        walls: the run converges, speeds in solid cells are 0 and k there is at its floor, the volume flux is constant
        along x, the two inner corners agree, and k in them keeps its value with the wall law's speed from the open faces
        (``buildings.wall_speed = open_faces``, the default). The same deck with ``all_faces`` keeps the values of the form
-       before.
+       before, and with ``buildings.wall_k_speed = cell_mean`` k in the corners has its own pinned values (0.0097 and
+       0.454 m²/s², against 0.0227 and 0.633).
    * - ``building_hill_clean``, ``building_hill_run``, ``building_hill_flow``
      - One block on a ridge's windward flank (``Tests/Canonical_RANS/Building_Hill``): the run reaches the driver's stop,
        which needs the ground's ``w`` rows left to the boundary conditions; horizontal speeds in solid cells are 0, the
@@ -1943,7 +2006,8 @@ Current tests
        cell and k in that cell keep their values, and k in the solid cells is at its floor.
    * - ``building_cube_clean``, ``building_cube_run``, ``building_cube_flow``, ``building_cube_roof_stress_clean``,
        ``building_cube_roof_stress_run``, ``building_cube_roof_stress_flow``, ``building_cube_wall_tke_off_clean``,
-       ``building_cube_wall_tke_off_run``, ``building_cube_wall_tke_off_flow``, ``building_cube_wall_k_source_clean``,
+       ``building_cube_wall_tke_off_run``, ``building_cube_wall_tke_off_flow``, ``building_cube_wall_k_impinging_clean``,
+       ``building_cube_wall_k_impinging_run``, ``building_cube_wall_k_impinging_flow``, ``building_cube_wall_k_source_clean``,
        ``building_cube_wall_k_source_run``, ``building_cube_wall_k_source_flow``, ``building_cube_drag_clean``,
        ``building_cube_drag_run``, ``building_cube_drag_flow``, ``building_cube_smooth_walls_clean``,
        ``building_cube_smooth_walls_run``, ``building_cube_smooth_walls_length``, ``building_cube_smooth_walls_flow``,
@@ -1957,7 +2021,9 @@ Current tests
        are 0, the volume flux is constant along x, the air reverses behind and speeds up above, and a wall cell of the
        roof and one of a side keep their values, as does k in the roof's wall cell, and k in the solid cells is at its floor. The same deck with
        ``buildings.wall_form = roof_stress`` keeps the values it had before the sides took the wall law, and with
-       ``buildings.wall_tke = off`` those from before the closure saw the buildings. With ``bc.surface_wall_k = source``
+       ``buildings.wall_tke = off`` those from before the closure saw the buildings. k in a wall cell of the windward
+       side is pinned at 0.0079 m²/s², and with ``buildings.wall_k_bound = impinging`` at 0.922 m²/s², with the roof's
+       and the side's values within 0.01 m/s of the deck's. With ``bc.surface_wall_k = source``
        the buildings' rows are added to the cells' equations, with their own pinned values. With
        ``buildings.wall_form = drag`` and no ``buildings.wall_tke`` the fixed rows act alone and the closure does not see
        the block. With walls smoother than the ground (``buildings.z0`` 0.01 m on ``bc.surface_z0`` 0.1 m) the

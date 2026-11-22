@@ -313,6 +313,12 @@ Quick reference
    * - ``buildings.wall_tke``
      - ``on`` with ``fraction_stress``, else ``off``
      - The closure sees the buildings: wall value of k, solid cells at the floor, distance to buildings in the length scale
+   * - ``buildings.wall_k_bound``
+     - ``none``
+     - ``impinging``: the wall value of k is no lower than the k the flow carries onto the wall
+   * - ``buildings.wall_k_speed``
+     - ``law``
+     - ``cell_mean``: the wall value of k in an edge or corner cell reads the cell's root-mean-square speed
    * - ``buildings.theta_mode``
      - ``ambient`` with ``fraction_stress``, else ``none``
      - How theta meets a building: no terms, or walls at the reference profile's or a given temperature
@@ -1150,6 +1156,12 @@ refuses buildings other than those of the run it continues.
    * - ``buildings.wall_tke``
      - ``on`` with ``buildings.wall_form = fraction_stress``, else ``off``
      - ``on`` or ``off``. ``on``: solid cells hold k at ``turb.tke_floor``, wall cells relax k to ``u*^2 / Cmu0^2`` of the wall law, k does not diffuse through blocked faces, and the closure's length takes the nearer of the ground and the nearest building wall, each with its own roughness. ``off``: the closure does not see the buildings. ``on`` is refused unless ``buildings.wall_form = fraction_stress``.
+   * - ``buildings.wall_k_bound``
+     - ``none``
+     - ``none`` or ``impinging``. ``none``: the wall value of k is the wall law's, ``max(u*^2 / Cmu0^2, turb.tke_floor)``. ``impinging``: it is no lower than, for each of the cell's walls, the k of the next cell out along the wall's normal times the share of that cell's kinetic energy that moves towards the wall (0 where the flow leaves the wall or runs along it); see :doc:`buildings`, Turbulence. Refused when given without ``buildings.wall_tke = on``. A restart with another value is refused; a checkpoint written before this key continues with ``none``.
+   * - ``buildings.wall_k_speed``
+     - ``law``
+     - ``law`` or ``cell_mean``. ``law``: the wall value of k reads the wall law's ``u*^2`` (``buildings.wall_speed``). ``cell_mean``: it reads the law at the cell's root-mean-square speed, where a component with one fixed face has a third of the open face's square; the stress is unchanged, and so are cells with no fixed face. Refused when given without ``buildings.wall_tke = on``, and ``cell_mean`` is refused unless ``buildings.wall_speed = open_faces``. A restart with another value is refused; a checkpoint written before this key continues with ``law``.
    * - ``buildings.theta_mode``
      - ``ambient`` with ``buildings.wall_form = fraction_stress``, else ``none``
      - ``none``, ``ambient`` or ``fixed``. ``ambient`` and ``fixed``: solid cells hold theta at the walls' temperature, each wall exchanges heat with its cell by the form 7 law for a given surface temperature (neutral, with the wall law's u*), and theta does not diffuse through blocked faces. ``ambient``: the walls are at the reference profile (``bc.theta_profile``) at their height. ``fixed``: at ``buildings.theta_surface``. ``none``: theta does not see the buildings. ``ambient`` and ``fixed`` are refused unless ``buildings.wall_form = fraction_stress``, and with ``simplec.theta = frozen`` when given.

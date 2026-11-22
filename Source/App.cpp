@@ -637,6 +637,12 @@ std::string run_domain (const DomainRole& role)
                                << (buildings_opt.wall_speed == BuildingWallSpeed::open_faces ? "open_faces" : "all_faces");
             }
             amrex::Print() << ", buildings.wall_tke = " << (buildings_opt.wall_tke ? "on" : "off");
+            if (buildings_opt.wall_tke) {
+                amrex::Print() << ", buildings.wall_k_bound = "
+                               << (buildings_opt.wall_k_bound == BuildingWallKBound::impinging ? "impinging" : "none")
+                               << ", buildings.wall_k_speed = "
+                               << (buildings_opt.wall_k_speed == BuildingWallKSpeed::cell_mean ? "cell_mean" : "law");
+            }
             // theta's terms act where theta is solved: with simplec.theta = frozen it is data. (Reached in
             // a patch of a parent run, init.first_guess = nest: rt_nest_faces_frozen_building. The guards here, in
             // building_heat below and in SimplecStage::compute_norms also serve buildings on sequenced levels.)

@@ -9,7 +9,9 @@
 // - a wall cell's k row relaxes towards the wall value of the law's u*, as the ground's
 //   first cell does (SurfaceLayer.H):
 //     W = a (k - k_w),  k_w = max(u*^2 / Cmu0^2, k_floor),  a = max(u*, 0.01 m/s) / d_w,
-//   u*^2 the largest of the cell's walls (BuildingForcing::rate, component kBuildingUstar2),
+//   u*^2 the largest of the cell's walls (BuildingForcing::rate, component kBuildingUstar2;
+//   with buildings.wall_k_speed = cell_mean the one at the cell's root-mean-square speeds,
+//   kBuildingUstar2K),
 //   d_w the cell's distance below, and f the largest blocked part of the faces its walls
 //   lie on. With bc.surface_wall_k = dirichlet (the default) or no surface layer the row
 //   takes the place of the cell's equation by that part,
@@ -18,6 +20,13 @@
 //   was; in the ground's first cell, which has the ground's relaxation row, f W is added
 //   to that row, so k lies between the two wall values. With bc.surface_wall_k = source,
 //   f W is added to the cell's equation everywhere, as the ground's is;
+//   With buildings.wall_k_bound = impinging the wall value is no lower than the k the flow
+//   carries onto the wall:
+//     k_w = max(u*^2 / Cmu0^2, k_floor, max over the cell's walls of s k_r),
+//   k_r the k of the wall's reference cell (the next cell out along its normal) and s the
+//   share of that cell's kinetic energy that moves towards the wall
+//   (towards_wall_share; 0 where the flow leaves the wall or runs along it). k_r is the
+//   iterate's, so the implicit rows are those of none;
 // - the diffusive flux of k through the blocked part of a face is closed, in the residual
 //   and in the implicit rows (k does not diffuse into a building);
 // - the closure's geometric length l_g = kappa (d + z0) takes the nearer of the ground and
@@ -144,6 +153,7 @@ private:
     amrex::Long m_zone_cells{0}, m_zone_off{0};
     amrex::Real m_floor{0}, m_cmu0{amrex::Real(0.5562)}, m_cutoff{0}, m_z0b{0};
     int m_passes{0};
+    bool m_impinging{false};   //!< buildings.wall_k_bound = impinging
 };
 
 } // namespace gust

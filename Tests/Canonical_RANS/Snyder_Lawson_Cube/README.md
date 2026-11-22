@@ -88,8 +88,14 @@ validation against measurements, not pinned to a target beyond the tests.
 | 5 mm to 0.3 m | + `turb.realizability` 0.309, `turb.nut_relax` 0.5 (`buildings.limiter_zone=0`) | 466 | 0.319 | 0.716 | 0.170 | 0.474 | 0.348 | -1.12 m/s | 1.88 H |
 | 5 mm to 0.3 m | + the upwind blend (`inputs_snyder_cube_lee`, `buildings.limiter_zone=0`) | 466 | 0.317 | 0.713 | 0.159 | 0.484 | 0.345 | -1.11 m/s | 1.89 H |
 | **5 mm to 0.3 m** | **the same with the zone, `buildings.limiter_zone` 3 (`inputs_snyder_cube_lee`)** | **471** | **0.244** | **0.882** | 0.075 | 0.567 | 0.167 | -1.15 m/s | **1.35 H** |
+| 5 mm to 0.3 m | plain with `buildings.wall_k_bound=impinging` | 472 | 0.245 | 0.882 | 0.075 | 0.570 | 0.166 | -1.14 m/s | 1.34 H |
+| 5 mm to 0.3 m | `inputs_snyder_cube_lee` with `buildings.wall_k_bound=impinging` | 471 | 0.245 | 0.882 | 0.074 | 0.570 | 0.167 | -1.14 m/s | 1.35 H |
 | measured | | | | | | | | -0.80 m/s | 1.36 H |
 
+- `buildings.wall_k_bound = impinging` (2 ranks, not a CTest here) raises the mean k in the windward face's wall cells
+  from 0.058 to 0.27 m²/s² (0.47 m²/s² one cell upstream) and leaves the comparison where it was: 0.245 against
+  0.244 m/s rms, the same hit rate and reattachment, with either deck. The measurements do not separate the two, so
+  the default stays `none`.
 - The thin layers mainly help over and beside the cube (0.566 against 0.612 m/s), for 1.5 times the cells and fewer
   iterations. Near the floor the two read alike once the comparison interpolates the first cells in log height.
 - Over the roof the plain closure has no bubble at 0.1 H above it: at x = 0.06 m, z = 0.22 m u is 1.59 m/s against

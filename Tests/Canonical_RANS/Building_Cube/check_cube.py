@@ -10,9 +10,10 @@ air reverses behind the block and speeds up over its roof; u in a wall cell of t
 and k in the roof's wall cell are pinned to this deck's (--roof, --side, --k-roof: the defaults are those
 of the deck as it is; buildings.wall_tke = off has 3.833, 2.387 and 8.618, buildings.wall_form =
 roof_stress 3.888, 1.505 and 8.589, bc.surface_wall_k = source 2.843, 1.599 and 0.911). k in a side's wall cell of
-the ground's first layer is pinned too (--k-ground: 0.0151; 0.0099, 0.0089 and 0.3124 for those three). With buildings.wall_tke = on k in the solid cells is the closure's floor
-(--k-solid, the largest allowed; the two other forms solve k there and pass a large value). The exit code
-is the verdict.
+the ground's first layer is pinned too (--k-ground: 0.0151; 0.0099, 0.0089 and 0.3124 for those three, 0.0132 with buildings.wall_k_bound = impinging). With buildings.wall_tke = on k in the solid cells is the closure's floor
+(--k-solid, the largest allowed; the two other forms solve k there and pass a large value). --k-windward
+pins k in a wall cell of the windward side, third layer (0.0079 for the deck as it is, 0.922 with
+buildings.wall_k_bound = impinging); not checked when it is not given. The exit code is the verdict.
 """
 import argparse
 import glob
@@ -34,6 +35,8 @@ def main():
     ap.add_argument("--k-roof", type=float, default=0.411, help="k in the roof's wall cell (m2/s2), within 2 %%")
     ap.add_argument("--k-ground", type=float, default=0.0151, help="k in a side's wall cell of the first layer (m2/s2), within 2 %%")
     ap.add_argument("--k-solid", type=float, default=1.001e-6, help="largest k allowed in a solid cell (m2/s2); the deck's turb.tke_floor is 1e-6")
+    ap.add_argument("--k-windward", type=float, default=None,
+                    help="k in a wall cell of the windward side, third layer (m2/s2), within 2 %%")
     ap.add_argument("--theta-solid", type=float, default=None,
                     help="theta every solid cell must hold (K, within 1e-9): the walls' temperature with buildings.theta_mode = ambient or fixed")
     ap.add_argument("--theta-solid-free", type=float, default=None,
@@ -41,7 +44,7 @@ def main():
                          "buildings.theta_mode = none theta is solved inside the block, as before its building terms")
     a = ap.parse_args()
     name = sorted(glob.glob(a.plotfile + "[0-9]*"))[-1] if a.latest else a.plotfile
-    hdr, d = erf_plotfile.read_fields(name, ["u", "v", "w", "tke", "theta", "building_beta"])
+    hdr, d = erf_plotfile.read_fields(name, ["u", "v", "w", "tke", "theta", "building_beta", "building_wall"])
     u, v, w, beta = d["u"], d["v"], d["w"], d["building_beta"]
     nx, ny, nz = [hdr["hi"][n] - hdr["lo"][n] + 1 for n in range(3)]
     cells = [(i, j, k) for i in range(nx) for j in range(ny) for k in range(nz)]
@@ -79,6 +82,15 @@ def main():
     print(f"k in a side's wall cell on the ground {k_ground:.4f} m2/s2 (pinned at {a.k_ground})")
     if abs(k_ground - a.k_ground) > 0.02 * a.k_ground:
         bad.append("k in the side's wall cell on the ground moved")
+    if a.k_windward is not None:
+        # The side at x = 55 m, which the wind meets head-on: the cell upstream of it has a side at high x (bit 4).
+        k_wind = d["tke"][10][jc][2]
+        print(f"k in the windward side's wall cell {k_wind:.4f} m2/s2 (pinned at {a.k_windward}); "
+              f"one cell upstream {d['tke'][9][jc][2]:.4f}")
+        if int(d["building_wall"][10][jc][2]) != 4:
+            bad.append("the pinned cell is not a wall cell of the windward side")
+        if abs(k_wind - a.k_windward) > 0.02 * a.k_windward:
+            bad.append("k in the windward side's wall cell moved")
     k_solid = max(d["tke"][i][j][k] for i, j, k in cells if beta[i][j][k] >= 1)
     print(f"largest k in a solid cell {k_solid:.3e} m2/s2 (at most {a.k_solid:.3e})")
     if k_solid > a.k_solid:

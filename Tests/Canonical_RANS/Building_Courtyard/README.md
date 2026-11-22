@@ -31,6 +31,10 @@ constant to within 2 %. These values are not validated.
 |---|---|---|---|
 | `open_faces` (default) | 135 | 0.0227 m²/s² | 0.633 m²/s² |
 | `all_faces` | 141 | 0.0081 m²/s² | 0.432 m²/s² |
+| `open_faces` with `buildings.wall_k_speed = cell_mean` | 136 | 0.0097 m²/s² | 0.454 m²/s² |
+
+With `cell_mean` the wall value of k reads the law at the cell's root-mean-square speed (a third of the open face's
+square for a component with one fixed face), and the stress stays that of `open_faces`.
 
 Measured on 2 and 4 ranks; the tests run on 2 and pin the k values within 5 %. The iteration counts are not pinned. The
 velocities of the two forms differ by about 0.02 m/s at most (w by 0.0204 m/s in the inner corner), and k by up to
@@ -43,4 +47,5 @@ default) leave the velocities and k bit for bit, in the same 135 iterations (mea
 
 ## CTest
 `building_courtyard_clean`, `building_courtyard_run`, `building_courtyard_flow`, `building_courtyard_all_faces_clean`,
-`building_courtyard_all_faces_run`, `building_courtyard_all_faces_flow`.
+`building_courtyard_all_faces_run`, `building_courtyard_all_faces_flow`, `building_courtyard_k_cell_mean_clean`,
+`building_courtyard_k_cell_mean_run`, `building_courtyard_k_cell_mean_flow`.
