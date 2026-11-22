@@ -4,10 +4,15 @@
 
 #include <cmath>
 #include <limits>
+#include <string>
 
 namespace gust {
 
-void apply_cut_cell_strain (const Buildings& b, amrex::Real z0, const State& q, const amrex::Geometry& geom, amrex::MultiFab& S2)
+namespace {
+
+//! apply_cut_cell_strain with the accessor Z0.
+template <typename Z0>
+void cut_cell_strain (const Buildings& b, const Roughness& rough, const State& q, const amrex::Geometry& geom, amrex::MultiFab& S2)
 {
     using namespace stencil;
     const auto dxinv = geom.InvCellSizeArray();
@@ -21,6 +26,7 @@ void apply_cut_cell_strain (const Buildings& b, amrex::Real z0, const State& q, 
         const auto z = q.z_phys_nd.const_array(mfi);
         const auto beta = b.beta().const_array(mfi);
         const auto wl = b.wall().const_array(mfi);
+        const Z0 zf = Z0::of(rough, mfi);
         // The cut cell itself: the wall law's gradient at its fluid centroid, u* / (kappa (d1 + z0)) along its
         // wind, as the body-fitted ground's first cell has it (BoundaryConditions.cpp: ground_gradients). The
         // closure's difference reads the solid cell below (u = 0). kappa cancels (u* = kappa U / ln).
@@ -30,7 +36,7 @@ void apply_cut_cell_strain (const Buildings& b, amrex::Real z0, const State& q, 
             if (!(beta(i, j, k) < amrex::Real(1) && (static_cast<int>(wl(i, j, k, kWallMask)) & kWallRoof) != 0)) { return; }
             auto uc = [&] (int kk) { return amrex::Real(0.5) * (u(i, j, kk) + u(i + 1, j, kk)); };
             auto vc = [&] (int kk) { return amrex::Real(0.5) * (v(i, j, kk) + v(i, j + 1, kk)); };
-            const amrex::Real d1 = wl(i, j, k, kWallD1z), d2 = wl(i, j, k, kWallD2z);
+            const amrex::Real d1 = wl(i, j, k, kWallD1z), d2 = wl(i, j, k, kWallD2z), z0 = zf(i, j);
             const amrex::Real uo = uc(k), vo = vc(k);
             const amrex::Real own = std::sqrt(uo * uo + vo * vo);
             const amrex::Real ref = k < khi ? std::sqrt(uc(k + 1) * uc(k + 1) + vc(k + 1) * vc(k + 1)) : amrex::Real(0);
@@ -50,19 +56,12 @@ void apply_cut_cell_strain (const Buildings& b, amrex::Real z0, const State& q, 
     }
 }
 
-ImmersedStrain::ImmersedStrain (const BuildingForcing& law, amrex::Real z0) : m_b(law.geometry()), m_z0(z0)
-{
-    if (m_b == nullptr || !law.immersed_ground()) {
-        amrex::Abort("gust: ImmersedStrain needs the wall law of an immersed ground (terrain.representation = immersed_forcing or hybrid)");
-    }
-    if (!(z0 > 0)) { amrex::Abort("gust: ImmersedStrain needs z0 > 0"); }
-}
-
-void ImmersedStrain::apply (const State& q, const amrex::Geometry& geom, amrex::MultiFab& S2) const
+//! S2 in the first full cell above each cut cell (ImmersedStrain.H), with the accessor Z0.
+template <typename Z0>
+void above_cut_cell_strain (const Buildings& b, const Roughness& rough, const State& q, const amrex::Geometry& geom, amrex::MultiFab& S2)
 {
     using namespace stencil;
     const auto dxinv = geom.InvCellSizeArray();
-    const amrex::Real z0 = m_z0;
     const int klo = geom.Domain().smallEnd(2), khi = geom.Domain().bigEnd(2);
     for (amrex::MFIter mfi(S2, false); mfi.isValid(); ++mfi) {
         const amrex::Box bx = amrex::grow(mfi.validbox(), amrex::IntVect(1, 1, 0));
@@ -71,8 +70,9 @@ void ImmersedStrain::apply (const State& q, const amrex::Geometry& geom, amrex::
         const auto v = q.v.const_array(mfi);
         const auto w = q.w.const_array(mfi);
         const auto z = q.z_phys_nd.const_array(mfi);
-        const auto beta = m_b->beta().const_array(mfi);
-        const auto wl = m_b->wall().const_array(mfi);
+        const auto beta = b.beta().const_array(mfi);
+        const auto wl = b.wall().const_array(mfi);
+        const Z0 zf = Z0::of(rough, mfi);
         amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
         {
             const int c = k - 1;   // the cut cell below
@@ -81,6 +81,7 @@ void ImmersedStrain::apply (const State& q, const amrex::Geometry& geom, amrex::
                 return beta(i, j, kk) < amrex::Real(1) && (static_cast<int>(wl(i, j, kk, kWallMask)) & kWallRoof) != 0;
             };
             if (roof(k) || !roof(c)) { return; }
+            const amrex::Real z0 = zf(i, j);
             auto zc = [&] (int kk) {
                 return amrex::Real(0.125) * (z(i, j, kk) + z(i + 1, j, kk) + z(i, j + 1, kk) + z(i + 1, j + 1, kk) + z(i, j, kk + 1)
                                              + z(i + 1, j, kk + 1) + z(i, j + 1, kk + 1) + z(i + 1, j + 1, kk + 1));
@@ -109,7 +110,44 @@ void ImmersedStrain::apply (const State& q, const amrex::Geometry& geom, amrex::
             s2(i, j, k) = amrex::max(amrex::Real(0), s2(i, j, k) + (e_new * e_new - e_old * e_old) + (f_new * f_new - f_old * f_old));
         });
     }
-    apply_cut_cell_strain(*m_b, m_z0, q, geom, S2);
+}
+
+}   // namespace
+
+void check_ground_roughness (const char* op, const Buildings& b, const Roughness& rough)
+{
+    if (rough.map != nullptr) {
+        check_roughness_map(op, *rough.map, b.beta());
+    } else if (!(rough.z0 > 0)) {
+        amrex::Abort(std::string("gust: ") + op + " needs z0 > 0");
+    }
+}
+
+void apply_cut_cell_strain (const Buildings& b, const Roughness& rough, const State& q, const amrex::Geometry& geom, amrex::MultiFab& S2)
+{
+    if (rough.map != nullptr) {
+        cut_cell_strain<MapZ0>(b, rough, q, geom, S2);
+    } else {
+        cut_cell_strain<UniformZ0>(b, rough, q, geom, S2);
+    }
+}
+
+ImmersedStrain::ImmersedStrain (const BuildingForcing& law, const Roughness& rough) : m_b(law.geometry()), m_rough(rough)
+{
+    if (m_b == nullptr || !law.immersed_ground()) {
+        amrex::Abort("gust: ImmersedStrain needs the wall law of an immersed ground (terrain.representation = immersed_forcing or hybrid)");
+    }
+    check_ground_roughness("ImmersedStrain", *m_b, rough);
+}
+
+void ImmersedStrain::apply (const State& q, const amrex::Geometry& geom, amrex::MultiFab& S2) const
+{
+    if (m_rough.map != nullptr) {
+        above_cut_cell_strain<MapZ0>(*m_b, m_rough, q, geom, S2);
+    } else {
+        above_cut_cell_strain<UniformZ0>(*m_b, m_rough, q, geom, S2);
+    }
+    apply_cut_cell_strain(*m_b, m_rough, q, geom, S2);
 }
 
 }   // namespace gust

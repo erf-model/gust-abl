@@ -28,7 +28,7 @@ The same code also runs unsteady RANS, for flows that have no steady state.
 - **Terrain.** A terrain-following mesh from an elevation file (`x y z` points or ERF's grid format), with
   stretched vertical layers for thin near-ground cells. The pressure equation uses a terrain-aware multigrid
   solver that handles high cell aspect ratios. An immersed ground on a flat mesh
-  (`terrain.representation = immersed_forcing`) is available for flat ground only so far.
+  (`terrain.representation = immersed_forcing`) is described in the documentation.
 - **A clear definition of steady.** Residuals must fall by a set number of orders and the monitored quantities
   must settle; the run says why it stopped. Restarts continue bit for bit on the same ranks and box layout.
 

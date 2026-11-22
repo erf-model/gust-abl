@@ -152,6 +152,7 @@ private:
     amrex::Real m_zone_c{0};
     amrex::Long m_zone_cells{0}, m_zone_off{0};
     amrex::Real m_floor{0}, m_cmu0{amrex::Real(0.5562)}, m_cutoff{0}, m_z0b{0};
+    bool m_immersed_ground{false};   //!< the wall is the ground (limit_wall_distance: no roughness shift)
     int m_passes{0};
     bool m_impinging{false};   //!< buildings.wall_k_bound = impinging
 };

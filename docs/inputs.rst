@@ -706,7 +706,7 @@ Quick reference
        ``terrain.gamma_m``, which shape its mesh aloft as on a body-fitted mesh. ``immersed_forcing`` needs
        ``mesh.hierarchy_levels = 1``,
        ``bc.zlo = surface_layer``, ``bc.surface_stability = neutral``, ``bc.surface_wall_k = dirichlet``,
-       ``turb.closure = kl`` and, in a stage, ``steady.sweep = zjacobi``. It refuses ``bc.surface_z0_file``,
+       ``turb.closure = kl`` and, in a stage, ``steady.sweep = zjacobi``. It refuses
        ``bc.surface_zref``, ``bc.surface_denominator_floor``, a non-uniform ``bc.theta_profile``,
        ``buildings.type``, ``canopy.type``, nests, ``init.first_guess = column``, ``steady.probes_file``,
        ``steady.stage = simplec_newton`` and ``unsteady``, ``solver.poisson_backend = mlmg`` (in a stage), and

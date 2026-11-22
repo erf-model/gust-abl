@@ -1336,7 +1336,7 @@ The one-line mutants of the immersed ground (``Source/BuildingForcing.H``, ``Sou
 ``Source/ImmersedStrain.cpp``, ``Source/Residual.cpp``, ``Source/ImmersedTerrain.cpp``, ``Source/Inputs.cpp``,
 ``Source/Sequencing.cpp``, ``Source/Heights_K.H`` and ``Source/LogShear.cpp``),
 each run against ``ImmersedTerrain.*``, ``LogShear.*`` and ``Inputs.ImmersedTerrain*`` on one rank, with a rebuild
-from the restored sources between two mutants (macOS arm64, AppleClang). All 18 are killed. IT9 (the check of
+from the restored sources between two mutants (macOS arm64, AppleClang). All are killed. IT9 (the check of
 ``mesh.is_periodic`` dropped) is retired: the check was removed when inflow and outflow faces were allowed, and
 ``Inputs.ImmersedTerrainChecksNameTheInput`` now requires that such a deck is accepted.
 
@@ -1407,9 +1407,24 @@ from the restored sources between two mutants (macOS arm64, AppleClang). All 18 
    * - IT21
      - The refusal of ``bc.outflow_transport = from_velocity`` dropped
      - ``RefusesWhatItDoesNotSupport``
+   * - IT22
+     - The cut cell's wall law reading the map in the box's first row or first column (``zf(i, 0)``, ``zf(0, j)``
+       in ``roof_rates``)
+     - ``RoughnessMapEntersTheCutCellByColumn``; CTest ``rt_immersed_roughness_step`` (wall-cell :math:`k` 64 %)
+   * - IT23
+     - The cut cell's strain reading the map in the box's first row or column (``ImmersedStrain.cpp``)
+     - ``RoughnessMapEntersTheCutCellByColumn``
+   * - IT24
+     - The strain of the cell above the cut cell reading the map in the box's first row or column
+       (``ImmersedStrain.cpp``)
+     - ``RoughnessMapEntersTheCutCellByColumn``
+   * - IT25
+     - ``LogShear`` handing the uniform :math:`z_0` to the cut cell's strain in a run with a map
+     - ``RoughnessMapEntersTheCutCellByColumn``
 
 IT1 to IT9 were run with a scripted pass over the sources (each change, a rebuild, the named tests, the file
 restored and touched), and IT10 to IT15 the same way against the CTests; the scripts are not in the repository.
+IT22 to IT25 were run on two ranks against ``ImmersedTerrain.RoughnessMap*``, and IT22 also against the CTest.
 
 The one-line mutants of ``turb.shear_stencil = log_law`` (``Source/LogShear.cpp``, ``Source/Sequencing.cpp``), each
 run against ``LogShear.*`` on one rank, LS1 and LS7 also against ``rt_log_shear_column_f0`` and
@@ -1912,6 +1927,17 @@ Current tests
        to that through the inflow face within 1e-6, and the outflow column within 1.5 % in :math:`u` and 8 % in
        :math:`k` of the body-fitted channel at equal height above the ground (measured: 0.8 % and 5.5 % at 0.5).
        Double precision only.
+   * - ``rt_immersed_roughness_step``
+     - A step of the roughness length (``bc.surface_z0_file``: 0.03 m, then 0.3 m from x = 1120 m) under the flat
+       ground of the same channel (``Tests/Canonical_RANS/Immersed_Roughness_Step``, :doc:`immersed_terrain`):
+       the immersed ground at solid fractions 0, 0.3 and 0.7 and the hybrid mesh's ground on the lower face and
+       in mid-layer, against the body-fitted run with the same map, with ``turb.shear_stencil = log_law`` and
+       ``terrain.small_volfrac = 0.1``, the runs on 2, 4 and 1 ranks in turn (8 boxes). The steady verdict; :math:`u`
+       within 4 % in every column (measured 2.8 %); :math:`k` within 18 % away from the step (14.0 %) and within
+       13 % in the wall cells (10.2 %); the map changes :math:`u` of the body-fitted run by at least 20 % (24.3 %).
+       :math:`k` above the wall cell in the first 400 m after the step is printed and has no limit. Double
+       precision only. Mutant: the wall law reading the first column's :math:`z_0` of each box gives 64 % in the
+       wall cells.
    * - ``rt_immersed_open_faces_sponge``, ``rt_immersed_open_faces_power_law``,
        ``rt_immersed_open_faces_wall_velocity``, ``rt_immersed_open_faces_rayleigh_absolute``
      - The same channel and setting at solid fractions 0.5 and 0.95 with one option of the open faces each, against
@@ -1949,6 +1975,16 @@ Current tests
        checkpoint with the ground's record; a restart on another box layout and 3 ranks accepts it; a restart with
        another ``terrain.flat_height``, or with a body-fitted ground, stops naming ``io.restart``; a ground inside
        the mesh's first layer, ``buildings.type`` and ``bc.surface_zref`` stop naming the input.
+   * - ``immersed_z0_map_clean``, ``immersed_z0_map_run``, ``immersed_z0_map_restart``,
+       ``abort_immersed_z0_map_restart_other_map``, ``abort_immersed_z0_map_restart_uniform``,
+       ``abort_immersed_z0_map_restart_neighbors``, ``abort_immersed_z0_map_missing``, and the same seven with
+       ``hybrid`` for ``immersed``
+     - A roughness map under an immersed ground and under a hybrid mesh's ground
+       (``Tests/Canonical_RANS/Immersed_Roughness_Step``): two iterations on 2 ranks log the map as the wall
+       law's :math:`z_0` and write a checkpoint; a restart on another box layout and 3 ranks with the same map
+       accepts it; a restart with another map file, with a uniform ``bc.surface_z0`` or with another
+       ``terrain.idw_neighbors`` stops naming ``io.restart``; a map file that cannot be read stops naming
+       ``bc.surface_z0_file``.
    * - ``canopy_clean``, ``canopy_run``, ``canopy_column_integrals``, ``canopy_check_detects_change``,
        ``canopy_restart``, ``canopy_restart_matches``
      - The canopy's drag field (``Tests/Infrastructure/Canopy_Field``): four ERF-format patches on a stretched,
@@ -3011,7 +3047,8 @@ GoogleTest suite
        ``ImmersedTerrain.StrainCorrectionFollowsTheFlatGround``, ``ImmersedTerrain.BodyForcesActOnTheOpenPart``,
        ``ImmersedTerrain.RefusesWhatItDoesNotSupport``, ``ImmersedTerrain.RestartRecordRefusesAChangedGround``,
        ``ImmersedTerrain.HeightInTheCutLayerIsItsOpenCentroid``, ``ImmersedTerrain.InflowIsZeroOnSolidFaces``,
-       ``ImmersedTerrain.AbsoluteRayleighHeightIsFromTheTerrainZero``
+       ``ImmersedTerrain.AbsoluteRayleighHeightIsFromTheTerrainZero``,
+       ``ImmersedTerrain.RoughnessMapEntersTheCutCellByColumn``
      - The immersed ground (:doc:`immersed_terrain`): the wall law at the exact distances returns :math:`u_*` of a
        log profile, also below 10 :math:`z_0`; the spacing :math:`s` at a cut cell of solid fraction 0.7, in the
        viscous flux and in the implicit rows, with the diagonal equal to the sum of the couplings, on boxes of 4
@@ -3019,8 +3056,14 @@ GoogleTest suite
        :math:`R\,u_*/(\kappa (d_2 + z_0))` on a log profile at 0.3, 0.7 and 0.9, and the cut cell takes the wall
        law's gradient :math:`u_*/(\kappa (d_1 + z_0))`; a body force on the cut cell's
        faces is the open fraction times the force and zero on solid faces; each refusal names its input; the
-       restart record changes with ``terrain.flat_height``, ``terrain.small_volfrac`` and ``bc.surface_z0`` and
-       refuses a changed ground and a changed representation; the height above the ground in a cut layer is half
+       restart record changes with ``terrain.flat_height``, ``terrain.small_volfrac`` and ``bc.surface_z0``, with a
+       map's contents, ``terrain.idw_neighbors`` and ``terrain.idw_power`` (not with the map's path, nor with
+       ``bc.surface_z0`` when a map is given; a map that cannot be read stops naming the input) and refuses a changed ground and a changed representation; with a
+       roughness map :math:`z_0 = 0.05\,(1 + i)(1 + j/2)` m and one wind profile in every column, the cut cell's
+       :math:`u_*^2`, its strain, the strain of the cell above it and the ``log_law`` gradient equal the closed
+       form with each column's :math:`z_0` at solid fractions 0.3 and 0.7 on boxes of 4 and of 2 cells, a uniform
+       map gives the uniform value's rates bit for bit, and the law stops when the map it expects was not set or
+       has no ghost column; the height above the ground in a cut layer is half
        its open height at the cell centre and at the x and y faces (solid fractions 0.3 and 0.9), and the centre's
        height elsewhere; with a layer promoted to solid by ``terrain.small_volfrac`` the inflow profile's wind on
        that layer's inflow faces is 0 and the faces above keep the profile, on boxes of 4 and of 2 cells. With

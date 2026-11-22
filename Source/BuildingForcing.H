@@ -52,6 +52,7 @@
 // tilt is not taken out. A side is vertical, so (v, w) and (u, w) are parallel to it.
 
 #include "Buildings.H"
+#include "SurfaceRoughness.H"
 #include "ImplicitOperator.H"
 
 #include <AMReX_Geometry.H>
@@ -241,6 +242,13 @@ public:
     //! part of each face (Residual.cpp), and u, v diffuse across a roof cell's top face over the distance
     //! between the fluid centroids (centroid_spacing()).
     [[nodiscard]] bool immersed_ground () const { return m_immersed_ground; }
+    //! An immersed ground with bc.surface_z0_file: the roughness map of this level (SurfaceRoughness.H: on the
+    //! ground slab of the cells, one ghost column in x and y), read by update, where each cut cell takes its
+    //! column's z0. It must outlive this object. Aborts unless the ground is immersed and the map is on the
+    //! rates' layout.
+    void set_ground_roughness (const amrex::MultiFab& map);
+    //! The roughness the immersed ground's law reads: the map, or the uniform z0.
+    [[nodiscard]] Roughness ground_roughness () const { return Roughness(m_z0, m_z0_map); }
     //! The buildings' geometry of the last build (null before).
     [[nodiscard]] const Buildings* geometry () const { return m_b; }
     //! s = (cell-centre spacing) / (d2 - d1) at the roof cells, 1 elsewhere (one ghost layer); empty
@@ -256,6 +264,8 @@ private:
     std::array<amrex::MultiFab, 3> m_weight;   //!< the faces' weights in a cell's speed (one ghost layer)
     amrex::Long m_wall_cells{0}, m_below_floor{0};
     amrex::Real m_z0{0.1};
+    const amrex::MultiFab* m_z0_map{nullptr};   //!< an immersed ground's roughness map (set_ground_roughness)
+    bool m_needs_z0_map{false};                 //!< BuildingsOptions::ground_z0_map: update needs the map
     BuildingWallForm m_wall_form{BuildingWallForm::fraction_stress};
     bool m_k_cell_mean{false};   //!< buildings.wall_k_speed = cell_mean
     bool m_k_towards{false};   //!< buildings.wall_k_bound = impinging: kBuildingTowardsX..Z are filled

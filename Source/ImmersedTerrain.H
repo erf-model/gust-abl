@@ -26,7 +26,6 @@ struct ImmersedTerrainFacts
     std::string representation{"immersed_forcing"};  //!< terrain.representation (immersed_forcing or hybrid)
     bool surface_layer{false};       //!< bc.zlo = surface_layer
     bool neutral{true};              //!< bc.surface_stability = neutral
-    bool z0_map{false};              //!< bc.surface_z0_file given
     bool buildings{false};           //!< buildings.type given
     bool nests{false};               //!< nest.names given, or this run is a nest
     bool newton{false};              //!< steady.stage = simplec_newton
@@ -69,8 +68,10 @@ std::string check_immersed_ground_extent (const amrex::MultiFab& z_nd, double fi
 //! The wall-law options of the immersed ground: buildings.type = immersed_forcing with the form 7
 //! law on every wall (fraction_stress, open_faces), the wall value of k (wall_tke), no heat
 //! (a neutral run), no lee zone, t.small_volfrac, the ground's roughness z0 (bc.surface_z0) and
-//! immersed_ground set (hybrid_mesh with a hybrid mesh). t.representation must be immersed_forcing or hybrid.
-BuildingsOptions immersed_terrain_options (const TerrainInputs& t, double z0);
+//! immersed_ground set (hybrid_mesh with a hybrid mesh). z0_map: the roughness is a map
+//! (bc.surface_z0_file), which the wall law takes from its level (BuildingForcing::set_ground_roughness);
+//! z0 is then not read. t.representation must be immersed_forcing or hybrid.
+BuildingsOptions immersed_terrain_options (const TerrainInputs& t, double z0, bool z0_map = false);
 
 //! The ground as a height map in memory: one tile of height t.flat_height whose edges are the
 //! domain's x and y faces (with a terrain file: the terrain's heights).
@@ -78,8 +79,9 @@ BuildingHeightMap immersed_terrain_map (const TerrainInputs& t, const amrex::Geo
 
 //! The SHA-256 of what fixes the immersed ground: flat_height, small_volfrac, hybrid_half_width (with a hybrid
 //! mesh), z0, the terrain's type and what the type reads (the hill's size and shape; the file's contents and the
-//! IDW choices). Reads terrain.file on the calling rank.
-std::string immersed_terrain_hash (const TerrainInputs& t, double z0);
+//! IDW choices). z0_file (bc.surface_z0_file, when given): its contents and the IDW choices stand for z0.
+//! Reads terrain.file and z0_file on the calling rank.
+std::string immersed_terrain_hash (const TerrainInputs& t, double z0, const std::string& z0_file = {});
 
 //! <dir>/ImmersedTerrain with hash (I/O rank); nothing with an empty hash (a body-fitted run).
 void write_immersed_terrain_checkpoint (const std::string& dir, const std::string& hash);

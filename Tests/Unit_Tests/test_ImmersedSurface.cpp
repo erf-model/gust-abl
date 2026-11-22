@@ -493,7 +493,7 @@ TEST (ImmersedSurface, EveryConsumerReadsTheHelper)
     EXPECT_NE(source("Sequencing.cpp").find("from_surface()"), std::string::npos);
     EXPECT_NE(source("BuildingTke.cpp").find("kSurfaceHeight"), std::string::npos);
     const std::string refusals = source("ImmersedTerrain.cpp");
-    for (const char* key : {"canopy.type", "steady.probes_file", "init.first_guess = column", "bc.surface_z0_file", "nests"}) {
+    for (const char* key : {"canopy.type", "steady.probes_file", "init.first_guess = column", "nests"}) {
         EXPECT_NE(refusals.find(key), std::string::npos) << key;
     }
 }
