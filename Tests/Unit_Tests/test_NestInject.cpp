@@ -25,7 +25,8 @@
 //   UT-I.4 (the stop test): the hill's SIMPLEC driver with a target that is
 //     not the parent's solution (the converged state with its velocity times
 //     1.1 on the inner box), injected before every iteration: the residual
-//     falls by six orders from its first value, and the state outside the
+//     falls by six orders from its first value (to 2e-4 of it in single
+//     precision, whose round-off floor is 1e-4), and the state outside the
 //     inner box moves away from the converged one (the injection acts on it).
 //   UT-I.7: the target's change that the joint run's stop window reads:
 //     omega (q* - q) on the first inject, omega (1 - omega) (q* - q) on the
@@ -51,6 +52,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <functional>
 #include <limits>
@@ -573,13 +575,53 @@ TEST(NestInject, ResidualRowsOnTheHill)   // UT-I.3
     }
 }
 
+namespace {
+
+// The stop test in single precision, where r and the default steady criterion cannot be met on this hill: v is 0
+// (2-D) and its residual is round-off from the start (first 4e-5, then 6e-7 to 9e-7, so r stays at 0.02), and k's
+// floor is 3e-4, above steady.residual_tol. So each field has its own bound above its measured floor: u, w, p and
+// theta to 2e-4 of their reference (the largest of the first five; their floors are at most 2e-5 of it in the
+// injected run), k to k_drop of its, and v to 5e-6 itself.
+struct SingleStop
+{
+    double k_drop;
+    std::array<double, 6> ref{};    // u, v, w, p, theta, tke (stage_residual_names)
+    int count{0};
+
+    bool operator() (const std::vector<amrex::Real>& res)
+    {
+        if (res.size() != ref.size()) { return false; }
+        if (count < 5) {
+            for (std::size_t n = 0; n < ref.size(); ++n) { ref[n] = std::max(ref[n], static_cast<double>(res[n])); }
+            ++count;
+            return false;
+        }
+        for (const std::size_t n : {0u, 2u, 3u, 4u}) {
+            if (!(res[n] < 2e-4 * ref[n])) { return false; }
+        }
+        return res[1] < 5e-6 && res[5] < k_drop * ref[5];
+    }
+};
+
+} // namespace
+
 TEST(NestInject, InjectedRunReachesSteady)   // UT-I.4, the stop test
 {
     // The hill's state near steady.
     const double lapse = 0.003;
     HillRun h0(lapse, 16, 12, 4);
-    h0.simplec_to(1e-4, 4000);
-    ASSERT_LT(h0.r(), 1e-4) << "the hill did not converge";
+    if (kDouble) {
+        h0.simplec_to(1e-4, 4000);
+        ASSERT_LT(h0.r(), 1e-4) << "the hill did not converge";
+    } else {
+        SingleStop stop{5e-4};  // about 1700 iterations; k's floor is 1.5e-4 of its reference here
+        bool done = false;
+        for (int n = 0; n < 4000 && !done; ++n) {
+            h0.ls->driver().step(h0.q);
+            done = stop(h0.ls->stage().residual_norms());
+        }
+        ASSERT_TRUE(done) << "the hill did not converge";
+    }
     HillRun h(lapse, 16, 12, 4, 0, gust::Limiter::van_leer, gust::StageKind::simplec, nullptr, true);
     ASSERT_NE(h.inject, nullptr);
     // The two runs build their own distribution maps: the converged state is copied onto h's layout.
@@ -596,6 +638,9 @@ TEST(NestInject, InjectedRunReachesSteady)   // UT-I.4, the stop test
     for (amrex::MultiFab* m : {&qstar.u, &qstar.v, &qstar.w}) { m->mult(amrex::Real(kFactor), 0, 1, m->nGrow()); }
     h.inject->set({hill_region()});
     const int limit = 2000;
+    const double drop = 1e-6;   // double precision
+    SingleStop stop{4e-3};      // single precision: k's floor is 1.8e-3 of its reference in this run
+    bool done = false;
     double first = -1, last = 0;
     int it = 0;
     // The held state: the iteration leaves every field on the inner box at the injected value (checked on the
@@ -627,11 +672,12 @@ TEST(NestInject, InjectedRunReachesSteady)   // UT-I.4, the stop test
         const std::vector<amrex::Real> res = h.ls->stage().residual_norms();
         last = static_cast<double>(*std::max_element(res.begin(), res.end()));
         if (first < 0) { first = last; }
-        if (last < 1e-6 * first) { break; }
+        done = kDouble ? last < drop * first : stop(res);
+        if (done) { break; }
     }
     EXPECT_EQ(held_change, 0.0) << "the iteration moved the held state on the inner box";
     EXPECT_GT(first, 0.0);
-    EXPECT_LT(last, 1e-6 * first) << "the injected run did not reach steady in " << limit << " iterations (residual "
+    EXPECT_TRUE(done) << "the injected run did not reach steady in " << limit << " iterations (residual "
                                   << last << " from " << first << ")";
     // The state outside the inner box moved from the converged one: the injection reaches it.
     const amrex::Box ux = amrex::convert(dom, h.q.u.ixType());
@@ -734,7 +780,7 @@ TEST(NestInject, PoissonHeldCellsAreData)
         amrex::ParallelDescriptor::ReduceRealSum(sum);
         amrex::ParallelDescriptor::ReduceRealSum(vol);
         const double mean = sum / vol;
-        EXPECT_NEAR(res.removed_mean, mean, 1e-9) << backend << ": the mean removed is not the fluid cells' mean";
+        EXPECT_NEAR(res.removed_mean, mean, kDouble ? 1e-9 : 1e-6) << backend << ": the mean removed is not the fluid cells' mean";
         amrex::Long held_phi = 0, fluid_bad = 0, held_flux = 0;   // ReduceLongSum takes amrex::Long (MSVC)
         double worst = 0;
         for (amrex::MFIter mfi(phi, false); mfi.isValid(); ++mfi) {
@@ -748,7 +794,7 @@ TEST(NestInject, PoissonHeldCellsAreData)
                     // A phi = -div F (face_divergence of the solve's fluxes).
                     const double e = std::abs(dv(i, j, k) + (a(i, j, k) - mean));
                     worst = std::max(worst, e);
-                    if (e > 1e-6) { ++fluid_bad; }
+                    if (e > (kDouble ? 1e-6 : 1e-4)) { ++fluid_bad; }   // single precision: at most 2.5e-5
                 }
             });
         }

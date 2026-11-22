@@ -1838,6 +1838,10 @@ the outer run's final forcing.
        > 0 and <= 1, the fraction :math:`\omega` of the way the outer state moves towards the restricted nests at
        each exchange (:ref:`two-way-inject`); 1 replaces it fully. A smaller factor takes more exchanges to the same
        state; 0.75 and 1 did not reach steady on the canonical hill (:ref:`two-way-inject`, Results).
+
+       For all three, the joint record holds the value. A restart uses the deck's value or the default; where that
+       differs from the record's, the joint stop test's window fills again and the log gives both values
+       (:ref:`two-way-nests`, Restart).
    * - ``nest.feedback_flux``
      - ``outer``
      - ``outer`` or ``nest``. ``outer``: the outer row just outside each nest's source region keeps the outer

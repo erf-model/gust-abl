@@ -300,15 +300,19 @@ nests, Restart). The script runs, each in its own directory:
 1. `straight/`: the deck with the nests `crest` and `lee` and `nest.feedback = defect` (with `--relax`, `--relax-consistent` or
    `--inject`: the nest `hill` and `nest.feedback = relax`, `relax_consistent` or `inject`), to the steady verdict;
 2. `stopped/`: the same with `steady.max_iterations = M` (`--stop M`), which stops after M exchanges;
-3. `stopped/`: the restart, with the deck less its `init.*` lines and `io.restart` set to the named checkpoint.
+3. `stopped/`: the restart, with the deck less its `init.*` lines and `io.restart` set to the named checkpoint;
+4. with `--relax`, before 3, two restarts of one exchange with `nest.feedback_factor = 0.75`, each from a copy of
+   `stopped/`: `other/` from the record as written, `older/` from the record rewritten as version 2 (no factor).
 
 It requires:
-1. the straight run and the restart exit 0, the stopped run does not; the record has the feedback, M exchanges and
-   one line per nest in `nest.names` order, each naming a checkpoint that exists;
+1. the straight run and the restart exit 0, the stopped run does not; the record has the feedback, M exchanges, the
+   factor (0 with defect) and one line per nest in `nest.names` order, each naming a checkpoint that exists;
 2. the restart logs `restarted after exchange M`, and is steady after the straight run's exchanges with every
    domain's iterations over the run the same;
 3. the last plotfile of every domain and the last checkpoint's state, node heights, closure history, nest faces and
-   joint record are byte for byte the straight run's (the driver record holds wall times and is not compared).
+   joint record are byte for byte the straight run's (the driver record holds wall times and is not compared);
+4. with `--relax`, `other/` logs 0.5 and 0.75 and that the window fills again, `older/` logs that the record holds
+   no factor and restores the window, and both write a version 3 record with M + 1 exchanges and the factor 0.75.
 
 M must be above the one-way runs' iterations (`steady.max_iterations` caps them too: 99 for the outer domain, up to
 121 for a nest here) and below the straight run's exchanges.

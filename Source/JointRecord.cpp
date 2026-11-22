@@ -11,6 +11,8 @@
 #include <cmath>
 #include <cstdlib>
 #include <fstream>
+#include <iomanip>
+#include <limits>
 #include <sstream>
 
 namespace gust {
@@ -18,7 +20,7 @@ namespace gust {
 namespace {
 
 constexpr const char* kJointMagic = "GUST_JOINT";
-constexpr int kJointVersion = 2;
+constexpr int kJointVersion = 3;
 constexpr const char* kFeedbackNames[5] = {"u", "v", "w", "theta", "tke"};
 
 std::string feedback_file (const std::string& dir, int n)
@@ -49,7 +51,7 @@ void write_joint_record (const std::string& dir, const JointRecord& r)
         os << kJointMagic << " " << kJointVersion << "\nfeedback " << r.feedback << "\nexchanges " << r.exchanges
            << "\nouter " << hexfloat_canonical(static_cast<double>(r.outer_cfl_floor)) << "\nwindow " << r.window.size();
         for (const amrex::Real d : r.window) { os << " " << hexfloat_canonical(static_cast<double>(d)); }
-        os << "\n";
+        os << "\nfactor " << hexfloat_canonical(static_cast<double>(r.factor)) << "\n";
         for (const auto& n : r.nests) {
             os << "nest " << n.name << " " << hexfloat_canonical(static_cast<double>(n.cfl_floor)) << " " << n.chk << "\n";
         }
@@ -86,7 +88,7 @@ bool read_joint_record (const std::string& dir, JointRecord& r)
     int version = 0;
     r = JointRecord{};
     if (!(is >> magic >> version) || magic != kJointMagic || version < 1 || version > kJointVersion) {
-        amrex::Abort(bad + " (expected " + kJointMagic + " 1 or " + std::to_string(kJointVersion) + ")");
+        amrex::Abort(bad + " (expected " + kJointMagic + " 1 to " + std::to_string(kJointVersion) + ")");
     }
     if (!(is >> key >> r.feedback) || key != "feedback"
         || (r.feedback != "defect" && r.feedback != "relax" && r.feedback != "relax_consistent" && r.feedback != "inject")) {
@@ -106,6 +108,14 @@ bool read_joint_record (const std::string& dir, JointRecord& r)
         }
         r.has_feedback = true;
     }
+    if (version >= 3) {
+        // 0 with defect (no factor), > 0 with the others.
+        if (!(is >> key >> floor) || key != "factor" || !parse_floor(floor, r.factor)
+            || ((r.feedback == "defect") != (r.factor == 0))) {
+            amrex::Abort(bad + " (the factor line)");
+        }
+        r.has_factor = true;
+    }
     while (is >> key) {
         JointRecord::Nest n;
         if (key != "nest" || !(is >> n.name >> floor) || !parse_floor(floor, n.cfl_floor)) {
@@ -121,6 +131,26 @@ bool read_joint_record (const std::string& dir, JointRecord& r)
     }
     if (r.nests.empty()) { amrex::Abort(bad + " (no nest line)"); }
     return true;
+}
+
+std::string joint_restore_refusal (const JointRecord& prior, const std::string& feedback, amrex::Real factor)
+{
+    if (!prior.has_feedback) { return "its joint record (GUST_JOINT 1) holds no feedback"; }
+    if (prior.feedback != feedback) { return "its joint record holds the feedback of nest.feedback = " + prior.feedback; }
+    if (prior.has_factor && prior.factor != factor) {
+        const auto text = [] (amrex::Real v, int digits) {
+            std::ostringstream os;
+            os << std::setprecision(digits) << v;
+            return os.str();
+        };
+        // The digits a deck is written with, unless the two values then print alike.
+        using Limits = std::numeric_limits<amrex::Real>;
+        const int digits = text(prior.factor, Limits::digits10) == text(factor, Limits::digits10) ? Limits::max_digits10
+                                                                                                  : Limits::digits10;
+        return "its joint record holds the feedback of nest.feedback_factor = " + text(prior.factor, digits) + ", not "
+               + text(factor, digits);
+    }
+    return {};
 }
 
 void write_joint_feedback (const std::string& dir, const std::array<const amrex::MultiFab*, 5>& f)

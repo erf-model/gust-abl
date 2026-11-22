@@ -10,11 +10,12 @@
 // checkpoint and goes on with the exchanges (Run.cpp).
 //
 // <dir>/Joint, text:
-//   GUST_JOINT 2
+//   GUST_JOINT 3
 //   feedback <defect|relax|relax_consistent|inject>
 //   exchanges <n>
 //   outer <cfl floor, hex float>
 //   window <m> <m hex floats>
+//   factor <nest.feedback_factor, hex float; 0 with defect>
 //   nest <name> <cfl floor, hex float> <checkpoint, the rest of the line>
 //   ... one nest line per nest, in nest.names order
 //
@@ -22,8 +23,11 @@
 // oldest first (FeedbackWindow, NestDefect.H), and beside the record the checkpoint holds the feedback of the last
 // exchange, Level_0/joint_feedback_{u,v,w,theta,tke} (S with defect, the target q* with relax and relax_consistent,
 // the injection's target with inject). A restart restores
-// both, so its first exchange measures the change and tests the window as the run without a restart does. A version
-// 1 record (no window line, no field) still reads: its restart starts with an empty window.
+// both, so its first exchange measures the change and tests the window as the run without a restart does. The factor
+// line (version 3) holds nest.feedback_factor: the window's changes and the feedback were made with it, so a restart
+// with another factor (or another nest.feedback) starts with an empty window (joint_restore_refusal). A version 2
+// record (no factor line) restores both with the deck's factor; a version 1 record (no window line, no field) still
+// reads, and its restart starts with an empty window.
 
 #include <AMReX_MultiFab.H>
 #include <AMReX_REAL.H>
@@ -49,6 +53,9 @@ struct JointRecord
     //! Version 2: the window line was read (and the feedback field is in the checkpoint); false for version 1.
     bool has_feedback{false};
     std::vector<amrex::Real> window;   //!< the stop test's changes, oldest first
+    //! Version 3: the factor line was read; false for versions 1 and 2.
+    bool has_factor{false};
+    amrex::Real factor{0};             //!< nest.feedback_factor (0 with defect)
 };
 
 //! <dir>/Joint (the I/O rank writes; every rank waits). Aborts, naming the file, if it cannot be written.
@@ -57,6 +64,10 @@ void write_joint_record (const std::string& dir, const JointRecord& r);
 //! Reads <dir>/Joint on the I/O rank and gives every rank its contents. Returns false when the
 //! checkpoint has no Joint file (a one-way checkpoint); aborts, naming the file, when it cannot be read.
 bool read_joint_record (const std::string& dir, JointRecord& r);
+
+//! Empty when a restart with nest.feedback = feedback and nest.feedback_factor = factor (0 with defect) restores the
+//! record's window and last feedback; otherwise why it does not (the start of a log line).
+std::string joint_restore_refusal (const JointRecord& prior, const std::string& feedback, amrex::Real factor);
 
 //! The feedback of the last exchange into <dir>/Level_0/joint_feedback_{u,v,w,theta,tke} (valid points).
 void write_joint_feedback (const std::string& dir, const std::array<const amrex::MultiFab*, 5>& f);
