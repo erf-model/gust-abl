@@ -1152,6 +1152,37 @@ TEST (BuildingLaw, OpenFaceMeanAndCellsBelowTheFloor)
     // Both weights 1 give the bits of the earlier half sum.
     const amrex::Real a = amrex::Real(0.1), b = amrex::Real(0.7);
     EXPECT_EQ(gust::open_face_mean(a, b, 1, 1), amrex::Real(0.5) * (a + b));
+    // The mean of the square over the cell (buildings.wall_k_speed = cell_mean): the square of the mean with
+    // both faces open; with one face fixed the component falls linearly from the open face's value to 0 at
+    // the wall, and the mean of (u_o x)^2 over x in 0..1 is u_o^2 / 3.
+    const auto square = [] (double p, double q, double wa, double wb) {
+        return static_cast<double>(gust::cell_mean_square(amrex::Real(p), amrex::Real(q), amrex::Real(wa), amrex::Real(wb)));
+    };
+    EXPECT_EQ(square(3, 5, 1, 1), 16.0);
+    EXPECT_NEAR(square(3, 5, 1, 0), 3.0, 1e-6);
+    EXPECT_NEAR(square(3, 5, 0, 1), 25.0 / 3.0, 1e-6);
+    EXPECT_EQ(square(3, 5, 0, 0), 0.0);
+    EXPECT_EQ(gust::cell_mean_square(a, b, 1, 1), gust::open_face_mean(a, b, 1, 1) * gust::open_face_mean(a, b, 1, 1));
+    double sum = 0;
+    for (int n = 0; n < 1000; ++n) { const double x = (n + 0.5) / 1000; sum += (5 * x) * (5 * x) / 1000; }
+    EXPECT_NEAR(square(3, 5, 0, 1), sum, 1e-5);
+    // The share of a cell's kinetic energy that moves towards a wall (buildings.wall_k_bound = impinging):
+    // n^2 / (n^2 + t1^2 + t2^2 + umin^2) for n > 0, umin = 1 mm/s; none for a flow that leaves the wall, runs
+    // along it or is at rest, and a share that fades in a cell near rest.
+    const auto share = [] (double n, double t1, double t2) {
+        return static_cast<double>(gust::towards_wall_share(amrex::Real(n), amrex::Real(t1), amrex::Real(t2)));
+    };
+    EXPECT_NEAR(share(3, 0, 0), 9.0 / (9.0 + 1e-6), 1e-6);
+    EXPECT_LT(share(3, 0, 0), 1.0 + 1e-7);
+    EXPECT_NEAR(share(1e-3, 0, 0), 0.5, 1e-6);
+    EXPECT_NEAR(share(1e-5, 0, 0), 1e-4 / 1.0001, 1e-8);
+    EXPECT_EQ(share(-3, 0, 0), 0.0);
+    EXPECT_EQ(share(0, 0, 0), 0.0);
+    EXPECT_EQ(share(0, 1, 1), 0.0);
+    EXPECT_NEAR(share(3, 4, 0), 9.0 / 25.0, 1e-6);
+    EXPECT_NEAR(share(1, 2, 2), 1.0 / 9.0, 1e-6);
+    EXPECT_NEAR(share(1, -2, 2), 1.0 / 9.0, 1e-6);
+    EXPECT_EQ(share(-1, 2, 2), 0.0);
 
     // A block 25 m high on 10 m cells: its four roof cells are half solid, 2.5 m from the roof; the side cells
     // are 5 m from their sides. With z0 = 0.3 m the floor is 3 m: the roof cells are below it, the sides not.

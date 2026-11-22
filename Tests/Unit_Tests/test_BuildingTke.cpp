@@ -52,6 +52,8 @@ namespace {
 using gust::ptest::PCase;
 
 constexpr double rtol = std::is_same_v<amrex::Real, double> ? 1e-12 : 2e-4;
+//! gust::kBuildingMinSpeed squared: the share of buildings.wall_k_bound = impinging fades below it.
+constexpr double kUmin2 = 1e-6;
 constexpr double kKappa = 0.41, kCmu0 = 0.5562, kFloor = 1e-6;
 
 std::string write_text (const std::string& name, const std::function<void(std::ostream&)>& fill)
@@ -910,6 +912,284 @@ TEST (BuildingTke, SeveralWallsGiveTheLargestUstarAndTheNearestDistance)
     EXPECT_NEAR(value_at(tke.distance(), 2, 5, 1), 2.5, 100 * rtol);
 }
 
+// buildings.wall_k_bound = impinging: the wall value is the larger of the law's and, for each of the cell's
+// walls, the k of the wall's reference cell (the next cell out along the wall's normal) times the share of
+// that cell's kinetic energy that moves towards the wall; in every form of the row and on every box layout.
+// The implicit rows are those of none (the reference k is the iterate's).
+TEST (BuildingTke, ImpingingBoundTakesTheKTheFlowCarriesOntoTheWall)
+{
+    for (const int mgs : {8, 4, 3}) {
+        gust::BuildingsOptions o = tile_options("block25.txt", [] (int i, int j) { return (i == 2 && j == 2) ? 25 : 0; });
+        Set none(mgs, o);
+        o.wall_k_bound = gust::BuildingWallKBound::impinging;
+        o.wall_k_bound_name = "impinging";
+        Set s(mgs, o);
+        amrex::MultiFab u(s.c.mesh.ax.boxArray(), s.c.dm, 1, 1), v(s.c.mesh.ay.boxArray(), s.c.dm, 1, 1), w(s.c.mesh.az.boxArray(), s.c.dm, 1, 1);
+        // The other case has its own distribution of the boxes over the ranks.
+        amrex::MultiFab un(none.c.mesh.ax.boxArray(), none.c.dm, 1, 1), vn(none.c.mesh.ay.boxArray(), none.c.dm, 1, 1),
+            wn(none.c.mesh.az.boxArray(), none.c.dm, 1, 1);
+        const auto set_wind = [&] (double U, double V, double W) {
+            u.setVal(amrex::Real(U));
+            v.setVal(amrex::Real(V));
+            w.setVal(amrex::Real(W));
+            s.law.update(u, v, w);
+            un.setVal(amrex::Real(U));
+            vn.setVal(amrex::Real(V));
+            wn.setVal(amrex::Real(W));
+            none.law.update(un, vn, wn);
+        };
+        amrex::MultiFab k(s.c.ba, s.c.dm, 1, 1), Rk(s.c.ba, s.c.dm, 1, 0);
+        // k differs from cell to cell and along every direction, so a row reading the wrong neighbour fails.
+        const auto fill_k = [&] (const std::function<double(int, int, int)>& kval) {
+            for (amrex::MFIter mfi(k, false); mfi.isValid(); ++mfi) {
+                const auto a4 = k.array(mfi);
+                amrex::LoopOnCpu(mfi.fabbox(), [&] (int i, int j, int kk) { a4(i, j, kk) = static_cast<amrex::Real>(kval(i, j, kk)); });
+            }
+        };
+        ASSERT_EQ(static_cast<int>(value_at(s.b.wall(), 2, 3, 1, gust::kWallMask)), gust::kWallXhi);
+        ASSERT_EQ(static_cast<int>(value_at(s.b.wall(), 5, 3, 1, gust::kWallMask)), gust::kWallXlo);
+        ASSERT_EQ(static_cast<int>(value_at(s.b.wall(), 3, 5, 1, gust::kWallMask)), gust::kWallYlo);
+        ASSERT_EQ(static_cast<int>(value_at(s.b.wall(), 3, 2, 1, gust::kWallMask)), gust::kWallYhi);
+        ASSERT_EQ(static_cast<int>(value_at(s.b.wall(), 3, 3, 2, gust::kWallMask)), gust::kWallRoof);
+
+        // The flow along x alone: all of the upstream cell's kinetic energy moves onto the windward side.
+        const double U = 3;
+        set_wind(U, 0, 0);
+        const double ss = kKappa * U / std::log(50.0), ks = ss * ss / (kCmu0 * kCmu0), as = ss / 5.0, an = 0.01 / 5.0;
+        const double so = kKappa * U / std::log(25.0), sr = kKappa * U / std::log(100.0);
+        const double us2 = 0.5 * so * so + 0.5 * sr * sr, kw = us2 / (kCmu0 * kCmu0), a = std::sqrt(us2) / 2.5;
+        // The share of a flow normal to the wall: 1 but for the 1 mm/s that fades it near rest.
+        const double s1 = U * U / (U * U + kUmin2);
+        EXPECT_NEAR(value_at(s.law.rate(), 2, 3, 1, gust::kBuildingTowardsX), s1, 100 * rtol);
+        EXPECT_EQ(value_at(s.law.rate(), 5, 3, 1, gust::kBuildingTowardsX), 0.0) << "the lee side: the flow leaves it";
+        EXPECT_EQ(value_at(s.law.rate(), 3, 5, 1, gust::kBuildingTowardsY), 0.0) << "a side along the flow";
+        EXPECT_EQ(value_at(s.law.rate(), 3, 3, 2, gust::kBuildingTowardsZ), 0.0) << "the roof";
+        EXPECT_EQ(value_at(none.law.rate(), 2, 3, 1, gust::kBuildingTowardsX), 0.0) << "none: the components are not filled";
+        for (const double sign : {1.0, -1.0}) {
+            const auto kval = [sign] (int i, int j, int kk) { return 2.0 + sign * (0.01 * i + 0.02 * j + 0.03 * kk); };
+            fill_k(kval);
+            ASSERT_GT(kval(3, 6, 1), ks);
+            Rk.setVal(9);
+            s.tke.apply_rows(k, Rk, gust::BuildingKRow::replace);
+            // The windward side (u* = 0, the law's value the floor) reads the cell upstream of it; the lee
+            // side keeps the floor.
+            EXPECT_NEAR(value_at(Rk, 2, 3, 1), an * (kval(2, 3, 1) - s1 * kval(1, 3, 1)), 1e3 * rtol * an) << "boxes " << mgs;
+            EXPECT_NEAR(value_at(Rk, 5, 3, 1), an * (kval(5, 3, 1) - kFloor), 1e3 * rtol * an) << "boxes " << mgs;
+            // The sides along the flow and the roof keep the law's value, whatever the k beside them.
+            EXPECT_NEAR(value_at(Rk, 3, 5, 1), as * (kval(3, 5, 1) - ks), 1e3 * rtol * as) << "boxes " << mgs;
+            EXPECT_NEAR(value_at(Rk, 3, 2, 1), as * (kval(3, 2, 1) - ks), 1e3 * rtol * as) << "boxes " << mgs;
+            EXPECT_NEAR(value_at(Rk, 3, 3, 2), a * (kval(3, 3, 2) - kw), 1e3 * rtol * a) << "boxes " << mgs;
+            EXPECT_NEAR(value_at(Rk, 3, 3, 1), kval(3, 3, 1) - kFloor, 100 * rtol) << "a solid cell: k - floor";
+            EXPECT_EQ(value_at(Rk, 3, 3, 4), 9.0) << "no wall cell: its equation stays";
+            // The other forms of the row.
+            Rk.setVal(9);
+            s.tke.apply_rows(k, Rk, gust::BuildingKRow::ground_row);
+            EXPECT_NEAR(value_at(Rk, 2, 3, 0), 9 + an * (kval(2, 3, 0) - s1 * kval(1, 3, 0)), 1e3 * rtol * 9);
+            EXPECT_NEAR(value_at(Rk, 2, 3, 1), an * (kval(2, 3, 1) - s1 * kval(1, 3, 1)), 1e3 * rtol * an);
+            Rk.setVal(9);
+            s.tke.apply_rows(k, Rk, gust::BuildingKRow::source);
+            EXPECT_NEAR(value_at(Rk, 2, 3, 1), 9 + an * (kval(2, 3, 1) - s1 * kval(1, 3, 1)), 1e3 * rtol * 9);
+            // The third layer, where the block's top at 25 m leaves half the face blocked.
+            EXPECT_NEAR(value_at(Rk, 2, 3, 2), 9 + 0.5 * an * (kval(2, 3, 2) - s1 * kval(1, 3, 2)), 1e3 * rtol * 9);
+        }
+        // A reference cell's k below the floor: the floor is the lowest wall value.
+        k.setVal(amrex::Real(0.1 * kFloor));
+        s.tke.apply_rows(k, Rk, gust::BuildingKRow::replace);
+        EXPECT_NEAR(value_at(Rk, 2, 3, 1), an * (0.1 * kFloor - kFloor), 1e3 * rtol * an * kFloor);
+
+        // An oblique flow: each wall takes its share n^2 / |u|^2 of the reference cell's k, the walls the flow
+        // leaves none. k is large, so every share of it is above the law's value.
+        const auto big = [] (int i, int j, int kk) { return 20.0 + 0.1 * i + 0.2 * j + 0.3 * kk; };
+        fill_k(big);
+        const auto row = [&] (int i, int j, int kk, double bound) {
+            const double u2 = value_at(s.law.rate(), i, j, kk, gust::kBuildingUstar2), d = value_at(s.tke.distance(), i, j, kk);
+            const double law = std::max(u2 / (kCmu0 * kCmu0), kFloor);
+            EXPECT_TRUE(bound == 0 || bound > 2 * law) << "the bound decides";
+            return std::max(std::sqrt(u2), 0.01) / d * (big(i, j, kk) - std::max(law, bound));
+        };
+        for (const double sgn : {1.0, -1.0}) {
+            // sgn = 1: towards the sides at low x and at high y (v < 0) and the roof (w < 0); -1: the others.
+            set_wind(sgn * 3, -sgn * 2, -sgn * 1);
+            const double e = 14.0 + kUmin2;
+            Rk.setVal(9);
+            s.tke.apply_rows(k, Rk, gust::BuildingKRow::replace);
+            const double tol = 1e4 * rtol;
+            EXPECT_NEAR(value_at(s.law.rate(), 2, 3, 1, gust::kBuildingTowardsX), sgn > 0 ? 9 / e : 0.0, 100 * rtol);
+            EXPECT_NEAR(value_at(s.law.rate(), 5, 3, 1, gust::kBuildingTowardsX), sgn > 0 ? 0.0 : 9 / e, 100 * rtol);
+            EXPECT_NEAR(value_at(s.law.rate(), 3, 5, 1, gust::kBuildingTowardsY), sgn > 0 ? 4 / e : 0.0, 100 * rtol);
+            EXPECT_NEAR(value_at(s.law.rate(), 3, 2, 1, gust::kBuildingTowardsY), sgn > 0 ? 0.0 : 4 / e, 100 * rtol);
+            EXPECT_NEAR(value_at(s.law.rate(), 3, 3, 2, gust::kBuildingTowardsZ), sgn > 0 ? 1 / e : 0.0, 100 * rtol);
+            EXPECT_NEAR(value_at(Rk, 2, 3, 1), row(2, 3, 1, sgn > 0 ? 9 / e * big(1, 3, 1) : 0.0), tol) << "boxes " << mgs;
+            EXPECT_NEAR(value_at(Rk, 5, 3, 1), row(5, 3, 1, sgn > 0 ? 0.0 : 9 / e * big(6, 3, 1)), tol) << "boxes " << mgs;
+            EXPECT_NEAR(value_at(Rk, 3, 5, 1), row(3, 5, 1, sgn > 0 ? 4 / e * big(3, 6, 1) : 0.0), tol) << "boxes " << mgs;
+            EXPECT_NEAR(value_at(Rk, 3, 2, 1), row(3, 2, 1, sgn > 0 ? 0.0 : 4 / e * big(3, 1, 1)), tol) << "boxes " << mgs;
+            // The roof's cell is half solid: its row has the whole face blocked.
+            EXPECT_NEAR(value_at(Rk, 3, 3, 2), row(3, 3, 2, sgn > 0 ? 1 / e * big(3, 3, 3) : 0.0), tol) << "boxes " << mgs;
+        }
+
+        // Everything but the shares in the law's rates is that of none, and so are the implicit rows.
+        amrex::MultiFab dr(s.c.ba, s.c.dm, gust::kNumBuildingRates, 0);
+        dr.ParallelCopy(none.law.rate(), 0, 0, gust::kNumBuildingRates);
+        amrex::MultiFab::Subtract(dr, s.law.rate(), 0, 0, gust::kNumBuildingRates, 0);
+        EXPECT_EQ(dr.norminf(0, gust::kBuildingTowardsX, amrex::IntVect(0)), 0.0);
+        amrex::MultiFab A(s.c.ba, s.c.dm, gust::n_implicit_coefs, 0), A0(none.c.ba, none.c.dm, gust::n_implicit_coefs, 0);
+        A.setVal(2);
+        A0.setVal(2);
+        s.tke.add_to_implicit(s.open(), A, gust::BuildingKRow::ground_row);
+        none.tke.add_to_implicit(none.open(), A0, gust::BuildingKRow::ground_row);
+        amrex::MultiFab D(s.c.ba, s.c.dm, gust::n_implicit_coefs, 0);
+        D.ParallelCopy(A0, 0, 0, gust::n_implicit_coefs);
+        amrex::MultiFab::Subtract(D, A, 0, 0, gust::n_implicit_coefs, 0);
+        EXPECT_EQ(D.norminf(0, gust::n_implicit_coefs, amrex::IntVect(0)), 0.0);
+
+        // A wind that differs from cell to cell, towards every wall of the block: each share is that of the
+        // wall's reference cell, from the means of its faces, not of the wall cell or another neighbour.
+        const auto uf = [] (int i, int j, int kk) { return (3.5 - i) + 0.01 * j + 0.02 * kk; };
+        const auto vf = [] (int i, int j, int kk) { return 0.7 * (3.5 - j) + 0.03 * i + 0.01 * kk; };
+        const auto wf = [] (int i, int j, int kk) { return -0.2 * kk - 0.01 * i + 0.02 * j; };
+        const auto fill = [] (amrex::MultiFab& f, const std::function<double(int, int, int)>& val) {
+            for (amrex::MFIter mfi(f, false); mfi.isValid(); ++mfi) {
+                const auto a4 = f.array(mfi);
+                amrex::LoopOnCpu(mfi.fabbox(), [&] (int i, int j, int kk) { a4(i, j, kk) = static_cast<amrex::Real>(val(i, j, kk)); });
+            }
+        };
+        fill(u, uf);
+        fill(v, vf);
+        fill(w, wf);
+        s.law.update(u, v, w);
+        const auto uc = [&] (int i, int j, int kk) { return 0.5 * (uf(i, j, kk) + uf(i + 1, j, kk)); };
+        const auto vc = [&] (int i, int j, int kk) { return 0.5 * (vf(i, j, kk) + vf(i, j + 1, kk)); };
+        const auto wc = [&] (int i, int j, int kk) { return 0.5 * (wf(i, j, kk) + wf(i, j, kk + 1)); };
+        const auto share = [&] (double n, int i, int j, int kk) {
+            const double e = uc(i, j, kk) * uc(i, j, kk) + vc(i, j, kk) * vc(i, j, kk) + wc(i, j, kk) * wc(i, j, kk) + kUmin2;
+            EXPECT_GT(n, 0.0);
+            return n * n / e;
+        };
+        const double stol = 100 * rtol;
+        EXPECT_NEAR(value_at(s.law.rate(), 2, 3, 1, gust::kBuildingTowardsX), share(uc(1, 3, 1), 1, 3, 1), stol) << "boxes " << mgs;
+        EXPECT_NEAR(value_at(s.law.rate(), 5, 3, 1, gust::kBuildingTowardsX), share(-uc(6, 3, 1), 6, 3, 1), stol) << "boxes " << mgs;
+        EXPECT_NEAR(value_at(s.law.rate(), 3, 5, 1, gust::kBuildingTowardsY), share(-vc(3, 6, 1), 3, 6, 1), stol) << "boxes " << mgs;
+        EXPECT_NEAR(value_at(s.law.rate(), 3, 2, 1, gust::kBuildingTowardsY), share(vc(3, 1, 1), 3, 1, 1), stol) << "boxes " << mgs;
+        EXPECT_NEAR(value_at(s.law.rate(), 3, 3, 2, gust::kBuildingTowardsZ), share(-wc(3, 3, 3), 3, 3, 3), stol) << "boxes " << mgs;
+        // The shares of neighbouring cells differ, so one read from the wrong cell is seen.
+        EXPECT_GT(std::abs(share(-wc(3, 3, 3), 3, 3, 3) - wc(3, 3, 2) * wc(3, 3, 2) / (uc(3, 3, 2) * uc(3, 3, 2) + vc(3, 3, 2) * vc(3, 3, 2) + wc(3, 3, 2) * wc(3, 3, 2))), 1e-3);
+    }
+    // An edge cell with a roof below and a side at low x: the larger of the two walls' shares of k.
+    gust::BuildingsOptions o = tile_options("ell.txt", [] (int i, int j) {
+        if ((i == 2 && j == 2) || (i == 1 && j == 2) || (i == 2 && j == 1)) { return 45; }
+        return (i == 3 && j == 2) ? 20 : 0;
+    });
+    o.wall_k_bound = gust::BuildingWallKBound::impinging;
+    Set s(3, o);
+    ASSERT_EQ(static_cast<int>(value_at(s.b.wall(), 5, 3, 2, gust::kWallMask)), gust::kWallRoof | gust::kWallXlo);
+    amrex::MultiFab u(s.c.mesh.ax.boxArray(), s.c.dm, 1, 1), v(s.c.mesh.ay.boxArray(), s.c.dm, 1, 1), w(s.c.mesh.az.boxArray(), s.c.dm, 1, 1);
+    amrex::MultiFab k(s.c.ba, s.c.dm, 1, 1), Rk(s.c.ba, s.c.dm, 1, 0);
+    const auto kval = [] (int i, int j, int kk) { return 20.0 + 0.3 * i + 0.02 * j + 0.1 * kk; };
+    for (amrex::MFIter mfi(k, false); mfi.isValid(); ++mfi) {
+        const auto a4 = k.array(mfi);
+        amrex::LoopOnCpu(mfi.fabbox(), [&] (int i, int j, int kk) { a4(i, j, kk) = static_cast<amrex::Real>(kval(i, j, kk)); });
+    }
+    // Towards the side (u < 0) and the roof (w < 0): first the side has the larger share, then the roof.
+    for (const auto& uw : {std::array<double, 2>{-3, -1}, std::array<double, 2>{-1, -3}}) {
+        u.setVal(amrex::Real(uw[0]));
+        v.setVal(0);
+        w.setVal(amrex::Real(uw[1]));
+        s.law.update(u, v, w);
+        Rk.setVal(9);
+        s.tke.apply_rows(k, Rk, gust::BuildingKRow::replace);
+        const double e = 10.0 + kUmin2, side = uw[0] * uw[0] / e * kval(6, 3, 2), roof = uw[1] * uw[1] / e * kval(5, 3, 3);
+        const double u2 = value_at(s.law.rate(), 5, 3, 2, gust::kBuildingUstar2), d = value_at(s.tke.distance(), 5, 3, 2);
+        ASSERT_GT(std::min(side, roof), u2 / (kCmu0 * kCmu0));
+        EXPECT_NEAR(value_at(Rk, 5, 3, 2), std::max(std::sqrt(u2), 0.01) / d * (kval(5, 3, 2) - std::max(side, roof)), 1e4 * rtol);
+        EXPECT_GT(std::abs(side - roof), 1.0);
+    }
+}
+
+// buildings.wall_k_speed = cell_mean: the wall value of k reads the law at the cell's root-mean-square speed.
+// In the inner corner of an L (sides at high x and at high y) the component along x has a fixed face on
+// the side at high x: its mean square is a third of the open face's square. Cells with no such face keep
+// the law's bits, and so does the stress in every cell.
+TEST (BuildingTke, CellMeanSpeedInACornerCellIsAThirdOfTheOpenFaces)
+{
+    PCase c;
+    c.in.mesh.n_cell = amrex::IntVect(8, 16, 24);
+    c.in.mesh.prob_hi = {80, 80, 240};
+    c.in.mesh.is_periodic = {0, 0, 0};
+    c.in.mesh.max_grid_size = {4, 4};
+    c.in.terrain.smoothing = 0;
+    c.make([] (double, double) { return 0.0; });
+    gust::BuildingsOptions o = tile_options("ell2.txt", [] (int i, int j) {
+        return ((i == 2 && j == 2) || (i == 1 && j == 2) || (i == 2 && j == 1)) ? 45 : 0;
+    });
+    gust::Buildings b;
+    b.build(o, c.geom, c.z, c.ba, c.dm);
+    gust::BuildingForcing law, mean;
+    law.build(b, o, c.geom, c.mesh.detJ);
+    EXPECT_EQ(law.wall_k_component(), gust::kBuildingUstar2);
+    o.wall_k_speed = gust::BuildingWallKSpeed::cell_mean;
+    o.wall_k_speed_name = "cell_mean";
+    mean.build(b, o, c.geom, c.mesh.detJ);
+    ASSERT_EQ(mean.wall_k_component(), gust::kBuildingUstar2K);
+    // The inner corner of the L: x 20..30 m (cell 2), y 25..30 m (cell 5); cells of 10 by 5 m.
+    ASSERT_EQ(static_cast<int>(value_at(b.wall(), 2, 5, 1, gust::kWallMask)), gust::kWallXhi | gust::kWallYhi);
+    amrex::MultiFab u(c.mesh.ax.boxArray(), c.dm, 1, 1), v(c.mesh.ay.boxArray(), c.dm, 1, 1), w(c.mesh.az.boxArray(), c.dm, 1, 1);
+    const double z0 = 0.1;
+    // u* of the side at high y (2.5 m away, sees u and w) and of the side at high x (5 m away, sees v and w).
+    const auto us2_y = [&] (double sp) { const double us = kKappa * sp / std::log(2.5 / z0); return us * us; };
+    const auto us2_x = [&] (double sp) { const double us = kKappa * sp / std::log(5.0 / z0); return us * us; };
+    for (const auto& uvw : {std::array<double, 3>{3, 0, 0}, std::array<double, 3>{3, 2, 1}, std::array<double, 3>{0.5, 4, 1}}) {
+        u.setVal(amrex::Real(uvw[0]));
+        v.setVal(amrex::Real(uvw[1]));
+        w.setVal(amrex::Real(uvw[2]));
+        law.update(u, v, w);
+        mean.update(u, v, w);
+        const double open = std::max(us2_y(std::hypot(uvw[0], uvw[2])), us2_x(std::hypot(uvw[1], uvw[2])));
+        const double third = std::max(us2_y(std::sqrt(uvw[0] * uvw[0] / 3 + uvw[2] * uvw[2])), us2_x(std::sqrt(uvw[1] * uvw[1] / 3 + uvw[2] * uvw[2])));
+        EXPECT_NEAR(value_at(law.rate(), 2, 5, 1, gust::kBuildingUstar2), open, 100 * rtol * open);
+        EXPECT_NEAR(value_at(mean.rate(), 2, 5, 1, gust::kBuildingUstar2K), third, 100 * rtol * third);
+        if (uvw[2] == 0) { EXPECT_NEAR(value_at(mean.rate(), 2, 5, 1, gust::kBuildingUstar2K), open / 3, 100 * rtol * open); }
+        // Every other component of the rates, the stress among them, keeps its bits; and so does the u*^2 for
+        // k in the cells with no fixed face among the components along their walls.
+        amrex::MultiFab d(c.ba, c.dm, gust::kNumBuildingRates, 0);
+        amrex::MultiFab::Copy(d, mean.rate(), 0, 0, gust::kNumBuildingRates, 0);
+        amrex::MultiFab::Subtract(d, law.rate(), 0, 0, gust::kNumBuildingRates, 0);
+        EXPECT_EQ(d.norminf(0, gust::kBuildingUstar2K, amrex::IntVect(0)), 0.0);
+        EXPECT_EQ(value_at(law.rate(), 2, 5, 1, gust::kBuildingUstar2K), 0.0) << "law: the component is not filled";
+        // Side cells away from the corner (the side at x = 50 m and the one at y = 50 m) and a roof cell.
+        for (const auto& p : {amrex::IntVect(5, 7, 1), amrex::IntVect(2, 10, 1), amrex::IntVect(2, 7, 4)}) {
+            const int mask = static_cast<int>(value_at(b.wall(), p[0], p[1], p[2], gust::kWallMask));
+            ASSERT_NE(mask, 0) << p;
+            // To round-off: the two kernels form the speed at different places, which a compiler may contract differently.
+            const double plain = value_at(law.rate(), p[0], p[1], p[2], gust::kBuildingUstar2);
+            EXPECT_NEAR(value_at(mean.rate(), p[0], p[1], p[2], gust::kBuildingUstar2K), plain, 100 * rtol * plain) << p;
+        }
+    }
+    // The rows of k read that component.
+    gust::BuildingTke tke;
+    tke.build(b, mean, o, c.geom, c.z, amrex::Real(kFloor), amrex::Real(kCmu0));
+    u.setVal(3);
+    v.setVal(0);
+    w.setVal(0);
+    mean.update(u, v, w);
+    amrex::MultiFab k(c.ba, c.dm, 1, 1), Rk(c.ba, c.dm, 1, 0);
+    k.setVal(amrex::Real(0.4));
+    Rk.setVal(9);
+    tke.apply_rows(k, Rk, gust::BuildingKRow::replace);
+    const double us2 = us2_y(3.0) / 3, kw = us2 / (kCmu0 * kCmu0);
+    EXPECT_NEAR(value_at(Rk, 2, 5, 1), std::sqrt(us2) / 2.5 * (0.4 - kw), 1e3 * rtol);
+    amrex::MultiFab A(c.ba, c.dm, gust::n_implicit_coefs, 0);
+    A.setVal(2);
+    amrex::MultiFab ox(b.beta_face(0).boxArray(), c.dm, 1, 1), oy(b.beta_face(1).boxArray(), c.dm, 1, 1), oz(b.beta_face(2).boxArray(), c.dm, 1, 1);
+    amrex::MultiFab* op[3] = {&ox, &oy, &oz};
+    for (int dd = 0; dd < 3; ++dd) {
+        op[dd]->setVal(1);
+        amrex::MultiFab::LinComb(*op[dd], 1, *op[dd], 0, -1, b.beta_face(dd), 0, 0, 1, 0);
+        op[dd]->FillBoundary(c.geom.periodicity());
+    }
+    tke.add_to_implicit({&ox, &oy, &oz}, A, gust::BuildingKRow::replace);
+    EXPECT_NEAR(value_at(A, 2, 5, 1, gust::coef_P), std::sqrt(us2) / 2.5, 1e3 * rtol);
+}
+
 // The options: on by default with the law on every wall, off with the other forms; on needs that law.
 TEST (BuildingTke, OptionDefaultsAndRefusals)
 {
@@ -939,6 +1219,52 @@ TEST (BuildingTke, OptionDefaultsAndRefusals)
     const auto err2 = gust::check_buildings_options(o);
     ASSERT_EQ(err2.size(), 1U);
     EXPECT_NE(err2[0].find("buildings.wall_tke must be on or off (got maybe)"), std::string::npos);
+
+    // The wall value's two options: off by default and so absent from the hash; each adds its line.
+    gust::BuildingsOptions p = tile_options("block45.txt", [] (int i, int j) { return (i == 2 && j == 2) ? 45 : 0; });
+    EXPECT_EQ(p.wall_k_bound, gust::BuildingWallKBound::none);
+    EXPECT_EQ(p.wall_k_speed, gust::BuildingWallKSpeed::law);
+    const std::string base = gust::Buildings::hash_inputs(p);
+    p.wall_k_bound = gust::BuildingWallKBound::impinging;
+    const std::string bound = gust::Buildings::hash_inputs(p);
+    p.wall_k_speed = gust::BuildingWallKSpeed::cell_mean;
+    const std::string both = gust::Buildings::hash_inputs(p);
+    p.wall_k_bound = gust::BuildingWallKBound::none;
+    const std::string speed = gust::Buildings::hash_inputs(p);
+    EXPECT_NE(bound, base);
+    EXPECT_NE(speed, base);
+    EXPECT_NE(speed, bound);
+    EXPECT_NE(both, bound);
+    EXPECT_NE(both, speed);
+    EXPECT_TRUE(gust::check_buildings_options(p).empty());
+    const auto one_error = [] (const gust::BuildingsOptions& q, const std::string& text) {
+        const auto e = gust::check_buildings_options(q);
+        EXPECT_EQ(e.size(), 1U) << text;
+        EXPECT_TRUE(!e.empty() && e[0].find(text) != std::string::npos) << text << (e.empty() ? std::string() : ": " + e[0]);
+    };
+    // cell_mean reads the fixed faces that all_faces already averages in.
+    p.wall_speed = gust::BuildingWallSpeed::all_faces;
+    one_error(p, "buildings.wall_k_speed = cell_mean needs buildings.wall_speed = open_faces");
+    p.wall_speed = gust::BuildingWallSpeed::open_faces;
+    p.wall_k_speed_name = "rms";
+    one_error(p, "buildings.wall_k_speed must be law or cell_mean (got rms)");
+    p.wall_k_speed_name = "cell_mean";
+    p.wall_k_bound_name = "upwind";
+    one_error(p, "buildings.wall_k_bound must be none or impinging (got upwind)");
+    // Given without the closure's terms: no wall value to change.
+    gust::BuildingsOptions q = tile_options("block45.txt", [] (int i, int j) { return (i == 2 && j == 2) ? 45 : 0; });
+    q.wall_tke = false;
+    q.wall_tke_name = "off";
+    const std::string off_hash = gust::Buildings::hash_inputs(q);
+    q.given = {"wall_k_bound"};
+    q.wall_k_bound = gust::BuildingWallKBound::impinging;
+    one_error(q, "buildings.wall_k_bound has no effect without buildings.wall_tke = on");
+    EXPECT_EQ(gust::Buildings::hash_inputs(q), off_hash);
+    q.given = {"wall_k_speed"};
+    q.wall_k_bound = gust::BuildingWallKBound::none;
+    q.wall_k_speed = gust::BuildingWallKSpeed::cell_mean;
+    one_error(q, "buildings.wall_k_speed has no effect without buildings.wall_tke = on");
+    EXPECT_EQ(gust::Buildings::hash_inputs(q), off_hash);
 }
 
 } // namespace

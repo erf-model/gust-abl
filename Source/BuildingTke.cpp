@@ -186,6 +186,7 @@ void BuildingTke::build (const Buildings& b, const BuildingForcing& law, const B
     m_floor = tke_floor;
     m_cmu0 = Cmu0;
     m_z0b = static_cast<amrex::Real>(opt.z0);
+    m_impinging = law.wall_k_impinging();
     const amrex::BoxArray& ba = b.beta().boxArray();
     const amrex::DistributionMapping& dm = b.beta().DistributionMap();
     const amrex::Box& dom = geom.Domain();
@@ -583,7 +584,9 @@ void split_at_ground (const amrex::Box& bx, int klo, amrex::Box& slab, amrex::Bo
 struct RowData
 {
     amrex::Array4<const amrex::Real> beta, wl, fx, fy, fz, us2, dw;
+    amrex::Array4<const amrex::Real> to;   //!< the walls' shares of the flow towards them (kBuildingTowardsX on)
     amrex::Real floor, inv_cmu2, us_min;
+    int klo, khi;   //!< the domain's lowest and highest layers
     //! 0: the cell has no row here; 1: solid; 2: a wall cell.
     AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
     int kind (int i, int j, int k) const noexcept
@@ -609,43 +612,90 @@ struct RowData
     amrex::Real rate (int i, int j, int k) const noexcept { return amrex::max(std::sqrt(us2(i, j, k)), us_min) / dw(i, j, k); }
     AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
     amrex::Real k_wall (int i, int j, int k) const noexcept { return amrex::max(us2(i, j, k) * inv_cmu2, floor); }
+    //! The largest, over the cell's walls, of the k of the wall's reference cell (the next cell out along
+    //! its normal) times the share of that cell's kinetic energy that moves towards the wall (0 where the
+    //! reference cell is above or below the domain's layers; beyond a lateral face it is a ghost cell).
+    AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
+    amrex::Real k_impinging (const amrex::Array4<const amrex::Real>& t, int i, int j, int k) const noexcept
+    {
+        const int mask = static_cast<int>(wl(i, j, k, kWallMask));
+        amrex::Real kr = 0;
+        if ((mask & kWallRoof) != 0 && k < khi) { kr = amrex::max(kr, to(i, j, k, 2) * t(i, j, k + 1)); }
+        if ((mask & kWallUnder) != 0 && k > klo) { kr = amrex::max(kr, to(i, j, k, 2) * t(i, j, k - 1)); }
+        if ((mask & kWallXlo) != 0) { kr = amrex::max(kr, to(i, j, k, 0) * t(i + 1, j, k)); }
+        if ((mask & kWallXhi) != 0) { kr = amrex::max(kr, to(i, j, k, 0) * t(i - 1, j, k)); }
+        if ((mask & kWallYlo) != 0) { kr = amrex::max(kr, to(i, j, k, 1) * t(i, j + 1, k)); }
+        if ((mask & kWallYhi) != 0) { kr = amrex::max(kr, to(i, j, k, 1) * t(i, j - 1, k)); }
+        return kr;
+    }
 };
+
+//! The wall value of k: the law's (buildings.wall_k_bound = none), or the larger of it and the k the
+//! flow carries onto the wall from the reference cells (impinging). Each has its own kernels (wall_k_rows).
+struct LawWallK {
+    AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
+    static amrex::Real value (const RowData& c, const amrex::Array4<const amrex::Real>&, int i, int j, int k) noexcept { return c.k_wall(i, j, k); }
+};
+struct ImpingingWallK {
+    AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
+    static amrex::Real value (const RowData& c, const amrex::Array4<const amrex::Real>& t, int i, int j, int k) noexcept
+    {
+        return amrex::max(c.k_wall(i, j, k), c.k_impinging(t, i, j, k));
+    }
+};
+
+//! The rows of R_k in the solid and wall cells of blend and add (BuildingTke::apply_rows), with the wall value KW.
+template <typename KW>
+void wall_k_rows (const RowData& c, const amrex::Array4<amrex::Real>& r, const amrex::Array4<const amrex::Real>& t,
+                  const amrex::Box& blend, const amrex::Box& add)
+{
+    // blend: the wall's row in the place of the cell's equation, by the blocked part f.
+    // add: the wall's row, times f, added to the row the cell has.
+    if (blend.ok()) {
+        amrex::ParallelFor(blend, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+        {
+            const int kind = c.kind(i, j, k);
+            if (kind == 1) { r(i, j, k) = t(i, j, k) - c.floor; }
+            if (kind != 2) { return; }
+            const amrex::Real f = c.blocked(i, j, k);
+            r(i, j, k) = (amrex::Real(1) - f) * r(i, j, k) + f * c.rate(i, j, k) * (t(i, j, k) - KW::value(c, t, i, j, k));
+        });
+    }
+    if (add.ok()) {
+        amrex::ParallelFor(add, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+        {
+            const int kind = c.kind(i, j, k);
+            if (kind == 1) { r(i, j, k) = t(i, j, k) - c.floor; }
+            if (kind != 2) { return; }
+            r(i, j, k) += c.blocked(i, j, k) * c.rate(i, j, k) * (t(i, j, k) - KW::value(c, t, i, j, k));
+        });
+    }
+}
 
 } // namespace
 
 void BuildingTke::apply_rows (const amrex::MultiFab& tke, amrex::MultiFab& Rk, BuildingKRow form) const
 {
-    const int klo = m_geom.Domain().smallEnd(2);
+    if (m_impinging && tke.nGrow() < 1) {
+        amrex::Abort("gust: BuildingTke::apply_rows: k needs a ghost layer (the walls' reference cells, buildings.wall_k_bound)");
+    }
+    const int klo = m_geom.Domain().smallEnd(2), khi = m_geom.Domain().bigEnd(2);
+    const int us2 = m_law->wall_k_component();
     for (amrex::MFIter mfi(Rk, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
         const auto r = Rk.array(mfi);
         const auto t = tke.const_array(mfi);
         const RowData c{m_b->beta().const_array(mfi), m_b->wall().const_array(mfi), m_b->beta_face(0).const_array(mfi),
                         m_b->beta_face(1).const_array(mfi), m_b->beta_face(2).const_array(mfi),
-                        m_law->rate().const_array(mfi, kBuildingUstar2), m_dist.const_array(mfi), m_floor,
-                        amrex::Real(1) / (m_cmu0 * m_cmu0), kBuildingKUstarMin};
-        // blend: the wall's row in the place of the cell's equation, by the blocked part f.
-        // add: the wall's row, times f, added to the row the cell has.
+                        m_law->rate().const_array(mfi, us2), m_dist.const_array(mfi),
+                        m_law->rate().const_array(mfi, kBuildingTowardsX), m_floor,
+                        amrex::Real(1) / (m_cmu0 * m_cmu0), kBuildingKUstarMin, klo, khi};
         amrex::Box blend = mfi.tilebox(), add;
         if (form == BuildingKRow::ground_row) { split_at_ground(mfi.tilebox(), klo, add, blend); }
         if (form == BuildingKRow::source) { add = mfi.tilebox(); blend = amrex::Box(); }
-        if (blend.ok()) {
-            amrex::ParallelFor(blend, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
-            {
-                const int kind = c.kind(i, j, k);
-                if (kind == 1) { r(i, j, k) = t(i, j, k) - c.floor; }
-                if (kind != 2) { return; }
-                const amrex::Real f = c.blocked(i, j, k);
-                r(i, j, k) = (amrex::Real(1) - f) * r(i, j, k) + f * c.rate(i, j, k) * (t(i, j, k) - c.k_wall(i, j, k));
-            });
-        }
-        if (add.ok()) {
-            amrex::ParallelFor(add, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
-            {
-                const int kind = c.kind(i, j, k);
-                if (kind == 1) { r(i, j, k) = t(i, j, k) - c.floor; }
-                if (kind != 2) { return; }
-                r(i, j, k) += c.blocked(i, j, k) * c.rate(i, j, k) * (t(i, j, k) - c.k_wall(i, j, k));
-            });
+        if (m_impinging) {
+            wall_k_rows<ImpingingWallK>(c, r, t, blend, add);
+        } else {
+            wall_k_rows<LawWallK>(c, r, t, blend, add);
         }
     }
 }
@@ -673,8 +723,9 @@ void BuildingTke::add_to_implicit (const amrex::Array<const amrex::MultiFab*, AM
         const auto a = A.array(mfi);
         const RowData c{m_b->beta().const_array(mfi), m_b->wall().const_array(mfi), m_b->beta_face(0).const_array(mfi),
                         m_b->beta_face(1).const_array(mfi), m_b->beta_face(2).const_array(mfi),
-                        m_law->rate().const_array(mfi, kBuildingUstar2), m_dist.const_array(mfi), m_floor,
-                        amrex::Real(1) / (m_cmu0 * m_cmu0), kBuildingKUstarMin};
+                        m_law->rate().const_array(mfi, m_law->wall_k_component()), m_dist.const_array(mfi),
+                        m_law->rate().const_array(mfi, kBuildingTowardsX), m_floor,
+                        amrex::Real(1) / (m_cmu0 * m_cmu0), kBuildingKUstarMin, klo, m_geom.Domain().bigEnd(2)};
         amrex::Box blend = mfi.tilebox(), add;
         if (form == BuildingKRow::ground_row) { split_at_ground(mfi.tilebox(), klo, add, blend); }
         if (form == BuildingKRow::source) { add = mfi.tilebox(); blend = amrex::Box(); }

@@ -335,6 +335,23 @@ gust_add_test(NAME abort_buildings_wall_inputs NP 1 LABELS "regression;smoke"
               COMMAND $<TARGET_FILE:gust> ${BUILDINGS_CASE}/inputs_buildings buildings.file=${BUILDINGS_CASE}/building_map.txt
                       buildings.z0=0 buildings.wall_form=foo buildings.wall_tke=maybe buildings.wall_speed=some
                       ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_buildings_wall_k_inputs NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT}
+                     "buildings\\.wall_k_bound must be none or impinging \\(got upwind\\)"
+                     "buildings\\.wall_k_speed must be law or cell_mean \\(got rms\\)" --
+              COMMAND $<TARGET_FILE:gust> ${BUILDINGS_CASE}/inputs_buildings buildings.file=${BUILDINGS_CASE}/building_map.txt
+                      buildings.wall_k_bound=upwind buildings.wall_k_speed=rms ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_buildings_wall_k_no_tke NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT}
+                     "buildings\\.wall_k_bound has no effect without buildings\\.wall_tke = on"
+                     "buildings\\.wall_k_speed has no effect without buildings\\.wall_tke = on" --
+              COMMAND $<TARGET_FILE:gust> ${BUILDINGS_CASE}/inputs_buildings buildings.file=${BUILDINGS_CASE}/building_map.txt
+                      buildings.wall_tke=off buildings.wall_k_bound=impinging buildings.wall_k_speed=cell_mean
+                      ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_buildings_wall_k_speed_all_faces NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT} "buildings\\.wall_k_speed = cell_mean needs buildings\\.wall_speed = open_faces" --
+              COMMAND $<TARGET_FILE:gust> ${BUILDINGS_CASE}/inputs_buildings buildings.file=${BUILDINGS_CASE}/building_map.txt
+                      buildings.wall_speed=all_faces buildings.wall_k_speed=cell_mean ${GUST_TEST_AMREX_FLAGS})
 gust_add_test(NAME abort_buildings_theta_inputs NP 1 LABELS "regression;smoke"
               PREFIX ${EXPECT_ABORT} "buildings\\.theta_mode must be none, ambient or fixed \\(got warm\\)"
                      "buildings\\.theta_surface = hot is not a number" --
@@ -419,7 +436,7 @@ gust_add_test(NAME abort_buildings_theta_form NP 1 LABELS "regression;smoke"
 # The defaults that follow buildings.wall_form, as the log gives them.
 foreach(form fraction_stress roof_stress drag)
     if(form STREQUAL "fraction_stress")
-        set(_want "buildings\\.wall_form = fraction_stress, buildings\\.wall_speed = open_faces, buildings\\.wall_tke = on, buildings\\.theta_mode = ambient")
+        set(_want "buildings\\.wall_form = fraction_stress, buildings\\.wall_speed = open_faces, buildings\\.wall_tke = on, buildings\\.wall_k_bound = none, buildings\\.wall_k_speed = law, buildings\\.theta_mode = ambient")
     elseif(form STREQUAL "roof_stress")
         set(_want "buildings\\.wall_form = roof_stress, buildings\\.wall_speed = all_faces, buildings\\.wall_tke = off, buildings\\.theta_mode = none")
     else()
@@ -575,7 +592,26 @@ gust_add_test(NAME building_cube_run NP 2 LABELS "regression;smoke" RUN_DIR ${BU
                       ${GUST_TEST_AMREX_FLAGS})
 gust_add_test(NAME building_cube_flow NP 1 LABELS "regression;smoke" RUN_DIR ${BUILDING_CUBE_DIR}
               FIXTURES_REQUIRED building_cube
-              COMMAND ${Python3_EXECUTABLE} ${BUILDING_CUBE_CASE}/check_cube.py --latest cube_plt --theta-solid 300)
+              COMMAND ${Python3_EXECUTABLE} ${BUILDING_CUBE_CASE}/check_cube.py --latest cube_plt --theta-solid 300
+                      --k-windward 0.0079)
+# The wall value of k no lower than the k the flow carries onto a wall (buildings.wall_k_bound = impinging): k in the
+# windward side's wall cell rises; the roof's and the sides' pinned values stay within the default's tolerances.
+set(BUILDING_CUBE_IMP_DIR ${CMAKE_CURRENT_BINARY_DIR}/run/building_cube_wall_k_impinging)
+add_test(NAME building_cube_wall_k_impinging_clean
+         COMMAND ${Python3_EXECUTABLE} -c
+                 "import shutil, os, sys; shutil.rmtree(sys.argv[1], ignore_errors=True); os.makedirs(sys.argv[1])"
+                 ${BUILDING_CUBE_IMP_DIR})
+set_tests_properties(building_cube_wall_k_impinging_clean PROPERTIES LABELS "regression;smoke"
+                     FIXTURES_SETUP building_cube_wall_k_impinging_clean)
+gust_add_test(NAME building_cube_wall_k_impinging_run NP 2 LABELS "regression;smoke" RUN_DIR ${BUILDING_CUBE_IMP_DIR}
+              FIXTURES_REQUIRED building_cube_wall_k_impinging_clean FIXTURES_SETUP building_cube_wall_k_impinging
+              PREFIX ${EXPECT_ABORT} --success --timeout 900 "buildings\\.wall_k_bound = impinging" "gust: steady after" --
+              COMMAND $<TARGET_FILE:gust> ${BUILDING_CUBE_CASE}/inputs_cube buildings.file=${BUILDING_CUBE_CASE}/cube.txt
+                      buildings.wall_k_bound=impinging ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME building_cube_wall_k_impinging_flow NP 1 LABELS "regression;smoke" RUN_DIR ${BUILDING_CUBE_IMP_DIR}
+              FIXTURES_REQUIRED building_cube_wall_k_impinging
+              COMMAND ${Python3_EXECUTABLE} ${BUILDING_CUBE_CASE}/check_cube.py --latest cube_plt --roof 2.804 --side 1.499
+                      --k-roof 0.412 --k-ground 0.0132 --k-windward 0.922)
 # The form before the sides had the wall law (buildings.wall_form = roof_stress): its pinned values.
 set(BUILDING_CUBE_ROOF_DIR ${CMAKE_CURRENT_BINARY_DIR}/run/building_cube_roof_stress)
 add_test(NAME building_cube_roof_stress_clean
@@ -810,10 +846,16 @@ gust_add_test(NAME abort_buildings_limiter_zone_no_cap NP 1 LABELS "regression;s
                       buildings.limiter_zone=2 ${GUST_TEST_AMREX_FLAGS})
 # --- A courtyard: corner and edge cells of the wall law (buildings.wall_speed) ---
 set(BUILDING_COURT_CASE ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Building_Courtyard)
-foreach(form open_faces all_faces)
+foreach(form open_faces all_faces cell_mean)
+    set(_keys buildings.wall_speed=${form})
     if(form STREQUAL "open_faces")
         set(_name building_courtyard)
         set(_pins --k-corner 0.0227 --k-top 0.633)
+    elseif(form STREQUAL "cell_mean")
+        # The wall value of k at the cell's root-mean-square speed (buildings.wall_k_speed), the stress as open_faces.
+        set(_name building_courtyard_k_cell_mean)
+        set(_pins --k-corner 0.0097 --k-top 0.454)
+        set(_keys buildings.wall_speed=open_faces buildings.wall_k_speed=cell_mean)
     else()
         # The form before the speed skipped fixed faces: its pinned values.
         set(_name building_courtyard_all_faces)
@@ -829,7 +871,7 @@ foreach(form open_faces all_faces)
                   FIXTURES_REQUIRED ${_name}_clean FIXTURES_SETUP ${_name}
                   PREFIX ${EXPECT_ABORT} --success --timeout 900 "gust: steady after" --
                   COMMAND $<TARGET_FILE:gust> ${BUILDING_COURT_CASE}/inputs_courtyard
-                          buildings.file=${BUILDING_COURT_CASE}/courtyard.txt buildings.wall_speed=${form}
+                          buildings.file=${BUILDING_COURT_CASE}/courtyard.txt ${_keys}
                           ${GUST_TEST_AMREX_FLAGS})
     gust_add_test(NAME ${_name}_flow NP 1 LABELS "regression;smoke" RUN_DIR ${_dir}
                   FIXTURES_REQUIRED ${_name}

@@ -201,7 +201,13 @@ class BuildingsChecker(Checker):
             self.no_effect("buildings.theta_surface", "without buildings.theta_mode = fixed")
         if tke != "on":
             self.no_effect("buildings.limiter_zone", "without buildings.wall_tke = on")
-        elif c.solve and c.positive("buildings.limiter_zone") and self.given("buildings.limiter_zone") \
+            for k in ("wall_k_bound", "wall_k_speed"):
+                self.no_effect("buildings." + k, "without buildings.wall_tke = on (no wall value of k)")
+        if tke == "on" and c.s("buildings.wall_k_speed") == "cell_mean" and c.s("buildings.wall_speed") == "all_faces":
+            self.error("buildings.wall_k_speed", "GUST stops: buildings.wall_k_speed = cell_mean needs "
+                                                 "buildings.wall_speed = open_faces.",
+                       "Remove buildings.wall_speed = all_faces, or use buildings.wall_k_speed = law.")
+        if tke == "on" and c.solve and c.positive("buildings.limiter_zone") and self.given("buildings.limiter_zone") \
                 and not (c.realizability and c.realizability > 0):
             self.no_effect("buildings.limiter_zone", "without turb.realizability > 0 (the zone lifts that limiter)")
         if self.given("buildings.force_file"):

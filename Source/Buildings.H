@@ -81,6 +81,14 @@ enum class BuildingWallForm { fraction_stress, roof_stress, drag };
 //! every face (BuildingForcing.H).
 enum class BuildingWallSpeed { open_faces, all_faces };
 
+//! buildings.wall_k_bound: the lower bound of a wall cell's wall value of k (BuildingTke.H): none (the
+//! law's value alone), or the k of the wall's reference cell, the next cell out along its normal, times the
+//! share of that cell's kinetic energy that moves towards the wall along its normal.
+enum class BuildingWallKBound { none, impinging };
+//! buildings.wall_k_speed: the speed the wall value of k reads: the wall law's (buildings.wall_speed), or
+//! the root mean square over the cell of a profile falling to 0 at a fixed face (BuildingForcing.H).
+enum class BuildingWallKSpeed { law, cell_mean };
+
 //! buildings.theta_mode: theta does not see the buildings, or their walls hold the reference
 //! profile's temperature or buildings.theta_surface (BuildingTheta.H).
 enum class BuildingThetaMode { none, ambient, fixed };
@@ -116,6 +124,12 @@ struct BuildingsOptions
     //! fraction_stress, off with the other forms (BuildingTke.H).
     std::string wall_tke_name;
     bool wall_tke{true};
+    //! buildings.wall_k_bound and buildings.wall_k_speed as given (empty: not given) and their values. Both
+    //! need buildings.wall_tke = on; cell_mean needs buildings.wall_speed = open_faces, whose fixed faces it reads.
+    std::string wall_k_bound_name;
+    BuildingWallKBound wall_k_bound{BuildingWallKBound::none};
+    std::string wall_k_speed_name;
+    BuildingWallKSpeed wall_k_speed{BuildingWallKSpeed::law};
     //! buildings.theta_mode as given (empty: not given) and its value: ambient by default with
     //! fraction_stress, none with the other forms (BuildingTheta.H). Options built by hand
     //! (tests) start from none: the reader sets the default.

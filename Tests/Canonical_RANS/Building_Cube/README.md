@@ -43,6 +43,7 @@ These values are not validated.
 | Form | Iterations | u behind the block, near the ground | u 20 m above the roof (5.91 m/s upstream) | u in the roof's wall cell | u in a side's wall cell | k in the roof's wall cell |
 |---|---|---|---|---|---|---|
 | the deck (`fraction_stress`, `wall_tke = on`) | 109 | -0.76 m/s | 6.39 m/s | 2.801 m/s | 1.491 m/s | 0.411 m²/s² |
+| `buildings.wall_k_bound = impinging` | 109 | -0.76 m/s | 6.39 m/s | 2.804 m/s | 1.499 m/s | 0.412 m²/s² |
 | `bc.surface_wall_k = source` | 106 | -0.69 m/s | 6.39 m/s | 2.843 m/s | 1.599 m/s | 0.911 m²/s² |
 | `buildings.wall_tke = off` | 111 | -0.77 m/s | 6.30 m/s | 3.833 m/s | 2.387 m/s | 8.618 m²/s² |
 | `buildings.wall_form = roof_stress` | 114 | -0.55 m/s | 6.36 m/s | 3.888 m/s | 1.505 m/s | 8.589 m²/s² |
@@ -63,6 +64,14 @@ Since theta has building terms (`buildings.theta_mode`, `ambient` by default wit
 `buildings.theta_mode = none`, which is theta as on `main` at 5735108); theta differs by up to 0.002 K, its drift from
 300 K inside the block without these terms.
 
+The windward side (`buildings.wall_k_bound`, 2 ranks). The wall law reads the speed along a wall, which is small where
+the wind meets the side at x = 55 m head-on: k in that side's wall cell, third layer, is 0.0079 m²/s² with 0.008 to
+0.23 m²/s² over the side's 24 wall cells (mean 0.19), next to 0.91 m²/s² one cell upstream of it. With `impinging` the
+pinned cell has 0.922 m²/s² (0.99 upstream) and the side's mean is 0.66 m²/s²; the roof's mean (0.68 to 0.67), the sides along the
+wind (0.38; the pinned cell of a side in the ground's first layer has 0.0132 against 0.0151 m²/s²) and the reattachment behind the block (1.83 to 1.82 H in the first layer) keep their values, and the lee
+side's mean rises from 0.04 to 0.16 m²/s² where the reversed flow meets it. `check_cube.py --k-windward` pins the
+cell.
+
 The heated block (`inputs_cube_heated`, 2 ranks): the walls give the air 585.5 K m³/s, the planes downstream of the
 block carry 583.4 K m³/s (577.7 to 585.2), and the air is at most 1.07 K above the inflow. With gravity off the walls
 give 580.9 K m³/s and the wall-cell values are the deck's. With the roof inside a layer (`cube_24p6.txt`) the run
@@ -74,7 +83,8 @@ it moves with the buoyancy of the warmed air, not with the walls' terms.
 ## CTest
 `building_cube_clean`, `building_cube_run`, `building_cube_flow`, `building_cube_roof_stress_clean`,
 `building_cube_roof_stress_run`, `building_cube_roof_stress_flow`, `building_cube_wall_tke_off_clean`,
-`building_cube_wall_tke_off_run`, `building_cube_wall_tke_off_flow`, `building_cube_wall_k_source_clean`,
+`building_cube_wall_tke_off_run`, `building_cube_wall_tke_off_flow`, `building_cube_wall_k_impinging_clean`,
+`building_cube_wall_k_impinging_run`, `building_cube_wall_k_impinging_flow`, `building_cube_wall_k_source_clean`,
 `building_cube_wall_k_source_run`, `building_cube_wall_k_source_flow`, `building_cube_drag_clean`,
 `building_cube_drag_run`, `building_cube_drag_flow`, `building_cube_smooth_walls_clean`,
 `building_cube_smooth_walls_run`, `building_cube_smooth_walls_length`, `building_cube_smooth_walls_flow`,

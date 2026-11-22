@@ -42,6 +42,12 @@
 //   sides had the law).
 // - buildings.wall_form = drag: the fixed rows alone (Kynema-SGF's laminar pathway).
 //
+// - buildings.wall_k_speed = cell_mean: the wall value of k (BuildingTke.H) reads the law at the cell's
+//   root-mean-square speed, not at the speed above. They differ where a face of a parallel component is
+//   a fixed row (an edge or corner cell): that component falls from the open face's value u_o to 0 at
+//   the other wall, so its mean square over the cell is u_o^2 / 3 (cell_mean_square), where the open
+//   faces' speed has u_o^2. The stress keeps the speed above. Needs buildings.wall_speed = open_faces.
+//
 // k at buildings: BuildingTke.H. theta: BuildingTheta.H. On a slope a roof's speed is horizontal: its
 // tilt is not taken out. A side is vertical, so (v, w) and (u, w) are parallel to it.
 
@@ -93,7 +99,14 @@ inline constexpr int kBuildingUstar2 = 3;
 //! (such a cell has one wall along a direction at most; the reference cell is the next one
 //! out from that wall).
 inline constexpr int kBuildingHeatOwn = 4, kBuildingHeatRefX = 5, kBuildingHeatRefY = 6, kBuildingHeatRefZ = 7;
-inline constexpr int kNumBuildingRates = 8;
+//! buildings.wall_k_speed = cell_mean: the largest u*^2 of the cell's walls at the cell's root-mean-square
+//! speeds (cell_mean_square), which the wall value of k then reads in the place of kBuildingUstar2. 0 otherwise.
+inline constexpr int kBuildingUstar2K = 8;
+//! buildings.wall_k_bound = impinging: for the cell's walls along x, y and z, the share of the reference
+//! cell's kinetic energy that moves towards the wall along its normal (0 to 1; 0 where it moves away, in a
+//! cell at rest and otherwise). The wall value of k reads it (BuildingTke.H).
+inline constexpr int kBuildingTowardsX = 9, kBuildingTowardsY = 10, kBuildingTowardsZ = 11;
+inline constexpr int kNumBuildingRates = 12;
 
 //! The heat transfer velocities (m/s) of one wall under the form 7 law with a given surface
 //! temperature, neutral (ERF ib_wall::wall_state, surface_temp, psi_h = 0):
@@ -140,6 +153,18 @@ amrex::Real open_face_mean (amrex::Real a, amrex::Real b, amrex::Real wa, amrex:
     return (wa * a + wb * b) / amrex::max(wa + wb, amrex::Real(1));
 }
 
+//! The mean over a cell of the square of a velocity component, from its two faces and their weights
+//! (open_face_mean), for buildings.wall_k_speed = cell_mean. Both faces open: the square of their mean,
+//! as the law's speed. One face a fixed row (the wall the component is normal to): the component falls
+//! from the open face's value u_o to 0 at that wall, linearly to leading order (it is the normal velocity
+//! at an impermeable wall), and the mean of its square is u_o^2 / 3. Both fixed: 0.
+AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
+amrex::Real cell_mean_square (amrex::Real a, amrex::Real b, amrex::Real wa, amrex::Real wb) noexcept
+{
+    const amrex::Real s = open_face_mean(a, b, wa, wb);
+    return (wa + wb > amrex::Real(1.5)) ? s * s : s * s / amrex::Real(3);
+}
+
 //! The part of a cell's face area that a wall takes: in a fluid cell (beta = 0) the blocked part
 //! f_wall of the face the wall lies on; in a partly solid cell the difference from the opposite
 //! face's blocked part, which is the area facing that way (Buildings_K.H: wall_on_low_side; for an
@@ -155,6 +180,18 @@ amrex::Real wall_area_fraction (amrex::Real f_wall, amrex::Real f_opposite, amre
 //! Speeds below this do not divide the rate (m/s): u*^2 / U stays finite at rest.
 inline constexpr amrex::Real kBuildingMinSpeed = amrex::Real(1.0e-3);
 
+//! The share of a cell's kinetic energy in its velocity towards a wall: n the component along the wall's
+//! normal, positive towards the wall, t1 and t2 the other two. kBuildingMinSpeed squared in the denominator
+//! lets the share fade to 0 in a cell near rest, where the direction of the velocity is round-off, and keeps
+//! the division defined at rest with no select around it (a compiler may evaluate 0/0 on the side it
+//! discards and raise the invalid trap: the note in BoundaryConditions.cpp).
+AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
+amrex::Real towards_wall_share (amrex::Real n, amrex::Real t1, amrex::Real t2) noexcept
+{
+    const amrex::Real towards = amrex::max(n, amrex::Real(0));
+    return towards * towards / (n * n + t1 * t1 + t2 * t2 + kBuildingMinSpeed * kBuildingMinSpeed);
+}
+
 //! The momentum terms of one level's buildings.
 class BuildingForcing
 {
@@ -167,8 +204,14 @@ public:
     //! The rates at the cells (one ghost layer) from the last update: component c < 3 is the
     //! rate on velocity component c, the sum over the cell's walls parallel to it; component
     //! kBuildingUstar2 is the largest u*^2 of the cell's walls; kBuildingHeatOwn and the three
-    //! after it are the walls' heat exchange coefficients.
+    //! after it are the walls' heat exchange coefficients; kBuildingUstar2K is the u*^2 of the wall
+    //! value of k with buildings.wall_k_speed = cell_mean, and kBuildingTowardsX and the two after it the
+    //! shares of buildings.wall_k_bound = impinging.
     [[nodiscard]] const amrex::MultiFab& rate () const { return m_rate; }
+    //! The component the wall value of k reads.
+    [[nodiscard]] int wall_k_component () const { return m_k_cell_mean ? kBuildingUstar2K : kBuildingUstar2; }
+    //! buildings.wall_k_bound = impinging acts: the shares are filled by update.
+    [[nodiscard]] bool wall_k_impinging () const { return m_k_towards; }
 
     //! The wall cells with a wall under the law, and those among them whose fluid centroid is
     //! within 10 z0 of such a wall, where the law reads the speed as at 10 z0 (all ranks).
@@ -214,6 +257,8 @@ private:
     amrex::Long m_wall_cells{0}, m_below_floor{0};
     amrex::Real m_z0{0.1};
     BuildingWallForm m_wall_form{BuildingWallForm::fraction_stress};
+    bool m_k_cell_mean{false};   //!< buildings.wall_k_speed = cell_mean
+    bool m_k_towards{false};   //!< buildings.wall_k_bound = impinging: kBuildingTowardsX..Z are filled
     bool m_immersed_ground{false};
     amrex::MultiFab m_spacing;
 };

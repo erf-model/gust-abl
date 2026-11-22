@@ -186,7 +186,8 @@ falls linearly from the open face's value :math:`u_o` to 0 at the other wall, th
 :math:`\tfrac{1}{3} C u_o^2` (:math:`C = \kappa^2 / \ln^2`): the mean with the zero gives :math:`\tfrac{1}{4}` on the open
 face's row (25 % low), and ``open_faces`` and ERF give :math:`\tfrac{1}{2}` (50 % high). The wall value of :math:`k`
 (`Turbulence`_) reads the cell's :math:`u_*^2` with no row average, so there ``open_faces`` gives 3 times that mean
-and the mean with the zero 0.75 times. On the other parallel component's row ERF takes a four-point mean that
+and the mean with the zero 0.75 times; ``buildings.wall_k_speed = cell_mean`` gives that mean to the wall value of
+:math:`k` and leaves the stress as it is. On the other parallel component's row ERF takes a four-point mean that
 includes the fixed faces, so ``open_faces`` is above it there. A cell with no fixed face among those of
 its parallel components (a plain roof or side cell) is not affected. ``all_faces`` takes the mean of both faces, as
 before; it is the default with ``roof_stress``, which also accepts ``open_faces`` (the roofs' speed then skips the
@@ -195,7 +196,8 @@ sides' fixed faces). A checkpoint written before this choice restarts with ``all
 ``buildings.wall_tke = off`` and ``buildings.theta_mode = none``, for the same reason: `Turbulence`_, `Temperature`_).
 
 On the courtyard of ``Tests/Canonical_RANS/Building_Courtyard``, :math:`k` in an inner corner's wall cell is 0.023 m²/s²
-with ``open_faces`` and 0.008 m²/s² with ``all_faces``, and the velocities differ by about 0.02 m/s at most. One block on
+with ``open_faces``, 0.008 m²/s² with ``all_faces`` and 0.010 m²/s² with ``open_faces`` and
+``buildings.wall_k_speed = cell_mean``; the velocities of the first two differ by about 0.02 m/s at most. One block on
 flat ground has no such cell and keeps its answer to the last bit. On the ridge the two forms agree to 0.0001 m/s; the
 change there, up to 0.006 m/s, comes from the wall's area above.
 
@@ -254,6 +256,45 @@ with :math:`f` the largest blocked part of the faces the cell's walls lie on:
      - :math:`R_k \leftarrow R_k + f W` in every wall cell, as the ground adds its own.
    * - no surface layer
      - As ``dirichlet``, without the ground's row.
+
+**A wall the flow meets head-on** (``buildings.wall_k_bound``). The law's :math:`u_*` reads the speed parallel to the
+wall. Where the flow runs onto a wall that speed is small, so :math:`k_w` falls to a small value next to the larger
+:math:`k` that the flow brings with it. With ``impinging`` the wall value is no lower than the part of that :math:`k`
+that moves onto the wall:
+
+.. math::
+
+   k_w = \max\!\left(\frac{u_*^2}{C_{\mu 0}^2},\, k_\mathrm{floor},\, \max_\mathrm{walls}\, s\, k_r\right), \qquad
+   s = \begin{cases} u_n^2 / (u_n^2 + u_{t1}^2 + u_{t2}^2 + u_\mathrm{min}^2) & u_n > 0 \\ 0 & \text{otherwise,} \end{cases}
+
+with :math:`k_r` the :math:`k` of the wall's reference cell (the next cell out along the wall's normal), :math:`u_n`
+that cell's velocity along the normal, positive towards the wall, and :math:`u_{t1}`, :math:`u_{t2}` its two other
+components, each the mean of the cell's two faces. :math:`s` is the share of the reference cell's kinetic energy that
+moves towards the wall: 1 for a flow normal to the wall, 0 for a flow along it, away from it or at rest.
+:math:`u_\mathrm{min}` = 1 mm/s lets the share fade in a cell near rest, where the velocity's direction is round-off.
+A cell with several walls takes the largest :math:`s k_r`; one share is kept per direction, so a cell with partly
+blocked faces on both of its sides along a direction takes the larger share for both of those walls. The weight is a choice made here, not a published wall function: it
+is 0 where the reference cell's flow runs along the wall or leaves it, so the law's value holds there, and 1 where
+the flow is normal to the wall and the law has no speed to read. It also acts on a lee wall that a reversed flow
+meets and on a roof under a downdraught. :math:`k_r` and :math:`s` are those of the iterate, so the implicit rows are
+unchanged. The wall value never exceeds the largest :math:`k` of the cell's neighbours, so the bound adds no new
+maximum; wall cells that are each other's reference cells (a gap two cells wide, a small courtyard) settle at the
+rate :math:`s` per iteration, slowly where :math:`s` is near 1.
+``none``, the default, keeps the law's value.
+
+**The wall value in a cell with two walls** (``buildings.wall_k_speed``). In an edge or corner cell ``open_faces`` gives the law
+the open face's value of a component whose other face is fixed (`Momentum`_). That suits the stress on the open
+face's row; the wall value of :math:`k` belongs to the cell. With ``cell_mean`` the wall value reads the law at the
+cell's root-mean-square speed: a component with one fixed face, falling linearly from :math:`u_o` on the open face
+to 0, has the mean square :math:`\tfrac{1}{3} u_o^2`; a component with both faces open keeps the square of their
+mean. The reference cell's speed is its root-mean-square speed too. The stress and the distances are unchanged, and
+so, to round-off, is every cell with no fixed face among its own and its reference cell's parallel components. The
+row's rate :math:`u_*/d_w` reads the same :math:`u_*` as the wall value. The ground's face counts as open for
+:math:`w`, as in the wall law. It needs ``buildings.wall_speed = open_faces``; with ``all_faces`` the wall
+value already takes the mean with the fixed face. ``law``, the default, reads the law's :math:`u_*^2` as it is.
+
+Both keys add a line to the checkpoint's record of the buildings inputs when they are not at their defaults, so a
+restart has to keep them.
 
 **Fluxes.** The diffusive flux of :math:`k` through the blocked part of a face is closed, in the residual and in the
 implicit rows: :math:`k` does not diffuse into a building.
@@ -482,7 +523,9 @@ With 20 mm cells the rms difference from the measurements is 0.244 m/s and 88 % 
 the reattachment 1.29 H: the error over and beside the cube falls, and the reattachment is not grid-converged. The largest
 differences are beside the cube, where the measured flow speeds up past the side edges, over the roof, where the
 plain closure has no bubble 0.1 H above it, and in the strength of the reversed flow near the floor behind the cube
-(-1.15 m/s against -0.80 m/s at x = 1.5 H). The
+(-1.15 m/s against -0.80 m/s at x = 1.5 H). With ``buildings.wall_k_bound = impinging`` the mean :math:`k` in the
+windward face's wall cells rises from 0.058 to 0.27 m²/s² (0.47 m²/s² one cell upstream); the rms difference is
+0.245 m/s, and the hit rate and the reattachment are unchanged. The
 case README has the set-up, the regions and the closure options compared.
 
 The measurements are those of W. H. Snyder and R. E. Lawson (1994); the values are digitized from Figs. A3 and A4 of
@@ -628,7 +671,11 @@ Limits
 - Outside a non-periodic domain face the closure's ghost cells take the nearest domain column's distance.
 - The wall value of :math:`k` is neutral and reads the speed parallel to the wall. On a wall that faces the flow that
   speed is small, so :math:`k` and the eddy viscosity in its wall cells are small too (0.008 m²/s² on the block's
-  windward face, against 0.76 m²/s² one cell upstream). The ground's row does the same where the flow reattaches.
+  windward face, against 0.91 m²/s² one cell upstream). ``buildings.wall_k_bound = impinging`` bounds the wall value
+  there from the :math:`k` the flow carries onto the wall (0.92 m²/s² in that cell, 0.99 m²/s² one cell upstream);
+  on the cube of Snyder and Lawson below the rms difference from the measurements moves from 0.244 to 0.245 m/s and
+  the reattachment stays, so it is not the default. The ground's row is not bounded, and does the same where the
+  flow reattaches.
 - The shear production in the second cell from a wall still reads the wall cell's velocity.
 - The zone of the lee options ends where the distance search stops, at the mesh's tallest column: a zone wider than
   that is cut there, its weight jumping to 1. :math:`H_b` is the tallest solid column next to the wall's cell, so a

@@ -7,7 +7,8 @@ The last plotfile with PREFIX. Cell values, 5 m cells: the velocity is 0 in ever
 closure's floor; the sum of u over each x-plane is the first plane's within --flux-tol; k in an inner corner
 cell of the courtyard (two sides) is pinned in the second layer and in the fourth, within 5 %, and the two
 inner corners agree (the deck is symmetric in y). The defaults are those of buildings.wall_speed = open_faces;
-all_faces has 0.0081 and 0.432. The exit code is the verdict.
+all_faces has 0.0081 and 0.432,
+and open_faces with buildings.wall_k_speed = cell_mean 0.0097 and 0.454. The exit code is the verdict.
 """
 import argparse
 import glob
