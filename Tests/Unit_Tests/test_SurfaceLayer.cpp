@@ -2,6 +2,7 @@
 // lookup, u* from the log law at z_ref on a stretched column, wall k, and the
 // wall model in the residual.
 #include "Diffusion.H"
+#include "ImplicitOperator.H"
 #include "ERF_MOSTUtils.H"
 #include "MassFlux.H"
 #include "Residual.H"
@@ -699,6 +700,79 @@ TEST(SurfaceLayer, WallKRowAtLowWind)
     amrex::ParallelDescriptor::ReduceRealSum(r00);
     const double want = 0.01 / at00(s.d0) * (0.2 - at00(s.kwall));
     EXPECT_NEAR(r00, want, tol(1e-14, 1e-6) * std::abs(want));
+}
+
+// A hybrid mesh's columns whose lower face lies inside the terrain (SurfaceLayerOptions::immersed_columns), on
+// the hill with every third column masked, ghost columns included: there tau and drag are 0 and the wall-k rows
+// of R_k and of the implicit coefficients are left as they were; in the other columns everything equals the
+// run without the mask.
+TEST(SurfaceLayer, ImmersedColumnsOfAHybridMesh)
+{
+    PCase c = hill();
+    gust::State q;
+    hill_state(q, c);
+    SurfaceLayerOptions opt;
+    gust::SurfaceState s0, s1;
+    gust::compute_surface_state(q, opt, kBuoyancy, c.mesh, c.geom, s0);
+    amrex::MultiFab mask(s0.ustar.boxArray(), s0.ustar.DistributionMap(), 1, s0.ustar.nGrowVect());
+    for (amrex::MFIter mfi(mask, false); mfi.isValid(); ++mfi) {
+        const auto m = mask.array(mfi);
+        amrex::LoopOnCpu(mfi.fabbox(), [&] (int i, int j, int k) { m(i, j, k) = ((i + 2 * j + 99) % 3 == 0) ? 1 : 0; });
+    }
+    opt.immersed_columns = &mask;
+    gust::compute_surface_state(q, opt, kBuoyancy, c.mesh, c.geom, s1);
+    amrex::MultiFab R0(c.ba, c.dm, 1, 0), R1(c.ba, c.dm, 1, 0);
+    R0.setVal(7.0);
+    R1.setVal(7.0);
+    amrex::MultiFab A0(c.ba, c.dm, gust::n_implicit_coefs, 0), A1(c.ba, c.dm, gust::n_implicit_coefs, 0);
+    A0.setVal(3.0);
+    A1.setVal(3.0);
+    SurfaceLayerOptions plain;
+    gust::apply_wall_k(s0, plain, q.tke, R0);
+    gust::apply_wall_k_to_implicit(s0, plain, A0);
+    gust::apply_wall_k(s1, opt, q.tke, R1);
+    gust::apply_wall_k_to_implicit(s1, opt, A1);
+    amrex::Long masked = 0, open = 0, bad = 0;
+    for (amrex::MFIter mfi(s1.tau, false); mfi.isValid(); ++mfi) {
+        const auto m = mask.const_array(mfi);
+        const auto t0 = s0.tau.const_array(mfi);
+        const auto t1 = s1.tau.const_array(mfi);
+        const auto g0 = s0.drag.const_array(mfi);
+        const auto g1 = s1.drag.const_array(mfi);
+        amrex::LoopOnCpu(amrex::grow(mfi.validbox(), amrex::IntVect(1, 1, 0)), [&] (int i, int j, int k) {
+            const bool in = m(i, j, k) > 0;
+            for (int n = 0; n < 3; ++n) { bad += (t1(i, j, k, n) != (in ? amrex::Real(0) : t0(i, j, k, n))) ? 1 : 0; }
+            bad += (g1(i, j, k) != (in ? amrex::Real(0) : g0(i, j, k))) ? 1 : 0;
+            // The unmasked run's stress is not 0 anywhere on the hill (the masked columns are tested).
+            bad += (in && g0(i, j, k) == 0) ? 1 : 0;
+        });
+        const auto r0 = R0.const_array(mfi);
+        const auto r1 = R1.const_array(mfi);
+        const auto a0 = A0.const_array(mfi);
+        const auto a1 = A1.const_array(mfi);
+        amrex::Box b = mfi.validbox();
+        b.setBig(2, b.smallEnd(2));
+        amrex::LoopOnCpu(b, [&] (int i, int j, int k) {
+            const bool in = m(i, j, 0) > 0;
+            (in ? masked : open) += 1;
+            bad += (r1(i, j, k) != (in ? amrex::Real(7) : r0(i, j, k))) ? 1 : 0;
+            bad += (!in && r0(i, j, k) == amrex::Real(7)) ? 1 : 0;
+            for (int n = 0; n < gust::n_implicit_coefs; ++n) {
+                bad += (a1(i, j, k, n) != (in ? amrex::Real(3) : a0(i, j, k, n))) ? 1 : 0;
+            }
+        });
+    }
+    amrex::ParallelDescriptor::ReduceLongSum(masked);
+    amrex::ParallelDescriptor::ReduceLongSum(open);
+    amrex::ParallelDescriptor::ReduceLongSum(bad);
+    EXPECT_GT(masked, 0);
+    EXPECT_GT(open, 0);
+    EXPECT_EQ(bad, 0);
+    // A mask on another layout is refused.
+    amrex::MultiFab other(c.ba, c.dm, 1, 1);
+    other.setVal(0);
+    opt.immersed_columns = &other;
+    EXPECT_THROW(gust::compute_surface_state(q, opt, kBuoyancy, c.mesh, c.geom, s1), std::runtime_error);
 }
 
 // Invalid options are refused, naming the option; a z_ref outside the

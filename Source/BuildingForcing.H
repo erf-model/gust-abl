@@ -30,7 +30,7 @@
 //   through the blocked part of a wall's face is closed, in the residual and in the
 //   implicit rows. r stays out of the local pseudo-time step and goes into a_P
 //   (its derivative with r frozen; the fixed point does not depend on it).
-// - an immersed ground (terrain.representation = immersed_forcing, ImmersedTerrain.H): the law at the
+// - an immersed ground (terrain.representation = immersed_forcing or hybrid, ImmersedTerrain.H): the law at the
 //   exact distances, in ln((d + z0) / z0) with no floor (form7_ustar2_exact); the viscous flux
 //   of u and v across the top face of a roof cell spans the distance between the two cells' fluid
 //   centroids, d2 - d1, not the cell-centre spacing: G *= s, s = spacing / (d2 - d1) >= 1, in the
@@ -68,7 +68,7 @@ amrex::Real form7_ustar2 (amrex::Real u_own, amrex::Real u_ref, amrex::Real beta
     return (amrex::Real(1) - beta) * own * own + beta * ref * ref;
 }
 
-//! The wall law of one cell of an immersed ground (terrain.representation = immersed_forcing): the
+//! The wall law of one cell of an immersed ground (terrain.representation = immersed_forcing or hybrid): the
 //! MOST form at the exact distances, neutral (psi_m = 0), as the body-fitted surface layer has it
 //! (SurfaceLayer.cpp, ln((d + z0) / z0)):
 //!   u*_x = kappa U_x / ln((d_x + z0) / z0),  u*^2 = (1 - beta) u*_own^2 + beta u*_ref^2,

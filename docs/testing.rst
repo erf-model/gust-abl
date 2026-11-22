@@ -2774,6 +2774,16 @@ Current tests
        margin of before (4 dx), P8 side faces flagged, P9 misfit gate off, P10 a check always exits 0, P11 the
        face-kind cutoff of before (0.3), P12 terrain smaller than the domain accepted, P13 nest corners off the
        outer nodes accepted. All 13 are killed.
+   * - ``hybrid_width_selftest``
+     - ``tools/hybrid_width.py``: the envelope against a direct loop over each node's square (cut and periodic
+       faces), zero width giving the terrain, the envelope never above the terrain, the closed form on a ramp
+       (lowered by :math:`p` cells), the calibration ridges (the gentle ridge at dx 64 m: 0 to 128 m; the steep
+       ridge at dx 32 m: 64 m; the steep ridge at dx 64 m: no width, exit status 2, dx 32 m named), a deck giving
+       the same answer as the arguments and 8 input errors (each exits with status 3 and names the input).
+       Registered when Python has numpy. Label ``unit``. One-line mutants each fail it: no mean pass, the
+       periodic square not wrapped, the slope rule off, the gap rule off, the relief doubled, a missing deck
+       accepted. Dropping the final minimum with the terrain survives: the mean of the minima is never above the
+       terrain, so that minimum only removes round-off (`Hybrid mesh`, :doc:`immersed_terrain`).
    * - ``erf_plotfile_selftest``
      - ``extern_erf/erf_plotfile.py`` (a local change, :doc:`extraction`) on hand-made one-box plotfiles in double
        and float, little- and big-endian: every value read back exactly. The upstream reader fails the two float

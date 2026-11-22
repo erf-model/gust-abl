@@ -27,9 +27,14 @@ ERROR:
   buildings, a canopy, nests, the column first guess, probes, the Newton and unsteady stages, the lusgs sweep and
   solver.poisson_backend = mlmg in a stage, turb.closure = none; terrain.flat_height or terrain.small_volfrac with
   a body-fitted ground.
+- terrain.representation = hybrid: the same, except that terrain.smoothing and terrain.gamma_m are accepted and
+  terrain.flat_height may be 0 (>= 0 and at most the bottom of the top layer; not given: the first layer's
+  thickness, and terrain.hybrid_half_width not given: 2 cells);
+  terrain.hybrid_half_width above the domain's larger lateral length, or given without hybrid.
 
 The files themselves are checked by `files`.
 """
+import math
 import os
 
 from ..checker import Checker, register
@@ -278,26 +283,51 @@ class BuildingsChecker(Checker):
 
 @register
 class ImmersedTerrainChecker(Checker):
-    """The immersed ground (terrain.representation = immersed_forcing): what it needs and what it refuses."""
+    """The immersed ground (terrain.representation = immersed_forcing or hybrid): what it needs and what it refuses."""
 
     name = "immersed_terrain"
 
     def run(self):
         c = self.ctx
         rep = c.s("terrain.representation")
+        hybrid = rep == "hybrid"
+        if not hybrid:
+            self.no_effect("terrain.hybrid_half_width", "unless terrain.representation = hybrid")
         if rep == "body_fitted":
             for k in ("flat_height", "small_volfrac"):
-                self.no_effect("terrain." + k, "unless terrain.representation = immersed_forcing")
+                self.no_effect("terrain." + k, "unless terrain.representation = immersed_forcing or hybrid")
             return
-        if rep != "immersed_forcing":
+        if rep not in ("immersed_forcing", "hybrid"):
             return
-        with_rep = "with terrain.representation = immersed_forcing"
+        with_rep = "with terrain.representation = " + rep
 
         def refuse(key, what, advice=""):
-            self.error(key, "GUST stops: terrain.representation = immersed_forcing %s." % what, advice)
+            self.error(key, "GUST stops: terrain.representation = %s %s." % (rep, what), advice)
 
         h = c.r("terrain.flat_height")
-        if h is None or not h > 0:
+        if hybrid:
+            w = c.r("terrain.hybrid_half_width")
+            if w is not None and c.extent and w > max(c.extent[0], c.extent[1]):
+                self.error("terrain.hybrid_half_width",
+                           "GUST stops: terrain.hybrid_half_width must be at most the domain's larger lateral length "
+                           "(%g m, got %g)." % (max(c.extent[0], c.extent[1]), w), "Use a narrower square.")
+            if c.terrain_type in ("", "flat"):
+                self.warn("terrain.representation",
+                          "terrain.representation = hybrid on flat terrain gives the immersed_forcing mesh: the "
+                          "envelope of a flat ground is the ground.", "Use terrain.representation = immersed_forcing.")
+            if w is not None and w > 0 and c.n_cell and c.dx and c.dy:
+                steps = [d for d, n in ((c.dx, c.n_cell[0]), (c.dy, c.n_cell[1])) if n > 1]
+                if steps and all(math.floor(w / d + 1e-9) == 0 for d in steps):
+                    self.warn("terrain.hybrid_half_width",
+                              "terrain.hybrid_half_width = %g is below one cell (%g m): the square has no nodes "
+                              "and the mesh follows the terrain itself, as with 0." % (w, min(steps)),
+                              "Give 0, or a width of at least one cell (default: 2 cells).")
+            # Not given: the first layer's thickness (GUST's apply_hybrid_defaults), below the top layer.
+            if h is not None and c.zlevels and len(c.zlevels) > 2 and not h <= c.zlevels[-2]:
+                self.error("terrain.flat_height",
+                           "GUST stops: terrain.flat_height must lie at or below the bottom of the mesh's top layer "
+                           "(%g m) %s (got %g)." % (c.zlevels[-2], with_rep, h), "Move the ground, or add layers.")
+        elif h is None or not h > 0:
             self.error("terrain.flat_height", "GUST stops: terrain.flat_height must be finite and > 0 " + with_rep + ".",
                        "Give the ground's height above the mesh's lower face.")
         elif c.zlevels and len(c.zlevels) > 2 and not c.zlevels[1] <= h <= c.zlevels[-2]:
@@ -305,7 +335,8 @@ class ImmersedTerrainChecker(Checker):
                        "GUST stops: terrain.flat_height must lie between the top of the mesh's first layer (%g m) and "
                        "the bottom of its top layer (%g m) %s (got %g)." % (c.zlevels[1], c.zlevels[-2], with_rep, h),
                        "Move the ground, or add layers below it.")
-        for k in ("smoothing", "gamma_m", "hierarchy_passes", "nest_blend_width"):
+        for k in (("hierarchy_passes", "nest_blend_width") if hybrid
+                  else ("smoothing", "gamma_m", "hierarchy_passes", "nest_blend_width")):
             self.no_effect("terrain." + k, with_rep)
         if c.levels != 1:
             refuse("mesh.hierarchy_levels", "needs mesh.hierarchy_levels = 1 for now")

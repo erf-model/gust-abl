@@ -21,11 +21,15 @@ unchanged.
      - Effect
    * - ``terrain.representation``
      - ``body_fitted``
-     - ``immersed_forcing``: a flat mesh with the ground immersed in it.
+     - ``immersed_forcing``: a flat mesh with the ground immersed in it. ``hybrid``: the same ground in a mesh that
+       follows its lower envelope (`Hybrid mesh`_).
    * - ``terrain.flat_height``
-     - required
+     - required (``hybrid``: the first layer's thickness)
      - The height of the terrain's zero level above the mesh's lower face (m): the ground itself with
        ``terrain.type = flat``.
+   * - ``terrain.hybrid_half_width``
+     - two cells (2 max(dx, dy))
+     - ``hybrid`` only: the half-width (m) of the square over which the envelope takes its minimum and mean.
    * - ``terrain.small_volfrac``
      - ``0.005``
      - A solid fraction below it becomes 0, and one within it of 1 becomes 1 (≥ 1e-4).
@@ -566,6 +570,255 @@ columns rise 9.7 m, about twice the guide below and close to the ridge at dx = 3
 (dx :math:`\lesssim` 5 m divided by the largest slope); on the ridge this leaves a crest gap of about −0.12 at
 10 m. The layers can then be a few metres thick. Expect the lee to need finer columns than the crest. The guide
 comes from one ridge, on which the rise per column and the columns per half-width change together.
+
+Hybrid mesh
+-----------
+
+On the flat mesh the ground cuts many layers per column on a slope, and `Grid resolution`_ shows the crest error
+that this leaves. With ``terrain.representation = hybrid`` the mesh follows a smooth surface :math:`h_s` that lies at
+or below the terrain everywhere, and the ground is immersed in it as on the flat mesh:
+
+.. math::
+
+   m(x, y) = \min_{|x' - x| \le w,\ |y' - y| \le w} h_t(x', y'), \qquad
+   h_s(x, y) = \min\Big(h_t(x, y),\ \overline{m}^{\,w}(x, y)\Big),
+
+with :math:`h_t` the terrain's height at the nodes, :math:`w` = ``terrain.hybrid_half_width`` and
+:math:`\overline{m}^{\,w}` the mean of :math:`m` over the same square. The square holds
+:math:`\lfloor w/\Delta x \rfloor` nodes on each side of the node in x and :math:`\lfloor w/\Delta y \rfloor` in y.
+It wraps across a periodic face and is cut at any other face. Every node of the square of a node lies in its own
+square, so the mean of the minima is at most :math:`h_t` (the outer minimum only removes round-off). The mesh's
+lower face is :math:`h_s`, and its levels follow it as a body-fitted mesh follows the ground
+(:doc:`terrain_coordinates`; ``terrain.smoothing`` and ``terrain.gamma_m`` apply). The ground is at
+:math:`h_0 + h_t` with :math:`h_0` = ``terrain.flat_height``, as on the flat mesh, so the gap
+
+.. math::
+
+   \delta(x, y) = h_0 + h_t(x, y) - h_s(x, y) \ \ge\ h_0
+
+between the lower face and the ground is never smaller than :math:`h_0`. :math:`w = 0` gives :math:`h_s = h_t`, a
+body-fitted mesh with the ground :math:`h_0` above its lower face. A flat :math:`h_s` would give the flat mesh's
+ground; a wide square approaches it.
+
+**Lower face, column by column.** :math:`h_0 \ge 0`. Where a column's first cell holds solid (:math:`\beta > 0`),
+the lower face lies inside the terrain: the surface layer gives no stress there and no wall row for k, so the cell
+is held at rest with k at ``turb.tke_floor`` (as every solid cell), and the immersed wall law acts at the ground
+above it. Where the first cell holds none, which needs :math:`h_0 = 0` and :math:`h_s = h_t`, the lower face is
+the ground and the surface layer acts on it as on a body-fitted mesh, along the mesh's slope. With :math:`h_0 > 0`
+every column is of the first kind. With :math:`h_0 = 0` the second kind is where the envelope meets the terrain:
+flat parts wider than the square, and next to faces that are not periodic, where the square is cut. The run prints
+how many columns are of each kind (unit tests ``SurfaceLayer.ImmersedColumnsOfAHybridMesh`` and
+``HybridTerrain.ImmersedColumnsWhereTheFirstCellIsCut``).
+
+**Why.** The flat mesh's crest error grows with the rise of the ground across one column. On the hybrid mesh the
+ground cuts the levels at the slope of :math:`\delta`, not of :math:`h_t`, so a narrow square leaves the immersed
+ground cutting few layers per column. The gap is then small, so the layers through it can keep the first layer's
+thickness: with ``mesh.zlevels_file`` uniform up to above the largest gap, every cut cell and the cells above it
+have the same thickness, as on the flat mesh.
+
+**What.** The envelope is computed once, at start-up, on every rank from the whole surface (one value per domain
+node), so it does not depend on the boxes or the rank count (``Source/HybridTerrain.cpp``). The cut geometry
+(`Geometry`_) measures the ground from each node's own height on a level. On a sloping level this integrates the
+height above the ground along the level, and on a flat level it is the flat mesh's (unit tests
+``ImmersedSurface.SlopedMeshMatchesTheShearedClosedForm`` and ``ImmersedSurface.HybridKernelsOnAFlatMeshMatchImmersed``).
+The wall law, the shear of the first full cell and the closure use the mesh's metric, as on the flat mesh. The run
+prints the gap's range and the height to which the layers keep the first one's thickness. The refusals are those of
+the flat mesh (`Limits`_), except that ``terrain.smoothing`` and ``terrain.gamma_m`` are accepted. The ground must
+lie at or below the bottom of each column's top layer. The restart hash
+includes ``terrain.hybrid_half_width`` in metres, so a restart with another width is refused even where both give the
+same node count. The square is cut at a face that is not periodic, so on ground that still slopes there the gap is
+lopsided: on a ramp it is 0 at the low face and 1.5 times the interior gap at the high face. A width below one cell
+gives no envelope (the mesh follows the terrain, as with 0), and flat terrain gives the flat immersed mesh; the run
+and the deck checker warn of both.
+
+**Pressure in the solid.** The pressure is 0 in the solid cells, as the Poisson solution leaves it there. On a
+sloping level the x face's pressure gradient holds the slope term :math:`-z_x\,\partial p/\partial z`, the mean of
+four vertical differences of :math:`p`, and at a cut cell the lower ones span the solid boundary. With
+:math:`p \approx -17` Pa in the fluid and :math:`z_x \approx 0.3`, that difference gave a force of about 1 Pa/m,
+some 30 times the real gradient, which turned the flow round in the cut cells of the windward slope and raised
+:math:`k` above the crest. The momentum residual therefore takes the gradient of a copy of :math:`p` in which each
+solid cell holds the value of the first cell above it that is not solid, in the valid columns, one ghost column on
+each side and the ghost layer below the domain (``hybrid_solid_pressure``, unit test
+``HybridTerrain.SolidPressureMakesTheSlopedGradientExact``). The slope term then takes no difference across the
+boundary. On the flat mesh :math:`z_x = 0` and the copy is not made. The copy makes the gradient of a pressure
+that varies only along the level exact. With a vertical gradient :math:`b = \partial p/\partial z` it leaves
+about :math:`z_x b/4` to :math:`z_x b/2` at the first open faces above the solid, an error that does not shrink
+with the layers' thickness; linear extrapolation from the two cells above would remove it. The Poisson operator's
+cross terms still take the solid cells' 0 at cut cells, so the correction and the momentum gradient differ there
+(the converged answer does not depend on it, the path to it may).
+
+**Ridge.** The ridge of `Grid resolution`_ with an inflow face (log law, :math:`u_* = 0.35` m/s, :math:`z_0 = 0.1`
+m), an outflow face, no Coriolis force, layers of 2 m and :math:`w = 128` m. The crest :math:`\Delta S_{10}` minus
+the terrain-following value, and :math:`k` at 10 m over the terrain-following value:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 10 18 18 18 18 18
+
+   * - dx (m)
+     - Terrain-following :math:`\Delta S_{10}`
+     - Immersed, :math:`h_0 = 2` m
+     - **Hybrid**, :math:`h_0 = 2` m
+     - Hybrid, :math:`h_0 = 0`
+     - :math:`k_{10}` ratio, immersed / hybrid :math:`h_0 = 2` m
+   * - 64
+     - 0.946
+     - −0.487
+     - **−0.028**
+     - −0.039
+     - 2.20 / 1.05
+   * - 32
+     - 0.959
+     - −0.294
+     - **−0.011**
+     - −0.015
+     - 1.74 / 1.01
+   * - 16
+     - 0.945
+     - −0.126
+     - **0.000**
+     - −0.005
+     - 1.25 / 1.00
+
+Without the pressure copy the hybrid values at dx = 64 and 32 m were −0.30 and −0.27, with :math:`k_{10}` 2.9
+times the terrain-following value. The hybrid runs took 340 to 420 iterations to :math:`r < 10^{-4}`, the
+terrain-following ones 440 to 920.
+
+**Choosing w.** The same ridge (gentle: :math:`H` = 200 m, :math:`a` = 500 m, largest slope 0.26) and a steep one
+(:math:`H` = 400 m, :math:`a` = 250 m, slope 1.0), :math:`h_0` = 2 m, against the terrain-following run on the same
+mesh. The speed difference is counted at 5, 10, 20, 40, 80, 120, 160 and 200 m above the ground in every column;
+"> 0.25" is the number of those points that differ by more than 0.25 m/s; :math:`\Delta S_{10}` is the crest speed
+at 10 m minus the terrain-following one (7.6 m/s on the gentle ridge, 12.6 m/s on the steep one at dx = 32 m):
+
+.. list-table::
+   :header-rows: 1
+   :widths: 16 12 16 16 14 14 12
+
+   * - Ridge, dx (m)
+     - :math:`w` (cells)
+     - Largest gap / relief
+     - Iterations (terrain-following)
+     - > 0.25 m/s
+     - :math:`\Delta S_{10}` (m/s)
+     - Largest difference (m/s)
+   * - gentle, 64
+     - 0 / 1 / **2**
+     - 0 / 0.08 / **0.16**
+     - 823 / 569 / **381** (917)
+     - 0 / 68 / **19** of 1024
+     - +0.04 / −0.22 / **−0.11**
+     - 0.07 / 0.88 / **0.61**
+   * - gentle, 64
+     - 4 / 8 / 16
+     - 0.38 / 0.70 / 0.90
+     - 896 / 1085 / 992
+     - 346 / 503 / 523
+     - −1.01 / −1.71 / −1.97
+     - 2.6 / 3.6 / 3.7
+   * - gentle, 32
+     - 0 / 1 / 2 / **4**
+     - 0 / 0.04 / 0.08 / **0.16**
+     - 436 / 432 / 463 / **360** (710)
+     - 0 / 0 / 43 / **1** of 2048
+     - +0.05 / −0.02 / −0.15 / **−0.05**
+     - 0.07 / 0.24 / 0.49 / **0.27**
+   * - gentle, 32
+     - 8 / 16
+     - 0.38 / 0.69
+     - 447 / 485
+     - 317 / 644
+     - −0.47 / −0.95
+     - 1.3 / 2.7
+   * - steep, 32
+     - 0 / 1
+     - 0 / 0.08
+     - r near 1e-3 after 20000 / Poisson stop (6171)
+     -
+     -
+     -
+   * - steep, 32
+     - **2** / 4 / 8 / 16
+     - **0.16** / 0.38 / 0.70 / 0.90
+     - **3459** / 2606 / 2122 / 1983
+     - **67** / 1008 / 1017 / 445
+     - **−0.66** / −4.93 / −5.51 / −3.62
+     - **1.7** / 7.0 / 6.8 / 5.1
+
+On the gentle ridge every width converges, and up to a gap of 0.16 of the relief (128 m at both spacings: the gap
+follows :math:`w` in metres, not in cells) the speeds stay within about 0.25 m/s of terrain-following in fewer
+iterations. On the steep ridge widths of 0 and 1 cell do not converge; 2 cells converge in about half the
+terrain-following iterations with a crest 0.66 m/s low, and wider ones leave the crest 4 to 6 m/s low. At dx = 64 m
+the steep ridge has about four columns per half-width; terrain-following there gives a crest 6 m/s below its
+dx = 32 m value, and no width came within 0.25 m/s of it.
+
+``tools/hybrid_width.py`` turns these two rules into a range for a given terrain and mesh, before a run. It builds
+:math:`h_s` as the code does for every width up to ``--max-cells`` cells and reports the slope of :math:`h_s`, the
+largest gap and the gap over the relief (max − min of :math:`h_t` after a least-squares plane is removed). The
+lower end is 2 cells where the terrain's slope exceeds 0.5 and 0 otherwise. The upper end is the widest width whose
+largest gap is at most 0.2 of the relief (between the 0.16 and 0.38 of the runs above). It suggests the lower end
+when it lies within the range, and otherwise says that no width meets both and gives the spacing at which 2 cells
+would fit (exit status 2). The upper end measures agreement with terrain-following, not with measurements: where
+terrain-following is itself in error (a cliff, a separated lee) a larger difference need not be worse.
+
+.. code-block:: bash
+
+   python3 tools/hybrid_width.py --deck inputs --terrain-file terrain.xyz
+
+The rules come from two analytic ridges only. A terrain file is interpolated linearly to the nodes (GUST uses
+inverse-distance weights) and ``terrain.smoothing`` is not applied.
+
+**Defaults.** Without the keys, ``terrain.flat_height`` is the thickness of the mesh's first layer and
+``terrain.hybrid_half_width`` is 2 cells (twice the larger of dx and dy; a direction of one cell does not count).
+No single width suits every terrain: 2 cells is the narrowest that converged on the steep ridge, and on the gentle
+one it stays within 0.61 m/s of terrain-following. The log names each default it sets. On the measured cases, at
+these defaults, against terrain-following on the same mesh (rms error of the speed-up against the measurements, or
+of :math:`U` against the tunnel):
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 35 35
+
+   * - Case
+     - Terrain-following → hybrid
+     - Iterations (terrain-following / hybrid)
+   * - Askervein 210°, lines A / AA / B
+     - 0.122 / 0.081 / 0.120 → 0.155 / 0.146 / 0.155
+     - 202 / 235
+   * - Bolund 270°, line B
+     - 0.113 → 0.024
+     - 189 / 189
+   * - Bolund 239°, line A
+     - 0.075 → 0.124
+     - 209 / 209
+   * - Bolund 90°, line B
+     - 0.164 → 0.180
+     - 222 / 394
+   * - Ishihara smooth ridge, :math:`U` (m/s)
+     - 0.27 → 0.17
+     - 537 / 619
+   * - Ishihara rough ridge, :math:`U` (m/s)
+     - 0.57 → 0.55
+     - 655 / 664
+   * - Big Southern Butte 222°, speed at the 40 sensors at 3 m (m/s)
+     - 3.20 → 5.94
+     - 410 / 1094
+
+The hybrid mesh is closer to the measurements behind the Bolund cliff and on the smooth ridge, and further from
+them on Askervein, the other two Bolund directions and Big Southern Butte. Most masts differ from terrain-following by more than
+0.25 m/s at these defaults, so the representation changes the answer on these sites.
+
+On Big Southern Butte (dx = 137 m) the default width gives a largest gap of 294 m on 780 m of relief (0.37), and
+the hybrid run is close to the flat immersed one (rms 6.14 m/s): the speed at the two sensors on the top is 10.8 m/s
+low, against 3.2 m/s for terrain-following. ``tools/hybrid_width.py`` reports that no width meets both rules on this
+mesh. The run reached :math:`r < 10^{-4}` after 570 iterations (terrain-following 260) and stopped on
+``steady.residual_tol`` after 1094, in 58 times the terrain-following run's time on 3 ranks (114 layers against 40; part of the run shared the
+machine with other jobs).
+
+The 2-cell default comes from 2-D ridges with a half-width of at least 4 cells. A round hill has a larger gap for the
+same width (about 0.26 of the relief at a half-width of 8 cells, 0.58 at 4), and on narrow features the default
+lies above the tool's upper end. The run warns when the largest gap exceeds 0.2 of the ground's height range and
+names ``tools/hybrid_width.py``. The gap is about the slope times the width while the square is narrower than the
+feature; once it spans a crest the crest gap is up to 1.2 times that.
 
 Limits
 ------

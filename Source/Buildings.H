@@ -135,6 +135,10 @@ struct BuildingsOptions
     //! ImmersedTerrain.H). The vertical diffusion across a roof cell's top face then spans the distance between
     //! the two cells' fluid centroids, and the body forces act on the open part of each face (BuildingForcing.H).
     bool immersed_ground{false};
+    //! Set by the application, not read: terrain.representation = hybrid, with immersed_ground on a ground built
+    //! from a surface. The mesh's layers then slope with the envelope (HybridTerrain.H), and the cut geometry
+    //! measures the ground from each node's own height (BuildingsSurface.cpp).
+    bool hybrid_mesh{false};
     std::vector<std::string> given;  //!< buildings.* keys in the inputs
     std::vector<std::string> parse_errors;   //!< value counts and repeats
     [[nodiscard]] bool active () const { return type != BuildingsType::none; }
@@ -192,6 +196,8 @@ public:
     [[nodiscard]] bool active () const { return m_active; }
     //! Built by build_from_surface (no collective: FabArray::ok() is one).
     [[nodiscard]] bool from_surface () const { return !m_surface.empty(); }
+    //! A ground built from a surface on a hybrid mesh (BuildingsOptions::hybrid_mesh).
+    [[nodiscard]] bool hybrid_mesh () const { return m_hybrid_mesh; }
     //! The surface's fields (BuildingSurfaceComp), one ghost layer; defined when from_surface().
     [[nodiscard]] const amrex::MultiFab& surface () const { return m_surface; }
     //! The cells' solid fraction, one ghost layer.
@@ -220,6 +226,7 @@ public:
 
 private:
     bool m_active{false};
+    bool m_hybrid_mesh{false};
     amrex::MultiFab m_beta;
     std::array<amrex::MultiFab, 3> m_beta_face;
     amrex::MultiFab m_wall;

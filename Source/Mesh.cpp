@@ -1,5 +1,6 @@
 #include "Mesh.H"
 
+#include "HybridTerrain.H"
 #include "TerrainSurface.H"
 #include "ZLevels.H"
 
@@ -121,6 +122,10 @@ void Mesh::build (const Inputs& in, const amrex::Geometry& geom, amrex::MultiFab
         TerrainInputs flat = in.terrain;
         flat.type = "flat";
         fill_terrain_surface(z_phys_nd, geom, flat);
+    } else if (in.terrain.representation == "hybrid") {
+        // The mesh follows the terrain's lower envelope (HybridTerrain.H); the ground is immersed above it.
+        fill_terrain_surface(z_phys_nd, geom, in.terrain);
+        make_hybrid_envelope(z_phys_nd, geom, in.terrain.hybrid_half_width);
     } else {
         fill_terrain_surface(z_phys_nd, geom, in.terrain);
     }

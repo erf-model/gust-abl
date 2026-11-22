@@ -53,7 +53,7 @@ void apply_cut_cell_strain (const Buildings& b, amrex::Real z0, const State& q, 
 ImmersedStrain::ImmersedStrain (const BuildingForcing& law, amrex::Real z0) : m_b(law.geometry()), m_z0(z0)
 {
     if (m_b == nullptr || !law.immersed_ground()) {
-        amrex::Abort("gust: ImmersedStrain needs the wall law of an immersed ground (terrain.representation = immersed_forcing)");
+        amrex::Abort("gust: ImmersedStrain needs the wall law of an immersed ground (terrain.representation = immersed_forcing or hybrid)");
     }
     if (!(z0 > 0)) { amrex::Abort("gust: ImmersedStrain needs z0 > 0"); }
 }

@@ -24,7 +24,7 @@ struct State
     amrex::MultiFab theta;      //!< potential temperature (cell centre)
     amrex::MultiFab tke;        //!< turbulent kinetic energy k (cell centre)
     //! Physical height of each node (component 0). With an immersed ground (terrain.representation =
-    //! immersed_forcing, ImmersedTerrain.H) a second component holds the ground's height in the node's
+    //! immersed_forcing or hybrid, ImmersedTerrain.H) a second component holds the ground's height in the node's
     //! column, the same at every k: Heights_K.H reads the last component as the ground, so every
     //! consumer of a height above the ground follows the immersed surface. The copies of the heights
     //! between states and the plotfile's z_phys_nd carry component 0 alone, and so do the checkpoint's: a

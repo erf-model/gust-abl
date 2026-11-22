@@ -62,6 +62,8 @@ JOINT2 = "GUST_JOINT 2\nfeedback %s\nexchanges %d\nouter 0x0p+0\nwindow %s\nnest
 
 IMMERSED = "terrain.representation = immersed_forcing\nterrain.flat_height = 250\nbc.zlo = surface_layer\nsteady.sweep = zjacobi\n"
 
+HYBRID_HILL = "terrain.type = agnesi\nterrain.hill_height = 100\nterrain.hill_half_width = 500\n"
+
 CASES = [
     # --- the bases themselves ---------------------------------------------------------------------------
     ("base_plain", "plain", "", ["W steady.stage"], ["E *"]),
@@ -162,6 +164,26 @@ CASES = [
     ("immersed_open_faces", "inflow", IMMERSED, [], ["E mesh.is_periodic *"]),
     ("immersed_from_velocity", "inflow", IMMERSED + "bc.outflow_transport = from_velocity\n",
      ["E bc.outflow_transport immersed_terrain"], []),
+    ("hybrid_ok", "solve", IMMERSED.replace("immersed_forcing", "hybrid").replace("250", "0")
+     + "terrain.hybrid_half_width = 128\nterrain.smoothing = 1\n", [], ["E *"]),
+    ("hybrid_no_height", "solve", IMMERSED.replace("immersed_forcing", "hybrid").replace("terrain.flat_height = 250\n", ""),
+     [], ["E terrain.flat_height", "E terrain.hybrid_half_width"]),
+    ("hybrid_negative_height", "solve", IMMERSED.replace("immersed_forcing", "hybrid").replace("250", "-1"),
+     ["E terrain.flat_height"], []),
+    ("hybrid_top_layer", "solve", IMMERSED.replace("immersed_forcing", "hybrid").replace("250", "750"),
+     ["E terrain.flat_height immersed_terrain"], []),
+    ("hybrid_width_too_wide", "solve", IMMERSED.replace("immersed_forcing", "hybrid") + "terrain.hybrid_half_width = 1e7\n",
+     ["E terrain.hybrid_half_width immersed_terrain"], []),
+    ("hybrid_width_not_hybrid", "solve", IMMERSED + "terrain.hybrid_half_width = 128\n",
+     ["E terrain.hybrid_half_width immersed_terrain"], []),
+    ("hybrid_flat_warns", "solve", IMMERSED.replace("immersed_forcing", "hybrid"),
+     ["W terrain.representation immersed_terrain"], []),
+    ("hybrid_hill_width_ok", "solve", IMMERSED.replace("immersed_forcing", "hybrid") + HYBRID_HILL
+     + "terrain.hybrid_half_width = 128\n", [], ["W terrain.representation", "W terrain.hybrid_half_width"]),
+    ("hybrid_width_below_a_cell", "solve", IMMERSED.replace("immersed_forcing", "hybrid") + HYBRID_HILL
+     + "terrain.hybrid_half_width = 1\n", ["W terrain.hybrid_half_width immersed_terrain"], []),
+    ("hybrid_hierarchy_key", "solve", IMMERSED.replace("immersed_forcing", "hybrid") + "terrain.hierarchy_passes = 2\n",
+     ["E terrain.hierarchy_passes immersed_terrain"], []),
     # --- terrain ----------------------------------------------------------------------------------------
     ("terrain_file_missing_key", "solve", "terrain.type = xyz\n", ["E terrain.file terrain"], []),
     ("terrain_file_on_flat", "solve", "terrain.file = hill.xyz\n", ["E terrain.file terrain"], []),

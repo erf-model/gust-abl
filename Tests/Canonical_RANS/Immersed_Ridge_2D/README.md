@@ -34,6 +34,7 @@ and there is no flow over it.
 | `inputs_body_fitted_along`, `inputs_immersed_along` | Wind along the ridge. |
 | `inputs_body_fitted_ridge`, `inputs_immersed_ridge` | Wind across the ridge. |
 | `inputs_body_fitted_hill`, `inputs_immersed_hill` | The round hill. |
+| `inputs_hybrid_ground`, `inputs_hybrid_restart` | The hybrid mesh on the ridge with the default `terrain.flat_height` and `terrain.hybrid_half_width`: two steps that write a checkpoint, then a restart from it on another box layout. |
 | `check_immersed_ridge.py` | Runs an immersed deck, runs (or reads) its body-fitted reference, and compares the two. |
 
 ## Data
@@ -122,6 +123,9 @@ the hill's centre. Iterations: body-fitted 2441, immersed 2180.
 `rt_immersed_along_vertical`, `rt_immersed_ridge_vertical` (label `regression`, four ranks). Each test runs the
 immersed and the body-fitted deck in `<build>/Tests/run/rt_immersed_<pair>`. Double precision only.
 `rt_immersed_hill_vertical` (label `nightly`, four ranks; about 40 min).
+`hybrid_ground_run` (two ranks) checks that the hybrid defaults are applied and logged (half-width 80 m = 2 cells).
+`hybrid_ground_restart` (three ranks, other boxes) restarts from its checkpoint. `abort_hybrid_restart_width` restarts with
+`terrain.hybrid_half_width = 100` and must be refused because the immersed ground's inputs differ.
 
 Mutant: with the wall cell's distance d1 halved (`Source/BuildingsSurface.cpp`), `rt_immersed_along_vertical`
 fails at every height (largest difference 7.4 % at 20 m against the limit of 2 %).

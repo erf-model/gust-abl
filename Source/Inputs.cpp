@@ -1,4 +1,5 @@
 #include "Inputs.H"
+#include "HybridTerrain.H"
 
 #include "MeshHierarchy.H"
 
@@ -93,7 +94,7 @@ Inputs parse_inputs ()
         auto& t = in.terrain;
         for (const char* key : {"type", "file", "smoothing", "gamma_m", "hill_height", "hill_half_width",
                                 "hill_shape", "idw_neighbors", "idw_power", "hierarchy_passes", "nest_blend_width",
-                                "representation", "flat_height", "small_volfrac"}) {
+                                "representation", "flat_height", "small_volfrac", "hybrid_half_width"}) {
             if (pp.contains(key)) {
                 t.given.emplace_back(key);
                 if (pp.countval(key) != 1) {
@@ -115,6 +116,7 @@ Inputs parse_inputs ()
         pp.query("representation", t.representation);
         pp.query("flat_height", t.flat_height);
         pp.query("small_volfrac", t.small_volfrac);
+        pp.query("hybrid_half_width", t.hybrid_half_width);
         // The roughness map (bc.surface_z0_file, SurfaceRoughness.H) shares the IDW keys.
         t.idw_for_z0_map = amrex::ParmParse("bc").contains("surface_z0_file");
         // So do the canopy's maps (canopy.type = map, Canopy.H). Read as text
@@ -149,7 +151,7 @@ Inputs parse_inputs ()
                        "stretch_ratio", "zlevels_file", "hierarchy_levels"}},
              {"terrain", {"type", "file", "smoothing", "gamma_m", "hill_height", "hill_half_width",
                           "hill_shape", "idw_neighbors", "idw_power", "hierarchy_passes", "nest_blend_width",
-                          "representation", "flat_height", "small_volfrac"}},
+                          "representation", "flat_height", "small_volfrac", "hybrid_half_width"}},
              {"io", {"plot_file", "chk_file", "restart", "write_plotfile", "write_checkpoint", "turb_plot_file",
                      "iteration_log", "column_guess_file"}}}) {
         amrex::ParmParse pp(ns);
@@ -290,37 +292,56 @@ std::vector<std::string> validate (const Inputs& in)
         }
     }
 
-    // The ground's representation (ImmersedTerrain.H). The checks that need other namespaces are
-    // check_immersed_terrain's.
-    const bool immersed = t.representation == "immersed_forcing";
+    // The ground's representation (ImmersedTerrain.H, HybridTerrain.H). The checks that need other
+    // namespaces are check_immersed_terrain's.
+    const bool immersed = t.ground_immersed();
+    const bool hybrid = t.representation == "hybrid";
+    const std::string rep = "terrain.representation = " + t.representation;
     if (t.representation != "body_fitted" && !immersed) {
-        err.emplace_back("terrain.representation must be body_fitted or immersed_forcing (got " + t.representation + ")");
+        err.emplace_back("terrain.representation must be body_fitted, immersed_forcing or hybrid (got " + t.representation + ")");
     }
     if (immersed) {
-        if (!std::isfinite(t.flat_height) || !(t.flat_height > 0)) {
-            err.emplace_back("terrain.flat_height must be finite and > 0 with terrain.representation = immersed_forcing");
+        // hybrid without terrain.flat_height: one first-layer thickness, set after validate (apply_hybrid_defaults).
+        if (hybrid && (!std::isfinite(t.flat_height) || !(t.flat_height >= 0))) {
+            err.emplace_back("terrain.flat_height must be finite and >= 0 with " + rep);
+        } else if (!hybrid && (!std::isfinite(t.flat_height) || !(t.flat_height > 0))) {
+            err.emplace_back("terrain.flat_height must be finite and > 0 with " + rep);
         } else if (std::isfinite(m.prob_hi[2]) && !(t.flat_height < m.prob_hi[2])) {
             err.emplace_back("terrain.flat_height must be below mesh.prob_hi z");
         }
         if (!std::isfinite(t.small_volfrac) || !(t.small_volfrac >= amrex::Real(1e-4)) || !(t.small_volfrac < amrex::Real(0.5))) {
             err.emplace_back("terrain.small_volfrac must be >= 1e-4 and < 0.5");
         }
-        // The mesh is flat: nothing follows or smooths a ground.
-        for (const char* k : {"smoothing", "gamma_m", "hierarchy_passes", "nest_blend_width"}) {
+        // immersed_forcing: the mesh is flat, nothing follows or smooths a ground. hybrid: the mesh
+        // follows the envelope, which terrain.smoothing and terrain.gamma_m shape aloft as on a
+        // body-fitted mesh; there is no grid hierarchy and no nest.
+        const std::vector<const char*> flat_keys = hybrid ? std::vector<const char*>{"hierarchy_passes", "nest_blend_width"}
+                                                          : std::vector<const char*>{"smoothing", "gamma_m", "hierarchy_passes", "nest_blend_width"};
+        for (const char* k : flat_keys) {
             if (given(k)) {
-                err.emplace_back(std::string("terrain.") + k + " has no effect with terrain.representation = immersed_forcing "
-                                 "(the mesh is flat)");
+                err.emplace_back(std::string("terrain.") + k + " has no effect with " + rep
+                                 + (hybrid ? " (no grid hierarchy and no nests)" : " (the mesh is flat)"));
             }
         }
         if (m.hierarchy_levels > 1) {
-            err.emplace_back("terrain.representation = immersed_forcing needs mesh.hierarchy_levels = 1 for now");
+            err.emplace_back(rep + " needs mesh.hierarchy_levels = 1 for now");
         }
     } else {
         for (const char* k : {"flat_height", "small_volfrac"}) {
             if (given(k)) {
-                err.emplace_back(std::string("terrain.") + k + " has no effect unless terrain.representation = immersed_forcing");
+                err.emplace_back(std::string("terrain.") + k + " has no effect unless terrain.representation = immersed_forcing or hybrid");
             }
         }
+    }
+    if (hybrid) {
+        const amrex::Real lmax = amrex::max(m.prob_hi[0] - m.prob_lo[0], m.prob_hi[1] - m.prob_lo[1]);
+        if (!std::isfinite(t.hybrid_half_width) || !(t.hybrid_half_width >= 0)
+            || (std::isfinite(lmax) && !(t.hybrid_half_width <= lmax))) {
+            err.emplace_back("terrain.hybrid_half_width must be finite, >= 0 and at most the domain's larger lateral length ("
+                             + std::to_string(static_cast<double>(lmax)) + " m)");
+        }
+    } else if (given("hybrid_half_width")) {
+        err.emplace_back("terrain.hybrid_half_width has no effect unless terrain.representation = hybrid");
     }
 
     // The x/y grid hierarchy (MeshHierarchy.H): levels, divisibility, box sizes, passes.
@@ -388,6 +409,7 @@ Inputs read_inputs ()
         for (const auto& e : err) { all += "\n  " + e; }
         amrex::Abort(all);
     }
+    apply_hybrid_defaults(in);   // HybridTerrain.H: needs valid mesh inputs
     return in;
 }
 

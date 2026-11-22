@@ -131,7 +131,7 @@ struct BoundaryInputs
     bool rayleigh_above_ground{false};
     //! The height of the terrain's zero in the mesh's frame (m), from which absolute heights
     //! (bc.rayleigh_zdamp with bc.rayleigh_height = absolute) are measured: terrain.flat_height on an
-    //! immersed ground (terrain.representation = immersed_forcing), whose mesh starts that far below
+    //! immersed ground (terrain.representation = immersed_forcing or hybrid), whose mesh is shifted that far below
     //! the terrain's zero; 0 on a mesh that follows the terrain. Not a key.
     amrex::Real height_origin{0};
     //! bc.outflow_transport: the transport fluxes of the ghost cells outside

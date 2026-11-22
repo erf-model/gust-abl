@@ -363,7 +363,7 @@ void BuildingTke::build (const Buildings& b, const BuildingForcing& law, const B
             w(i, j, k, kHb) = bhb;
         });
     }
-    // An immersed ground (terrain.representation = immersed_forcing): a wall cell's distance is its
+    // An immersed ground (terrain.representation = immersed_forcing or hybrid): a wall cell's distance is its
     // fluid centroid's, d1, exact, as in its wall law (form7_ustar2_exact), not floored at z0_b.
     if (opt.immersed_ground) {
         for (amrex::MFIter mfi(work[0], amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {

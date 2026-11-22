@@ -112,6 +112,14 @@ struct SurfaceLayerOptions
     //! uniform z0). The level that owns the map sets it (LevelSolver); every
     //! reader of these options on that level then takes z0 per column.
     const amrex::MultiFab* z0_map{nullptr};
+    //! A hybrid mesh (terrain.representation = hybrid; HybridTerrain.H: hybrid_immersed_columns): 1 in the
+    //! columns whose lower face lies inside the terrain (the first cell is cut or solid, and the immersed
+    //! ground's wall law acts above it), 0 where the lower face is the ground. In the columns of 1 the
+    //! surface layer puts no stress on the lower face (tau and drag are 0: the solid faces hold no slip)
+    //! and no wall row on k (the solid cells hold the k floor, the cut cell the immersed ground's row).
+    //! Null: every column's lower face is the ground. On the surface state's layout, with its ghost
+    //! columns; the level that owns the mask sets it (LevelSolver).
+    const amrex::MultiFab* immersed_columns{nullptr};
     //! Reference height above the ground, vertical (m); <= 0 means each
     //! column's first cell centre. Otherwise it must lie between the first
     //! and last cell-centre heights of every column.

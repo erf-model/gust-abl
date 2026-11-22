@@ -10,7 +10,7 @@
 // The ground of a column is the last component of the node heights at the
 // ground layer: the mesh's lowest nodes on a body-fitted mesh (one component),
 // the immersed ground's height where the heights carry it as a second
-// component (State.H; terrain.representation = immersed_forcing). A point
+// component (State.H; terrain.representation = immersed_forcing or hybrid). A point
 // below an immersed ground has a negative height.
 
 #include "Stencil_K.H"

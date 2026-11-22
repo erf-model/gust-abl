@@ -626,6 +626,12 @@ TEST (ImmersedTerrain, RefusesWhatItDoesNotSupport)
     EXPECT_TRUE(gust::check_immersed_terrain_height(terrain(kDz), kDz, top).empty());
     EXPECT_TRUE(gust::check_immersed_terrain_height(terrain(top), kDz, top).empty());
     EXPECT_TRUE(gust::check_immersed_terrain_height(terrain(1.5 * kDz), kDz, top).empty());
+    // A hybrid mesh: from 0 (the lower face is the ground where the envelope meets the terrain).
+    auto hyb = [] (double h) { auto t = terrain(h); t.representation = "hybrid"; return t; };
+    EXPECT_TRUE(gust::check_immersed_terrain_height(hyb(0), kDz, top).empty());
+    EXPECT_TRUE(gust::check_immersed_terrain_height(hyb(0.5 * kDz), kDz, top).empty());
+    EXPECT_NE(gust::check_immersed_terrain_height(hyb(-0.1), kDz, top).find("between 0 and"), std::string::npos);
+    EXPECT_NE(gust::check_immersed_terrain_height(hyb(23.5 * kDz), kDz, top).find("between 0 and"), std::string::npos);
 }
 
 // The restart record: the hash follows flat_height, small_volfrac and z0; a checkpoint is refused for a

@@ -5,6 +5,7 @@
 #include "BuildingTke.H"
 #include "CanopyDrag.H"
 #include "CanopyHeat.H"
+#include "HybridTerrain.H"
 #include "NestDefect.H"
 #include "NestRelax.H"
 #include "NestInject.H"
@@ -213,6 +214,9 @@ void scaled_sums (const amrex::MultiFab& q, const amrex::MultiFab& v, const amre
 BuildingKRow building_k_row (const ResidualInputs& in)
 {
     if (in.surface == nullptr) { return BuildingKRow::replace; }
+    // A hybrid mesh: the surface layer's wall row is off in the columns whose first cell is cut or solid
+    // (SurfaceLayerOptions::immersed_columns), so the immersed ground's row takes those cells as any other.
+    if (in.surface->immersed_columns != nullptr) { return BuildingKRow::replace; }
     return in.surface->wall_k == SurfaceLayerOptions::WallK::dirichlet ? BuildingKRow::ground_row : BuildingKRow::source;
 }
 
@@ -317,7 +321,12 @@ void residual (const State& q, const ResidualInputs& in, const Mesh& mesh, const
         flux_divergence(velocity_loc(c), Gm[c], mesh, geom, tmp[c]);
         amrex::MultiFab::Subtract(*Rm[c], tmp[c], 0, 0, 1, 0);
     }
-    pressure_gradient(q.p, z, mesh, geom, {&tmp[0], &tmp[1], &tmp[2]});
+    if (in.buildings != nullptr && in.buildings->geometry() != nullptr && in.buildings->geometry()->hybrid_mesh()) {
+        hybrid_solid_pressure(in.buildings->geometry()->beta(), q.p, w.p_solid);
+        pressure_gradient(w.p_solid, z, mesh, geom, {&tmp[0], &tmp[1], &tmp[2]});
+    } else {
+        pressure_gradient(q.p, z, mesh, geom, {&tmp[0], &tmp[1], &tmp[2]});
+    }
     for (int c = 0; c < 3; ++c) { amrex::MultiFab::Add(*Rm[c], tmp[c], 0, 0, 1, 0); }
     amrex::MultiFab& theta_ref = w.theta_ref;
     if (theta_ref.empty()) { theta_ref.define(q.p.boxArray(), q.p.DistributionMap(), 1, 1); }

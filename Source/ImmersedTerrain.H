@@ -5,7 +5,9 @@
 // docs/immersed_terrain.rst). The mesh does not follow the ground: the cells below
 // terrain.flat_height are solid, the cut cell carries ERF's form-7 wall law (BuildingForcing.H with
 // an immersed ground) and the first full cell above it repeats the flat ground's shear
-// (ImmersedStrain.H). The run is neutral, laterally periodic or with inflow and outflow faces.
+// (ImmersedStrain.H). The run is neutral, laterally periodic or with inflow and outflow faces. With
+// terrain.representation = hybrid the same ground is immersed in a mesh that follows its lower
+// envelope (HybridTerrain.H).
 
 #include "Buildings.H"
 #include "Inputs.H"
@@ -21,6 +23,7 @@ namespace gust {
 //! What check_immersed_terrain needs from the other namespaces' inputs.
 struct ImmersedTerrainFacts
 {
+    std::string representation{"immersed_forcing"};  //!< terrain.representation (immersed_forcing or hybrid)
     bool surface_layer{false};       //!< bc.zlo = surface_layer
     bool neutral{true};              //!< bc.surface_stability = neutral
     bool z0_map{false};              //!< bc.surface_z0_file given
@@ -41,7 +44,7 @@ struct ImmersedTerrainFacts
     bool outflow_from_velocity{false};  //!< bc.outflow_transport = from_velocity
 };
 
-//! The refusals of terrain.representation = immersed_forcing that need other namespaces
+//! The refusals of terrain.representation = immersed_forcing (or hybrid) that need other namespaces
 //! (Inputs.cpp's validate has the terrain.* ones), with or without a stage: a run without one writes
 //! the ground to its plotfile and checkpoint. Empty when the run is supported.
 std::vector<std::string> check_immersed_terrain (const ImmersedTerrainFacts& f);
@@ -49,7 +52,9 @@ std::vector<std::string> check_immersed_terrain (const ImmersedTerrainFacts& f);
 //! The refusal that needs the mesh's levels: the ground must lie at or above the top of the first
 //! layer (first_layer_top, m), so that the cut cell is not the body-fitted ground's first cell, whose
 //! k row the ground's own wall value shares (BuildingTke.H), and at or below the bottom of the top
-//! layer (top_layer_bottom, m), which must hold fluid. Empty when it does.
+//! layer (top_layer_bottom, m), which must hold fluid. Empty when it does. With a hybrid mesh
+//! terrain.flat_height may be anything from 0: the surface layer's k row is off in the columns whose
+//! first cell is cut or solid (SurfaceLayerOptions::immersed_columns).
 std::string check_immersed_terrain_height (const TerrainInputs& t, double first_layer_top, double top_layer_bottom);
 
 //! The ground's height into z_nd's last component (of two), at every node of every column, ghost
@@ -64,16 +69,16 @@ std::string check_immersed_ground_extent (const amrex::MultiFab& z_nd, double fi
 //! The wall-law options of the immersed ground: buildings.type = immersed_forcing with the form 7
 //! law on every wall (fraction_stress, open_faces), the wall value of k (wall_tke), no heat
 //! (a neutral run), no lee zone, t.small_volfrac, the ground's roughness z0 (bc.surface_z0) and
-//! immersed_ground set. t.representation must be immersed_forcing.
+//! immersed_ground set (hybrid_mesh with a hybrid mesh). t.representation must be immersed_forcing or hybrid.
 BuildingsOptions immersed_terrain_options (const TerrainInputs& t, double z0);
 
 //! The ground as a height map in memory: one tile of height t.flat_height whose edges are the
 //! domain's x and y faces (with a terrain file: the terrain's heights).
 BuildingHeightMap immersed_terrain_map (const TerrainInputs& t, const amrex::Geometry& geom);
 
-//! The SHA-256 of what fixes the immersed ground: flat_height, small_volfrac, z0, the terrain's type and what
-//! the type reads (the hill's size and shape; the file's contents and the IDW choices). Reads terrain.file on the
-//! calling rank.
+//! The SHA-256 of what fixes the immersed ground: flat_height, small_volfrac, hybrid_half_width (with a hybrid
+//! mesh), z0, the terrain's type and what the type reads (the hill's size and shape; the file's contents and the
+//! IDW choices). Reads terrain.file on the calling rank.
 std::string immersed_terrain_hash (const TerrainInputs& t, double z0);
 
 //! <dir>/ImmersedTerrain with hash (I/O rank); nothing with an empty hash (a body-fitted run).

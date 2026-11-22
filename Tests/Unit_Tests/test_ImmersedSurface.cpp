@@ -524,6 +524,15 @@ TEST (ImmersedSurface, HashFollowsTheGroundsInputs)
     EXPECT_TRUE(changed([] (gust::TerrainInputs& e) { e.hill_half_width = 41; }));
     EXPECT_TRUE(changed([] (gust::TerrainInputs& e) { e.hill_shape = "round"; }));
     EXPECT_TRUE(changed([] (gust::TerrainInputs& e) { e.flat_height = 26; }));
+    // The hybrid mesh: its own line, with the width in metres.
+    EXPECT_TRUE(changed([] (gust::TerrainInputs& e) { e.representation = "hybrid"; e.hybrid_half_width = 128; }));
+    {
+        gust::TerrainInputs a = t, b = t;
+        a.representation = b.representation = "hybrid";
+        a.hybrid_half_width = 128;
+        b.hybrid_half_width = 256;
+        EXPECT_NE(gust::immersed_terrain_hash(a, kZ0), gust::immersed_terrain_hash(b, kZ0));
+    }
     EXPECT_NE(base, gust::immersed_terrain_hash(t, 0.2));
 
     // A file terrain: the file's contents and the interpolation's inputs.
@@ -570,4 +579,102 @@ TEST (ImmersedSurface, GroundFromAnXyzFile)
     });
     EXPECT_LT(worst, 100 * tol);
     EXPECT_EQ(static_cast<double>(z.min(0)), 0.0) << "the mesh's levels stay flat";
+}
+
+// The hybrid mesh (terrain.representation = hybrid, HybridTerrain.H): the same tilted plane on a mesh whose
+// levels slope at s, z_k = s x + 10 k. The shear z' = z - s x keeps areas and vertical distances, and maps
+// each cell to a 10 m x 10 m square and the ground to the plane h0 + (m - s) x: the solid fraction, the
+// fluid's height above the ground and the face fractions are those of the flat mesh's closed form with the
+// slope m - s. The slope fields stay m, the ground's own. A kernel that measures the ground from the
+// level's mean (the flat mesh's) fails this.
+TEST (ImmersedSurface, SlopedMeshMatchesTheShearedClosedForm)
+{
+    constexpr double s = 0.15;
+    for (const int mgs : {8, 4}) {
+        const PCase c = gust::lamtest::flat_case(8, 8, 24, 80, 80, 240, false, false, mgs);
+        for (const double deg : {20.0, 30.0, 45.0}) {
+            for (const int dir : {0, 1}) {
+                SCOPED_TRACE("boxes of " + std::to_string(mgs) + ", " + std::to_string(deg) + " degrees along " + (dir == 0 ? "x" : "y"));
+                const double m = std::tan(deg * kPi / 180);
+                gust::TerrainInputs t = immersed();
+                t.representation = "hybrid";
+                t.hybrid_half_width = 10;
+                const gust::BuildingsOptions opt = gust::immersed_terrain_options(t, kZ0);
+                ASSERT_TRUE(opt.hybrid_mesh);
+                amrex::MultiFab z = with_ground(c, [=] (double x, double y) { return 23.0 + m * (dir == 0 ? x : y); });
+                const auto dx = c.geom.CellSizeArray();
+                for (amrex::MFIter mfi(z, false); mfi.isValid(); ++mfi) {
+                    const auto a = z.array(mfi);
+                    amrex::LoopOnCpu(mfi.fabbox(), [&] (int i, int j, int k) {
+                        a(i, j, k, 0) = static_cast<amrex::Real>(s * (dir == 0 ? i : j) * static_cast<double>(dx[dir]) + 10.0 * k);
+                    });
+                }
+                gust::Buildings b;
+                b.build_from_surface(opt, "test", c.geom, z, c.ba, c.dm);
+                const Plane p{23.0, m - s, 10.0, 10.0,
+                              std::max(opt.small_volfrac, 64 * static_cast<double>(std::numeric_limits<amrex::Real>::epsilon()))};
+                auto along = [dir] (int i, int j) { return dir == 0 ? i : j; };
+
+                EXPECT_LT(max_over(b.beta(), [&] (const auto& a, int i, int j, int k) {
+                    return std::abs(static_cast<double>(a(i, j, k)) - p.beta(along(i, j), k));
+                }), tol);
+                EXPECT_LT(max_over(b.surface(), [&] (const auto& a, int i, int j, int k) {
+                    const double e = std::abs(static_cast<double>(a(i, j, k, gust::kSurfaceHeight)) - p.height(along(i, j), k));
+                    const double ex = std::abs(static_cast<double>(a(i, j, k, gust::kSurfaceSlopeX)) - (dir == 0 ? m : 0.0));
+                    const double ey = std::abs(static_cast<double>(a(i, j, k, gust::kSurfaceSlopeY)) - (dir == 1 ? m : 0.0));
+                    return std::max(e, std::max(ex, ey));
+                }), 100 * tol);
+                const double zface_shift = 2 * 64 * static_cast<double>(std::numeric_limits<amrex::Real>::epsilon()) * 252 / ((m - s) * 10);
+                for (int d = 0; d < 3; ++d) {
+                    EXPECT_LT(max_over(b.beta_face(d), [&] (const auto& a, int i, int j, int k) {
+                        const int n = along(i, j);
+                        if (k > 23 || i > 7 + (d == 0 ? 1 : 0) || j > 7 + (d == 1 ? 1 : 0)) { return 0.0; }
+                        double want = 0;
+                        if (d == 2) {
+                            want = p.below(n, k);
+                        } else if (d == dir) {
+                            if (n == 0 || n == 8) { return 0.0; }
+                            want = p.along(n, k);
+                        } else {
+                            if ((d == 0 ? i : j) == 0 || (d == 0 ? i : j) == 8) { return 0.0; }
+                            want = p.beside(n, k);
+                        }
+                        return std::abs(static_cast<double>(a(i, j, k)) - want);
+                    }), tol + (d == 2 ? zface_shift : 0.0)) << "faces " << d;
+                }
+                double cut = 0;
+                for (amrex::MFIter mfi(b.beta(), false); mfi.isValid(); ++mfi) {
+                    const auto be = b.beta().const_array(mfi);
+                    amrex::LoopOnCpu(mfi.validbox(), [&] (int i, int j, int k) { cut += (be(i, j, k) > 0 && be(i, j, k) < 1) ? 1 : 0; });
+                }
+                amrex::ParallelDescriptor::ReduceRealSum(cut);
+                EXPECT_GE(cut, 64.0);   // a cut cell in every column at least
+            }
+        }
+    }
+}
+
+// The hybrid kernels on a flat mesh give the flat mesh's geometry (the level is one height, so the ground
+// seen from it is the ground itself, to round-off).
+TEST (ImmersedSurface, HybridKernelsOnAFlatMeshMatchImmersed)
+{
+    const PCase c = gust::lamtest::flat_case(8, 8, 24, 80, 80, 240, false, false, 4);
+    auto hill = [] (double x, double y) { return 23.0 + 40.0 / (1 + ((x - 40) * (x - 40) + (y - 35) * (y - 35)) / 400.0); };
+    Surface flat(c, hill);
+    gust::TerrainInputs t = immersed();
+    t.representation = "hybrid";
+    gust::BuildingsOptions opt = gust::immersed_terrain_options(t, kZ0);
+    const amrex::MultiFab z = with_ground(c, hill);
+    gust::Buildings b;
+    b.build_from_surface(opt, "test", c.geom, z, c.ba, c.dm);
+    auto diff = [&] (const amrex::MultiFab& x, const amrex::MultiFab& y) {
+        amrex::MultiFab dd(x.boxArray(), x.DistributionMap(), x.nComp(), 0);
+        amrex::MultiFab::Copy(dd, x, 0, 0, x.nComp(), 0);
+        amrex::MultiFab::Subtract(dd, y, 0, 0, x.nComp(), 0);
+        return static_cast<double>(dd.norminf(0, x.nComp(), amrex::IntVect(0)));
+    };
+    EXPECT_LT(diff(b.beta(), flat.b.beta()), tol);
+    EXPECT_LT(diff(b.surface(), flat.b.surface()), 100 * tol);
+    for (int d = 0; d < 3; ++d) { EXPECT_LT(diff(b.beta_face(d), flat.b.beta_face(d)), tol) << d; }
+    EXPECT_LT(diff(b.wall(), flat.b.wall()), 100 * tol);
 }

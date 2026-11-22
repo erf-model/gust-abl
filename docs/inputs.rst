@@ -111,10 +111,13 @@ Quick reference
      - Terrain smoothing on coarse hierarchy levels
    * - ``terrain.representation``
      - ``body_fitted``
-     - The mesh follows the ground, or the ground is immersed in a flat mesh
+     - The mesh follows the ground, the ground is immersed in a flat mesh, or in a mesh that follows its lower envelope
    * - ``terrain.flat_height``
-     - required for ``immersed_forcing``
+     - required for ``immersed_forcing``; ``hybrid``: the first layer's thickness
      - Height of the immersed terrain's zero level above the mesh's lower face (m)
+   * - ``terrain.hybrid_half_width``
+     - two cells (2 max(dx, dy))
+     - Half-width of the square of the hybrid mesh's lower envelope (m)
    * - ``terrain.small_volfrac``
      - ``0.005``
      - Solid fractions this close to 0 or 1 are rounded (immersed ground)
@@ -690,8 +693,11 @@ Quick reference
        with a smoothstep between (:doc:`boundary_conditions`).
    * - ``terrain.representation``
      - ``body_fitted``
-     - ``body_fitted`` (the mesh follows the ground) or ``immersed_forcing`` (the mesh is flat and the ground is an
-       immersed surface with the form 7 wall law, :doc:`immersed_terrain`). ``immersed_forcing`` needs
+     - ``body_fitted`` (the mesh follows the ground), ``immersed_forcing`` (the mesh is flat and the ground is an
+       immersed surface with the form 7 wall law, :doc:`immersed_terrain`) or ``hybrid`` (the mesh follows a
+       smoothed lower envelope of the ground and the ground is immersed in it, :doc:`immersed_terrain`, Hybrid
+       mesh). ``hybrid`` has the refusals of ``immersed_forcing`` except ``terrain.smoothing`` and
+       ``terrain.gamma_m``, which shape its mesh aloft as on a body-fitted mesh. ``immersed_forcing`` needs
        ``mesh.hierarchy_levels = 1``,
        ``bc.zlo = surface_layer``, ``bc.surface_stability = neutral``, ``bc.surface_wall_k = dirichlet``,
        ``turb.closure = kl`` and, in a stage, ``steady.sweep = zjacobi``. It refuses ``bc.surface_z0_file``,
@@ -701,15 +707,29 @@ Quick reference
        ``terrain.smoothing``, ``terrain.gamma_m``, ``terrain.hierarchy_passes`` and ``terrain.nest_blend_width``
        when given. The refusals apply to a run with no stage too. May not change across a restart.
    * - ``terrain.flat_height``
-     - required for ``immersed_forcing``
-     - Finite, between the top of the mesh's first layer and the bottom of its top layer (m);
-       ``immersed_forcing`` only. The height of the terrain's zero level above the mesh's lower face (z = 0): the
-       ground is ``terrain.flat_height`` plus the height ``terrain.type`` gives (the ground itself with ``flat``),
-       and the whole ground must lie between the same two levels. Cells below it are solid. May not change across
-       a restart.
+     - required for ``immersed_forcing``; ``hybrid``: the first layer's thickness
+     - Finite (m); ``immersed_forcing``: between the top of the mesh's first layer and the bottom of its top layer;
+       ``hybrid``: ≥ 0 and at most the bottom of its top layer. ``immersed_forcing`` and ``hybrid`` only. The height of the terrain's zero level above the mesh's lower face
+       (z = 0): the ground is ``terrain.flat_height`` plus the height ``terrain.type`` gives (the ground itself with
+       ``flat``), and the whole ground must lie between the same two levels. Cells below it are solid. With
+       ``hybrid`` the mesh's lower face follows the envelope, so the gap between it and the ground is at least
+       ``terrain.flat_height``, and the ground must lie at or below the bottom of each column's top layer. With
+       ``hybrid`` and 0 the lower face is the ground where the envelope meets the terrain, and the surface layer acts
+       there (:doc:`immersed_terrain`, Hybrid mesh). With ``hybrid`` and the key not given, the thickness of the
+       mesh's first layer (its first z-level). May not change across a restart.
+   * - ``terrain.hybrid_half_width``
+     - two cells (2 max(dx, dy))
+     - Finite, ≥ 0 and at most the domain's larger lateral length (m); ``hybrid`` only (refused when given
+       otherwise). The mesh's lower face is the running minimum of the terrain's height over a square of this
+       half-width, then the running mean of that over the same square, never above the terrain. The square is
+       ``floor(width / dx)`` nodes in x and ``floor(width / dy)`` in y, cut at faces that are not periodic. 0: the
+       mesh follows the terrain itself, with the ground ``terrain.flat_height`` above its lower face. A larger
+       width gives a smoother mesh and a larger gap (:doc:`immersed_terrain`, Hybrid mesh). Not given: twice the
+       larger of dx and dy, counting only a direction with more than one cell (``tools/hybrid_width.py`` suggests a
+       range for a terrain). May not change across a restart.
    * - ``terrain.small_volfrac``
      - ``0.005``
-     - ≥ 1e-4 and < 0.5; ``immersed_forcing`` only. A solid fraction below it becomes 0 and one within it of 1 becomes
+     - ≥ 1e-4 and < 0.5; ``immersed_forcing`` and ``hybrid`` only. A solid fraction below it becomes 0 and one within it of 1 becomes
        1, as with ``buildings.small_volfrac``, so it still decides which cells are solid. Unlike
        ``buildings.small_volfrac`` it is not a tolerance of the wall-cell test: every cell that is not solid and whose
        low z face is more blocked than its high one is a wall cell. May not change across a restart.
