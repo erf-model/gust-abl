@@ -18,6 +18,7 @@
 
 #include <array>
 #include <functional>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -44,6 +45,8 @@ void run ()
     OuterOutcome outcome;
     if (nests.active()) { outer.outcome = &outcome; }
     const bool joint = nests.active() && nests.feedback != NestFeedback::none;
+    // nest.feedback_factor as the joint record holds it (0 with defect, which has none).
+    const amrex::Real joint_factor = nests.feedback == NestFeedback::defect ? amrex::Real(0) : nests.feedback_factor;
     // nest.feedback = defect, relax, relax_consistent or inject (JointRun.H): the outer domain, once steady, runs each nest inside its own run_domain
     // (DomainRole::joint), and the last nest runs the joint loop, so every domain stays in memory.
     std::vector<JointMember*> members;
@@ -107,6 +110,14 @@ void run ()
                 amrex::Print() << "gust: io.restart = " << restart << ": the joint run took " << prior.exchanges
                                << " exchanges with nest.feedback = " << prior.feedback << "; it goes on with " << fbk << "\n";
             }
+            if (fbk == prior.feedback && !prior.has_factor && joint_factor > 0) {
+                amrex::Print() << "gust: io.restart = " << restart << ": its joint record holds no nest.feedback_factor "
+                                  "(written before GUST_JOINT 3); it goes on with ";
+                amrex::Print().SetPrecision(std::numeric_limits<amrex::Real>::digits10) << joint_factor;
+                amrex::Print() << " and cannot tell whether that is the recorded run's"
+                               << (prior.has_feedback ? " (if it is not, the restored window may stop the run early)" : "")
+                               << "\n";
+            }
             resumes[0] = {restart, prior.outer_cfl_floor};
             for (std::size_t i = 0; i < prior.nests.size(); ++i) {
                 resumes[i + 1] = {prior.nests[i].chk, prior.nests[i].cfl_floor};
@@ -130,9 +141,11 @@ void run ()
             };
             std::vector<amrex::Real> prior_window;
             if (resume) {
-                // The stop test's window and the last feedback (JointRecord.H), when the record has them for this mode.
+                // The stop test's window and the last feedback (JointRecord.H), when the record has them for this
+                // mode and factor.
                 const std::string fbk = nest_feedback_name(nests.feedback);
-                if (prior.has_feedback && prior.feedback == fbk) {
+                const std::string refusal = joint_restore_refusal(prior, fbk, joint_factor);
+                if (refusal.empty()) {
                     std::array<amrex::MultiFab, 5> f;
                     read_joint_feedback(resumes[0].chk, fields(), f);
                     const std::array<const amrex::MultiFab*, 5> pf{&f[0], &f[1], &f[2], &f[3], &f[4]};
@@ -145,12 +158,10 @@ void run ()
                     }
                     prior_window = prior.window;
                 } else {
-                    amrex::Print() << "gust: io.restart = " << resumes[0].chk << ": "
-                                   << (prior.has_feedback ? "its joint record holds the feedback of nest.feedback = "
-                                                            + prior.feedback
-                                                          : std::string("its joint record (GUST_JOINT 1) holds no feedback"))
+                    amrex::Print() << "gust: io.restart = " << resumes[0].chk << ": " << refusal
                                    << ", so the joint stop test's window (steady.monitor_window exchanges) fills again: "
-                                      "the run may stop later than it would have without the restart\n";
+                                      "the run cannot stop before it is full, and its exchanges may differ from those "
+                                      "of a run without the restart\n";
                 }
             }
             joint_result = run_joint(members, P.max_iterations, resume ? prior.exchanges : 0, prior_window);
@@ -200,6 +211,7 @@ void run ()
         rec.exchanges = joint_result.exchanges;
         rec.outer_cfl_floor = floors.at(0);
         rec.window = joint_result.window;
+        rec.factor = joint_factor;
         for (std::size_t i = 0; i < nests.nests.size(); ++i) {
             rec.nests.push_back({nests.nests[i].name, floors.at(i + 1), nest_chks[i]});
         }

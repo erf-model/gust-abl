@@ -2055,7 +2055,7 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
     set(JOINT_RECORDS ${CMAKE_CURRENT_BINARY_DIR}/joint_records)
     file(WRITE ${JOINT_RECORDS}/names/Joint "GUST_JOINT 1\nfeedback defect\nexchanges 5\nouter 0x1p+3\nnest other 0x1p+3 chk_other00010\n")
     file(WRITE ${JOINT_RECORDS}/iterations/Joint "GUST_JOINT 1\nfeedback defect\nexchanges 5\nouter 0x1p+3\nnest a 0x1p+3 chk_a00010\n")
-    file(WRITE ${JOINT_RECORDS}/version/Joint "GUST_JOINT 3\n")
+    file(WRITE ${JOINT_RECORDS}/version/Joint "GUST_JOINT 4\n")
     file(WRITE ${JOINT_RECORDS}/missing/Joint "GUST_JOINT 1\nfeedback defect\nexchanges 5\nouter 0x1p+3\nnest a 0x1p+3 chk_a_missing00010\n")
     gust_add_test(NAME abort_nests_joint_restart_names NP 1 LABELS "regression;smoke"
                   PREFIX ${EXPECT_ABORT} "its joint record has the nests other, nest\\.names has a; a joint restart keeps the nests and their order" --
@@ -2065,7 +2065,7 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
                   COMMAND ${NESTS_OUTER} ${NESTS_A} nest.feedback=defect io.restart=${JOINT_RECORDS}/iterations
                           steady.max_iterations=5 ${GUST_TEST_AMREX_FLAGS})
     gust_add_test(NAME abort_nests_joint_restart_version NP 1 LABELS "regression;smoke"
-                  PREFIX ${EXPECT_ABORT} "its Joint file cannot be read \\(expected GUST_JOINT 1 or 2\\)" --
+                  PREFIX ${EXPECT_ABORT} "its Joint file cannot be read \\(expected GUST_JOINT 1 to 3\\)" --
                   COMMAND ${NESTS_OUTER} ${NESTS_A} nest.feedback=relax io.restart=${JOINT_RECORDS}/version ${GUST_TEST_AMREX_FLAGS})
     gust_add_test(NAME abort_nests_joint_restart_missing NP 1 LABELS "regression;smoke"
                   PREFIX ${EXPECT_ABORT} "its joint record names nest checkpoints that are not here: chk_a_missing00010" --

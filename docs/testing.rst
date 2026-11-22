@@ -2329,7 +2329,7 @@ Current tests
        ``rt_nests_joint_restart_inject``
      - A joint run stopped after 150 exchanges (``steady.max_iterations``) and restarted from the joint record its
        message names (``Tests/Canonical_RANS/Nests_Two_Way/check_joint_restart.py``): the record has the feedback,
-       150 exchanges and the nests in order; the restart logs ``restarted after exchange 150``, is steady after the
+       150 exchanges, the factor and the nests in order; the restart logs ``restarted after exchange 150``, is steady after the
        straight run's exchanges with each domain's iterations over the run equal, and the last plotfile and
        checkpoint of every domain (state, node heights, closure history, nest faces, joint record; not the driver
        record's wall times) are byte for byte the straight run's. The nests ``crest`` and ``lee`` with the defect
@@ -2340,9 +2340,14 @@ Current tests
        Mutants: with AMReX's default rank order for a joint nest's boxes (which follows each rank's memory in use)
        the relax test fails (the nest's plotfile differs; the 3-rank defect test passes by chance); without the
        ghost fill after the faces' refresh both fail (the outer plotfile differs, by up to 3.5e-12 in theta).
+       The relax test also restarts for one exchange with ``nest.feedback_factor = 0.75``: the log gives 0.5 and 0.75
+       and says the window fills again, and the record it writes holds 0.75. One more such restart, from the record
+       rewritten as version 2, logs that it holds no factor, restores the window and writes a version 3 record with
+       0.75. Mutants: the restart compared with the recorded factor in place of the deck's, a factor of 1 written for
+       every mode, and the prior record's factor written back after a restart, each fail it.
    * - ``abort_nests_joint_restart_names``, ``_iterations``, ``_version``, ``_missing``
      - ``io.restart`` with a joint record (written by the configure step into ``joint_records/``) that names the nest
-       ``other`` for ``nest.names = a``; one of 5 exchanges with ``steady.max_iterations = 5``; one of version 2; one
+       ``other`` for ``nest.names = a``; one of 5 exchanges with ``steady.max_iterations = 5``; one of version 4; one
        that names a nest checkpoint that is not there: each stops the run before the outer domain starts, naming
        ``io.restart``.
    * - ``abort_nests_feedback_value``, ``_no_nests``, ``_newton``, ``_damping``, ``_odd_boxes``, ``_narrow``
@@ -4130,9 +4135,15 @@ GoogleTest suite
    * - ``NestInject.InjectedRunReachesSteady`` (UT-I.4, the stop test)
      - The converged hill with a target of 1.1 times its velocity on the inner box, injected at the default factor
        before each SIMPLEC iteration: the first iteration leaves all six fields on the inner box at the injected
-       values exactly (w's ground and top faces are boundary values); the residual falls 6 orders (91 iterations);
-       the state outside the box moves (1.02 m/s); every x-face column carries 1.1 times the converged volume flux
-       (closed form, periodic channel; error 2.5e-9 against 1e-6); on 1, 2 and 4 ranks.
+       values exactly (w's ground and top faces are boundary values); the residual falls 6 orders (100 iterations);
+       the state outside the box moves (0.83 m/s); every x-face column carries 1.1 times the converged volume flux
+       (closed form, periodic channel; error 5.3e-10 against 1e-6); on 1, 2 and 4 ranks. In single precision the
+       steady criterion cannot be met on this hill: v is 0 (2-D), so its residual is round-off from the start (the
+       relative residual stays at 0.02, and a drop of 4 orders from ``steady.residual_tol`` would need 5e-9 against a
+       floor of 6e-7), and k's floor of 3e-4 is above ``steady.residual_tol``. There the hill and the injected run
+       stop on each field's own bound: u, w, p and :math:`\theta` at 2e-4 of their largest in the first five
+       iterations, k at 5e-4 (the hill) and 4e-3 (injected) of its, v at 5e-6 (63 injected iterations, 0.83 m/s,
+       flux error 5.8e-8 against 1e-6).
    * - ``NestInject.FactorCheckNamesTheKey`` (UT-I.5)
      - ``check_inject_factor`` accepts 1, 0.2 and the default and refuses 0, −0.5, 1.01, 2, infinity and NaN, naming
        ``nest.feedback_factor`` and ``inject``.
@@ -4140,7 +4151,8 @@ GoogleTest suite
      - The pressure-correction solve with ``NestInject``'s masks on a 16 × 16 × 8 Gaussian bump in boxes of 8, the
        inner box crossing four boxes, with both GMRES back ends: the mean removed is the :math:`J`-weighted mean of the
        right-hand side over the fluid cells; :math:`\phi = 0` on the held cells; no flux on a held face; on every
-       fluid cell :math:`|\nabla \cdot F + (b - \bar b)| \le 10^{-6}`.
+       fluid cell :math:`|\nabla \cdot F + (b - \bar b)| \le 10^{-6}` and the mean to 1e-9 (single precision: 1e-4 and
+       1e-6; measured 2.5e-5 and 2.0e-8).
    * - ``NestInject.TargetChangeIsTheWindowMeasure`` (UT-I.7)
      - The target's change that the joint run's stop window reads: at :math:`\omega = 0.4`, the first injection's
        change is :math:`\omega \max |q^* - q|` and the second's :math:`\omega (1 - \omega) \max |q^* - q|` over the
@@ -4156,7 +4168,7 @@ GoogleTest suite
        feedback, the exchanges, the CFL floors bit for bit (1/3, 0.1 and 0) and each nest's checkpoint path (one with
        a space). A checkpoint without a record reads as none. Another version, feedback ``none``, 0 exchanges, a
        negative or NaN floor, no nest line, a nest line without a checkpoint, text after a floor and a line that is
-       not ``nest`` each abort. A record with ``\r\n`` line ends and trailing spaces after a path reads the paths
+       not ``nest`` each abort, as does a missing or bad factor line. A record with ``\r\n`` line ends and trailing spaces after a path reads the paths
        without them. Mutants: floors written as decimals fail the round trip; a floor with trailing text accepted
        fails the malformed test; the path not trimmed fails the line-end test.
    * - ``NestBuildings.PatchHasTheWholeDomainsFractionsAndWalls`` (UT-9.4.1)
@@ -4456,6 +4468,14 @@ GoogleTest suite
    * - ``Simplec.HybridBlendReadsTheGroundDistance``, ``Simplec.ResidualScalesUseTheDepthOfTheLayers``
      - The upwind blend reads the distance to the ground, not to the nearest building wall; the residual scales
        use the depth of the stretched layers, not ``mesh.prob_hi``.
+   * - ``JointRecord.VersionTwoReadsWithoutAFactor``, ``JointRecord.RestoresOnlyWithTheRecordedFeedbackAndFactor``
+       (beyond the plan)
+     - A joint record of version 2 reads with its window and no factor. A restart restores the window and the last
+       feedback with the recorded feedback and factor, with any factor from a version 2 record and never from a
+       version 1 record; otherwise the reason names both values. The round trip holds the factor bit for bit (1/3, 0
+       with ``defect``). A missing, negative or NaN factor, 0 with ``relax`` and a factor with ``defect`` each abort.
+       Mutants: a factor written as a decimal, one not marked as read, one not compared, one compared for version 2
+       and the check against the mode removed each fail.
    * - ``BoundaryFill.OutflowGhostCellsMirrorTheEdgeCells``, ``JointRecord.VersionOneReadsWithoutAWindow``,
        ``MeshHierarchy.GroundStepWarningIsLevelZerosOnly``
      - Outflow ghost cells over sloping ground, with periodic sides; a joint record of version 1 reads without a

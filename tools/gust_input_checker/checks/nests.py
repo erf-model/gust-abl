@@ -20,8 +20,8 @@ check_nests, or of Source/App.cpp before the outer domain starts):
   solver.poisson_backend = mlmg, or a nest across a periodic x or y
   (Source/App.cpp);
 - with defect, relax, relax_consistent or inject and io.restart, the checkpoint's joint record (Joint;
-  Source/JointRecord.cpp, Source/Run.cpp): one that is not GUST_JOINT 1 or
-  2 or cannot be read (io.restart), other nests or another order than nest.names
+  Source/JointRecord.cpp, Source/Run.cpp): one that is not GUST_JOINT 1 to
+  3 or cannot be read (io.restart), other nests or another order than nest.names
   (nest.names), steady.max_iterations at or below its exchanges
   (steady.max_iterations), a nest checkpoint it names that is not in the
   directory the run starts in (io.restart);
@@ -61,18 +61,18 @@ def _floor(text):
     """A finite floor >= 0 written as a hex float (Source/JointRecord.cpp parse_floor; strtod also reads decimals)."""
     try:
         v = float.fromhex(text) if "x" in text.lower() else float(text)
-    except ValueError:
+    except (ValueError, OverflowError):     # float.fromhex overflows where strtod gives inf
         return None
     return v if math.isfinite(v) and v >= 0 else None
 
 
-JOINT_VERSION = 2   # Source/JointRecord.cpp kJointVersion; version 1 (no window line) still reads
+JOINT_VERSION = 3   # Source/JointRecord.cpp kJointVersion; versions 1 (no window line) and 2 (no factor line) still read
 
 
 def read_joint_record(text):
     """(exchanges, [(name, chk), ...]) from a Joint file, or the reason it cannot be read, as Source/JointRecord.cpp
-    reads it: whitespace-separated head, in version 2 a window line (its count, then that many changes), then one
-    nest per line, the checkpoint the rest of the line."""
+    reads it: whitespace-separated head, from version 2 a window line (its count, then that many changes), from
+    version 3 a factor line (0 with defect, > 0 otherwise), then one nest per line, the checkpoint the rest of the line."""
     lines = [ln for ln in text.split("\n") if ln.strip()]
     head = " ".join(lines[:4]).split()
     try:
@@ -80,7 +80,7 @@ def read_joint_record(text):
     except ValueError:
         version = 0
     if not 1 <= version <= JOINT_VERSION:
-        return "expected GUST_JOINT 1 or %d" % JOINT_VERSION
+        return "expected GUST_JOINT 1 to %d" % JOINT_VERSION
     if len(head) < 4 or head[2] != "feedback" or head[3] not in ("defect", "relax", "relax_consistent", "inject"):
         return "the feedback line"
     try:
@@ -101,6 +101,12 @@ def read_joint_record(text):
         if not 0 <= m <= 1000000 or len(win) != m + 2 or any(_floor(d) is None for d in win[2:]):
             return "the window line"
         first_nest = 5
+    if version >= 3:
+        fac = lines[5].split() if len(lines) > 5 else []
+        f = _floor(fac[1]) if len(fac) == 2 and fac[0] == "factor" else None
+        if f is None or (head[3] == "defect") != (f == 0):
+            return "the factor line"
+        first_nest = 6
     nests = []
     for ln in lines[first_nest:]:
         parts = ln.split(None, 3)

@@ -837,7 +837,7 @@ around ``...``; the per-domain steady line after the run gives it in full.
 **Restart.** A joint run that stops after ``steady.max_iterations`` exchanges, not steady, writes every domain's
 plotfile and checkpoint, and a joint record, the file ``Joint``, in the outer domain's checkpoint. The record holds
 the feedback mode, the exchanges taken, each driver's CFL floor (above), the stop test's window of changes
-:math:`\delta_n` (above) and each nest's checkpoint; beside it the outer checkpoint holds the feedback of the last
+:math:`\delta_n` (above), ``nest.feedback_factor`` (0 with ``defect``) and each nest's checkpoint; beside it the outer checkpoint holds the feedback of the last
 exchange (``Level_0/joint_feedback_*``: :math:`S` with ``defect``, the target :math:`q^*` with ``relax``). The error
 message names that checkpoint. To go on, rerun the same deck with ``io.restart`` set to it, without the ``init.*``
 keys, and with a larger ``steady.max_iterations``; the joint run counts its exchanges over the run, so the value is
@@ -849,9 +849,17 @@ iterations. The log says ``joint run: restarted after exchange N``.
 - The record names each nest's checkpoint as written, relative to the directory the run started in. Restart from
   the same directory: a recorded checkpoint that is not there stops the run before anything runs, naming
   ``io.restart`` and the missing paths.
-- ``nest.feedback_factor`` is not in the record: the restart takes the deck's value or the default. A relax run
-  stopped before tracker N-114 item 13 (default 1) without the key restarts unchanged only with
+- The restart takes ``nest.feedback_factor`` from the deck or its default, not from the record. With the same
+  ``nest.feedback`` and another factor the run goes on with the deck's value, the window starts empty and the log
+  gives both values. With another ``nest.feedback`` the factor is the new one's, given or default (from ``relax`` to
+  ``relax_consistent`` without the key, 0.5 becomes 1), and the log names the two feedbacks.
+- A record written before the factor was added (``GUST_JOINT 1`` or ``2``) holds none. With the same
+  ``nest.feedback``, other than ``defect``, the log says so. A record of version 2 then restores its window whatever
+  the deck's factor: if that is not the recorded run's, the window holds another factor's changes and the run may
+  stop early, so give the factor the run had. A ``relax`` run without the key from the time its default was 1 needs
   ``nest.feedback_factor = 1``.
+- A GUST build from before ``GUST_JOINT 3`` stops on a record of version 3, also with ``nest.feedback = none``.
+- A restart needs the precision the checkpoint was written in; the other one stops, naming ``io.restart``.
 - ``convection.hybrid_sigma_max`` (the blend) is refused with ``io.restart``, as for any restart: the blend is not
   in the checkpoint. A joint run with the blend therefore restarts without it, and its error message says so.
 - On the same number of ranks a restart continues the run bit for bit: the regression ``rt_nests_joint_restart``
@@ -867,9 +875,12 @@ iterations. The log says ``joint run: restarted after exchange N``.
   the larger value only when the stop point is above every one-way run's iterations.
 - A restart restores the window and the last feedback, so its first exchange measures :math:`\delta_n` and tests
   the window as the run without the restart does, and it stops after the same exchange. A record written before the
-  window was added (``GUST_JOINT 1``) still restarts, as does a restart that changes ``nest.feedback``; there the
-  window starts empty and is full again after ``steady.monitor_window`` exchanges (the log notes it), so the restart
-  never stops earlier than the run it continues and may stop later.
+  window was added (``GUST_JOINT 1``) still restarts, as does a restart that changes ``nest.feedback`` or
+  ``nest.feedback_factor``; there the window starts empty (the log notes it), so the restart cannot stop before it is
+  full again, ``steady.monitor_window`` exchanges or more later. From a version 1 record, with nothing changed, it
+  never stops earlier than the run it continues and may stop later. With another feedback or factor the iteration
+  changes: the run may take fewer or more exchanges, and except for a change of ``inject``'s factor alone its steady
+  state may differ.
 - ``nest.feedback`` may change at a restart (the log notes it). ``nest.feedback_flux`` is not in the record and may
   change at a restart without a note: the ring correction is formed again at every exchange, so nothing of it is
   restored. ``nest.damping`` is not in the record either; the deck must keep it, since it sets the nests' Rayleigh

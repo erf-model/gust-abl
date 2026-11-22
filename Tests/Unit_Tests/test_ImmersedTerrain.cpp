@@ -581,7 +581,8 @@ TEST (ImmersedTerrain, AbsoluteRayleighHeightIsFromTheTerrainZero)
             err = std::max(err, std::abs(value_at(R.w, 1, 1, k) - expect));
         }
         ASSERT_EQ(damped, 7) << "the w points 155 to 215 m above the terrain's zero are in the layer";
-        EXPECT_LT(err, 1e-12) << "max_grid_size " << mgs;
+        // single precision: the round-off of 0.05 times sin^2, 6e-9
+        EXPECT_LT(err, (std::is_same_v<amrex::Real, double>) ? 1e-12 : 1e-7) << "max_grid_size " << mgs;
     }
 }
 
