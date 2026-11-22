@@ -799,10 +799,20 @@ of :math:`U` against the tunnel):
    * - Ishihara rough ridge, :math:`U` (m/s)
      - 0.57 → 0.55
      - 655 / 664
+   * - Big Southern Butte 222°, speed at the 40 sensors at 3 m (m/s)
+     - 3.20 → 5.94
+     - 410 / 1094
 
 The hybrid mesh is closer to the measurements behind the Bolund cliff and on the smooth ridge, and further from
-them on Askervein and the other two Bolund directions. Most masts differ from terrain-following by more than
+them on Askervein, the other two Bolund directions and Big Southern Butte. Most masts differ from terrain-following by more than
 0.25 m/s at these defaults, so the representation changes the answer on these sites.
+
+On Big Southern Butte (dx = 137 m) the default width gives a largest gap of 294 m on 780 m of relief (0.37), and
+the hybrid run is close to the flat immersed one (rms 6.14 m/s): the speed at the two sensors on the top is 10.8 m/s
+low, against 3.2 m/s for terrain-following. ``tools/hybrid_width.py`` reports that no width meets both rules on this
+mesh. The run reached :math:`r < 10^{-4}` after 570 iterations (terrain-following 260) and stopped on
+``steady.residual_tol`` after 1094, in 58 times the terrain-following run's time on 3 ranks (114 layers against 40; part of the run shared the
+machine with other jobs).
 
 The 2-cell default comes from 2-D ridges with a half-width of at least 4 cells. A round hill has a larger gap for the
 same width (about 0.26 of the relief at a half-width of 8 cells, 0.58 at 4), and on narrow features the default
