@@ -186,6 +186,7 @@ void BuildingTke::build (const Buildings& b, const BuildingForcing& law, const B
     m_floor = tke_floor;
     m_cmu0 = Cmu0;
     m_z0b = static_cast<amrex::Real>(opt.z0);
+    m_immersed_ground = opt.immersed_ground;
     m_impinging = law.wall_k_impinging();
     const amrex::BoxArray& ba = b.beta().boxArray();
     const amrex::DistributionMapping& dm = b.beta().DistributionMap();
@@ -530,6 +531,12 @@ amrex::Long BuildingTke::limit_wall_distance (amrex::MultiFab& dist, const Rough
     const char* op = "BuildingTke::limit_wall_distance";
     if (dist.boxArray() != m_dist.boxArray() || dist.DistributionMap() != m_dist.DistributionMap() || dist.nGrow() < 1) {
         amrex::Abort(std::string("gust: ") + op + ": the wall distance is not on the buildings' cells with a ghost layer");
+    }
+    if (m_immersed_ground) {
+        // The wall is the ground itself: one roughness, so the shift z0_b - z0 is 0 in every column, with a
+        // uniform z0 or a map (whose columns differ, and BuildingsOptions::z0 is then not the ground's).
+        if (ground.map != nullptr) { check_roughness_map(op, *ground.map, dist); }
+        return limit_distance<UniformZ0>(dist, m_dist, Roughness(m_z0b), m_z0b);
     }
     if (ground.map == nullptr) {
         if (std::isnan(ground.z0) || !(ground.z0 >= 0 && std::isfinite(ground.z0))) {

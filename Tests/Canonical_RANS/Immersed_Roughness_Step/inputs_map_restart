@@ -1,0 +1,43 @@
+# Restart from inputs_map_checkpoint's checkpoint on another box layout. terrain.representation,
+# terrain.flat_height and the roughness (bc.surface_z0_file and terrain.idw_neighbors, or bc.surface_z0) are
+# given on the command line: the checkpoint's map is accepted, another map or a uniform value is refused.
+mesh.n_cell        = 64 4 67
+mesh.prob_lo       = 0. 0. 0.
+mesh.prob_hi       = 2560. 160. 1046.875
+mesh.is_periodic   = 0 1 0
+mesh.max_grid_size = 16 2
+
+terrain.type = flat
+
+bc.xlo = inflow
+bc.xhi = outflow
+bc.zlo = surface_layer
+bc.zhi = slip_wall
+bc.theta_profile_z = 0.
+bc.theta_profile   = 300.
+bc.inflow_profile   = log_law
+bc.inflow_ustar     = 0.35
+bc.inflow_z0        = 0.03
+bc.inflow_direction = 0.
+
+forcing.gravity = 0.
+
+turb.tke_floor       = 1.e-6
+turb.realizability   = 0.309
+turb.nut_relax       = 0.5
+turb.max_geom_lscale = 100.
+
+steady.stage                   = simplec
+steady.sweep                   = zjacobi
+steady.cfl0                    = 1.
+steady.cfl_max                 = 4.
+steady.zline_sweeps            = 16
+steady.residual_ref_iterations = 100
+steady.residual_drop_orders    = 4
+steady.max_iterations          = 2
+
+solver.poisson_backend = gmres_fft
+
+io.restart          = step_map_chk00002
+io.plot_file        = step_map_restart_plt
+io.write_checkpoint = 0

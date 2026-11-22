@@ -57,10 +57,8 @@ LogShear::LogShear (const amrex::MultiFab& dist, const Roughness& rough, const B
     if (dist.nGrowVect()[0] < 1 || dist.nGrowVect()[1] < 1) { amrex::Abort("gust: LogShear: the wall distance needs one lateral ghost cell"); }
     // One lateral ghost cell (apply's cells), none in z: the stencil stays inside the domain.
     m_len.define(dist.boxArray(), dist.DistributionMap(), 1, amrex::IntVect(1, 1, 0));
-    if (m_b != nullptr) {
-        if (rough.map != nullptr) { amrex::Abort("gust: turb.shear_stencil = log_law: an immersed ground needs a uniform bc.surface_z0"); }
-        m_z0 = rough.z0;
-    }
+    // An immersed ground's cut cells take the same roughness, a value or the map (apply_cut_cell_strain).
+    m_rough = rough;
     if (rough.map == nullptr) {
         if (!(rough.z0 > 0)) { amrex::Abort("gust: turb.shear_stencil = log_law needs a roughness length z0 > 0 (bc.surface_z0)"); }
         add_roughness<UniformZ0>(m_len, dist, rough);
@@ -105,7 +103,7 @@ void LogShear::apply (const State& q, const amrex::Geometry& geom, amrex::MultiF
         }
     }
     // The cut cells of an immersed ground: the wall law's gradient (ImmersedStrain.H).
-    if (m_b != nullptr) { apply_cut_cell_strain(*m_b, m_z0, q, geom, S2); }
+    if (m_b != nullptr) { apply_cut_cell_strain(*m_b, m_rough, q, geom, S2); }
 }
 
 }   // namespace gust

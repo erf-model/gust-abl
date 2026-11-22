@@ -284,7 +284,6 @@ std::string run_domain (const DomainRole& role)
         itf.representation = in.terrain.representation;
         itf.surface_layer = surface_layer;
         itf.neutral = surf.stability == SurfaceLayerOptions::Stability::neutral;
-        itf.z0_map = !surf.z0_file.empty();
         itf.buildings = buildings_opt.active();
         itf.nests = role.nests != nullptr || nest != nullptr;
         itf.newton = newton;
@@ -511,8 +510,8 @@ std::string run_domain (const DomainRole& role)
     const bool hybrid = in.terrain.representation == "hybrid";
     std::string immersed_hash;
     if (immersed) {
-        buildings_opt = immersed_terrain_options(in.terrain, surf.z0);
-        immersed_hash = immersed_terrain_hash(in.terrain, surf.z0);
+        buildings_opt = immersed_terrain_options(in.terrain, surf.z0, !surf.z0_file.empty());
+        immersed_hash = immersed_terrain_hash(in.terrain, surf.z0, surf.z0_file);
     }
     // With a grid hierarchy, boxes every level coarsens exactly.
     const amrex::BoxArray ba = hierarchy_box_array(in.mesh);
@@ -624,8 +623,13 @@ std::string run_domain (const DomainRole& role)
                            << state.z_phys_nd.min(state.z_phys_nd.nComp() - 1) << " m to "
                            << state.z_phys_nd.max(state.z_phys_nd.nComp() - 1) << " m): "
                            << buildings.summary(mesh.detJ, geom, true) << "\n"
-                           << "gust: immersed terrain: the form 7 wall law with bc.surface_z0 = " << buildings_opt.z0
-                           << " m at the fluid's mean height above the ground, the wall value of k in the cut cells\n";
+                           << "gust: immersed terrain: the form 7 wall law with ";
+            if (surf.z0_file.empty()) {
+                amrex::Print() << "bc.surface_z0 = " << buildings_opt.z0 << " m";
+            } else {
+                amrex::Print() << "each column's z0 from bc.surface_z0_file";
+            }
+            amrex::Print() << " at the fluid's mean height above the ground, the wall value of k in the cut cells\n";
         } else if (buildings_opt.active()) {
             buildings.build(buildings_opt, geom, state.z_phys_nd, ba, dm);
             amrex::Print() << "gust: buildings (buildings.type = " << buildings_opt.type_name << "): "

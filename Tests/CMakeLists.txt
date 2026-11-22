@@ -218,7 +218,7 @@ if(_gust_numpy EQUAL 0)
 else()
     set(GUST_PYTHON_NUMPY OFF)
     message(STATUS "GUST: numpy not found for ${Python3_EXECUTABLE}; rt_nests_two_way, "
-                   "rt_immersed_open_faces, rt_immersed_askervein_coarse and "
+                   "rt_immersed_open_faces, rt_immersed_roughness_step, rt_immersed_askervein_coarse and "
                    "speed_difference_selftest are not registered")
 endif()
 
@@ -964,6 +964,55 @@ gust_add_test(NAME abort_hybrid_restart_width NP 1 LABELS "regression;smoke" RUN
               PREFIX ${EXPECT_ABORT} "io\\.restart = hybrid_ground_chk00002: the immersed ground.s inputs .* differ" --
               COMMAND $<TARGET_FILE:gust> ${IMMERSED_RIDGE_CASE}/inputs_hybrid_restart terrain.hybrid_half_width=100
                       io.write_plotfile=0 ${GUST_TEST_AMREX_FLAGS})
+# A roughness map (bc.surface_z0_file) under an immersed ground and under a hybrid mesh's ground
+# (Canonical_RANS/Immersed_Roughness_Step): two iterations write a checkpoint whose record of the ground
+# holds the map file's SHA-256 and the interpolation's settings. A restart on another layout and three
+# ranks with the same map is accepted; another map file, a uniform bc.surface_z0 and another
+# terrain.idw_neighbors are refused.
+set(ROUGHNESS_STEP_CASE ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Immersed_Roughness_Step)
+foreach(_rep IN ITEMS "immersed|immersed_forcing|39.0625" "hybrid|hybrid|7.8125")
+    string(REPLACE "|" ";" _parts "${_rep}")
+    list(GET _parts 0 _tag)
+    list(GET _parts 1 _representation)
+    list(GET _parts 2 _height)
+    set(_dir ${CMAKE_CURRENT_BINARY_DIR}/run/${_tag}_z0_map)
+    set(_ground terrain.representation=${_representation} terrain.flat_height=${_height})
+    set(_map bc.surface_z0_file=${ROUGHNESS_STEP_CASE}/z0_step.xyz terrain.idw_neighbors=1)
+    add_test(NAME ${_tag}_z0_map_clean
+             COMMAND ${Python3_EXECUTABLE} -c
+                     "import shutil, os, sys; shutil.rmtree(sys.argv[1], ignore_errors=True); os.makedirs(sys.argv[1])"
+                     ${_dir})
+    set_tests_properties(${_tag}_z0_map_clean PROPERTIES LABELS "regression;smoke" FIXTURES_SETUP ${_tag}_z0_map_clean)
+    gust_add_test(NAME ${_tag}_z0_map_run NP 2 LABELS "regression;smoke" RUN_DIR ${_dir}
+                  FIXTURES_REQUIRED ${_tag}_z0_map_clean FIXTURES_SETUP ${_tag}_z0_map
+                  PREFIX ${EXPECT_ABORT} --success "each column's z0 from bc\\.surface_z0_file" --
+                  COMMAND $<TARGET_FILE:gust> ${ROUGHNESS_STEP_CASE}/inputs_map_checkpoint ${_ground} ${_map}
+                          ${GUST_TEST_AMREX_FLAGS})
+    gust_add_test(NAME ${_tag}_z0_map_restart NP 3 LABELS "regression;smoke" RUN_DIR ${_dir}
+                  FIXTURES_REQUIRED ${_tag}_z0_map
+                  PREFIX ${EXPECT_ABORT} --success "restarted from step_map_chk00002 at step 2" --
+                  COMMAND $<TARGET_FILE:gust> ${ROUGHNESS_STEP_CASE}/inputs_map_restart ${_ground} ${_map}
+                          ${GUST_TEST_AMREX_FLAGS})
+    set(_changed
+        "other_map|bc.surface_z0_file=${ROUGHNESS_STEP_CASE}/z0_step_other.xyz|terrain.idw_neighbors=1"
+        "uniform|bc.surface_z0=0.03"
+        "neighbors|bc.surface_z0_file=${ROUGHNESS_STEP_CASE}/z0_step.xyz|terrain.idw_neighbors=2")
+    foreach(_change IN LISTS _changed)
+        string(REPLACE "|" ";" _keys "${_change}")
+        list(POP_FRONT _keys _name)
+        gust_add_test(NAME abort_${_tag}_z0_map_restart_${_name} NP 1 LABELS "regression;smoke" RUN_DIR ${_dir}
+                      FIXTURES_REQUIRED ${_tag}_z0_map
+                      PREFIX ${EXPECT_ABORT} "io\\.restart = step_map_chk00002: the immersed ground.s inputs .* differ" --
+                      COMMAND $<TARGET_FILE:gust> ${ROUGHNESS_STEP_CASE}/inputs_map_restart ${_ground} ${_keys}
+                              io.write_plotfile=0 ${GUST_TEST_AMREX_FLAGS})
+    endforeach()
+    # A map that cannot be read stops the run before it starts (two ranks: each one stops).
+    gust_add_test(NAME abort_${_tag}_z0_map_missing NP 2 LABELS "regression;smoke"
+                  PREFIX ${EXPECT_ABORT} "bc\\.surface_z0_file = no_such_map\\.xyz:? cannot be read" --
+                  COMMAND $<TARGET_FILE:gust> ${ROUGHNESS_STEP_CASE}/inputs_map_checkpoint ${_ground}
+                          bc.surface_z0_file=no_such_map.xyz terrain.idw_neighbors=1 io.write_plotfile=0
+                          ${GUST_TEST_AMREX_FLAGS})
+endforeach()
 # The ground inside the mesh's first layer, a combination the ground does not support (with no stage
 # too), and a surface key with no effect are refused.
 gust_add_test(NAME abort_immersed_first_layer NP 1 LABELS "regression;smoke"
@@ -2462,6 +2511,29 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
                              ${parts} ${GUST_TEST_AMREX_FLAGS} 0.5 0.95)
             set_tests_properties(rt_immersed_open_faces_${name} PROPERTIES LABELS "regression")
         endforeach()
+        # A step of the roughness length (bc.surface_z0_file: 0.03 m, then 0.3 m from x = 1120 m, inside a
+        # box) under a flat ground between an inflow and an outflow face (Immersed_Roughness_Step/README.md):
+        # the immersed ground on a layer's face and in mid-layer (solid fraction 0, 0.3, 0.7) and the
+        # hybrid mesh's ground on the lower face and in the first layer, against the body-fitted run with
+        # the same map, the runs on 1, 2 and 4 ranks in turn. Each run reaches the steady verdict; u is
+        # within 4 % in every column (measured 2.8 %), tke within 18 % away from the step (14.0 %) and
+        # within 13 % in the wall cells (10.2 %); the map changes u of the body-fitted run by 24 %.
+        if(GUST_MPI)
+            string(JOIN " " _step_launch ${MPIEXEC_EXECUTABLE} ${MPIEXEC_PREFLAGS} ${_extra_mpiexec} ${MPIEXEC_NUMPROC_FLAG})
+            set(_step_mpi --mpi "${_step_launch}")
+        else()
+            set(_step_mpi "")
+        endif()
+        add_test(NAME rt_immersed_roughness_step
+                 COMMAND ${Python3_EXECUTABLE} ${ROUGHNESS_STEP_CASE}/check_roughness_step.py
+                         $<TARGET_FILE:gust> ${CMAKE_CURRENT_BINARY_DIR}/run/rt_immersed_roughness_step --fresh
+                         --limits 4 18 13 ${_step_mpi} turb.shear_stencil=log_law terrain.small_volfrac=0.1
+                         ${GUST_TEST_AMREX_FLAGS})
+        set_tests_properties(rt_immersed_roughness_step PROPERTIES LABELS "regression" TIMEOUT 900
+                             ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
+        if(GUST_MPI)
+            set_tests_properties(rt_immersed_roughness_step PROPERTIES PROCESSORS 4)
+        endif()
         # A real terrain immersed between two inflow and two outflow faces against the mesh that
         # follows it (Real_Terrain/Immersed_Terrain_Cases/README.md): the Askervein pair of that
         # folder on 32 x 32 columns, four ranks. Both runs reach the steady verdict; the speed at

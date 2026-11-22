@@ -22,7 +22,7 @@ ERROR:
 - terrain.representation = immersed_forcing (Source/Inputs.cpp, Source/ImmersedTerrain.cpp
   check_immersed_terrain and check_immersed_terrain_height): terrain.type other than flat; terrain.flat_height
   missing, or outside the top of the first layer to the bottom of the top layer; the terrain keys that follow or
-  smooth a ground; a hierarchy; a mesh not periodic in x and y; no surface layer, a stability, a roughness map,
+  smooth a ground; a hierarchy; a mesh not periodic in x and y; no surface layer, a stability,
   bc.surface_zref, bc.surface_denominator_floor, bc.surface_wall_k = source, a stratified bc.theta_profile;
   buildings, a canopy, nests, the column first guess, probes, the Newton and unsteady stages, the lusgs sweep and
   solver.poisson_backend = mlmg in a stage, turb.closure = none; terrain.flat_height or terrain.small_volfrac with
@@ -353,8 +353,6 @@ class ImmersedTerrainChecker(Checker):
         if c.reads_bc:
             if c.s("bc.surface_stability") != "neutral":
                 refuse("bc.surface_stability", "needs bc.surface_stability = neutral for now")
-            if self.given("bc.surface_z0_file"):
-                refuse("bc.surface_z0_file", "needs a uniform bc.surface_z0 for now")
             if c.s("bc.surface_wall_k") == "source":
                 refuse("bc.surface_wall_k", "needs bc.surface_wall_k = dirichlet")
             for k in ("surface_zref", "surface_denominator_floor"):

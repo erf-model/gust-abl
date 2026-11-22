@@ -27,6 +27,8 @@ void BuildingForcing::build (const Buildings& b, const BuildingsOptions& opt, co
     m_geom = geom;
     m_detJ = &detJ;
     m_z0 = static_cast<amrex::Real>(opt.z0);
+    m_z0_map = nullptr;   // a rebuild forgets the map of the last level
+    m_needs_z0_map = opt.immersed_ground && opt.ground_z0_map;
     m_wall_form = opt.wall_form;
     m_rate.define(b.beta().boxArray(), b.beta().DistributionMap(), kNumBuildingRates, 1);
     m_rate.setVal(0.0);
@@ -111,10 +113,12 @@ struct ExactLaw {
     { form7_heat_velocities_exact(us2, beta, d1, d2, z0, kappa, o, r); }
 };
 
-//! The rates of roofs and undersides, on u and v, with the law LAW (each law its own kernel).
-template <typename LAW>
+//! The rates of roofs and undersides, on u and v, with the law LAW and the roughness accessor Z0
+//! (UniformZ0, or MapZ0 for an immersed ground with a map: each pair its own kernel). A cell takes
+//! the z0 of its own column, for its own speed and for the reference cell above or below it.
+template <typename LAW, typename Z0>
 void roof_rates (const Buildings& b, const std::array<amrex::MultiFab, 3>& weight, const amrex::MultiFab& detJ,
-                 const amrex::Geometry& geom, const amrex::MultiFab& u, const amrex::MultiFab& v, amrex::Real z0,
+                 const amrex::Geometry& geom, const amrex::MultiFab& u, const amrex::MultiFab& v, const Roughness& rough,
                  amrex::Real kappa, amrex::Real umin, amrex::MultiFab& rate_mf)
 {
     const amrex::Real dzeta = geom.CellSize(2);
@@ -129,11 +133,13 @@ void roof_rates (const Buildings& b, const std::array<amrex::MultiFab, 3>& weigh
         const auto wl = b.wall().const_array(mfi);
         const auto fz = bz.const_array(mfi);
         const auto J = detJ.const_array(mfi);
+        const Z0 zf = Z0::of(rough, mfi);
         const int klo = geom.Domain().smallEnd(2), khi = geom.Domain().bigEnd(2);
         amrex::ParallelFor(mfi.tilebox(), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
         {
             const int mask = static_cast<int>(wl(i, j, k, kWallMask));
             if (beta(i, j, k) >= amrex::Real(1) || (mask & (kWallRoof | kWallUnder)) == 0) { return; }
+            const amrex::Real z0 = zf(i, j);
             auto speed = [&] (int kk) {
                 const amrex::Real uc = open_face_mean(uu(i, j, kk), uu(i + 1, j, kk), wx(i, j, kk), wx(i + 1, j, kk));
                 const amrex::Real vc = open_face_mean(vv(i, j, kk), vv(i, j + 1, kk), wy(i, j, kk), wy(i, j + 1, kk));
@@ -271,16 +277,30 @@ void wall_k_ustar2 (const Buildings& b, const std::array<amrex::MultiFab, 3>& we
 
 }   // namespace
 
+void BuildingForcing::set_ground_roughness (const amrex::MultiFab& map)
+{
+    if (m_b == nullptr || !m_immersed_ground) {
+        amrex::Abort("gust: BuildingForcing::set_ground_roughness needs an immersed ground (terrain.representation = immersed_forcing or hybrid)");
+    }
+    check_roughness_map("BuildingForcing::set_ground_roughness", map, m_rate);
+    m_z0_map = &map;
+}
+
 void BuildingForcing::update (const amrex::MultiFab& u, const amrex::MultiFab& v, const amrex::MultiFab& w)
 {
     if (!wall_law()) { return; }
     const amrex::Real z0 = m_z0, kappa = amrex::Real(0.41), umin = kBuildingMinSpeed;
     m_rate.setVal(0.0);
     // Roofs and undersides: on u and v.
-    if (m_immersed_ground) {
-        roof_rates<ExactLaw>(*m_b, m_weight, *m_detJ, m_geom, u, v, z0, kappa, umin, m_rate);
+    if (m_needs_z0_map && m_z0_map == nullptr) {
+        amrex::Abort("gust: BuildingForcing::update: the immersed ground's roughness is a map (bc.surface_z0_file) and none was set");
+    }
+    if (m_immersed_ground && m_z0_map != nullptr) {
+        roof_rates<ExactLaw, MapZ0>(*m_b, m_weight, *m_detJ, m_geom, u, v, ground_roughness(), kappa, umin, m_rate);
+    } else if (m_immersed_ground) {
+        roof_rates<ExactLaw, UniformZ0>(*m_b, m_weight, *m_detJ, m_geom, u, v, Roughness(z0), kappa, umin, m_rate);
     } else {
-        roof_rates<FlooredLaw>(*m_b, m_weight, *m_detJ, m_geom, u, v, z0, kappa, umin, m_rate);
+        roof_rates<FlooredLaw, UniformZ0>(*m_b, m_weight, *m_detJ, m_geom, u, v, Roughness(z0), kappa, umin, m_rate);
     }
     if (side_law()) {
         // Sides normal to x: on v and w. The reference cell is the next one out along x. Only a

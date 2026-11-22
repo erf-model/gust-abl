@@ -40,7 +40,7 @@ public:
 private:
     amrex::MultiFab m_len;   //!< d + z0
     const Buildings* m_b;
-    amrex::Real m_z0 = 0;    //!< the immersed ground's uniform z0 (its cut cells, ImmersedStrain.H)
+    Roughness m_rough;       //!< the ground's roughness, for an immersed ground's cut cells (ImmersedStrain.H)
 };
 
 }   // namespace gust

@@ -282,6 +282,8 @@ LevelSolver::LevelSolver (const RunSetup& s, const Mesh& mesh, const amrex::Geom
             average_roughness_map(*z0_fine, geom, ba, dm, z0_map_field);
         }
         surf.z0_map = &z0_map_field;
+        // An immersed ground's wall law reads the same map, each cut cell its column's z0.
+        if (buildings != nullptr && buildings->immersed_ground()) { buildings->set_ground_roughness(z0_map_field); }
         amrex::Print() << "gust: " << label << "surface z0 map ("
                        << (z0_fine == nullptr ? "bc.surface_z0_file" : "geometric mean of level 0") << "): "
                        << roughness_summary(z0_map_field) << "\n";
@@ -328,7 +330,7 @@ LevelSolver::LevelSolver (const RunSetup& s, const Mesh& mesh, const amrex::Geom
     }
     if (buildings != nullptr && buildings->immersed_ground() && s.copt.shear_stencil != ShearStencil::log_law) {
         // The closure's shear next to an immersed ground follows the body-fitted ground's first cell.
-        immersed_strain = std::make_unique<ImmersedStrain>(*buildings, surf.z0);
+        immersed_strain = std::make_unique<ImmersedStrain>(*buildings, ground_roughness(&surf));
         closure.set_strain_correction(immersed_strain.get());
     }
     if (s.copt.shear_stencil == ShearStencil::log_law) {  // refused with turb.closure = none (Closure.cpp)

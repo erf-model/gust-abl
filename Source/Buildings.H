@@ -112,6 +112,9 @@ struct BuildingsOptions
     std::string format{"erf"};       //!< buildings.format: erf or xyz
     double small_volfrac{0.005};     //!< buildings.small_volfrac, in [0, 0.5)
     double z0{0.1};                  //!< buildings.z0 (m), > 0: the roughness of the wall law
+    //! An immersed ground whose roughness is a map (bc.surface_z0_file): z0 above is not read by its wall law,
+    //! which takes each column's value (BuildingForcing::set_ground_roughness).
+    bool ground_z0_map{false};
     std::string wall_form_name{"fraction_stress"};   //!< buildings.wall_form as given
     BuildingWallForm wall_form{BuildingWallForm::fraction_stress};
     //! buildings.wall_speed as given (empty: not given) and its value: open_faces by default with

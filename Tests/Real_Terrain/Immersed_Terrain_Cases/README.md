@@ -95,6 +95,12 @@ The immersed ground is closer on Bolund 270 and the smooth ridge, about the same
 and further on Bolund 239, Askervein and the Butte. On Askervein and the Butte the hill tops are a few cut columns
 wide, and the immersed run is slower on the crests. The immersed runs take 1.0 to 2.5 times the iterations.
 
+With the Bolund roughness map (`../WindNinja2019/bolund_z0_map.py`: 0.0003 m over water, 0.015 m over land) in
+place of the uniform 0.01 m, and the inflow of the water (`bc.surface_z0_file=<data>/bolund_z0.xyz`; in the deck, `bc.surface_z0` removed, `bc.inflow_z0 = 0.0003` and `bc.inflow_ustar` =
+0.4597 for 270, 0.3669 for 239), the same measure is 0.088 (body-fitted, 157 iterations) and 0.064 (immersed, 360)
+on Bolund 270, and 0.079 (174) and 0.129 (188) on Bolund 239. The hybrid mesh at its defaults
+(`terrain.representation = hybrid`) gives 0.061 (156) and 0.126 (172).
+
 On the Butte, side walls on the ground's steps (a form since removed from the code) changed the speed at 3 m by
 0.14 m/s rms (1082 iterations, rms error 6.09 m/s at the sensors). A wall distance from the column centre, also
 removed, was tested on the 2-D ridge only (docs, Immersed terrain); its runs on the measured cases were stopped

@@ -5,7 +5,8 @@
 //   cut cell's top face span the distance between the fluid centroids, in the implicit rows (a_P =
 //   sum a_nb kept) and in the viscous fluxes; the strain correction is the identity for a ground on a
 //   cell face and the log-law gradient times the flat ground's error above a cut cell; the body
-//   forces act on the open part of each face; theta is not conducted through the ground; the refusals of check_immersed_terrain; the restart record.
+//   forces act on the open part of each face; theta is not conducted through the ground; the refusals of check_immersed_terrain; the restart record;
+//   with a roughness map (bc.surface_z0_file) each cut cell takes its column's z0, in the law and in the strain.
 // turb.shear_stencil = log_law (LogShear.H): the strain of an exact log profile is the log-law gradient
 // in every cell above the wall cell, over a body-fitted ground and above the cut cell of an immersed
 // one, where the central difference is 21 % high in the second cell; the body-fitted wall cell and
@@ -76,10 +77,10 @@ struct Ground
     gust::BuildingsOptions opt;
     gust::Buildings b;
     gust::BuildingForcing law;
-    Ground (const PCase& c, double flat_height)
+    Ground (const PCase& c, double flat_height, bool z0_map = false)
     {
         const gust::TerrainInputs t = terrain(flat_height);
-        opt = gust::immersed_terrain_options(t, kZ0);
+        opt = gust::immersed_terrain_options(t, kZ0, z0_map);
         b.build_from_map(opt, gust::immersed_terrain_map(t, c.geom), "terrain.flat_height", c.geom, c.z, c.ba, c.dm);
         law.build(b, opt, c.geom, c.mesh.detJ);
     }
@@ -428,6 +429,92 @@ TEST (LogShear, RoughnessMapEntersByColumn)
     EXPECT_GT(std::abs(a / b - 1), 4e-3) << "the columns' gradients differ";
 }
 
+// bc.surface_z0_file at an immersed ground: each cut cell takes its own column's z0, in the wall law's u*^2, in
+// the wall law's gradient of the cut cell's strain, in the strain of the cell above it and with
+// turb.shear_stencil = log_law. One wind profile in every column and z0 = 0.05 (1 + i)(1 + j / 2) m: in column (i, j)
+//   u*^2 = (1 - f) (kappa S_1 / ln((d1 + z0_ij) / z0_ij))^2 + f (kappa S_2 / ln((d2 + z0_ij) / z0_ij))^2,
+// S the speed in the cut cell (1) and in the cell above (2). A uniform map gives the uniform z0's rates
+// bit for bit. The law refuses to run without the map it was told to expect, and a map on another layout.
+TEST (ImmersedTerrain, RoughnessMapEntersTheCutCellByColumn)
+{
+    gust::BuoyancyOptions buoy;
+    buoy.gravity = 0;
+    // By column in x and in y; periodic images included.
+    auto z0i = [] (int i, int j) { return 0.05 * (1 + ((i % 4) + 4) % 4) * (1 + 0.5 * (((j % 4) + 4) % 4)); };
+    auto uk = [] (int k) { return k < 2 ? 0.0 : (k == 2 ? 3.0 : (k == 3 ? 5.0 : (k == 4 ? 6.5 : 7.0))); };
+    const double vfac = 0.4, sp = std::sqrt(1 + vfac * vfac);   // v = 0.4 u: the speed is sp u
+    for (const int mgs : {2, 4}) {
+        const PCase c = ground_case(mgs);
+        amrex::MultiFab map(gust::ground_slab(c.ba), c.dm, 1, amrex::IntVect(1, 1, 0)), flat(gust::ground_slab(c.ba), c.dm, 1, amrex::IntVect(1, 1, 0));
+        for (amrex::MFIter mfi(map, false); mfi.isValid(); ++mfi) {
+            const auto a = map.array(mfi);
+            amrex::LoopOnCpu(mfi.fabbox(), [&] (int i, int j, int k) { a(i, j, k) = static_cast<amrex::Real>(z0i(i, j)); });
+        }
+        flat.setVal(amrex::Real(kZ0));
+        gust::State q;
+        gust::lamtest::define_state(q, c);
+        fill_by_level(q.u, uk);
+        fill_by_level(q.v, [&] (int k) { return vfac * uk(k); });
+        for (amrex::MultiFab* mf : {&q.w, &q.p, &q.tke}) { mf->setVal(0); }
+        q.theta.setVal(300);
+        amrex::MultiFab dist(c.ba, c.dm, 1, 1);
+        for (const double f : {0.3, 0.7}) {
+            const double d1 = (1 - f) * kDz / 2, d2 = (1 - f) * kDz + kDz / 2;
+            Ground g(c, (2 + f) * kDz, true);
+            EXPECT_NE(abort_message([&] { g.law.update(q.u, q.v, q.w); }).find("bc.surface_z0_file"), std::string::npos)
+                << "the law does not run on the uniform z0 when a map is expected";
+            amrex::MultiFab bare(gust::ground_slab(c.ba), c.dm, 1, 0);
+            bare.setVal(amrex::Real(kZ0));
+            EXPECT_NE(abort_message([&] { g.law.set_ground_roughness(bare); }).find("BuildingForcing::set_ground_roughness"), std::string::npos);
+            g.law.set_ground_roughness(map);
+            g.law.update(q.u, q.v, q.w);
+            auto us2 = [&] (double z0, double kappa) {
+                const double own = kappa * sp * uk(2) / std::log((d1 + z0) / z0), ref = kappa * sp * uk(3) / std::log((d2 + z0) / z0);
+                return (1 - f) * own * own + f * ref * ref;
+            };
+            amrex::MultiFab N2, S2, L2;
+            gust::stratification_and_strain(q, buoy, c.geom, N2, S2);
+            gust::stratification_and_strain(q, buoy, c.geom, N2, L2);
+            gust::ImmersedStrain(g.law, gust::Roughness(amrex::Real(0), &map)).apply(q, c.geom, S2);
+            fill_by_level(dist, [&] (int k) { return k < 2 ? 0.01 * (k + 1) : (k == 2 ? d1 : d2 + (k - 3) * kDz); });
+            gust::LogShear(dist, gust::Roughness(amrex::Real(0), &map), &g.b).apply(q, c.geom, L2);
+            for (int i = 0; i < 4; ++i) {
+                for (const int j : {0, 3}) {
+                    const double z0 = z0i(i, j);
+                    const double want = us2(z0, kKappa);
+                    EXPECT_NEAR(value_at(g.law.rate(), i, j, 2, gust::kBuildingUstar2), want, 100 * rtol * want) << "u*^2, f " << f << " column " << i << " " << j;
+                    // The cut cell's strain: the wall law's gradient u* / (kappa (d1 + z0_i)).
+                    const double wall = std::sqrt(us2(z0, 1.0)) / (d1 + z0);
+                    EXPECT_NEAR(std::sqrt(value_at(S2, i, j, 2)), wall, ltol * wall) << "cut cell, f " << f << " column " << i << " " << j;
+                    EXPECT_NEAR(std::sqrt(value_at(L2, i, j, 2)), wall, ltol * wall) << "log_law cut cell, f " << f << " column " << i << " " << j;
+                    // The cell above: the difference over (d2 + z0_i) ln((d2 + dz + z0_i) / (d1 + z0_i)) times the
+                    // flat ground's ratio (ImmersedStrain.H).
+                    const double f2 = kDz / 2, f3 = 1.5 * kDz, f4 = 2.5 * kDz;
+                    const double R = (f3 + z0) * std::log((f4 + z0) / (f2 + z0)) / (f4 - f2);
+                    const double above = R * sp * (uk(4) - uk(2)) / ((d2 + z0) * std::log((d2 + kDz + z0) / (d1 + z0)));
+                    EXPECT_NEAR(std::sqrt(value_at(S2, i, j, 3)), above, ltol * above) << "above, f " << f << " column " << i << " " << j;
+                }
+            }
+            EXPECT_GT(us2(z0i(3, 0), kKappa), 1.3 * us2(z0i(0, 0), kKappa)) << "the columns' u*^2 differ along x";
+            EXPECT_GT(us2(z0i(0, 3), kKappa), 1.3 * us2(z0i(0, 0), kKappa)) << "the columns' u*^2 differ along y";
+            // A uniform map: the uniform z0's rates, bit for bit.
+            Ground gu(c, (2 + f) * kDz), gm(c, (2 + f) * kDz, true);
+            gu.law.update(q.u, q.v, q.w);
+            gm.law.set_ground_roughness(flat);
+            gm.law.update(q.u, q.v, q.w);
+            for (int i = 0; i < 4; ++i) {
+                for (int n = 0; n <= gust::kBuildingUstar2; ++n) {
+                    EXPECT_EQ(value_at(gm.law.rate(), i, 1, 2, n), value_at(gu.law.rate(), i, 1, 2, n)) << "uniform map, component " << n;
+                }
+            }
+        }
+    }
+    // A body-fitted ground's buildings take no ground map.
+    gust::BuildingForcing none;
+    amrex::MultiFab any;
+    EXPECT_NE(abort_message([&] { none.set_ground_roughness(any); }).find("needs an immersed ground"), std::string::npos);
+}
+
 // The refusals of LogShear: a roughness length that is not positive, a wall distance without ghost cells.
 TEST (LogShear, RefusesWhatItCannotUse)
 {
@@ -596,7 +683,6 @@ TEST (ImmersedTerrain, RefusesWhatItDoesNotSupport)
     const std::vector<Case> cases{
         {[] (auto& x) { x.surface_layer = false; }, "bc.zlo = surface_layer"},
         {[] (auto& x) { x.neutral = false; }, "bc.surface_stability = neutral"},
-        {[] (auto& x) { x.z0_map = true; }, "bc.surface_z0_file"},
         {[] (auto& x) { x.buildings = true; }, "buildings.type"},
         {[] (auto& x) { x.nests = true; }, "nests"},
         {[] (auto& x) { x.newton = true; }, "steady.stage = simplec_newton"},
@@ -650,6 +736,34 @@ TEST (ImmersedTerrain, RestartRecordRefusesAChangedGround)
     t2.small_volfrac = amrex::Real(0.01);
     EXPECT_NE(h, gust::immersed_terrain_hash(t2, kZ0));
     EXPECT_NE(h, gust::immersed_terrain_hash(t, 0.2));
+
+    // bc.surface_z0_file: the file's contents and the IDW choices stand for z0, which is not read.
+    {
+        const std::string dir = scratch_dir("z0");
+        const std::string a = dir + "/a.xyz", b = dir + "/b.xyz", c = dir + "/c.xyz";
+        if (amrex::ParallelDescriptor::IOProcessor()) {
+            std::ofstream(a) << "0 0 0.03\n40 40 0.3\n";
+            std::ofstream(b) << "0 0 0.03\n40 40 0.31\n";
+            std::ofstream(c) << "0 0 0.03\n40 40 0.3\n";
+        }
+        amrex::ParallelDescriptor::Barrier();
+        const std::string ha = gust::immersed_terrain_hash(t, kZ0, a);
+        EXPECT_EQ(ha.size(), 64u);
+        EXPECT_NE(ha, h);
+        EXPECT_EQ(ha, gust::immersed_terrain_hash(t, 0.2, a)) << "z0 is not read with a map";
+        EXPECT_NE(ha, gust::immersed_terrain_hash(t, kZ0, b)) << "the file's contents";
+        EXPECT_EQ(ha, gust::immersed_terrain_hash(t, kZ0, c)) << "the file's path is not in the hash";
+        EXPECT_NE(abort_message([&] { gust::immersed_terrain_hash(t, kZ0, dir + "/none.xyz"); }).find("bc.surface_z0_file"), std::string::npos)
+            << "a map that cannot be read";
+        t2 = t;
+        t2.idw_neighbors = t.idw_neighbors + 1;
+        EXPECT_NE(ha, gust::immersed_terrain_hash(t2, kZ0, a)) << "terrain.idw_neighbors";
+        t2 = t;
+        t2.idw_power = t.idw_power + amrex::Real(1);
+        EXPECT_NE(ha, gust::immersed_terrain_hash(t2, kZ0, a)) << "terrain.idw_power";
+    }
+    t2 = t;
+    t2.small_volfrac = amrex::Real(0.01);
 
     const std::string imm = scratch_dir("imm"), bf = scratch_dir("bf");
     gust::write_immersed_terrain_checkpoint(imm, h);

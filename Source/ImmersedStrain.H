@@ -29,22 +29,28 @@
 
 namespace gust {
 
-//! S2 in the cut cells of the immersed ground b (roughness length z0, m, > 0): the (u, z) and (v, z)
-//! terms with the wall law's gradient. On S2's valid cells and lateral ghost ring.
-void apply_cut_cell_strain (const Buildings& b, amrex::Real z0, const State& q, const amrex::Geometry& geom, amrex::MultiFab& S2);
+//! S2 in the cut cells of the immersed ground b: the (u, z) and (v, z) terms with the wall law's
+//! gradient. rough: the ground's roughness, a uniform z0 (m, > 0) or a map on the ground slab of b's
+//! cells with one lateral ghost column (SurfaceRoughness.H; each column its own z0, one kernel per
+//! kind). On S2's valid cells and lateral ghost ring.
+void apply_cut_cell_strain (const Buildings& b, const Roughness& rough, const State& q, const amrex::Geometry& geom, amrex::MultiFab& S2);
+
+//! Aborts (naming op) unless rough is a uniform z0 > 0 or a map on the ground slab of b's cells.
+void check_ground_roughness (const char* op, const Buildings& b, const Roughness& rough);
 
 class ImmersedStrain final : public StrainCorrection
 {
 public:
     //! law: the immersed ground's wall law (law.immersed_ground()), whose geometry must outlive
-    //! this object. z0: the ground's roughness length (m), > 0.
-    ImmersedStrain (const BuildingForcing& law, amrex::Real z0);
+    //! this object. rough: the ground's roughness, a uniform z0 (m) > 0 or a map (as
+    //! apply_cut_cell_strain's; it must outlive this object).
+    ImmersedStrain (const BuildingForcing& law, const Roughness& rough);
     //! S2 in each cut cell and in the first full cell above it, on S2's valid cells and lateral ghost ring.
     void apply (const State& q, const amrex::Geometry& geom, amrex::MultiFab& S2) const override;
 
 private:
     const Buildings* m_b;
-    amrex::Real m_z0;
+    Roughness m_rough;
 };
 
 }   // namespace gust

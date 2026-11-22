@@ -9,7 +9,8 @@ choice is made once, at start-up, and cannot change across a restart.
 
 **Status.** A flat or sloping ground (``terrain.type`` = ``flat``, ``agnesi``, ``xyz`` or ``erf_grid``) in a neutral
 run with SIMPLEC and z-line sweeps, laterally periodic or with inflow and outflow faces (`Open faces`_).
-Stratification, roughness maps, buildings, canopies and nests on an immersed ground are not supported yet; `Limits`_ lists what the run refuses. ``body_fitted`` remains the default and its answers are
+The roughness length is one value or a map (``bc.surface_z0_file``, `Roughness map`_). Stratification, buildings,
+canopies and nests on an immersed ground are not supported yet; `Limits`_ lists what the run refuses. ``body_fitted`` remains the default and its answers are
 unchanged.
 
 .. list-table::
@@ -129,7 +130,8 @@ The friction velocity of the cut cell is
    u_{*n} = \frac{\kappa\,U_n}{\ln\bigl((d_n + z_0)/z_0\bigr)},
 
 with :math:`U_1` and :math:`U_2` the speeds parallel to the ground in the cut cell and in the reference cell,
-:math:`\kappa` the von Kármán constant and :math:`z_0` = ``bc.surface_z0``. This is the neutral form of the
+:math:`\kappa` the von Kármán constant and :math:`z_0` = ``bc.surface_z0``, or the column's value of the map
+``bc.surface_z0_file`` (`Roughness map`_). This is the neutral form of the
 body-fitted surface layer (:doc:`boundary_conditions`) at the two distances. The distances are exact: the
 buildings' law floors them at 10 :math:`z_0`, which the ground's law does not, since
 :math:`\ln((d + z_0)/z_0) > 0` for every :math:`d > 0`. With :math:`\beta = 0` the law is the
@@ -247,8 +249,10 @@ Restart
 
 A checkpoint of an immersed run holds a file ``ImmersedTerrain`` with a hash of ``terrain.type`` and its keys (the
 hill's inputs, or the terrain file's contents and its interpolation inputs), ``terrain.flat_height``,
-``terrain.small_volfrac`` and ``bc.surface_z0``. A restart with another value of one of
-them, or with the other ``terrain.representation``, stops naming ``io.restart``. The ground's heights are not in
+``terrain.small_volfrac`` and the roughness: ``bc.surface_z0``, or with ``bc.surface_z0_file`` the SHA-256 of the
+file's contents with ``terrain.idw_neighbors`` and ``terrain.idw_power`` (the file's path is not in the hash; a
+map that cannot be read stops the run, with or without a stage). A
+restart with another value of one of them, with a map in place of a value or a value in place of a map, or with the other ``terrain.representation``, stops naming ``io.restart``. The ground's heights are not in
 the checkpoint: a restart computes them from the inputs, which the hash pins. The record's version is 3; a
 checkpoint written before sloping grounds (version 1) or before the wall-cell test lost its tolerance (version 2) is
 refused, with a message naming the two versions. A restart reads the ``bc`` inputs in a stage only, so a restart of
@@ -820,6 +824,127 @@ lies above the tool's upper end. The run warns when the largest gap exceeds 0.2 
 names ``tools/hybrid_width.py``. The gap is about the slope times the width while the square is narrower than the
 feature; once it spans a crest the crest gap is up to 1.2 times that.
 
+Roughness map
+-------------
+
+``bc.surface_z0_file`` (:ref:`boundary conditions <roughness-map>`) gives each ground column its own :math:`z_0`, for a surface such as
+water beside land. An immersed ground and the ground of a hybrid mesh read the same map as the body-fitted ground:
+the map is interpolated once, at start-up, to the centre of each column, and a column's value is that of its cut
+cell wherever the ground cuts the column. The value enters:
+
+- the wall law of the cut cell (`Wall law`_), and through its :math:`u_*` the wall value of :math:`k`;
+- the strain of the cut cell and the corrected strain of the cell above it (`Turbulence`_);
+- with ``turb.shear_stencil = log_law``, the log-law gradient of every cell above the wall cell;
+- the closure's length :math:`\kappa (d + z_0)`, as in a body-fitted run;
+- on a hybrid mesh, the surface layer of the columns whose lower face is the ground, as in a body-fitted run.
+
+The log names the map as the wall law's :math:`z_0`. ``terrain.idw_neighbors`` and ``terrain.idw_power`` apply to
+the map as they do in a body-fitted run.
+
+**Roughness step.** ``Tests/Canonical_RANS/Immersed_Roughness_Step`` is the channel of `Open faces`_ with
+:math:`z_0` = 0.03 m up to :math:`x` = 1120 m and 0.3 m beyond. The step lies inside a box, so a box holds both
+values. The map changes :math:`u` of the body-fitted run by up to 24.3 %. Each ground is compared with the
+body-fitted run with the same map, at equal height above the ground, in percent of the body-fitted value
+(``turb.shear_stencil = log_law``, ``terrain.small_volfrac = 0.1``; :math:`F` is the solid fraction of the cut
+cell, :math:`H` the ground's height in the first layer of the hybrid mesh):
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 15 15 15 15 15
+
+   * - Ground
+     - Iterations
+     - :math:`u`
+     - :math:`k`, away from the step
+     - :math:`k`, first 400 m after it
+     - :math:`k`, wall cell
+   * - body-fitted
+     - 121
+     - —
+     - —
+     - —
+     - —
+   * - immersed, :math:`F = 0`
+     - 120
+     - 0.07
+     - 0.62
+     - 0.47
+     - 0.21
+   * - immersed, :math:`F = 0.3`
+     - 121
+     - 0.96
+     - 8.3
+     - 27.1
+     - 4.6
+   * - immersed, :math:`F = 0.7`
+     - 126
+     - 2.81
+     - 14.0
+     - 51.6
+     - 10.2
+   * - hybrid, :math:`H = 0`
+     - 121
+     - 0.00
+     - 0.00
+     - 0.00
+     - 0.00
+   * - hybrid, :math:`H = 0.5`
+     - 125
+     - 2.04
+     - 12.5
+     - 40.8
+     - 5.9
+
+A ground on a face (:math:`F = 0`, :math:`H = 0`) reproduces the body-fitted run. A ground that cuts a cell
+differs as it does on a uniform ground (`Open faces`_), and more just downstream of the step: there the new
+internal layer grows from less than one layer to a few layers, :math:`k` changes across it within one or two
+cells, and a cut cell's centre samples it at another height than the body-fitted centres. The limits bound the
+cut cell's known difference, not the map. The test ``rt_immersed_roughness_step`` bounds the
+first, second and fourth columns at 4, 18 and 13 %; the third is printed only.
+
+**Bolund.** The decks of ``Tests/Real_Terrain/Immersed_Terrain_Cases`` for Bolund 270° and 239°, with the map of
+``Tests/Real_Terrain/WindNinja2019/bolund_z0_map.py`` (0.0003 m over water, 0.015 m over land; see the
+:ref:`boundary conditions <roughness-map>`) in place of the uniform 0.01 m, and the inflow log law of the water
+(``bc.inflow_z0 = 0.0003``, :math:`u_*` for the same reference wind). The hybrid mesh is at its defaults. The
+number is the rms error of the speed-up against the masts at 5 m (line B, 4 masts, for 270°; line A, 5 masts, for
+239°), with the iterations in brackets:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 22 26 26 26
+
+   * - Case
+     - Terrain-following
+     - Immersed
+     - Hybrid
+   * - 270°, uniform :math:`z_0`
+     - 0.113 (189)
+     - 0.032 (213)
+     - 0.024 (189)
+   * - 270°, map
+     - 0.088 (157)
+     - 0.064 (360)
+     - 0.061 (156)
+   * - 239°, uniform :math:`z_0`
+     - 0.075 (209)
+     - 0.133 (210)
+     - 0.124 (209)
+   * - 239°, map
+     - 0.079 (174)
+     - 0.129 (188)
+     - 0.126 (172)
+
+All six runs with the map reach the steady verdict. With the map the three grounds are closer to each other for
+270° than with the uniform value: the terrain-following run moves towards the masts and the immersed and hybrid
+runs away from them (the mast behind the cliff, M8: measured -0.56, the three runs -0.46, -0.64 and -0.62). For
+239° the map changes each number by at most 0.004. The immersed run for 270° takes 360 iterations: its residual
+falls to 2e-4, rises to 9e-4 between iterations 240 and 270, and then falls to the verdict. The uniform rows are
+those of ``Tests/Real_Terrain/Immersed_Terrain_Cases/README.md`` and of `Hybrid mesh`_. The hybrid runs with the
+map were sampled with another script than those rows; it gives 0.032 (188 iterations) for the hybrid run for 270°
+with the uniform value, where the table has 0.024. The runs with the map are not a test of the
+repository: the Bolund terrain and masts are not redistributed (``Tests/Real_Terrain/WindNinja2019/README.md``
+names the data and its providers).
+
 Limits
 ------
 
@@ -827,7 +952,7 @@ Limits
   tails have not decayed at the sides) makes a step across the seam, which the geometry treats as a slope across
   one cell.
 - ``bc.zlo = surface_layer``, ``bc.surface_stability = neutral``, ``bc.surface_wall_k = dirichlet``, a uniform
-  ``bc.surface_z0``, a uniform ``bc.theta_profile``, ``turb.closure = kl`` and ``steady.sweep = zjacobi`` are
+  ``bc.theta_profile``, ``turb.closure = kl`` and ``steady.sweep = zjacobi`` are
   required. The refusals in this list apply to a run with no stage too (the sweep and the Poisson backend in a
   stage only).
 - ``buildings.type``, ``canopy.type``, nests, ``init.first_guess = column``, ``steady.probes_file``,

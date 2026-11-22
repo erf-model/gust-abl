@@ -35,7 +35,6 @@ std::vector<std::string> check_immersed_terrain (const ImmersedTerrainFacts& f)
     const std::string rep = "terrain.representation = " + f.representation;
     if (!f.surface_layer) { err.push_back(rep + " needs bc.zlo = surface_layer (the wall law acts at the immersed ground)"); }
     if (!f.neutral) { err.push_back(rep + " needs bc.surface_stability = neutral for now"); }
-    if (f.z0_map) { err.push_back(rep + " needs a uniform bc.surface_z0 for now (no bc.surface_z0_file)"); }
     if (f.buildings) { err.push_back(rep + " cannot be combined with buildings.type for now"); }
     if (f.nests) { err.push_back(rep + " cannot be combined with nests for now"); }
     if (f.newton) { err.push_back(rep + " is not supported with steady.stage = simplec_newton yet"); }
@@ -74,7 +73,7 @@ std::string check_immersed_terrain_height (const TerrainInputs& t, double first_
            + " m) with terrain.representation = " + t.representation + " (got " + std::to_string(h) + ")";
 }
 
-BuildingsOptions immersed_terrain_options (const TerrainInputs& t, double z0)
+BuildingsOptions immersed_terrain_options (const TerrainInputs& t, double z0, bool z0_map)
 {
     if (!t.ground_immersed()) {
         amrex::Abort("gust: immersed_terrain_options needs terrain.representation = immersed_forcing or hybrid");
@@ -85,6 +84,7 @@ BuildingsOptions immersed_terrain_options (const TerrainInputs& t, double z0)
     o.file = "(terrain.flat_height)";
     o.small_volfrac = static_cast<double>(t.small_volfrac);
     o.z0 = z0;
+    o.ground_z0_map = z0_map;
     o.wall_form = BuildingWallForm::fraction_stress;
     o.wall_form_name = "fraction_stress";
     o.wall_speed = default_wall_speed(o.wall_form);
@@ -151,13 +151,22 @@ BuildingHeightMap immersed_terrain_map (const TerrainInputs& t, const amrex::Geo
     return m;
 }
 
-std::string immersed_terrain_hash (const TerrainInputs& t, double z0)
+std::string immersed_terrain_hash (const TerrainInputs& t, double z0, const std::string& z0_file)
 {
     auto hx = [] (amrex::Real v) { return hexfloat_canonical(static_cast<double>(v)); };
     // "slope vertical": the wall-law form of the immersed ground, now the only one. The text stays in the
     // hashed string so that the checkpoints written while it was an input keep their hash.
+    // The roughness: the value, or with a map the file's contents and what its interpolation reads (z0 is then
+    // not read). A run without a map keeps the text, and the hash, it had before maps were supported.
+    const std::string map_sha = z0_file.empty() ? std::string() : sha256_file(z0_file);
+    if (!z0_file.empty() && map_sha.empty()) {
+        // A run with no stage does not read the map; its checkpoint would hold the hash of no file.
+        amrex::Abort("gust: bc.surface_z0_file = " + z0_file + " cannot be read (the immersed ground's restart record needs it)");
+    }
+    const std::string rough = z0_file.empty() ? hexfloat_canonical(z0)
+                                              : "file " + map_sha + " idw " + std::to_string(t.idw_neighbors) + " " + hx(t.idw_power);
     std::string s = std::string(kMagic) + " " + std::to_string(kVersion) + "\nflat_height " + hx(t.flat_height)
-                    + "\nsmall_volfrac " + hx(t.small_volfrac) + "\nz0 " + hexfloat_canonical(z0) + "\nslope "
+                    + "\nsmall_volfrac " + hx(t.small_volfrac) + "\nz0 " + rough + "\nslope "
                     + "vertical" + "\ntype " + t.type + "\n";
     // Only for a hybrid mesh: an immersed_forcing checkpoint keeps its hash.
     if (t.representation == "hybrid") { s += "hybrid " + hx(t.hybrid_half_width) + "\n"; }
@@ -215,7 +224,8 @@ void check_immersed_terrain_restart (const std::string& dir, const std::string& 
     }
     if (active && rec != hash) {
         amrex::Abort(where + "the immersed ground's inputs (terrain.representation, terrain.type and its keys, "
-                             "terrain.flat_height, terrain.small_volfrac, terrain.hybrid_half_width or bc.surface_z0) "
+                             "terrain.flat_height, terrain.small_volfrac, terrain.hybrid_half_width, bc.surface_z0 or bc.surface_z0_file "
+                             "and its terrain.idw_neighbors and terrain.idw_power) "
                              "differ from the checkpoint's, or the checkpoint was written with a wall-law form since "
                              "removed (terrain.immersed_slope, terrain.immersed_side_walls or terrain.immersed_wall_distance) "
                              "(SHA-256 " + hash + " here, " + rec + " there)");
