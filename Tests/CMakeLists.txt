@@ -218,7 +218,7 @@ if(_gust_numpy EQUAL 0)
 else()
     set(GUST_PYTHON_NUMPY OFF)
     message(STATUS "GUST: numpy not found for ${Python3_EXECUTABLE}; rt_nests_two_way, "
-                   "rt_immersed_open_faces, rt_immersed_roughness_step, rt_immersed_askervein_coarse and "
+                   "rt_immersed_open_faces, rt_immersed_roughness_step, rt_immersed_canopy_*, rt_immersed_askervein_coarse and "
                    "speed_difference_selftest are not registered")
 endif()
 
@@ -1023,6 +1023,11 @@ gust_add_test(NAME abort_immersed_buildings NP 1 LABELS "regression;smoke"
               PREFIX ${EXPECT_ABORT} "terrain\\.representation = immersed_forcing cannot be combined with buildings\\.type" --
               COMMAND $<TARGET_FILE:gust> ${IMMERSED_GROUND_CASE}/inputs_immersed_ground terrain.flat_height=42.1875
                       buildings.type=immersed_forcing buildings.file=${BUILDING_CUBE_CASE}/cube.txt ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_immersed_canopy_heat NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT} "terrain\\.representation = immersed_forcing cannot be combined with canopy\\.heat = fixed" --
+              COMMAND $<TARGET_FILE:gust> ${IMMERSED_GROUND_CASE}/inputs_immersed_ground terrain.flat_height=42.1875
+                      canopy.type=patches canopy.file=${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Canopy_Drag/canopy_patches.txt
+                      canopy.heat=fixed canopy.leaf_theta=300. ${GUST_TEST_AMREX_FLAGS})
 gust_add_test(NAME abort_immersed_surface_zref NP 1 LABELS "regression;smoke"
               PREFIX ${EXPECT_ABORT} "bc\\.surface_zref has no effect with terrain\\.representation = immersed_forcing" --
               COMMAND $<TARGET_FILE:gust> ${IMMERSED_GROUND_CASE}/inputs_immersed_column terrain.flat_height=42.1875
@@ -2534,6 +2539,29 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
         if(GUST_MPI)
             set_tests_properties(rt_immersed_roughness_step PROPERTIES PROCESSORS 4)
         endif()
+        # The forest canopy cases over an immersed ground and on a hybrid mesh (Immersed_Canopy/README.md):
+        # the decks of Homogeneous_Canopy, Forest_Edge and Forested_Hill as they are (body-fitted), with
+        # the ground immersed at solid fraction 0, 0.3 and 0.7 of a layer, and on the hybrid mesh, the
+        # runs on 2, 4 and 1 ranks in turn. Each run reaches the steady verdict; u and tke are compared
+        # with the body-fitted run at equal height above the ground, and the canopy's drag integral over
+        # the fluid cells of each column equals the body-fitted one. The limits are 1.5 to 2.2 times the
+        # measured differences (README.md). The edge and the hill take 15 to 20 minutes each.
+        set(IMMERSED_CANOPY_OPTIONS "homogeneous|regression|0.5|1|1|900" "edge|nightly|3|13|5|3600" "hill|nightly|5|7|28|3600")
+        foreach(opt IN LISTS IMMERSED_CANOPY_OPTIONS)
+            string(REPLACE "|" ";" parts "${opt}")
+            list(POP_FRONT parts name label du dk dktop timeout)
+            add_test(NAME rt_immersed_canopy_${name}
+                     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Immersed_Canopy/check_immersed_canopy.py
+                             $<TARGET_FILE:gust> ${CMAKE_CURRENT_BINARY_DIR}/run/rt_immersed_canopy_${name} --fresh
+                             --cases ${name} --limits ${du} ${dk} ${dktop} ${_step_mpi} turb.realizability=0.309 turb.nut_relax=0.5
+                             turb.shear_stencil=log_law terrain.small_volfrac=0.1 steady.max_iterations=30000
+                             ${GUST_TEST_AMREX_FLAGS})
+            set_tests_properties(rt_immersed_canopy_${name} PROPERTIES LABELS "${label}" TIMEOUT ${timeout}
+                                 ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
+            if(GUST_MPI)
+                set_tests_properties(rt_immersed_canopy_${name} PROPERTIES PROCESSORS 4)
+            endif()
+        endforeach()
         # A real terrain immersed between two inflow and two outflow faces against the mesh that
         # follows it (Real_Terrain/Immersed_Terrain_Cases/README.md): the Askervein pair of that
         # folder on 32 x 32 columns, four ranks. Both runs reach the steady verdict; the speed at

@@ -9,10 +9,13 @@
 //   periodic seam reaches the columns on the other side (UT-8.1.4);
 //   the coarse levels keep the integral of f over each layer, on a smoothed
 //   hierarchy, gathered or not (UT-8.1.5);
+//   over an immersed ground the heights are measured from the ground, whatever part of a cell it cuts;
 //   a restart with another canopy is refused (UT-8.1.7);
 //   the inputs and files are checked.
 #include "Canopy.H"
+#include "CanopyTke.H"
 #include "ColumnGuess.H"
+#include "ImmersedTerrain.H"
 #include "Canopy_K.H"
 #include "MeshHierarchy.H"
 #include "PoissonTestHelpers.H"
@@ -415,6 +418,157 @@ TEST(Canopy, FollowsLocalGroundOnHill)
     EXPECT_LT(e.max_rel, rtol);
     EXPECT_LT(first_cell_error(can.drag(), c.geom, 0.25 * 3.0 / 20.0), rtol);
     EXPECT_EQ(misplaced_cells(can.drag(), c.z, c.geom, 20.0, 0.0), 0);
+}
+
+// What a canopy of height h, Cd LAI = cdlai and a uniform profile must be over an immersed ground (z's last
+// component, four-corner means): the largest relative error of the column integral against cdlai, the largest
+// relative error of f against cdlai / h times the part of the cell between the ground and the canopy top over
+// the cell's height (0 below the ground and above the top), and the number of cells below the ground.
+struct GroundError { double integral{0}; double cell{0}; amrex::Long below{0}; };
+GroundError immersed_ground_error (const amrex::MultiFab& f, const amrex::MultiFab& z, const gust::Mesh& mesh,
+                                   const amrex::Geometry& geom, double h, double cdlai)
+{
+    const amrex::Box& dom = geom.Domain();
+    const int k0 = dom.smallEnd(2), k1 = dom.bigEnd(2);
+    const double dz = static_cast<double>(geom.CellSize(2));
+    amrex::ReduceOps<amrex::ReduceOpMax, amrex::ReduceOpMax, amrex::ReduceOpSum> ops;
+    amrex::ReduceData<double, double, amrex::Long> data(ops);
+    for (amrex::MFIter mfi(f, false); mfi.isValid(); ++mfi) {
+        amrex::Box b = mfi.validbox();
+        b.setBig(2, b.smallEnd(2));
+        const auto a = f.const_array(mfi);
+        const auto zn = z.const_array(mfi);
+        const auto J = mesh.detJ.const_array(mfi);
+        ops.eval(b, data, [=] AMREX_GPU_DEVICE (int i, int j, int) -> amrex::GpuTuple<double, double, amrex::Long> {
+            auto face = [&] (int kk, int n) {
+                return 0.25 * (static_cast<double>(zn(i, j, kk, n)) + static_cast<double>(zn(i + 1, j, kk, n))
+                               + static_cast<double>(zn(i, j + 1, kk, n)) + static_cast<double>(zn(i + 1, j + 1, kk, n)));
+            };
+            const double g = face(k0, 1);
+            double sum = 0, worst = 0;
+            amrex::Long below = 0;
+            for (int k = k0; k <= k1; ++k) {
+                const double zb = face(k, 0), zt = face(k + 1, 0);
+                const double lo = amrex::max(zb, g), hi = amrex::min(zt, g + h);
+                const double want = hi > lo ? cdlai / h * (hi - lo) / (zt - zb) : 0.0;
+                const double got = static_cast<double>(a(i, j, k));
+                worst = amrex::max(worst, std::abs(got - want) / (cdlai / h));
+                if (zt <= g) { ++below; }
+                sum += got * static_cast<double>(J(i, j, k)) * dz;
+            }
+            return {std::abs(sum - cdlai) / cdlai, worst, below};
+        });
+    }
+    const auto r = data.value();
+    GroundError e{amrex::get<0>(r), amrex::get<1>(r), amrex::get<2>(r)};
+    const auto comm = amrex::ParallelDescriptor::Communicator();
+    amrex::ParallelAllReduce::Max(e.integral, comm);
+    amrex::ParallelAllReduce::Max(e.cell, comm);
+    amrex::ParallelAllReduce::Sum(e.below, comm);
+    return e;
+}
+
+// Over an immersed ground (terrain.representation = immersed_forcing or hybrid: the node heights carry the
+// ground as their last component) the canopy stands on the ground, not on the mesh's lower face: every column
+// holds Cd LAI whatever fraction of a cell the ground cuts (0: on a face), the cells below the ground hold
+// none, the cut cell holds the leaf area of its open part over its whole height, and the canopy ends h above
+// the ground. A flat ground at four cut fractions of the third layer and a ground that slopes across the
+// boxes; both profiles for the integral. Heights from the lower face keep the integral and fail the cells.
+TEST(Canopy, StandsOnTheImmersedGround)
+{
+    const int n = 16;
+    const double h = 17.3, cd = 0.25, lai = 3.0;
+    PCase c = make_case(n, 8, true, flat);
+    const std::string hf = write_map("h173.xyz", n, [h] (double, double) { return h; });
+    const std::string lf = write_map("lai3i.xyz", n, [lai] (double, double) { return lai; });
+    // The third layer of the mesh: 2.1 m to 3.31 m (1 m stretched by 1.1).
+    const double zlo = 2.1, zhi = 3.31;
+    auto ground_at = [&] (double g) {
+        amrex::MultiFab z(c.z.boxArray(), c.dm, 2, c.z.nGrow());
+        amrex::MultiFab::Copy(z, c.z, 0, 0, 1, c.z.nGrow());
+        gust::TerrainInputs t;
+        t.representation = "immersed_forcing";
+        t.flat_height = static_cast<amrex::Real>(g);
+        gust::fill_immersed_ground(z, c.geom, t);
+        return z;
+    };
+    for (const double cut : {0.0, 0.3, 0.7, 0.999}) {
+        const amrex::MultiFab z = ground_at(zlo + cut * (zhi - zlo));
+        for (const bool lm : {false, true}) {
+            gust::Canopy can;
+            can.build(map_options(hf, lf, cd, lm, 0.65), c.geom, z, c.ba, c.dm);
+            const GroundError e = immersed_ground_error(can.drag(), z, c.mesh, c.geom, h, cd * lai);
+            EXPECT_LT(e.integral, rtol) << "cut " << cut << ", lalic_mihailovic " << lm;
+            // (With the ground on a face, rounding decides whether the cell under the face counts.)
+            if (cut > 0) { EXPECT_EQ(e.below, static_cast<amrex::Long>(2) * n * n) << cut; }
+            if (!lm) { EXPECT_LT(e.cell, 100 * rtol) << "cut " << cut; }
+            // The log line counts the columns with canopy, not those with canopy in the lowest cell.
+            const std::string line = can.summary(c.mesh.detJ, c.geom);
+            EXPECT_NE(line.find("canopy on 256 of 256 columns"), std::string::npos) << line;
+            EXPECT_EQ(line.find("WARNING"), std::string::npos) << line;
+            // So does the rough-ground warning (the first cells of a column lie below the ground).
+            EXPECT_EQ(gust::canopy_columns_on_rough_ground(can.drag(), gust::Roughness{amrex::Real(1.0)},
+                                                           gust::kForestSizedZ0), static_cast<amrex::Long>(n) * n);
+        }
+    }
+    // A ground that slopes in x and y (heights 2.3 m to 8.3 m): the ground's component at each node.
+    amrex::MultiFab z(c.z.boxArray(), c.dm, 2, c.z.nGrow());
+    amrex::MultiFab::Copy(z, c.z, 0, 0, 1, c.z.nGrow());
+    const auto dx = c.geom.CellSizeArray();
+    for (amrex::MFIter mfi(z, false); mfi.isValid(); ++mfi) {
+        amrex::FArrayBox host(mfi.fabbox(), 1, amrex::The_Pinned_Arena());
+        const auto a = host.array();
+        amrex::LoopOnCpu(mfi.fabbox(), [&] (int i, int j, int k) {
+            const double x = i * static_cast<double>(dx[0]), y = j * static_cast<double>(dx[1]);
+            a(i, j, k) = static_cast<amrex::Real>(5.3 + 2 * std::cos(2 * M_PI * x / 400) + std::sin(2 * M_PI * y / 400));
+        });
+        z[mfi].copy<amrex::RunOn::Device>(host, mfi.fabbox(), 0, mfi.fabbox(), 1, 1);
+        amrex::Gpu::streamSynchronize();   // before host leaves scope
+    }
+    gust::Canopy can;
+    can.build(map_options(hf, lf, cd, false), c.geom, z, c.ba, c.dm);
+    const GroundError e = immersed_ground_error(can.drag(), z, c.mesh, c.geom, h, cd * lai);
+    EXPECT_LT(e.integral, rtol);
+    EXPECT_LT(e.cell, 100 * rtol);
+    EXPECT_GT(e.below, static_cast<amrex::Long>(2) * n * n);
+    // The same canopy as one round patch (canopy.type = patches; 400 m across, the widest the periodic domain
+    // takes): inside the patch its cells equal the map's, the cells below the ground included.
+    const std::string pf = write_file("patch_round.txt", [h, cd, lai] (std::ofstream& os) {
+        os << "1 200 200 " << h << " 400 " << cd << " " << lai << " 0\n";
+    });
+    gust::Canopy pat;
+    pat.build(patch_options(pf), c.geom, z, c.ba, c.dm);
+    amrex::Long want = 0;
+    for (int j = 0; j < n; ++j) {
+        for (int i = 0; i < n; ++i) {
+            const double x = (i + 0.5) * 25 - 200, y = (j + 0.5) * 25 - 200;
+            if (x * x + y * y <= 200.0 * 200.0) { ++want; }
+        }
+    }
+    double worst = 0;
+    amrex::Long inside = 0;
+    for (amrex::MFIter mfi(pat.drag(), false); mfi.isValid(); ++mfi) {
+        amrex::FArrayBox fp(mfi.validbox(), 1, amrex::The_Pinned_Arena()), fm(mfi.validbox(), 1, amrex::The_Pinned_Arena());
+        fp.copy<amrex::RunOn::Device>(pat.drag()[mfi], mfi.validbox(), 0, mfi.validbox(), 0, 1);
+        fm.copy<amrex::RunOn::Device>(can.drag()[mfi], mfi.validbox(), 0, mfi.validbox(), 0, 1);
+        amrex::Gpu::streamSynchronize();
+        const amrex::Box vb = mfi.validbox();
+        amrex::LoopOnCpu(amrex::Box(vb).setBig(2, vb.smallEnd(2)), [&] (int i, int j, int) {
+            const double x = (i + 0.5) * 25 - 200, y = (j + 0.5) * 25 - 200;
+            if (x * x + y * y > 200.0 * 200.0) { return; }
+            ++inside;
+            for (int k = vb.smallEnd(2); k <= vb.bigEnd(2); ++k) {
+                worst = std::max(worst, std::abs(static_cast<double>(fp(amrex::IntVect(i, j, k)))
+                                                 - static_cast<double>(fm(amrex::IntVect(i, j, k)))) / (cd * lai / h));
+            }
+        });
+    }
+    amrex::ParallelAllReduce::Max(worst, amrex::ParallelDescriptor::Communicator());
+    amrex::ParallelAllReduce::Sum(inside, amrex::ParallelDescriptor::Communicator());
+    EXPECT_EQ(inside, want);
+    EXPECT_LT(worst, 100 * rtol);
+    EXPECT_EQ(gust::canopy_columns_on_rough_ground(pat.drag(), gust::Roughness{amrex::Real(1.0)}, gust::kForestSizedZ0),
+              want);
 }
 
 // UT-8.1.4: three patches (two overlapping across box edges, one across the

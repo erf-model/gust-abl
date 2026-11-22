@@ -23,7 +23,11 @@
 // ground (Canopy_K.H), the ground and the cell's faces being the means of
 // the four corner nodes, as in the cell volume factor detJ. The column sum of
 // f detJ dzeta is then Cd LAI to rounding, part-filled top cells included,
-// for a canopy below the top of the domain.
+// for a canopy below the top of the domain. The ground is the mesh's lower
+// face on a body-fitted mesh and the immersed ground's height with
+// terrain.representation = immersed_forcing or hybrid: the profile is clipped
+// at it, so a cut cell holds the leaf area of its open part over its whole
+// height, a cell below it holds none, and the column sum is unchanged.
 //
 // The field has one ghost column in x and y (no ghost layer in z, as the
 // boxes span the column): periodic images in a periodic direction, else the

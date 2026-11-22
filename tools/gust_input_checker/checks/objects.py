@@ -24,7 +24,7 @@ ERROR:
   missing, or outside the top of the first layer to the bottom of the top layer; the terrain keys that follow or
   smooth a ground; a hierarchy; a mesh not periodic in x and y; no surface layer, a stability,
   bc.surface_zref, bc.surface_denominator_floor, bc.surface_wall_k = source, a stratified bc.theta_profile;
-  buildings, a canopy, nests, the column first guess, probes, the Newton and unsteady stages, the lusgs sweep and
+  buildings, a canopy with leaf heat, nests, the column first guess, probes, the Newton and unsteady stages, the lusgs sweep and
   solver.poisson_backend = mlmg in a stage, turb.closure = none; terrain.flat_height or terrain.small_volfrac with
   a body-fitted ground.
 - terrain.representation = hybrid: the same, except that terrain.smoothing and terrain.gamma_m are accepted and
@@ -361,8 +361,8 @@ class ImmersedTerrainChecker(Checker):
                 refuse("bc.theta_profile", "needs a uniform bc.theta_profile for now")
         if c.buildings:
             refuse("buildings.type", "cannot be combined with buildings.type for now")
-        if c.canopy:
-            refuse("canopy.type", "cannot be combined with canopy.type for now")
+        if c.canopy and c.s("canopy.heat") == "fixed":
+            refuse("canopy.heat", "cannot be combined with canopy.heat = fixed for now", "Set canopy.heat = off.")
         if self.given("nest.names"):
             refuse("nest.names", "cannot be combined with nests for now")
         if c.first_guess == "column":
