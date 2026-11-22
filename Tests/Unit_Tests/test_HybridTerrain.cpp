@@ -259,7 +259,7 @@ TEST (HybridTerrain, ImmersedColumnsWhereTheFirstCellIsCut)
     const amrex::Long n = gust::hybrid_immersed_columns(beta, gust::ground_slab(c.ba), c.dm, 1, mask);
     EXPECT_EQ(n, 32 * 16 / 2);
     EXPECT_EQ(mask.nGrowVect(), amrex::IntVect(1, 1, 0));
-    long bad = 0;
+    amrex::Long bad = 0;
     for (amrex::MFIter mfi(mask, false); mfi.isValid(); ++mfi) {
         const auto m = mask.const_array(mfi);
         EXPECT_EQ(mfi.validbox().smallEnd(2), 0);
@@ -306,7 +306,7 @@ TEST (HybridTerrain, SolidPressureMakesTheSlopedGradientExact)
         gust::hybrid_solid_pressure(beta, pk, pks);
         ASSERT_EQ(ps.nGrowVect(), p.nGrowVect());
         double worst = 0;
-        long filled = 0;
+        amrex::Long filled = 0;
         for (amrex::MFIter mfi(ps, false); mfi.isValid(); ++mfi) {
             const auto f = ps.const_array(mfi);
             const auto fk = pks.const_array(mfi);

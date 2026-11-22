@@ -732,7 +732,7 @@ TEST(SurfaceLayer, ImmersedColumnsOfAHybridMesh)
     gust::apply_wall_k_to_implicit(s0, plain, A0);
     gust::apply_wall_k(s1, opt, q.tke, R1);
     gust::apply_wall_k_to_implicit(s1, opt, A1);
-    long masked = 0, open = 0, bad = 0;
+    amrex::Long masked = 0, open = 0, bad = 0;
     for (amrex::MFIter mfi(s1.tau, false); mfi.isValid(); ++mfi) {
         const auto m = mask.const_array(mfi);
         const auto t0 = s0.tau.const_array(mfi);
