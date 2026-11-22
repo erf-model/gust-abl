@@ -1455,8 +1455,9 @@ are killed.
 LS1 to LS9 were run the same way; the scripts are not in the repository.
 
 The one-line mutants of the sloping immersed ground (``Source/BuildingsSurface.cpp``, ``Source/Heights_K.H``,
-``Source/ImmersedSlope.cpp`` and ``Source/ImmersedTerrain.cpp``), each run against ``ImmersedSurface.*`` on one rank
-the same way. All 12 are killed.
+the slope's wall-law file, since removed, and ``Source/ImmersedTerrain.cpp``), each run against ``ImmersedSurface.*`` on
+one rank the same way. All 12 were killed. IS6 to IS9 and IS12 changed the wall law along the ground's normal,
+which has been removed with its tests (:ref:`immersed-slope-forms`); they are no longer listed.
 
 .. list-table::
    :header-rows: 1
@@ -1467,11 +1468,10 @@ the same way. All 12 are killed.
      - Failing tests
    * - IS1
      - The cell's moments from the footprint's centre height alone (a flat tile per cell)
-     - ``TiltedPlaneMatchesTheClosedForm``, ``NormalTakesTheSlopesDistanceSpeedAndArea``
+     - ``TiltedPlaneMatchesTheClosedForm``
    * - IS2
      - The side-wall bits kept on a slope
-     - ``TiltedPlaneMatchesTheClosedForm``, ``FlatSurfaceGivesTheFlatGroundsFields``,
-       ``NormalTakesTheSlopesDistanceSpeedAndArea``
+     - ``TiltedPlaneMatchesTheClosedForm``, ``FlatSurfaceGivesTheFlatGroundsFields``
    * - IS3
      - :math:`d_2` from the reference cell's centre in place of its fluid's mean height
      - ``TiltedPlaneMatchesTheClosedForm``, ``FlatSurfaceGivesTheFlatGroundsFields``
@@ -1481,27 +1481,12 @@ the same way. All 12 are killed.
    * - IS5
      - The helper's ground read as 0 (the mesh's lower face)
      - ``HeightAboveTheGroundOnAnAgnesiHill``, ``EveryConsumerReadsTheHelper``
-   * - IS6
-     - ``normal``: :math:`w` not taken out of the speed on a flat ground
-     - ``NormalOnFlatGroundIsBitIdenticalToVertical``, ``NormalTakesTheSlopesDistanceSpeedAndArea``
-   * - IS7
-     - ``normal``: the distances not multiplied by :math:`\cos\alpha`
-     - ``NormalTakesTheSlopesDistanceSpeedAndArea``
-   * - IS8
-     - ``normal``: the wall area not divided by :math:`\cos\alpha`
-     - ``NormalTakesTheSlopesDistanceSpeedAndArea``
-   * - IS9
-     - ``normal``: :math:`w` left out of the speed parallel to the ground
-     - ``NormalTakesTheSlopesDistanceSpeedAndArea``
    * - IS10
-     - The restart hash without ``terrain.immersed_slope``
-     - ``HashFollowsTheGroundsInputs``
+     - The restart hash without the line ``slope vertical`` (kept so that existing checkpoints keep their hash)
+     - ``HashFollowsTheGroundsInputs`` (the default flat ground's hash is pinned)
    * - IS11
      - The footprint's centre height from two opposite corners only
      - ``MomentsMatchAQuadrature`` (the twisted footprint)
-   * - IS12
-     - ``normal``: the sign of the normal's y component
-     - ``NormalTakesTheSlopesDistanceSpeedAndArea`` (the planes along y and oblique)
 
 The one-line mutants of the force on the buildings and the laminar closure (``Source/BuildingLoads.cpp``,
 ``Source/Residual.cpp`` and ``Source/Closure.cpp``), each run against ``BuildingLoads.*`` and ``Closure.Laminar*`` on
@@ -1854,16 +1839,13 @@ Current tests
        identical columns, :math:`u_*^2` of the wall law at the exact distances equal to :math:`F D` to 1e-5, zero
        speed in the solid layers, and the three cells above the cut cell within 1 % and 2.5 % of the log law. At 0
        the column equals the body-fitted column of 65 layers to 1e-6 in :math:`u` and :math:`k`. Double precision only.
-   * - ``rt_immersed_along_vertical``, ``rt_immersed_along_normal``, ``rt_immersed_ridge_vertical``,
-       ``rt_immersed_ridge_normal``; nightly: ``rt_immersed_hill_vertical``, ``rt_immersed_hill_normal``
+   * - ``rt_immersed_along_vertical``, ``rt_immersed_ridge_vertical``; nightly: ``rt_immersed_hill_vertical``
      - A sloping immersed ground against the terrain-following mesh (``Tests/Canonical_RANS/Immersed_Ridge_2D``,
-       :doc:`immersed_terrain`) on four ranks, with either ``terrain.immersed_slope``: both runs reach the steady
-       verdict, the log names the option, and the wind at 20, 40, 80 and 160 m above the ground is compared in
+       :doc:`immersed_terrain`) on four ranks: both runs reach the steady verdict, and the wind at 20, 40, 80 and 160 m above the ground is compared in
        every column (from the cells with no solid part; below the first of them, the log law through it). Wind along a
        ridge with slopes up to 18°: within 2 % of the far-field speed (rms 1.5 %). Wind across a ridge: crest speed
        within 4 %, lee minimum within 16 % and rms within 8 %. Round hill: 5 %, 27 % and 13 %. The limits across the
-       ridge and over the hill are the measured differences with a margin (the case's README). The ``_normal``
-       test reads the body-fitted plotfile of the ``_vertical`` test. Mutant: the wall cell's distance halved fails
+       ridge and over the hill are the measured differences with a margin (the case's README). Mutant: the wall cell's distance halved fails
        ``rt_immersed_along_vertical`` (7.4 % against 2 %).
    * - ``rt_immersed_open_faces``
      - Flat immersed ground between an inflow and an outflow face (``Tests/Canonical_RANS/Immersed_Open_Faces``,
@@ -2967,24 +2949,24 @@ GoogleTest suite
        of 4 and of 2 cells.
    * - ``ImmersedSurface.MomentsMatchAQuadrature``, ``ImmersedSurface.TiltedPlaneMatchesTheClosedForm``,
        ``ImmersedSurface.FlatSurfaceGivesTheFlatGroundsFields``, ``ImmersedSurface.HeightAboveTheGroundOnAnAgnesiHill``,
-       ``ImmersedSurface.EveryConsumerReadsTheHelper``, ``ImmersedSurface.NormalOnFlatGroundIsBitIdenticalToVertical``,
-       ``ImmersedSurface.NormalTakesTheSlopesDistanceSpeedAndArea``, ``ImmersedSurface.HashFollowsTheGroundsInputs``
+       ``ImmersedSurface.EveryConsumerReadsTheHelper``, ``ImmersedSurface.HashFollowsTheGroundsInputs``
      - The sloping immersed ground (:doc:`immersed_terrain`): the closed-form moments of a triangle and a segment
        equal a quadrature; on planes tilted by 10°, 30° and 45° along x and along y, on boxes of 8 and of 4 cells,
        the solid fractions, the fluid's mean heights, the face fractions, the slopes and the two wall distances
        equal the closed form of a rectangle cut by a line, only the roof bit is set, and the wall areas of a column
        add to 1; a flat surface gives the fields of the flat ground of PR-87; the height above the ground on an
-       Agnesi hill equals :math:`z - h(x, y)`, and each source file that needs a height reads the helper;
-       ``terrain.immersed_slope = normal`` is bit-identical to ``vertical`` on a flat ground and, on 30° planes
-       sloping along x, along y and obliquely under a slope-parallel wind, returns the log law's stress at
-       :math:`d\cos\alpha` on the slope's area with a sink on :math:`w`; the moments of a twisted footprint equal
+       Agnesi hill equals :math:`z - h(x, y)`, and each source file that needs a height reads the helper; the moments of a twisted footprint equal
        a sampling of its four triangles; the restart hash follows each of the ground's inputs, a file's contents
-       and interpolation inputs included, and a record of another version is refused by its version
+       and interpolation inputs included, the default flat ground's hash is pinned to its value before the
+       wall-law options were removed, and a record of another version is refused by its version
        (``ImmersedTerrain.RestartRecordRefusesAChangedGround``); a ground filled from an xyz file returns the
        file's heights above ``terrain.flat_height``.
-   * - ``Inputs.ImmersedTerrainChecksNameTheInput``, ``Inputs.ParsesTheImmersedTerrainKeys``
-     - The four ``terrain`` keys of the immersed ground are read, and each of their range checks and refusals names
-       its input; a hill passes with either ``terrain.immersed_slope``; a deck with inflow and outflow faces passes.
+   * - ``Inputs.ImmersedTerrainChecksNameTheInput``, ``Inputs.ParsesTheImmersedTerrainKeys``,
+       ``Inputs.RemovedImmersedTerrainKeysAreUnknown``
+     - The three ``terrain`` keys of the immersed ground are read, and each of their range checks and refusals names
+       its input; a hill passes; a deck with inflow and outflow faces passes. ``terrain.immersed_slope``,
+       ``terrain.immersed_side_walls`` and ``terrain.immersed_wall_distance``, removed inputs, are each reported as
+       unknown ``terrain`` keys.
    * - ``Reference.ArchiveRoundTripVerifies``, ``Reference.DamagedArchivesAreRefused``
      - A reference archive written, verified and loaded: fields bit-identical to the average, metadata and field
        statistics unchanged; a changed byte, a missing file, an extra file, edited AU, and data changed together

@@ -71,9 +71,9 @@ BuildingsOptions immersed_terrain_options (const TerrainInputs& t, double z0);
 //! domain's x and y faces (with a terrain file: the terrain's heights).
 BuildingHeightMap immersed_terrain_map (const TerrainInputs& t, const amrex::Geometry& geom);
 
-//! The SHA-256 of what fixes the immersed ground: flat_height, small_volfrac, immersed_slope,
-//! immersed_side_walls (when not off), immersed_wall_distance (when not mean_height), z0, the terrain's type and what the type reads (the hill's size and shape; the file's contents and
-//! the IDW choices). Reads terrain.file on the calling rank.
+//! The SHA-256 of what fixes the immersed ground: flat_height, small_volfrac, z0, the terrain's type and what
+//! the type reads (the hill's size and shape; the file's contents and the IDW choices). Reads terrain.file on the
+//! calling rank.
 std::string immersed_terrain_hash (const TerrainInputs& t, double z0);
 
 //! <dir>/ImmersedTerrain with hash (I/O rank); nothing with an empty hash (a body-fitted run).

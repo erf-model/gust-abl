@@ -11,7 +11,7 @@ Neutral (uniform θ, no gravity), geostrophic wind 10 m/s with Coriolis, periodi
 y, z0 = 0.1 m, slip top. The immersed mesh puts its bottom 2 m below the terrain's zero level
 (`terrain.flat_height = 2`). Both decks use the recommended turbulence setting (docs/turbulence_model.rst),
 `turb.shear_stencil = log_law` and `solver.poisson_backend = gmres_fft`. The immersed deck sets
-`terrain.small_volfrac = 0.1` and `terrain.immersed_slope = vertical`, as the measured cases of
+`terrain.small_volfrac = 0.1`, as the measured cases of
 `../../Real_Terrain/Immersed_Terrain_Cases` do. The stop rule is four orders of residual drop.
 
 ## Files

@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Run GUST on the immersed ridge and on its body-fitted reference and compare them (rt_immersed_ridge_*).
 
-    check_immersed_ridge.py --slope vertical|normal --body-fitted DECK [--wind across|along|hill]
+    check_immersed_ridge.py --body-fitted DECK [--wind across|along|hill]
                             [--crest PCT] [--lee PCT] [--rms PCT] [--max PCT] [--reuse] -- COMMAND [ARGS ...]
 
 COMMAND runs the application on inputs_immersed_ridge (--wind across, the default),
 inputs_immersed_along (--wind along) or inputs_immersed_hill (--wind hill, the round hill, read along
-the row of columns just north of its centre); terrain.immersed_slope = SLOPE is added to it.
+the row of columns just north of its centre).
 The same COMMAND with DECK in place of the immersed deck runs the body-fitted ridge in the sub-folder
 body_fitted/ (--reuse: a body-fitted plotfile already there is read instead). Both must reach the
 steady verdict. The wind (u across the ridge, v along it) is then read at fixed heights above the ground, d = 20, 40, 80 and 160 m,
@@ -116,7 +116,7 @@ def main(argv):
         raise SystemExit(__doc__)
     sep = argv.index("--")
     opts, cmd = argv[:sep], argv[sep + 1:]
-    slope = body_fitted = None
+    body_fitted = None
     lim = {"--crest": 5.0, "--lee": 10.0, "--rms": 5.0, "--max": 5.0}
     wind = "across"
     reuse = False
@@ -126,9 +126,7 @@ def main(argv):
             reuse = True
             i += 1
             continue
-        if opts[i] == "--slope":
-            slope = opts[i + 1]
-        elif opts[i] == "--wind":
+        if opts[i] == "--wind":
             wind = opts[i + 1]
         elif opts[i] == "--body-fitted":
             body_fitted = opts[i + 1]
@@ -137,8 +135,8 @@ def main(argv):
         else:
             raise SystemExit("check_immersed_ridge: unknown option " + opts[i])
         i += 2
-    if slope not in ("vertical", "normal") or body_fitted is None or wind not in CASES:
-        raise SystemExit("check_immersed_ridge: --slope vertical|normal, --body-fitted DECK and --wind across|along|hill")
+    if body_fitted is None or wind not in CASES:
+        raise SystemExit("check_immersed_ridge: --body-fitted DECK and --wind across|along|hill")
     case = CASES[wind]
     tag, NX = case["tag"], case["nx"]
     deck = [n for n, a in enumerate(cmd) if a.endswith("inputs_immersed_" + tag)]
@@ -152,10 +150,8 @@ def main(argv):
         ok = ok and good
         print(("PASS " if good else "FAIL ") + name + ": " + detail)
 
-    code, log = run(cmd + ["terrain.immersed_slope=" + slope], os.getcwd())
+    code, log = run(cmd, os.getcwd())
     check("immersed steady verdict", code == 0 and "gust: steady after" in log, "exit %d, %s iterations" % (code, iterations(log)))
-    # The run names the option it used: a key that were ignored would pass the comparisons below.
-    check("terrain.immersed_slope in the log", "(terrain.immersed_slope = " + slope + ")" in log, slope)
     if not ok:
         return 1
     im = columns(written_plotfile(os.getcwd(), log, "immersed_" + tag + "_plt"), BASE, True, case)
@@ -166,7 +162,7 @@ def main(argv):
         bf_plt = old[-1]
         print("reusing " + bf_plt)
     else:
-        # No plotfile of an earlier body-fitted run may stay: --reuse of a later test reads the last by name.
+        # No plotfile of an earlier body-fitted run may stay: --reuse reads the last by name.
         for stale in glob.glob(os.path.join(sub, "body_fitted_" + tag + "_*")):
             shutil.rmtree(stale)
         bf_cmd = list(cmd)

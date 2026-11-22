@@ -2350,8 +2350,7 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
     # four ranks. The wind at 20, 40, 80 and 160 m above the ground, from the fluid cells only.
     # Wind along a ridge (slopes up to 18 degrees across the wind, no flow over the ridge): every
     # column within 2 % of the body-fitted far-field speed. Wind across a 100 m ridge: the crest
-    # speed, the lee minimum and the rms within measured margins. _vertical runs the body-fitted
-    # deck; _normal reads its plotfile (same run folder, the fixture).
+    # speed, the lee minimum and the rms within measured margins. Each test runs the body-fitted deck too.
     # The round hill (32 x 32 columns) is the nightly one: about 40 min with its reference.
     foreach(_pair "ridge;across;regression;--crest;4;--lee;16;--rms;8" "along;along;regression;--max;2;--rms;1.5"
                   "hill;hill;nightly;--crest;5;--lee;27;--rms;13")
@@ -2360,14 +2359,9 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
         list(GET _pair 2 _label)
         list(SUBLIST _pair 3 -1 _limits)
         gust_add_test(NAME rt_immersed_${_tag}_vertical NP 4 LABELS "${_label}"
-                      RUN_DIR ${CMAKE_CURRENT_BINARY_DIR}/run/rt_immersed_${_tag} FIXTURES_SETUP immersed_${_tag}_reference
-                      PREFIX ${Python3_EXECUTABLE} ${IMMERSED_RIDGE_CASE}/check_immersed_ridge.py --wind ${_wind} --slope vertical
+                      RUN_DIR ${CMAKE_CURRENT_BINARY_DIR}/run/rt_immersed_${_tag}
+                      PREFIX ${Python3_EXECUTABLE} ${IMMERSED_RIDGE_CASE}/check_immersed_ridge.py --wind ${_wind}
                              ${_limits} --body-fitted ${IMMERSED_RIDGE_CASE}/inputs_body_fitted_${_tag} --
-                      COMMAND $<TARGET_FILE:gust> ${IMMERSED_RIDGE_CASE}/inputs_immersed_${_tag} ${GUST_TEST_AMREX_FLAGS})
-        gust_add_test(NAME rt_immersed_${_tag}_normal NP 4 LABELS "${_label}"
-                      RUN_DIR ${CMAKE_CURRENT_BINARY_DIR}/run/rt_immersed_${_tag} FIXTURES_REQUIRED immersed_${_tag}_reference
-                      PREFIX ${Python3_EXECUTABLE} ${IMMERSED_RIDGE_CASE}/check_immersed_ridge.py --wind ${_wind} --slope normal
-                             --reuse ${_limits} --body-fitted ${IMMERSED_RIDGE_CASE}/inputs_body_fitted_${_tag} --
                       COMMAND $<TARGET_FILE:gust> ${IMMERSED_RIDGE_CASE}/inputs_immersed_${_tag} ${GUST_TEST_AMREX_FLAGS})
     endforeach()
     if(GUST_PYTHON_NUMPY)

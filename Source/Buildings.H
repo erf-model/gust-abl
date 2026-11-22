@@ -135,17 +135,6 @@ struct BuildingsOptions
     //! ImmersedTerrain.H). The vertical diffusion across a roof cell's top face then spans the distance between
     //! the two cells' fluid centroids, and the body forces act on the open part of each face (BuildingForcing.H).
     bool immersed_ground{false};
-    //! Set by the application, not read: terrain.immersed_slope = normal (ImmersedSlope.H), with immersed_ground.
-    bool slope_normal{false};
-    //! Set by the application, not read: terrain.immersed_side_walls = steps (BuildingsSurface.cpp), with
-    //! immersed_ground on a ground built from a surface.
-    bool step_side_walls{false};
-    //! Set by the application, not read: terrain.immersed_side_walls = steps_no_slip, with step_side_walls. The
-    //! step faces then take the viscous flux to the solid cell (no slip), not the wall law (BuildingForcing.H).
-    bool step_no_slip{false};
-    //! Set by the application, not read: terrain.immersed_wall_distance = column_centre, with immersed_ground on a
-    //! ground built from a surface. The turbulence model's distance on a footprint steeper than the layer (BuildingTke.cpp).
-    bool column_distance{false};
     std::vector<std::string> given;  //!< buildings.* keys in the inputs
     std::vector<std::string> parse_errors;   //!< value counts and repeats
     [[nodiscard]] bool active () const { return type != BuildingsType::none; }

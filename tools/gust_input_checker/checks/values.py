@@ -53,9 +53,6 @@ terrain.nest_blend_width real 1 >=0
 terrain.representation body_fitted,immersed_forcing 1
 terrain.flat_height real 1 >0
 terrain.small_volfrac real 1 >=1e-4&<0.5
-terrain.immersed_slope vertical,normal 1
-terrain.immersed_side_walls off,steps,steps_no_slip 1
-terrain.immersed_wall_distance mean_height,column_centre 1
 init.first_guess none,profile,column,nest 1
 init.projection flag 1
 init.alpha_h real 1 >0

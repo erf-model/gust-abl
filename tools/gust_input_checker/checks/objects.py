@@ -286,7 +286,7 @@ class ImmersedTerrainChecker(Checker):
         c = self.ctx
         rep = c.s("terrain.representation")
         if rep == "body_fitted":
-            for k in ("flat_height", "small_volfrac", "immersed_slope", "immersed_side_walls", "immersed_wall_distance"):
+            for k in ("flat_height", "small_volfrac"):
                 self.no_effect("terrain." + k, "unless terrain.representation = immersed_forcing")
             return
         if rep != "immersed_forcing":
@@ -311,10 +311,6 @@ class ImmersedTerrainChecker(Checker):
             refuse("mesh.hierarchy_levels", "needs mesh.hierarchy_levels = 1 for now")
         if c.s("bc.outflow_transport") == "from_velocity":
             refuse("bc.outflow_transport", "refuses bc.outflow_transport = from_velocity", "Use mirror (the default).")
-        walls = c.s("terrain.immersed_side_walls")
-        if walls and walls != "off" and c.s("terrain.immersed_slope") == "normal":
-            refuse("terrain.immersed_side_walls", "with terrain.immersed_side_walls = %s needs terrain.immersed_slope = vertical"
-                   % walls)
         if not c.surface_layer:
             refuse("bc.zlo", "needs bc.zlo = surface_layer", "Set bc.zlo = surface_layer (read with a first guess or a stage).")
         if c.reads_bc:

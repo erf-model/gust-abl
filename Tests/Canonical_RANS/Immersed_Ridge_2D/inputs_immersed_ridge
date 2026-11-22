@@ -13,7 +13,6 @@ terrain.hill_height     = 100.
 terrain.hill_half_width = 500.
 terrain.representation  = immersed_forcing
 terrain.flat_height     = 31.25
-# terrain.immersed_slope (vertical or normal) is given on the command line.
 
 bc.zlo = surface_layer
 bc.zhi = slip_wall

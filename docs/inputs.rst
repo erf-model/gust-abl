@@ -118,15 +118,6 @@ Quick reference
    * - ``terrain.small_volfrac``
      - ``0.005``
      - Solid fractions this close to 0 or 1 are rounded (immersed ground)
-   * - ``terrain.immersed_slope``
-     - ``vertical``
-     - Wall law of a sloping immersed ground: vertical distances, or along the normal
-   * - ``terrain.immersed_side_walls``
-     - ``off``
-     - Side walls of an immersed ground: none, or where the ground drops by more than a layer (wall law or no slip)
-   * - ``terrain.immersed_wall_distance``
-     - ``mean_height``
-     - Closure distance on an immersed ground: mean fluid height, or the column centre's on steep footprints
    * - **Initial conditions** (`init`_)
      -
      -
@@ -722,30 +713,6 @@ Quick reference
        1, as with ``buildings.small_volfrac``, so it still decides which cells are solid. Unlike
        ``buildings.small_volfrac`` it is not a tolerance of the wall-cell test: every cell that is not solid and whose
        low z face is more blocked than its high one is a wall cell. May not change across a restart.
-   * - ``terrain.immersed_slope``
-     - ``vertical``
-     - ``vertical`` or ``normal``; ``immersed_forcing`` only (refused when given with ``body_fitted``). ``vertical``:
-       the wall law of a sloping ground reads the heights above the ground and the horizontal speed, on the
-       ground's horizontal area (ERF's form). ``normal``: the distances along the ground's normal, the speed
-       parallel to the ground (:math:`w` included) and the slope's area (:doc:`immersed_terrain`, Slope). The two
-       are bit-identical on a flat ground. May not change across a restart.
-   * - ``terrain.immersed_side_walls``
-     - ``off``
-     - ``off``, ``steps`` or ``steps_no_slip``; ``immersed_forcing`` only (refused when given with ``body_fitted``). ``off``: the ground
-       is the roof of its wall cells only. ``steps``: also a wall law on the x or y face of a cell that is not solid
-       toward a column whose cell in the same layer is solid and whose mean ground stands more than the layer's
-       height above its own (:doc:`immersed_terrain`, Side walls). ``steps_no_slip``: the same faces, with the tangential
-       velocities diffusing to the solid cell's zero over half a column in place of the wall law. Both need
-       ``terrain.immersed_slope = vertical``. No
-       effect where no column rises by more than a layer. May not change across a restart.
-   * - ``terrain.immersed_wall_distance``
-     - ``mean_height``
-     - ``mean_height`` or ``column_centre``; ``immersed_forcing`` only (refused when given with ``body_fitted``). The
-       turbulence model's distance to the ground. ``mean_height``: the mean height of the cell's fluid above the
-       ground. ``column_centre``: where the ground under a cell's footprint spans more than the layer, the smaller
-       of that and the cell centre's height above the ground at the column centre, at least half the layer
-       (:doc:`immersed_terrain`, Turbulence). The wall law is unchanged. No effect where no footprint spans more than
-       a layer. May not change across a restart.
 
 ``init``
 --------

@@ -29,19 +29,6 @@ unchanged.
    * - ``terrain.small_volfrac``
      - ``0.005``
      - A solid fraction below it becomes 0, and one within it of 1 becomes 1 (≥ 1e-4).
-   * - ``terrain.immersed_slope``
-     - ``vertical``
-     - The wall law on a slope: ``vertical`` (heights above the ground, horizontal speed, horizontal area) or
-       ``normal`` (distances along the normal, speed parallel to the ground, the slope's area). `Slope`_.
-   * - ``terrain.immersed_side_walls``
-     - ``off``
-     - ``steps``: a side wall where the ground drops by more than a layer to the next column; ``steps_no_slip``:
-       the same faces without slip. `Side walls`_.
-   * - ``terrain.immersed_wall_distance``
-     - ``mean_height``
-     - The closure's distance to the ground: ``mean_height`` (the mean height of the cell's fluid) or
-       ``column_centre`` (on a footprint steeper than the layer, at most the cell centre's height above the
-       column centre's ground). `Turbulence`_.
 
 The ranges are in :doc:`inputs`.
 
@@ -147,91 +134,30 @@ body-fitted neutral one read at the first cell's centre (the body-fitted default
 The whole stress is a sink in the cut cell's momentum rows, as for a building's roof; the reference cell gives
 its speed only.
 
+.. _immersed-slope-forms:
+
 Slope
 -----
 
-On a sloping ground ``terrain.immersed_slope`` chooses what the wall law reads. With :math:`\nabla h` the mean
-slope of the ground over the cell's footprint (from its four nodes),
+On a sloping ground the wall law reads the heights above the ground (:math:`d_1, d_2`) and the horizontal speed
+:math:`\sqrt{u^2 + v^2}`, acts on the ground's horizontal area in the cell, and is a sink on :math:`u` and :math:`v`.
+This is ERF's form. The ground has no side walls (`Geometry`_), and the closure's distance is :math:`D`
+(`Turbulence`_).
 
-.. math::
-
-   \cos\alpha = \frac{1}{\sqrt{1 + |\nabla h|^2}}, \qquad
-   \mathbf{n} = \cos\alpha\,\bigl(-\partial_x h,\; -\partial_y h,\; 1\bigr) .
-
-.. list-table::
-   :header-rows: 1
-   :widths: 22 39 39
-
-   * - Quantity
-     - ``vertical`` (default)
-     - ``normal``
-   * - Distances
-     - :math:`d_1, d_2`: heights above the ground
-     - :math:`d_1 \cos\alpha,\; d_2 \cos\alpha`: along the normal
-   * - Speeds :math:`U_1, U_2`
-     - :math:`\sqrt{u^2 + v^2}`
-     - :math:`|\mathbf{U} - (\mathbf{U}\cdot\mathbf{n})\,\mathbf{n}|`, with :math:`w`
-   * - Wall area in the cell
-     - :math:`A`, the ground's horizontal area
-     - :math:`A / \cos\alpha`, the slope's area
-   * - Sink
-     - on :math:`u` and :math:`v`
-     - on :math:`u`, :math:`v` and, where the ground slopes, :math:`w`
-
-``vertical`` is ERF's form. ``normal`` is the law of a wall whose normal is :math:`\mathbf{n}`: for a wind of
-speed :math:`S` parallel to a plane at the angle :math:`\alpha`, it returns the stress of the log law at the
-distance :math:`d \cos\alpha` from the plane with the speed :math:`S`, on the plane's area. On a flat ground the two
-are bit-identical. The sink is a rate on the whole velocity (it stays on the diagonal of the momentum rows), so a
-part of the wind along the normal in the cut cell is damped too; for a wind parallel to the ground it is the wall
-stress exactly. The distance :math:`d \cos\alpha` is exact for a plane; on a ground of curvature :math:`h''` its
-relative error is about :math:`\tfrac{1}{2} h'' d \sin^2\alpha \cos^2\alpha` (4e-5 at 18°, :math:`h''` = 1e-4 1/m
-and :math:`d` = 10 m). ``normal`` changes the wall law only: the closure's wall distance, the wall value of
-:math:`k`'s distance and the shear above the cut cell (`Turbulence`_) keep the heights above the ground.
-
-Side walls
-^^^^^^^^^^
-
-By default the ground is the roof of its wall cells only, on its horizontal area. Where the ground rises by more than
-a layer from one column to the next, a cell beside the step faces a solid cell across an x or y face and the air in
-it feels no wall there. ``terrain.immersed_side_walls = steps`` puts a wall on such a face. A cell that is not solid
-gets a side wall toward a neighbouring column when the neighbour's cell in the same layer is solid and the
-neighbour's footprint-mean ground (the mean of its four nodes) is higher than the cell's own by more than the
-layer's height; a cell between two such columns (a trench one column wide) has both walls. The wall law is a
-building side's form 7 law (:doc:`buildings`), blended with the next cell out on the open side as the roof is
-blended with the cell above, at fixed distances from the step: half a column for the cell and 3/2 columns for the
-reference cell. These are the column centres. On a continuous ground the cell's fluid thins towards the step, and
-its centroid lies 0.54 to 1.0 columns from the step on a plane ramp (0.69 to 0.75 at half solid); half a column
-puts the wall law's distance at the near end of that range, which on 160 m columns with :math:`z_0 = 0.1` m gives
-about 12 % more :math:`u_*^2` than 0.75 columns. There is no reference cell in a trench, where that cell is solid, or beyond a domain face
-that is not periodic. Such a cell has no roof bit and takes the log-law shear of ``turb.shear_stencil``. The
-option needs ``terrain.immersed_slope = vertical``: the ``normal`` form already puts the ground's stress on
-:math:`w`. On a slope that rises by less than a layer per column nothing changes; on a flat ground the option is
-bit-identical to ``off``. The rule walls a part of each riser only (one layer per column face), so the stress on
-:math:`w` over a slope is represented in part.
-
-``terrain.immersed_side_walls = steps_no_slip`` marks the same faces, but takes no wall law on them. The tangential
-velocities (:math:`v` and :math:`w` across an x face, :math:`u` and :math:`w` across a y face) diffuse across the
-face to the solid cell, where they are held at zero, over half a column: the face's viscous flux is that of the open
-face times 2, and the implicit couplings take the same factor, :math:`a_P` growing by the added part. The flux keeps
-the effective viscosity of the open face: the mean over the cells around the flux's edge, half of them solid, where
-:math:`k` is at its floor.
-
-On the 2-D ridge of :math:`H` = 200 m and :math:`a` = 200 m against the body-fitted run on the same mesh, at 10 m
-above the ground:
-
-======================================= =========== =========== ==========
-Mesh, ``terrain.immersed_side_walls``   Crest speed Lee minimum rms of dS
-======================================= =========== =========== ==========
-160 m columns, 7.8 m layers, off        +9.5 %      +9.7 %      9.8 %
-160 m columns, 7.8 m layers, steps      +7.0 %      +5.9 %      9.1 %
-80 m columns, 15.6 m layers, off        −25.0 %     +28.4 %     14.5 %
-80 m columns, 15.6 m layers, steps      −27.2 %     +27.7 %     14.1 %
-======================================= =========== =========== ==========
-
-The steps lower the lee overspeed and the rms difference, and slow the crest further aloft (at 40 m on the 160 m
-mesh, from −14.9 % to −16.6 %). The crest deficit of the 80 m mesh is not a side-wall effect, and
-``terrain.immersed_slope = normal`` without side walls gives the same rms (14.1 % and 9.3 %). The option is
-therefore off by default.
+**Forms tried and removed.** Three other forms were tried on a 2-D ridge (:math:`H` = 200 m, :math:`a` = 200 m)
+against the body-fitted run on the same mesh, at 10 m above the ground. With the form above the rms of dS is 14.5 %
+on 80 m columns of 15.6 m layers and 9.8 % on 160 m columns of 7.8 m layers. A wall law along the ground's normal
+(distance along the normal, speed parallel to the ground, the slope's area) gave 14.1 % and 9.3 %. On the ridges and
+the hill of `Verification`_ it differed from the form above by 0.3 % or less of the far-field speed. Side walls with
+a wall law on the steps where the ground drops by more than a layer to the next column gave 14.1 % and 9.1 %, and
+lowered the lee overspeed of the 160 m mesh from +9.7 to +5.9 %. The crest deficit of the 80 m mesh stayed (−25.0 %
+without, −27.2 % with). A variant with no slip on the step faces was not measured on this ridge. With those side
+walls, a closure distance from the column centre's ground, on footprints steeper than the layer, brought
+:math:`\nu_t` beside the steps close to the body-fitted value and changed the rms by 0.3 points or less (9.1 to
+8.8 % and 14.1 to 14.3 %). The three forms lowered the rms by 0.7 points or less and left the coarse mesh's crest
+deficit, and were removed. Other changes (the distance along the ground's normal for the closure, the distance to
+the nearest wall rectangle, the cell top's height, no shear production in wall cells beyond a distance, and
+:math:`\nu_t` from the local speed and strain) changed the rms by 0.3 points or less, or raised it.
 
 **Diffusion across the cut cell's top face.** The cut cell's speed stands for its fluid centroid, not its cell
 centre. The viscous flux of :math:`u` and :math:`v` between the cut cell and the reference cell therefore uses the
@@ -272,65 +198,9 @@ above the immersed ground too, through the same helper as on a body-fitted mesh.
 height is the centroid of the layer's open part, half the open height, at cell centres and at the x and y faces:
 the inflow profile then gives a cut face the wind at the height the wall law reads it.
 
-**Distance on a steep footprint.** Where the ground under a footprint spans more than the cell's layer, the mean
-height :math:`D` averages over the footprint's deep corner and can exceed the cell's height above the ground below
-its centre several times; on coarse columns the length scale and :math:`\nu_t` there exceed the body-fitted run's.
-``terrain.immersed_wall_distance = column_centre`` takes, in such a cell only,
-
-.. math::
-
-   d = \min\left(D,\ \max\left(z_c - h_c,\ \tfrac{1}{2}\Delta z\right)\right),
-
-with :math:`z_c` the cell centre's height, :math:`h_c` the ground's height at the column centre (the mean of the
-footprint's four ground nodes) and :math:`\Delta z` the layer's height. The other cells, and every cell on a ground
-that rises by less than a layer across a footprint, keep :math:`D` (bit-identical to ``mean_height``). The switch is not continuous: where the span
-crosses the layer's height a cut cell's distance can drop by up to 0.1 :math:`\Delta z` (16 % of :math:`d` on a
-plane ramp), towards the shorter distance. This is the
-distance of AMR-Wind's partial-terrain closures (the cell centre above the ground at the column centre, floored at
-half a layer), applied here where the footprint is steep only. The wall law keeps :math:`d_1`. On the 2-D ridge
-above, with ``terrain.immersed_side_walls = steps``, at 10 m above the ground:
-
-.. list-table::
-   :header-rows: 1
-
-   * - Mesh
-     - Distance
-     - Crest speed
-     - Lee minimum
-     - rms of dS
-     - Side-cell :math:`\nu_t` p90
-   * - 160 m columns, 7.8 m layers
-     - ``mean_height``
-     - +7.0 %
-     - +5.9 %
-     - 9.1 %
-     - 3.16
-   * - 160 m columns, 7.8 m layers
-     - ``column_centre``
-     - +2.0 %
-     - +5.6 %
-     - 8.8 %
-     - 1.12
-   * - 80 m columns, 15.6 m layers
-     - ``mean_height``
-     - −27.2 %
-     - +27.7 %
-     - 14.1 %
-     - 1.70
-   * - 80 m columns, 15.6 m layers
-     - ``column_centre``
-     - −29.2 %
-     - +27.1 %
-     - 14.3 %
-     - 1.40
-
-The last column is the 90th percentile of :math:`\nu_t` over the body-fitted run's in the cells beside a step.
-The option brings :math:`\nu_t` there close to the body-fitted value, and lowers :math:`k` at 10 m (to 0.4–0.5 of
-the body-fitted crest value from about 0.6–1.0); the rms of the speed-up does not change by more than 0.3 points.
-The speed error of the coarse mesh therefore does not come from the length scale. Other changes tried on the same
-ridge (the distance along the ground's normal, the distance to the nearest wall rectangle, the cell top's height,
-no shear production in wall cells beyond a distance, and :math:`\nu_t` from the local speed and strain) changed the
-rms by 0.3 points or less, or raised it. The option is off by default.
+Where the ground under a footprint spans more than the cell's layer, :math:`D` averages over the footprint's deep
+corner and can exceed the cell's height above the ground below its centre several times; a smaller distance there
+did not lower the error (`Slope`_).
 
 **Shear in the cut cell.** The closure's central difference in the cut cell reads the solid cell below it, where
 the wind is 0. The vertical gradients of :math:`u` and :math:`v` there are taken from the wall law at the cell's
@@ -366,14 +236,14 @@ With ``turb.shear_stencil = log_law`` (:ref:`log-shear`) this formula is not use
 cell takes the log-law gradient through its two neighbours, at the fluid centroids' distances, which is the
 expression above with :math:`R = 1` in the first full cell. The cut cell takes the wall law's gradient (above)
 and the solid cells keep the closure's :math:`S^2`. For a log profile the result is exact from the cut cell
-upwards on flat ground. On a slope, a fluid cell that has a side wall only keeps the closure's :math:`S^2`.
+upwards on flat ground.
 
 Restart
 -------
 
 A checkpoint of an immersed run holds a file ``ImmersedTerrain`` with a hash of ``terrain.type`` and its keys (the
 hill's inputs, or the terrain file's contents and its interpolation inputs), ``terrain.flat_height``,
-``terrain.small_volfrac``, ``terrain.immersed_slope`` and ``bc.surface_z0``. A restart with another value of one of
+``terrain.small_volfrac`` and ``bc.surface_z0``. A restart with another value of one of
 them, or with the other ``terrain.representation``, stops naming ``io.restart``. The ground's heights are not in
 the checkpoint: a restart computes them from the inputs, which the hash pins. The record's version is 3; a
 checkpoint written before sloping grounds (version 1) or before the wall-cell test lost its tolerance (version 2) is
@@ -487,42 +357,42 @@ far-field speed at that height (the crest speed: of the body-fitted crest speed)
    :header-rows: 1
    :widths: 30 14 14 14 14 14
 
-   * - Case (``vertical`` / ``normal``)
+   * - Case
      - Iterations bf / immersed
      - Quantity
      - 20 m
      - 40 m
      - 80 m
    * - Wind along a ridge, slopes to 18°
-     - 5298 / 3962, 3950
+     - 5298 / 3962
      - Largest difference
-     - 1.3 / 1.2 %
-     - 1.1 / 1.0 %
-     - 0.8 / 0.7 %
+     - 1.3 %
+     - 1.1 %
+     - 0.8 %
    * - Wind across a ridge, slopes to 7°
-     - 6297 / 4878, 4879
+     - 6297 / 4878
      - Crest speed
-     - −2.2 / −2.3 %
-     - −2.2 / −2.2 %
-     - −2.4 / −2.4 %
+     - −2.2 %
+     - −2.2 %
+     - −2.4 %
    * -
      -
      - Lee minimum
-     - −13.8 / −14.0 %
-     - −7.9 / −8.0 %
-     - −4.2 / −4.3 %
+     - −13.8 %
+     - −7.9 %
+     - −4.2 %
    * - Round hill, slopes to 12°
-     - 2441 / 2180, 2180
+     - 2441 / 2180
      - Crest speed
-     - −3.9 / −4.0 %
-     - −2.9 / −2.9 %
-     - −2.3 / −2.4 %
+     - −3.9 %
+     - −2.9 %
+     - −2.3 %
    * -
      -
      - Lee minimum
-     - −24.4 / −24.7 %
-     - −11.1 / −11.3 %
-     - −2.1 / −2.1 %
+     - −24.4 %
+     - −11.1 %
+     - −2.1 %
 
 With no flow over the slope (the wind along the ridge) the two representations agree within 1.3 %. About 1 % of
 that is present on flat ground: the closure's central difference of a logarithmic profile over-estimates the
@@ -530,8 +400,7 @@ shear in the first cells above the wall cell, and more so above a cut cell, whos
 ground (the column above; ``Tests/Canonical_RANS/Immersed_Column/README.md``). With flow over the ridge or the
 hill the immersed runs decelerate more in the lee near the ground, and are 2 to 5 % slower in the far field of
 the periodic domain (where the ridge's tail is still 3.7 m high). The cause of the lee difference is not isolated; the case's README lists what was not
-tested. The two forms of ``terrain.immersed_slope`` differ by 0.3 % or less on these slopes
-(:math:`\cos\alpha \ge 0.95`). No growth of the GMRES iteration count was seen with the sloping ground, so the
+tested. No growth of the GMRES iteration count was seen with the sloping ground, so the
 Poisson preconditioner is unchanged.
 
 Open faces
@@ -736,9 +605,8 @@ Limits
   0.99 with ``turb.shear_stencil = log_law`` in the open-face channel. ``terrain.small_volfrac = 0.1`` merges
   these cells into the ground and removes the dip (`Open faces`_).
 - The cut cell's shear reads the cell's plain face means of :math:`u` and :math:`v` at the vertical distance
-  :math:`d_1`. The wall law of the momentum equations weights the faces by their open part and, with
-  ``terrain.immersed_slope = normal``, uses the normal distance and the tangential speed. Next to a blocked side
-  face the two differ.
+  :math:`d_1`. The wall law of the momentum equations weights the faces by their open part. Next to a blocked
+  side face the two differ.
 - Stretched layers (``mesh.stretch_ratio``) are accepted; the column is verified on uniform layers only.
 - ``turb.face_mean``: the column decks set ``logarithmic``, for which the flux of a log profile across the cut
   cell's top face is exact (`Verification`_). The ridge and hill decks use the recommended turbulence setting and
