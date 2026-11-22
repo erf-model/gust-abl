@@ -1421,10 +1421,20 @@ from the restored sources between two mutants (macOS arm64, AppleClang). All are
    * - IT25
      - ``LogShear`` handing the uniform :math:`z_0` to the cut cell's strain in a run with a map
      - ``RoughnessMapEntersTheCutCellByColumn``
+   * - IT26
+     - The canopy's heights measured from the mesh's lower face (the ground's component 0 in ``fill_map_drag``
+       and ``fill_patch_drag``, ``Source/Canopy.cpp``)
+     - ``Canopy.StandsOnTheImmersedGround``; CTest ``rt_immersed_canopy_homogeneous`` (drag integral over the
+       fluid cells 2.5 % low, :math:`k` 19 %)
+   * - IT27
+     - The rough-ground warning counting a column by its first cell (``count_rough``, ``Source/CanopyTke.cpp``)
+     - ``Canopy.StandsOnTheImmersedGround``
 
 IT1 to IT9 were run with a scripted pass over the sources (each change, a rebuild, the named tests, the file
 restored and touched), and IT10 to IT15 the same way against the CTests; the scripts are not in the repository.
 IT22 to IT25 were run on two ranks against ``ImmersedTerrain.RoughnessMap*``, and IT22 also against the CTest.
+IT26 was run on two ranks against ``Canopy.*`` and against the CTest (in ``fill_patch_drag`` alone it fails the
+patch comparison), IT27 on two ranks against the unit test.
 
 The one-line mutants of ``turb.shear_stencil = log_law`` (``Source/LogShear.cpp``, ``Source/Sequencing.cpp``), each
 run against ``LogShear.*`` on one rank, LS1 and LS7 also against ``rt_log_shear_column_f0`` and
@@ -1947,6 +1957,18 @@ Current tests
        8.7 % with the walls). The fluxes are the means over :math:`y`. At most 1000 iterations. Double precision
        only. Mutant: the solid inflow faces not set to 0 fails all four at 0.95 (no steady verdict, flux difference
        7.6e-5).
+   * - ``rt_immersed_canopy_homogeneous``, ``rt_immersed_canopy_edge`` (``nightly``),
+       ``rt_immersed_canopy_hill`` (``nightly``)
+     - The canopy decks of ``Homogeneous_Canopy``, ``Forest_Edge`` and ``Forested_Hill`` (deep hill) as they are
+       and with the ground offset (``Tests/Canonical_RANS/Immersed_Canopy``, :doc:`canopy`): the immersed ground
+       at solid fractions 0, 0.3 and 0.7 of a layer (two more layers below the deck's) and the hybrid mesh's
+       ground on the lower face and in mid-layer, with ``turb.realizability = 0.309``, ``turb.nut_relax = 0.5``,
+       ``turb.shear_stencil = log_law`` and ``terrain.small_volfrac = 0.1``, the runs on 2, 4 and 1 ranks in turn.
+       The steady verdict; against the body-fitted run at equal height above the ground, in percent of its largest
+       value: :math:`u`, :math:`k` away from the canopy top and :math:`k` within 1.5 layers of the top within
+       0.5, 1 and 1 % (homogeneous; measured 0.23, 0.50, 0.46), 3, 13 and 5 % (edge; 1.83, 8.6, 2.8) and 5, 7
+       and 28 % (hill; 3.2, 4.6, 18.6); the canopy's drag integral over each column's cells with a part above the ground within 1e-6 %
+       of :math:`C_d\,\mathrm{LAI}` of the body-fitted column's. Double precision only. Mutant: IT26.
    * - ``rt_immersed_askervein_coarse`` (``nightly``)
      - Askervein at 32 x 32 columns as a pair on four ranks (``Tests/Real_Terrain/Immersed_Terrain_Cases``):
        terrain-following mesh against the immersed ground, each with its own layers. Both reach the steady verdict;
@@ -1970,11 +1992,11 @@ Current tests
        wall distance and a ground without a surface layer. Each stops naming the input.
    * - ``immersed_ground_clean``, ``immersed_ground_run``, ``immersed_ground_restart``,
        ``abort_immersed_restart_changed``, ``abort_immersed_restart_body_fitted``, ``abort_immersed_first_layer``,
-       ``abort_immersed_buildings``, ``abort_immersed_surface_zref``
+       ``abort_immersed_buildings``, ``abort_immersed_canopy_heat``, ``abort_immersed_surface_zref``
      - The immersed ground in the application (same folder): one iteration of the column on 2 ranks writes a
        checkpoint with the ground's record; a restart on another box layout and 3 ranks accepts it; a restart with
        another ``terrain.flat_height``, or with a body-fitted ground, stops naming ``io.restart``; a ground inside
-       the mesh's first layer, ``buildings.type`` and ``bc.surface_zref`` stop naming the input.
+       the mesh's first layer, ``buildings.type``, ``canopy.heat = fixed`` and ``bc.surface_zref`` stop naming the input.
    * - ``immersed_z0_map_clean``, ``immersed_z0_map_run``, ``immersed_z0_map_restart``,
        ``abort_immersed_z0_map_restart_other_map``, ``abort_immersed_z0_map_restart_uniform``,
        ``abort_immersed_z0_map_restart_neighbors``, ``abort_immersed_z0_map_missing``, and the same seven with
@@ -3259,6 +3281,14 @@ GoogleTest suite
        that vary over the domain and the top inside stretched cells, both profiles, :math:`C_d` constant and from a
        map; :math:`f` is 0 exactly above the canopy and > 0 below. On a 50 m hill (BTF) the same holds and the first
        cell is :math:`C_d \mathrm{LAI}/h` in every column (heights from sea level would leave the hill bare).
+   * - ``Canopy.StandsOnTheImmersedGround``
+     - The drag field over an immersed ground (the second component of the node heights): a flat ground at cut
+       fractions 0, 0.3, 0.7 and 0.999 of the third layer, both profiles, and a sloping ground. Every column's sum
+       of :math:`f J \Delta\zeta` is :math:`C_d` LAI; the cells below the ground hold 0; with the uniform profile
+       each cell holds :math:`C_d \mathrm{LAI}/h` times its overlap with the canopy above the ground over its whole
+       height; the log line and the rough-ground warning count every column. On the sloping ground the same with
+       a map, and a round patch 400 m across holds the map's values in its columns. The errors are reduced over
+       the ranks.
    * - ``Canopy.PatchesSameOnEveryLayoutAcrossSeam``
      - UT-8.1.4: three patches give the same field, bit for bit, on 1, 16 and uneven boxes; the patch across the
        periodic seam reaches the columns on the other side; overlapping patches add, and a layer above the shorter

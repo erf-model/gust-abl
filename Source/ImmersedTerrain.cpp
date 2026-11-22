@@ -43,7 +43,7 @@ std::vector<std::string> check_immersed_terrain (const ImmersedTerrainFacts& f)
         err.push_back(rep + " cannot use solver.poisson_backend = mlmg (no solid cells in its operator); use gmres_mlmg or gmres_fft");
     }
     if (f.unsteady) { err.push_back(rep + " is not supported with steady.stage = unsteady yet"); }
-    if (f.canopy) { err.push_back(rep + " cannot be combined with canopy.type for now (the canopy's heights are measured from the mesh's lower face)"); }
+    if (f.canopy_heat) { err.push_back(rep + " cannot be combined with canopy.heat = fixed for now (the run is neutral: the leaves would heat the air)"); }
     if (f.stratified) { err.push_back(rep + " needs a uniform bc.theta_profile for now (theta has no terms at the immersed ground)"); }
     if (f.column_guess) { err.push_back(rep + " is not supported with init.first_guess = column yet (the column's ground is the mesh's lower face); use profile"); }
     if (f.probes) { err.push_back(rep + " is not supported with steady.probes_file yet (the probes' heights are measured from the mesh's lower face)"); }

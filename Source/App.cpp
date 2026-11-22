@@ -292,7 +292,7 @@ std::string run_domain (const DomainRole& role)
         itf.poisson_mlmg = solve && popt.backend == "mlmg";
         itf.laminar = copt.kind == ClosureKind::none;
         itf.unsteady = unsteady;
-        itf.canopy = canopy_opt.active();
+        itf.canopy_heat = canopy_opt.active() && canopy_opt.heat.on();
         {
             amrex::ParmParse ppbc("bc");
             std::vector<amrex::Real> th;

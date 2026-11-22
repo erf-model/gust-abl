@@ -53,12 +53,17 @@ amrex::Long count_rough (const amrex::MultiFab& f, const Roughness& rough, amrex
     amrex::ReduceData<amrex::Long> data(rop);
     for (amrex::MFIter mfi(f, false); mfi.isValid(); ++mfi) {
         amrex::Box bx = mfi.validbox();
-        bx.setBig(2, bx.smallEnd(2));   // the first cell of each column (the boxes span the column)
+        const int khi = bx.bigEnd(2);
+        bx.setBig(2, bx.smallEnd(2));   // one cell of each column (the boxes span the column)
         const auto fa = f.const_array(mfi);
         const Z0 z0 = Z0::of(rough, mfi);
+        // A column has canopy when any of its cells does: over an immersed ground the first cells lie
+        // below the ground and hold none.
         rop.eval(bx, data, [=] AMREX_GPU_DEVICE (int i, int j, int k) -> amrex::GpuTuple<amrex::Long>
         {
-            return {(fa(i, j, k) > 0 && z0(i, j) >= z0_max) ? amrex::Long(1) : amrex::Long(0)};
+            bool on = false;
+            for (int kk = k; kk <= khi; ++kk) { on = on || fa(i, j, kk) > 0; }
+            return {(on && z0(i, j) >= z0_max) ? amrex::Long(1) : amrex::Long(0)};
         });
     }
     amrex::Long n = amrex::get<0>(data.value(rop));

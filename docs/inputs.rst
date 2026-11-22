@@ -708,7 +708,7 @@ Quick reference
        ``bc.zlo = surface_layer``, ``bc.surface_stability = neutral``, ``bc.surface_wall_k = dirichlet``,
        ``turb.closure = kl`` and, in a stage, ``steady.sweep = zjacobi``. It refuses
        ``bc.surface_zref``, ``bc.surface_denominator_floor``, a non-uniform ``bc.theta_profile``,
-       ``buildings.type``, ``canopy.type``, nests, ``init.first_guess = column``, ``steady.probes_file``,
+       ``buildings.type``, ``canopy.heat = fixed``, nests, ``init.first_guess = column``, ``steady.probes_file``,
        ``steady.stage = simplec_newton`` and ``unsteady``, ``solver.poisson_backend = mlmg`` (in a stage), and
        ``terrain.smoothing``, ``terrain.gamma_m``, ``terrain.hierarchy_passes`` and ``terrain.nest_blend_width``
        when given. The refusals apply to a run with no stage too. May not change across a restart.
@@ -1100,7 +1100,8 @@ inputs then change the answer, not only the path; a checkpoint of fully frozen c
      - ``off``
      - ``off`` or ``fixed``; ``patches`` or ``map``. The leaves' sensible heat exchange with the air at a fixed leaf
        temperature (:doc:`canopy`): :math:`\theta` gains :math:`\lambda(\theta_l - \theta)`,
-       :math:`\lambda = 2a/r_b`. ``off`` leaves :math:`\theta` as without it, bit for bit.
+       :math:`\lambda = 2a/r_b`. ``off`` leaves :math:`\theta` as without it, bit for bit. ``fixed`` is refused
+       with ``terrain.representation = immersed_forcing`` or ``hybrid``.
    * - ``canopy.leaf_theta``
      - none
      - In [150, 400] (K: a value in °C is refused); required with ``canopy.heat = fixed`` and refused otherwise. The

@@ -102,22 +102,31 @@ TerrainPoints read_map_points (const std::string& file, const std::string& key, 
 
 // The height above the column's ground of the cell's lower (zb) and upper
 // (zt) faces: four-corner means, as in detJ. k0 is the domain's lowest layer.
+// The ground is the last component of the node heights at k0: the mesh's
+// lower face on a body-fitted mesh (one component), the immersed ground's
+// height with terrain.representation = immersed_forcing or hybrid (two
+// components, ImmersedTerrain.H fill_immersed_ground). A cell that the
+// immersed ground cuts has zb < 0 < zt and a cell below it zt <= 0: the
+// profile's fraction clips at the ground (Canopy_K.H), so the cut cell holds
+// the leaf area of its part above the ground over its whole height and a
+// cell below the ground holds none.
 struct CellHeights
 {
     amrex::Array4<amrex::Real const> z;
     int k0;
+    int gc;   // the ground's component of z
     AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
-    double face (int i, int j, int k) const noexcept
+    double face (int i, int j, int k, int n) const noexcept
     {
-        return 0.25 * (static_cast<double>(z(i, j, k)) + static_cast<double>(z(i + 1, j, k))
-                       + static_cast<double>(z(i, j + 1, k)) + static_cast<double>(z(i + 1, j + 1, k)));
+        return 0.25 * (static_cast<double>(z(i, j, k, n)) + static_cast<double>(z(i + 1, j, k, n))
+                       + static_cast<double>(z(i, j + 1, k, n)) + static_cast<double>(z(i + 1, j + 1, k, n)));
     }
     AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
     void operator() (int i, int j, int k, double& zb, double& zt) const noexcept
     {
-        const double g = face(i, j, k0);
-        zb = face(i, j, k) - g;
-        zt = face(i, j, k + 1) - g;
+        const double g = face(i, j, k0, gc);
+        zb = face(i, j, k, 0) - g;
+        zt = face(i, j, k + 1, 0) - g;
     }
 };
 
@@ -145,7 +154,7 @@ void fill_map_drag (amrex::MultiFab& f, const amrex::MultiFab& cols, const amrex
         const auto out = f.array(mfi);
         const auto col = cols.const_array(mfi);
         const int kc = cols.box(mfi.index()).smallEnd(2);
-        const CellHeights ch{z_nd.const_array(mfi), k0};
+        const CellHeights ch{z_nd.const_array(mfi), k0, z_nd.nComp() - 1};
         amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
         {
             double zb = 0, zt = 0;
@@ -206,7 +215,7 @@ void fill_patch_drag (amrex::MultiFab& f, const amrex::Geometry& geom, const amr
     for (amrex::MFIter mfi(f, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
         const amrex::Box bx = mfi.tilebox();
         const auto out = f.array(mfi);
-        const CellHeights ch{z_nd.const_array(mfi), k0};
+        const CellHeights ch{z_nd.const_array(mfi), k0, z_nd.nComp() - 1};
         amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
         {
             double zb = 0, zt = 0;
@@ -668,7 +677,8 @@ std::string Canopy::summary (const amrex::MultiFab& detJ, const amrex::Geometry&
                 fmax = amrex::max(fmax, f(i, j, k));
                 integral += f(i, j, k) * J(i, j, k) * dz;
             }
-            const bool on = f(i, j, k0) > 0;
+            // A column with canopy: with an immersed ground its lowest cells are below the ground and hold none.
+            const bool on = integral > 0;
             return {fmax, on ? integral : amrex::Real(0), integral, on ? amrex::Long(1) : amrex::Long(0),
                     f(i, j, k1) > 0 ? amrex::Long(1) : amrex::Long(0)};
         });

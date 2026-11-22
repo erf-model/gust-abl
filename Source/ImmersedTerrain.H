@@ -33,7 +33,7 @@ struct ImmersedTerrainFacts
     bool poisson_mlmg{false};        //!< solver.poisson_backend = mlmg
     bool laminar{false};             //!< turb.closure = none
     bool unsteady{false};            //!< steady.stage = unsteady
-    bool canopy{false};              //!< canopy.type given
+    bool canopy_heat{false};         //!< canopy.heat = fixed with a canopy
     bool stratified{false};          //!< bc.theta_profile holds more than one value of theta
     bool column_guess{false};        //!< init.first_guess = column
     bool probes{false};              //!< steady.probes_file given

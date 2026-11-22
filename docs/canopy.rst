@@ -51,6 +51,48 @@ the cell's faces, the same means that give the cell volume factor :math:`J` (``d
 :math:`f\,J\,\Delta\zeta` is then :math:`C_d\,\mathrm{LAI}` to rounding, also when the canopy top lies inside a cell
 and on any mesh spacing. A canopy taller than the domain loses the part above it; the log then warns.
 
+.. _canopy-immersed-ground:
+
+**Immersed ground and hybrid mesh.** With ``terrain.representation = immersed_forcing`` or ``hybrid``
+(:doc:`immersed_terrain`) the column's ground is the immersed ground (the mean of its height at the column's four
+corner nodes), not the mesh's lower face. The profile is clipped at the ground: a cell below the ground has
+:math:`f = 0`, and a cell that the ground cuts holds the leaf area of its part above the ground, divided by the
+whole cell height :math:`z_t - z_b`. The column sum of :math:`f\,J\,\Delta\zeta` stays :math:`C_d\,\mathrm{LAI}`
+for every position of the ground inside a cell. In a cut cell :math:`f` is therefore the canopy's local value times
+the cell's open fraction, and the drag term :math:`f\,|\mathbf{U}|\,u_i` is the drag per unit volume of the whole
+cell, as the other body forces of a cut cell are (:doc:`immersed_terrain`). The drag on the momentum rows, its
+implicit part, the canopy terms of :math:`k` and the canopy step limit read :math:`f` as on a body-fitted mesh.
+:math:`k` of a cut cell is the wall value, so the canopy's :math:`k` terms act from the cell above it. Cells that
+``terrain.small_volfrac`` turns solid keep their :math:`f`, which then acts on no flow: the column loses at most
+that fraction of one layer's leaf area. The log's column integral counts every cell and does not show it.
+``canopy.heat = fixed`` is refused with either representation.
+
+Limits of the rule:
+
+- On a slope the profile is clipped at the mean of the four corner heights, while the cell's open fraction follows
+  the surface inside the cell. A share of about :math:`s\,\Delta x / (2h)` of the column's leaf area
+  (:math:`s` the slope, :math:`\Delta x` the horizontal spacing, :math:`h` the canopy height) is placed one cell
+  off; the column sum is not changed. On the forested hill of the tests the share is below 1 %.
+- The drag on :math:`w` at the face between a cut cell and the cell above it is the mean of the two cells'
+  :math:`f`, the cut cell's diluted by its open fraction: up to 25 % low at an open fraction of 0.5. :math:`w` is
+  near zero there.
+- The canopy's length cap in a cut cell is computed from the diluted :math:`f`. It does not act: the cut cell's
+  :math:`k` is the wall value.
+- The warning for a forest-sized ground roughness under a canopy counts a column when any of its cells holds
+  leaf area (the first cells of a column lie below an immersed ground).
+
+``Tests/Canonical_RANS/Immersed_Canopy`` runs the decks of the homogeneous canopy, the forest edge and the
+forested hill of this page as they are and with the ground offset (immersed at solid fractions 0, 0.3 and 0.7 of a
+layer; hybrid with the ground on the lower face and in mid-layer). At equal height above the ground, in percent
+of the body-fitted run's largest value, :math:`u` differs by at most 0.23 % (homogeneous), 1.8 % (edge) and 3.2 %
+(hill), and :math:`k` away from the canopy top by 0.50 %, 8.6 % and 4.6 %. Within 1.5 layers of the canopy top
+:math:`k` differs by up to 18.6 % on the hill, whose layers are 2.3 m thick there: :math:`k` rises across one
+layer, and the three meshes place their layers differently against a top that follows the ground. The flat-ground
+differences grow with the cut and are those of the cut cell (:doc:`immersed_terrain`): the edge case's :math:`k`
+difference is 3.8 % at a solid fraction of 0.3 and 8.6 % at 0.7. The diffusion of :math:`k` between the cut cell
+and the cell above it keeps the spacing of the cell centres, which would give a ratio near 2.3 between the two; a
+run that isolates it was not made. The case's README has the table.
+
 **Why a cell mean.** On coarse layers a value taken at the cell centre can miss most of a thin canopy, or count a
 cell as fully inside when its centre is. The mean keeps each column's total drag.
 

@@ -689,7 +689,7 @@ TEST (ImmersedTerrain, RefusesWhatItDoesNotSupport)
         {[] (auto& x) { x.zline_sweeps = false; }, "steady.sweep = zjacobi"},
         {[] (auto& x) { x.poisson_mlmg = true; }, "solver.poisson_backend = mlmg"},
         {[] (auto& x) { x.unsteady = true; }, "steady.stage = unsteady"},
-        {[] (auto& x) { x.canopy = true; }, "canopy.type"},
+        {[] (auto& x) { x.canopy_heat = true; }, "canopy.heat = fixed"},
         {[] (auto& x) { x.stratified = true; }, "bc.theta_profile"},
         {[] (auto& x) { x.outflow_from_velocity = true; }, "bc.outflow_transport"},
         {[] (auto& x) { x.column_guess = true; }, "init.first_guess = column"},

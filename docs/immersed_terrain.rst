@@ -955,9 +955,11 @@ Limits
   ``bc.theta_profile``, ``turb.closure = kl`` and ``steady.sweep = zjacobi`` are
   required. The refusals in this list apply to a run with no stage too (the sweep and the Poisson backend in a
   stage only).
-- ``buildings.type``, ``canopy.type``, nests, ``init.first_guess = column``, ``steady.probes_file``,
-  ``steady.stage = simplec_newton`` and ``steady.stage = unsteady`` are refused. The canopy's, the column's and
+- ``buildings.type``, nests, ``init.first_guess = column``, ``steady.probes_file``,
+  ``steady.stage = simplec_newton`` and ``steady.stage = unsteady`` are refused. The column's and
   the probes' heights are measured from the mesh's lower face, not from the immersed ground.
+- A forest canopy (``canopy.type``) stands on the immersed ground (:ref:`the drag field of a cut cell <canopy-immersed-ground>`).
+  ``canopy.heat = fixed`` is refused: the run is neutral.
 - ``bc.surface_zref`` and ``bc.surface_denominator_floor`` are refused when given: the immersed wall law reads the
   cut cell and the cell above it at their exact distances and has no floor.
 - The ``ustar`` field of the turbulence plotfile and the ``mean_ustar`` monitor are those of the mesh's lower
