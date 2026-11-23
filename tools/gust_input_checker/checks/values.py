@@ -74,6 +74,7 @@ init.column_rib_min real 1 <0
 init.column_time real 1 >=0
 init.column_dt real 1 >0
 init.column_wall_k fixed,solved 1
+init.column_z0 real 1 >0
 bc.xlo FACES 1
 bc.xhi FACES 1
 bc.ylo FACES 1

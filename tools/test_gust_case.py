@@ -487,6 +487,28 @@ class RoughnessTests(CaseDir):
         self.assertTrue(np.all(data[data[:, 0] < -100.0, 2] == 0.07))     # shrubland (130) in the west
         self.assertTrue(np.all(data[data[:, 0] > 100.0, 2] == 1.0))       # needle-leaved forest (70) in the east
 
+    def test_geostrophic_column_with_a_roughness_map_gives_the_column_its_z0(self):
+        # The 3-D deck keeps the map; the column first guess runs on init.column_z0, the inflow's roughness (the
+        # column run's bc.surface_z0). Without init.column_z0 GUST and the deck checker refuse the map.
+        hill = os.path.join(self.dir, "hill.asc")
+        center = write_hill(hill)
+        cover = os.path.join(self.dir, "cover.asc")
+        codes = np.where(np.arange(81)[None, :] < 40, 130, 70) * np.ones((81, 1), dtype=int)
+        with open(cover, "w", encoding="utf-8") as out:
+            out.write("ncols 81\nnrows 81\nxllcorner 500000\nyllcorner 4000000\ncellsize 100\n")
+            np.savetxt(out, codes, fmt="%d")
+        raw = changed(base_case(), domain={"center": list(center), "half_width": [2000.0], "top": 1500.0},
+                      terrain={"file": hill}, surface={"roughness_map": {"file": cover}},
+                      wind__upstream_roughness=0.07, wind__drive="geostrophic_column", atmosphere={"latitude": 45.0})
+        result = self.build(raw, check=True)
+        deck = read_deck(os.path.join(result.case_dir, "inputs"))
+        self.assertEqual(deck["bc.surface_z0_file"], ["roughness.xyz"])
+        self.assertEqual(deck["init.first_guess"], ["column"])
+        self.assertEqual(deck["init.column_z0"], ["0.07"])
+        self.assertEqual(result.errors, 0, result.findings)
+        column = read_deck(os.path.join(result.case_dir, "column", "inputs"))
+        self.assertEqual(column["bc.surface_z0"], ["0.07"])
+
 
 class SchemaTests(CaseDir):
     def test_unknown_keys_are_refused_with_a_suggestion(self):

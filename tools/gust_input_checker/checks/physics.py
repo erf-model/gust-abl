@@ -41,7 +41,7 @@ from .files import inflow_table_theta
 
 COLUMN_KEYS = ("column_tol", "column_max_iterations", "column_stability", "column_mol", "column_surface_theta",
                "column_target_u", "column_target_v", "column_target_height", "column_rib_max", "column_rib_min",
-               "column_time", "column_dt", "column_wall_k")
+               "column_time", "column_dt", "column_wall_k", "column_z0")
 LAMINAR_KEYS = ("turb.closure", "turb.nu_molecular", "turb.alpha_molecular", "turb.tke_floor")
 
 
@@ -147,9 +147,13 @@ class InitChecker(Checker):
                        "Set bc.zlo = surface_layer.")
         else:
             flux_mode, mol_flux = mode == "heat_flux", mode == "mol" and bool(mol)
-            if self.given("bc.surface_z0_file"):
-                self.error("bc.surface_z0_file", "GUST stops: init.first_guess = column needs one roughness "
-                                                 "(bc.surface_z0), not a map.", "Use bc.surface_z0, or the profile guess.")
+            if self.given("bc.surface_z0_file") and not self.given("init.column_z0"):
+                self.error("init.column_z0", "GUST stops: init.first_guess = column with bc.surface_z0_file needs "
+                                             "init.column_z0: the column takes one roughness, the 3-D run keeps the map.",
+                           "Give init.column_z0 (m), e.g. the map's roughness upwind of the domain.")
+            if self.given("init.column_z0") and not self.given("bc.surface_z0_file"):
+                self.error("init.column_z0", "GUST stops: init.column_z0 has no effect without bc.surface_z0_file (the "
+                                             "column takes bc.surface_z0).", "Remove init.column_z0.")
             if c.heat_flux_surface and not flux_mode and not mol_flux:
                 self.error("init.column_stability", "GUST stops: init.first_guess = column with bc.surface_stability = "
                                                     "heat_flux needs init.column_stability = heat_flux, or mol with "

@@ -103,6 +103,9 @@ struct InitOptions
     //! form of ERF's near-1-D column for a stratified column that has no steady state.
     amrex::Real column_time{0}, column_dt{1};
     ColumnWallK column_wall_k{ColumnWallK::fixed};
+    //! init.column_z0 (m, > 0 when given): the column's roughness when bc.surface_z0_file gives the 3-D run a map
+    //! (ColumnGuess.H); required then, refused without a map (the column takes bc.surface_z0). 0: not given.
+    amrex::Real column_z0{0};
     amrex::Real z_agl_min{0};
     amrex::Real alpha_h{1};
     amrex::Real alpha_v{1};

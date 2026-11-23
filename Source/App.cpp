@@ -743,6 +743,11 @@ std::string run_domain (const DomainRole& role)
                                   static_cast<double>(cg.u.back()), static_cast<double>(cg.v.back()));
                 }
                 amrex::Print() << cl;
+                if (!surf.z0_file.empty()) {
+                    std::snprintf(cl, sizeof(cl), "gust: column guess: z0 %.6g m (init.column_z0); the 3-D run keeps the map of "
+                                  "bc.surface_z0_file\n", static_cast<double>(iopt.column_z0));
+                    amrex::Print() << cl;
+                }
                 // What a restart deck needs (init.* keys are refused there and the checkpoint holds the state only).
                 std::string restart_lines;
                 if (column_theta_evolves(iopt, surf)) {

@@ -799,7 +799,7 @@ TEST(Initializer, InputsAndPoissonTypes)
         amrex::ParmParse pp("init");
         auto clear = [&] {
             for (const char* k : {"first_guess", "z_agl_min", "alpha_h", "alpha_v", "k_decay_height", "obrien", "projection",
-                                  "column_tol", "column_max_iterations", "column_time", "column_dt", "column_wall_k"}) {
+                                  "column_tol", "column_max_iterations", "column_time", "column_dt", "column_wall_k", "column_z0"}) {
                 while (pp.remove(k) > 0) {}
             }
         };
@@ -1004,7 +1004,7 @@ TEST(Initializer, ColumnGuessAndProjectionSwitch)
         amrex::ParmParse pp("init");
         auto clear = [&] {
             for (const char* kk : {"first_guess", "z_agl_min", "alpha_h", "alpha_v", "k_decay_height", "obrien", "projection",
-                                   "column_tol", "column_max_iterations", "column_time", "column_dt", "column_wall_k"}) {
+                                   "column_tol", "column_max_iterations", "column_time", "column_dt", "column_wall_k", "column_z0"}) {
                 while (pp.remove(kk) > 0) {}
             }
         };
@@ -1044,6 +1044,20 @@ TEST(Initializer, ColumnGuessAndProjectionSwitch)
         pp.add("first_guess", std::string("profile"));
         pp.add("column_wall_k", std::string("solved"));   // no effect without the column
         EXPECT_THROW(gust::read_init_options(), std::runtime_error);
+        clear();
+        pp.add("first_guess", std::string("profile"));
+        pp.add("column_z0", amrex::Real(0.3));   // no effect without the column
+        EXPECT_THROW(gust::read_init_options(), std::runtime_error);
+        clear();
+        pp.add("first_guess", std::string("column"));
+        for (const amrex::Real bad : {amrex::Real(0), amrex::Real(-0.1)}) {   // given, so > 0
+            while (pp.remove("column_z0") > 0) {}
+            pp.add("column_z0", bad);
+            EXPECT_THROW(gust::read_init_options(), std::runtime_error);
+        }
+        while (pp.remove("column_z0") > 0) {}
+        pp.add("column_z0", amrex::Real(0.3));
+        EXPECT_EQ(gust::read_init_options().column_z0, amrex::Real(0.3));
         clear();
     }
     {

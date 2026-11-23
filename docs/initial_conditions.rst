@@ -79,6 +79,8 @@ complex number :math:`u + iv`, and for :math:`k`:
 - :math:`\nu`, :math:`\gamma_k`, :math:`P_s`, :math:`P_b`, :math:`\varepsilon` come from the turbulence model of
   :doc:`turbulence_model`.
 - The ground of the neutral column uses the neutral log law; the top and the Rayleigh layer are those of the case.
+  Its roughness is ``bc.surface_z0``; with a roughness map (``bc.surface_z0_file``) the column takes one value,
+  ``init.column_z0``, which must then be given.
 
 **Forest canopy.** When the run has a canopy (:doc:`canopy`) the column carries it: the layer profile :math:`f_k`
 of the level's drag field (its mean over the domain's columns) enters the momentum equation as the drag

@@ -281,9 +281,6 @@ def _resolve_wind(case, given, problems, plan, base_dir):
                 if w[name] is None:
                     problems.append("wind.%s: required with wind.drive = %s (the wind the column run is to reach), "
                                     "unless atmosphere.geostrophic_wind is given" % (name, drive))
-        if drive == "geostrophic_column" and plan.roughness_map:
-            problems.append("surface.roughness_map: not with wind.drive = geostrophic_column (GUST's column first "
-                            "guess takes one roughness); use wind.drive = geostrophic_inflow")
         if "wind.side_faces" in given:
             problems.append("wind.side_faces has no effect with wind.drive = %s: the wind turns with height, so every "
                             "lateral face is an inflow or an outflow face" % drive)

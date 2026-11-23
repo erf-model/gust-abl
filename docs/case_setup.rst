@@ -347,8 +347,8 @@ turned wind. The turning depends on :math:`z_0`, so the faces and :math:`z_{0,\m
   speed for all directions), with ``wind.profile = table`` or ``power_law`` (the profile's wind is the same for
   every direction), and the regional map or ``wind.fetch_length`` without ``auto``.
 - A geostrophic drive runs each direction's column with that direction's :math:`z_0`. With
-  ``surface.roughness_map`` the column first guess is refused (it takes one roughness), so such a sweep uses
-  ``geostrophic_inflow``.
+  ``surface.roughness_map``, ``geostrophic_column`` writes ``init.column_z0`` (that :math:`z_0`) into the 3-D deck:
+  the column first guess runs on it and the 3-D run keeps the map.
 
 ``rt_case_setup_upstream`` checks the set-up on 2 ranks: a half-plane map (0.03 m west of the domain, 1 m east)
 also sets the ground; from 270 degrees both decks take 0.03 m and the 10 m wind more than 4 cells from the x faces

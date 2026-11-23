@@ -191,9 +191,13 @@ std::vector<std::string> check_column_guess (const InitOptions& iopt, const Stea
         const bool flux_mode = iopt.column_stability == CS::heat_flux;
         const bool mol_flux = iopt.column_stability == CS::mol && iopt.column_mol != 0;
         const bool flux_given = std::find(bin.given.begin(), bin.given.end(), "surface_heat_flux") != bin.given.end();
-        if (!surf.z0_file.empty()) {
-            err.emplace_back("init.first_guess = column needs one roughness (bc.surface_z0); the column has no column of "
-                             "bc.surface_z0_file's map to take");
+        const bool z0_given = std::find(iopt.given.begin(), iopt.given.end(), "column_z0") != iopt.given.end();
+        if (!surf.z0_file.empty() && !z0_given) {
+            err.emplace_back("init.first_guess = column with bc.surface_z0_file needs init.column_z0: the column takes one "
+                             "roughness, the 3-D run keeps the map");
+        }
+        if (surf.z0_file.empty() && z0_given) {
+            err.emplace_back("init.column_z0 has no effect without bc.surface_z0_file (the column takes bc.surface_z0)");
         }
         if (surf.stability == SurfaceLayerOptions::Stability::heat_flux && !flux_mode && !mol_flux) {
             err.emplace_back("init.first_guess = column with bc.surface_stability = heat_flux needs init.column_stability = heat_flux "
@@ -394,7 +398,9 @@ ColumnGuessResult run_column_guess (const Inputs& in, const InitOptions& iopt, c
 
     // The physics.
     const ClosureConstants cc = closure_constants(copt);
-    const double kappa = cc.kappa, z0 = surf.z0;
+    // The column's roughness: init.column_z0 under a map (bc.surface_z0_file, check_column_guess), else bc.surface_z0.
+    const double kappa = cc.kappa;
+    const double z0 = surf.z0_file.empty() ? static_cast<double>(surf.z0) : static_cast<double>(iopt.column_z0);
     // The wall law's denominator floor (SurfaceLayer.H): 1 with
     // bc.surface_denominator_floor = one; none otherwise (min(lz, 1) <= lz).
     const double den_floor = (surf.denominator_floor == SurfaceLayerOptions::DenominatorFloor::one) ? 1.0 : 0.0;

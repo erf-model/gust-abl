@@ -231,8 +231,8 @@ simple aggregation on the log-law scale, not a blending-height drag average (Mas
 and half land it gives about 20–30 % less drag at a 0.5–1 m first centre than the area mean of the two drags. The
 coarse levels only seed level 0, which uses the map itself. The run prints the minimum, maximum and geometric mean of each level's
 map, and the turbulence plotfile (``io.turb_plot_file``) holds it as ``z0`` on the first cells. A restart reads the
-file the deck names again: the checkpoint does not record the map. ``init.first_guess = column`` needs a single
-:math:`z_0` and refuses a map.
+file the deck names again: the checkpoint does not record the map. ``init.first_guess = column`` runs its
+column on one :math:`z_0`: with a map it needs ``init.column_z0``, and the 3-D run keeps the map.
 
 ``Tests/Real_Terrain/WindNinja2019/bolund_z0_map.py`` writes the Bolund map from the Bolund terrain points: 0.0003 m over water (terrain at or
 below the 0.75 m water level) and 0.015 m over land, with land roughness east of :math:`x = 327` m, the values and
