@@ -3449,6 +3449,21 @@ if(_gust_numpy_hr EQUAL 0)
                  COMMAND ${Python3_EXECUTABLE} -m unittest -v test_hrrr_outer
                  WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/tools)
         set_tests_properties(hrrr_outer_selftest PROPERTIES LABELS unit ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
+        # A neutral HRRR hour with a strong cap (Tests/Real_Terrain_Python/HRRR_Neutral/README.md): the chain of
+        # 2023-04-05 13 UTC with the recommended option, run from the downloads of the case's prepare.py
+        # (GUST_HRRR_NEUTRAL_DATA, default: the case folder) and checked against the numbers of November 2026.
+        # Skipped (exit 77) without the downloads. About 15 minutes on 4 ranks, so label nightly; MPI builds only
+        # (a serial run would pass the timeout).
+        if(GUST_MPI)
+            string(JOIN " " _neutral_launch ${MPIEXEC_EXECUTABLE} ${MPIEXEC_PREFLAGS} ${_extra_mpiexec}
+                   ${MPIEXEC_NUMPROC_FLAG} 4)
+            add_test(NAME rt_hrrr_neutral
+                     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/Real_Terrain_Python/HRRR_Neutral/check_neutral.py
+                             run --gust $<TARGET_FILE:gust> --work ${CMAKE_CURRENT_BINARY_DIR}/run/rt_hrrr_neutral
+                             --mpi "${_neutral_launch}")
+            set_tests_properties(rt_hrrr_neutral PROPERTIES LABELS "nightly" SKIP_RETURN_CODE 77 TIMEOUT 3600
+                                 PROCESSORS 4 ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
+        endif()
     endif()
 else()
     message(STATUS "GUST: numpy not found for ${Python3_EXECUTABLE}; hrrr_regime tests are not registered")
