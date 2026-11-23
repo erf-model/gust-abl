@@ -1,0 +1,70 @@
+# The Flatirons (Colorado Front Range, foothills west of Boulder) at 128 m cells: 64 x 64 cells (8.19 km a side),
+# 56 layers (10 of 2 m, then 1.15 until 128 m, then 128 m to 3063 m). The inflow is a table, flatirons_inflow.txt:
+# GUST's converged single column (inputs_flatirons_column) for a geostrophic wind of 10 m/s along x at 39.925 N
+# over z0 = 0.404 m (the geometric mean of the roughness map along the xlo face). The wind turns by 23 degrees
+# towards +y near the ground, so it enters through xlo and ylo; outflow at xhi and yhi. The 3-D run keeps the
+# Coriolis force and the same geostrophic wind (abl.drive = geostrophic_inflow), so the table stays in balance
+# away from the terrain. A slip top with damping of w from 2400 m; truly neutral.
+# The terrain (terrain.xyz), the roughness map (roughness.xyz), the table and the levels (../zlevels_128m.txt) are
+# given on the command line (README.md):
+#   terrain.file=terrain.xyz bc.surface_z0_file=roughness.xyz bc.inflow_file=flatirons_inflow.txt
+#   mesh.zlevels_file=../zlevels_128m.txt
+mesh.n_cell        = 64 64 56
+mesh.prob_lo       = -4096. -4096. 0.
+mesh.prob_hi       =  4096.  4096. 3063.490293
+mesh.max_grid_size = 32
+mesh.hierarchy_levels = 3   # 128, 256 and 512 m: grid sequencing (steady.sequencing)
+
+terrain.type      = xyz
+terrain.smoothing = 1   # STF (the default): smoothed coordinate surfaces aloft; BTF stalls on the 128 m Butte
+
+bc.xlo = inflow
+bc.ylo = inflow
+bc.xhi = outflow
+bc.yhi = outflow
+bc.zlo = surface_layer
+bc.zhi = slip_wall
+bc.inflow_profile  = file
+bc.inflow_z0       = 0.404
+bc.theta_profile_z = 0.
+bc.theta_profile   = 300.
+bc.rayleigh_zdamp    = 2400.
+bc.rayleigh_dampcoef = 0.2
+bc.rayleigh_fields   = w
+
+abl.drive = geostrophic_inflow
+
+forcing.latitude = 39.925
+forcing.ug       = 10.
+forcing.vg       = 0.
+
+init.first_guess = profile
+init.alpha_h     = 1.0
+init.alpha_v     = 0.5
+
+solver.poisson_reltol   = 1.e-10
+solver.poisson_max_iter = 200
+
+forcing.gravity = 0.
+turb.tke_floor  = 1.e-6
+simplec.w_vnn_cap = 16   # thin first cells (aspect ratio 64)
+
+# The recommended setting (docs/turbulence_model.rst): realizability cap, relaxation of nu_t, and the blend
+# towards first-order upwind below 2.5 terrain heights.
+turb.realizability          = 0.309
+turb.nut_relax              = 0.5
+turb.max_geom_lscale        = 100.
+convection.hybrid_sigma_max = 0.1
+convection.hybrid_height    = 2650.   # 2.5 x 1061 m
+
+steady.stage          = simplec
+steady.sweep          = lusgs
+steady.zline_sweeps   = 2
+steady.cfl_max        = 16
+steady.sequencing     = 1
+steady.max_iterations = 20000
+
+io.plot_file        = plt
+io.turb_plot_file   = turb
+io.chk_file         = chk
+io.write_checkpoint = 0

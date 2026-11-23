@@ -63,11 +63,20 @@ Steady cases
      - Bolund, Big Southern Butte
      - A steep escarpment (Bolund) and an isolated butte, with Askervein, against field measurements and the
        WindNinja results of Wagenbrenner et al. (2019). Flow separation in the lee may prevent a steady solution.
-     - Comparison runs in ``Tests/Real_Terrain/WindNinja2019`` (not run by CTest)
+     - Comparison runs in ``Tests/Real_Terrain/WindNinja2019`` (not run by CTest); the Butte at 128 m cells with a
+       log-law inflow: ``rt_sites128_butte_log_law`` (nightly)
    * - 7
      - Perdigão
-     - A double ridge.
-     - Planned
+     - A double ridge at 128 m cells with a target wind of 10 m/s at 100 m from the south-west, through two faces
+       (``Tests/Real_Terrain/Sites_128m/Perdigao_TargetWind``). No comparison with the campaign's measurements yet.
+     - ``rt_sites128_perdigao_target_wind`` (nightly), ``rt_sites128_perdigao_column``,
+       ``rt_sites128_perdigao_table``
+
+``Tests/Real_Terrain/Sites_128m`` also holds Altamont Pass (power-law inflow, ``rt_sites128_altamont_power_law``)
+and the Flatirons (an inflow table from GUST's column, ``rt_sites128_flatirons_inflow_file``,
+``rt_sites128_flatirons_column``, ``rt_sites128_flatirons_table``); the four nightly tests check that each case
+reaches a steady state. The column tests ``rt_sites128_perdigao_column_z0`` and ``rt_sites128_column_z0_needed``
+run ``init.column_z0`` under a roughness map.
 
 **Case 5b.** Case 5 keeps the potential temperature, gravity, Coriolis forcing at 57.2° N and the flat case's
 sounding: an inversion from 700 m, 0.03 K/m above, the top raised to 1599 m and Rayleigh damping above 1200 m. The

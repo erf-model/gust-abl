@@ -425,6 +425,8 @@ class Builder:
         a_h, a_v = self.case["solver"]["initial_blend"]
         if p.drive == "geostrophic_column":
             deck.set("init.first_guess", "column")
+            if self.roughness is not None:
+                deck.set("init.column_z0", float(z0_up), "the column's roughness: the inflow's; the 3-D run keeps the map")
         else:
             deck.set("init.first_guess", "profile")
         if self.terrain is not None:

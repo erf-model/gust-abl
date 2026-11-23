@@ -1,0 +1,21 @@
+Terrain data: the Terrain Tiles on the AWS Open Data Registry (https://registry.opendata.aws/terrain-tiles/),
+skadi (SRTM .hgt) format, made by Mapzen / Tilezen joerd. Accessed 2026-11-23.
+The tiles merge the sources below; credit the ones that cover your area
+(https://github.com/tilezen/joerd/blob/master/docs/attribution.md):
+  - United States 3DEP (formerly NED) and global GMTED2010 and SRTM terrain data courtesy of the U.S. Geological Survey.
+  - Global ETOPO1 terrain data U.S. National Oceanic and Atmospheric Administration.
+  - ArcticDEM terrain data DEM(s) were created from DigitalGlobe, Inc., imagery and funded under National Science
+    Foundation awards 1043681, 1559691, and 1542736.
+  - Australia terrain data (c) Commonwealth of Australia (Geoscience Australia) 2017.
+  - Austria terrain data (c) offene Daten Oesterreichs - Digitales Gelaendemodell (DGM) Oesterreich.
+  - Canada terrain data contains information licensed under the Open Government Licence - Canada.
+  - Europe terrain data produced using Copernicus data and information funded by the European Union - EU-DEM layers.
+  - Mexico terrain data source: INEGI, Continental relief, 2016.
+  - New Zealand terrain data Copyright 2011 Crown copyright (c) Land Information New Zealand and the New Zealand
+    Government (All rights reserved).
+  - Norway terrain data (c) Kartverket.
+  - United Kingdom terrain data (c) Environment Agency copyright and/or database right 2015. All rights reserved.
+
+Tiles: N39W106 N40W106
+Box: latitude 39.839409 .. 40.010591, longitude -105.396609 .. -105.173391
+Sea floor: zero

@@ -20,7 +20,8 @@ namespace {
 const char* const kKeys[] = {"first_guess", "z_agl_min", "alpha_h", "alpha_v", "k_decay_height", "obrien", "projection",
                              "column_tol", "column_max_iterations", "column_stability", "column_mol",
                              "column_surface_theta", "column_target_u", "column_target_v", "column_target_height",
-                             "column_rib_max", "column_rib_min", "column_time", "column_dt", "column_wall_k"};
+                             "column_rib_max", "column_rib_min", "column_time", "column_dt", "column_wall_k",
+                             "column_z0"};
 
 //! A profile component at every point (ghosts included) of a field of type
 //! T, at the point's height above its column's ground floored at h_min.
@@ -97,6 +98,7 @@ InitOptions read_init_options ()
     if (wk == "fixed") { opt.column_wall_k = InitOptions::ColumnWallK::fixed; }
     else if (wk == "solved") { opt.column_wall_k = InitOptions::ColumnWallK::solved; }
     else { amrex::Abort("gust: init.column_wall_k = " + wk + ": must be fixed or solved"); }
+    pp.query("column_z0", opt.column_z0);
     pp.query("z_agl_min", opt.z_agl_min);
     pp.query("alpha_h", opt.alpha_h);
     pp.query("alpha_v", opt.alpha_v);
@@ -146,6 +148,11 @@ std::vector<std::string> check_init_options (const InitOptions& opt)
         [&] { return opt.column_target_height >= 0; });
     bad(opt.column_time, "column_time", "finite and >= 0 (s; 0: the steady column)", [&] { return opt.column_time >= 0; });
     bad(opt.column_dt, "column_dt", "finite and > 0 (s)", [&] { return opt.column_dt > 0; });
+    bad(opt.column_z0, "column_z0", "finite and > 0 (m; 0, the default, is not given)",
+        [&] {
+            const bool z0_given = std::find(opt.given.begin(), opt.given.end(), "column_z0") != opt.given.end();
+            return opt.column_z0 > 0 || (opt.column_z0 == 0 && !z0_given);
+        });
     const bool marching = std::isfinite(opt.column_time) && opt.column_time > 0;
     if (marching && std::isfinite(opt.column_dt) && opt.column_dt > 0
         && !(opt.column_time / opt.column_dt <= amrex::Real(1.0e7))) {
@@ -176,7 +183,7 @@ std::vector<std::string> check_init_options (const InitOptions& opt)
         if (opt.first_guess != InitOptions::FirstGuess::column) {
             for (const char* k : {"column_tol", "column_max_iterations", "column_stability", "column_mol",
                                   "column_surface_theta", "column_target_u", "column_target_v", "column_target_height",
-                                  "column_rib_max", "column_rib_min", "column_time", "column_dt", "column_wall_k"}) {
+                                  "column_rib_max", "column_rib_min", "column_time", "column_dt", "column_wall_k", "column_z0"}) {
                 if (given(k)) { err.emplace_back(std::string("init.") + k + " has no effect without init.first_guess = column"); }
             }
         } else {

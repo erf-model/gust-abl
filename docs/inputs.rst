@@ -163,6 +163,9 @@ Quick reference
    * - ``init.column_wall_k``
      - ``fixed``
      - The time-marching column's first-cell k: the wall value or solved
+   * - ``init.column_z0``
+     - none
+     - The column's roughness when ``bc.surface_z0_file`` gives the 3-D run a map (m)
    * - **Boundary conditions** (`bc`_)
      -
      -
@@ -851,6 +854,13 @@ A restart cannot be combined with ``init.*`` keys.
        layer's wall value, as in the steady column and the 3-D run. ``solved``: the first cell's k is solved with
        the k equation of the other cells and no k flux through the ground (:ref:`time-marching column
        <column-marching>`).
+   * - ``init.column_z0``
+     - none
+     - Finite, > 0 (m); ``column`` only. The roughness length of the column when ``bc.surface_z0_file`` gives the
+       3-D run a roughness map: required then, since the column has one surface. Refused without
+       ``bc.surface_z0_file`` (the column then takes ``bc.surface_z0``). The 3-D run keeps the map; the column only
+       seeds the first guess (and, with ``init.column_target_u``/``_v``, the adjusted forcing). A value near the
+       map's upstream roughness keeps the first guess close to the flow that arrives at the domain.
 
 ``bc``
 ------
@@ -962,8 +972,8 @@ types, the inflow profile and the sounding; the other keys act in the SIMPLEC st
      - none (``bc.surface_z0``)
      - A file of ``x y z0`` points (``terrain.file``'s format), interpolated to the ground columns in
        :math:`\ln z_0` with ``terrain.idw_neighbors`` and ``terrain.idw_power``
-       (:ref:`roughness map <roughness-map>`). Not with ``bc.surface_z0`` (both given aborts) or
-       ``init.first_guess = column``. Every value finite and > 0, at least ``terrain.idw_neighbors`` points, and
+       (:ref:`roughness map <roughness-map>`). Not with ``bc.surface_z0`` (both given aborts). With
+       ``init.first_guess = column`` it needs ``init.column_z0``, the column's one roughness. Every value finite and > 0, at least ``terrain.idw_neighbors`` points, and
        the file readable, or the run aborts naming the key. ``bc.inflow_z0`` stays the inflow's roughness.
    * - ``bc.surface_zref``
      - ``0``

@@ -63,6 +63,9 @@ JOINT2 = "GUST_JOINT 2\nfeedback %s\nexchanges %d\nouter 0x0p+0\nwindow %s\nnest
 
 IMMERSED = "terrain.representation = immersed_forcing\nterrain.flat_height = 250\nbc.zlo = surface_layer\nsteady.sweep = zjacobi\n"
 
+COLUMN = ("init.first_guess = column\nforcing.coriolis = 1\nforcing.latitude = 45\nforcing.geostrophic = 1\n"
+          "forcing.ug = 10\nforcing.vg = 0\n")
+
 HYBRID_HILL = "terrain.type = agnesi\nterrain.hill_height = 100\nterrain.hill_half_width = 500\n"
 
 CASES = [
@@ -159,6 +162,14 @@ CASES = [
      ["E canopy.heat immersed_terrain"], [], {"files": {"h.xyz": "0 0 20\n800 0 20\n", "lai.xyz": "0 0 3\n800 0 3\n"}}),
     ("immersed_zref", "solve", IMMERSED + "bc.surface_zref = 20\n", ["E bc.surface_zref immersed_terrain"], []),
     ("immersed_wall_k", "solve", IMMERSED + "bc.surface_wall_k = source\n", ["E bc.surface_wall_k immersed_terrain"], []),
+    # The column runs on one z0: under a map it needs init.column_z0, which has no effect without one.
+    ("column_z0_map_missing", "solve", COLUMN + "bc.surface_z0_file = z0.xyz\n", ["E init.column_z0 init"], [],
+     {"files": {"z0.xyz": "0 0 0.03\n1600 0 0.3\n"}}),
+    ("column_z0_map_given", "solve", COLUMN + "bc.surface_z0_file = z0.xyz\ninit.column_z0 = 0.05\n", [],
+     ["E init.column_z0"], {"files": {"z0.xyz": "0 0 0.03\n1600 0 0.3\n"}}),
+    ("column_z0_without_map", "solve", COLUMN + "init.column_z0 = 0.05\n", ["E init.column_z0 init"], []),
+    ("column_z0_negative", "solve", COLUMN + "bc.surface_z0_file = z0.xyz\ninit.column_z0 = -0.05\n",
+     ["E init.column_z0"], [], {"files": {"z0.xyz": "0 0 0.03\n1600 0 0.3\n"}}),
     ("immersed_column_guess", "solve", IMMERSED + "init.first_guess = column\n",
      ["E init.first_guess immersed_terrain"], [], {"dedupe": "init.first_guess"}),
     ("immersed_keys_body_fitted", "solve", "terrain.flat_height = 250\n", ["E terrain.flat_height immersed_terrain"], []),

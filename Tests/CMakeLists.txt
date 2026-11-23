@@ -199,6 +199,7 @@ set(HILL3D_NEUTRAL_CASE ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Truly_Neutral
 set(ASKERVEIN_CASE      ${CMAKE_CURRENT_SOURCE_DIR}/Real_Terrain/Askervein)
 set(CNBL_CASE           ${CMAKE_CURRENT_SOURCE_DIR}/Real_Terrain/Askervein_CNBL)
 set(ASKERVEIN_210_CASE  ${CMAKE_CURRENT_SOURCE_DIR}/Real_Terrain/Askervein_210)
+set(SITES_128M_CASE     ${CMAKE_CURRENT_SOURCE_DIR}/Real_Terrain/Sites_128m)
 set(SUPPORT             ${CMAKE_CURRENT_SOURCE_DIR}/Supporting_Files)
 
 # fcompare is built with the AMReX submodule; with an installed AMReX, look
@@ -3171,6 +3172,85 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
                           terrain.file=${PROJECT_SOURCE_DIR}/extern_erf/askervein.txt
                           bc.inflow_file=${CNBL_CASE}/askervein_cnbl_inflow.txt
                           ${GUST_TEST_AMREX_FLAGS})
+    # Four real terrains at 128 m cells (Tests/Real_Terrain/Sites_128m), one inflow option each, to the steady
+    # verdict with grid sequencing on three levels. The terrain, the roughness map, the levels and the inflow
+    # tables are given on the command line. The column runs of the Flatirons and Perdigao cases write their tables
+    # again, and check_column_table.py compares each with the committed one to 1e-4.
+    foreach(_site "BigSouthernButte_LogLaw|inputs_butte_log_law|butte_log_law|"
+                  "AltamontPass_PowerLaw|inputs_altamont_power_law|altamont_power_law|"
+                  "Perdigao_TargetWind|inputs_perdigao_target_wind|perdigao_target_wind|perdigao_inflow.txt"
+                  "Flatirons_InflowFile|inputs_flatirons_inflow_file|flatirons_inflow_file|flatirons_inflow.txt")
+        string(REPLACE "|" ";" _site "${_site}")
+        list(GET _site 0 _dir)
+        list(GET _site 1 _deck)
+        list(GET _site 2 _name)
+        list(GET _site 3 _table)
+        set(_extra "")
+        if(_table)
+            set(_extra bc.inflow_file=${SITES_128M_CASE}/${_dir}/${_table})
+        endif()
+        gust_add_test(NAME rt_sites128_${_name} NP 4 LABELS "nightly"
+                      PREFIX ${EXPECT_ABORT} --success --timeout 3600 "gust: steady after" --
+                      COMMAND $<TARGET_FILE:gust> ${SITES_128M_CASE}/${_dir}/${_deck}
+                              terrain.file=${SITES_128M_CASE}/${_dir}/terrain.xyz
+                              bc.surface_z0_file=${SITES_128M_CASE}/${_dir}/roughness.xyz
+                              mesh.zlevels_file=${SITES_128M_CASE}/zlevels_128m.txt ${_extra}
+                              ${GUST_TEST_AMREX_FLAGS})
+        set_tests_properties(rt_sites128_${_name} PROPERTIES TIMEOUT 3600)
+    endforeach()
+    foreach(_site "Flatirons_InflowFile|flatirons" "Perdigao_TargetWind|perdigao")
+        string(REPLACE "|" ";" _site "${_site}")
+        list(GET _site 0 _dir)
+        list(GET _site 1 _name)
+        set(_run ${CMAKE_CURRENT_BINARY_DIR}/run/rt_sites128_${_name}_column)
+        # A table left by an earlier run must not pass the table test.
+        add_test(NAME rt_sites128_${_name}_clean COMMAND ${CMAKE_COMMAND} -E rm -f ${_run}/${_name}_inflow.txt)
+        set_tests_properties(rt_sites128_${_name}_clean PROPERTIES LABELS "regression;smoke"
+                             FIXTURES_SETUP sites128_${_name}_clean)
+        gust_add_test(NAME rt_sites128_${_name}_column NP 1 LABELS "regression;smoke" RUN_DIR ${_run}
+                      FIXTURES_REQUIRED sites128_${_name}_clean FIXTURES_SETUP sites128_${_name}_column
+                      PREFIX ${EXPECT_ABORT} --success "gust: not steady after 1 iterations" --
+                      COMMAND $<TARGET_FILE:gust> ${SITES_128M_CASE}/${_dir}/inputs_${_name}_column
+                              mesh.zlevels_file=${SITES_128M_CASE}/zlevels_128m.txt ${GUST_TEST_AMREX_FLAGS})
+        add_test(NAME rt_sites128_${_name}_table
+                 COMMAND ${Python3_EXECUTABLE} ${SITES_128M_CASE}/check_column_table.py ${_name}_inflow.txt
+                         --committed ${SITES_128M_CASE}/${_dir}/${_name}_inflow.txt
+                 WORKING_DIRECTORY ${_run})
+        set_tests_properties(rt_sites128_${_name}_table PROPERTIES LABELS "regression;smoke"
+                        FIXTURES_REQUIRED sites128_${_name}_column ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
+    endforeach()
+    # init.column_z0 through the executable: the Perdigao column deck with the site's roughness map in place of
+    # bc.surface_z0 and init.column_z0 = 0.398 must write the committed table; without init.column_z0 it aborts.
+    set(_pcol ${SITES_128M_CASE}/Perdigao_TargetWind/inputs_perdigao_column)
+    file(READ ${_pcol} _pdeck)
+    string(REGEX MATCHALL "\nbc\.surface_z0 [^\n]*" _hits "${_pdeck}")
+    list(LENGTH _hits _n)
+    if(NOT _n EQUAL 1)
+        message(FATAL_ERROR "inputs_perdigao_column must set bc.surface_z0 exactly once (found ${_n})")
+    endif()
+    string(REGEX REPLACE "\nbc\.surface_z0 [^\n]*" "" _pdeck "${_pdeck}")
+    file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/inputs_perdigao_column_map "${_pdeck}")
+    file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/inputs_perdigao_column_z0 "${_pdeck}init.column_z0 = 0.398\n")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${_pcol})
+    set(_zrun ${CMAKE_CURRENT_BINARY_DIR}/run/rt_sites128_perdigao_column_z0)
+    set(_zargs mesh.zlevels_file=${SITES_128M_CASE}/zlevels_128m.txt
+               bc.surface_z0_file=${SITES_128M_CASE}/Perdigao_TargetWind/roughness.xyz ${GUST_TEST_AMREX_FLAGS})
+    add_test(NAME rt_sites128_perdigao_column_z0_clean COMMAND ${CMAKE_COMMAND} -E rm -f ${_zrun}/perdigao_inflow.txt)
+    set_tests_properties(rt_sites128_perdigao_column_z0_clean PROPERTIES LABELS "regression;smoke"
+                         FIXTURES_SETUP sites128_perdigao_column_z0_clean)
+    gust_add_test(NAME rt_sites128_perdigao_column_z0 NP 1 LABELS "regression;smoke" RUN_DIR ${_zrun}
+                  FIXTURES_REQUIRED sites128_perdigao_column_z0_clean FIXTURES_SETUP sites128_perdigao_column_z0
+                  PREFIX ${EXPECT_ABORT} --success "column guess: z0 0.398 m" --
+                  COMMAND $<TARGET_FILE:gust> ${CMAKE_CURRENT_BINARY_DIR}/inputs_perdigao_column_z0 ${_zargs})
+    add_test(NAME rt_sites128_perdigao_column_z0_table
+             COMMAND ${Python3_EXECUTABLE} ${SITES_128M_CASE}/check_column_table.py perdigao_inflow.txt
+                     --committed ${SITES_128M_CASE}/Perdigao_TargetWind/perdigao_inflow.txt
+             WORKING_DIRECTORY ${_zrun})
+    set_tests_properties(rt_sites128_perdigao_column_z0_table PROPERTIES LABELS "regression;smoke"
+                         FIXTURES_REQUIRED sites128_perdigao_column_z0 ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
+    gust_add_test(NAME rt_sites128_column_z0_needed LABELS "regression;smoke"
+                  PREFIX ${EXPECT_ABORT} "init.first_guess = column with bc.surface_z0_file needs init.column_z0" --
+                  COMMAND $<TARGET_FILE:gust> ${CMAKE_CURRENT_BINARY_DIR}/inputs_perdigao_column_map ${_zargs})
     # Askervein against ERF: Askervein with ERF's own setup (wind from 210 degrees, ERF's 300 x 300 x 18 grid,
     # Tests/Real_Terrain/Askervein_210). The inflow table must be the one
     # tools/erf_inflow_table.py makes from ERF's profile (extern_erf/).

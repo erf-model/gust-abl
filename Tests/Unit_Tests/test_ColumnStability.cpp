@@ -13,9 +13,11 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <fstream>
+#include <limits>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -515,4 +517,43 @@ TEST(ColumnStability, TableReadsBackExactly)
     if (amrex::ParallelDescriptor::IOProcessor()) { std::remove(fname.c_str()); }
     EXPECT_NO_THROW(gust::run_column_guess(c.in, c.io, c.so, c.bin, c.surf, true, c.copt, c.fopt,
                                            "ut_no_such_dir/column.dat"));
+}
+
+// init.column_z0: under a roughness map (bc.surface_z0_file) the column runs on init.column_z0, not on
+// bc.surface_z0. The column with the map and init.column_z0 = 0.5 m is the column with bc.surface_z0 = 0.5 m bit for
+// bit, and its u* is the neutral wall law's, kappa U1 / ln((z1 + z0)/z0) with z0 = 0.5 m (not 0.1 m). The checks
+// require init.column_z0 with a map and refuse it without one.
+TEST(ColumnStability, ColumnZ0UnderMap)
+{
+    Column uniform;
+    uniform.surf.z0 = amrex::Real(0.5);
+    const auto ru = uniform.run();
+    ASSERT_TRUE(ru.steady);
+
+    Column mapped;
+    mapped.surf.z0_file = "z0_map.xyz";   // the column does not read the map: only the name is set
+    mapped.io.column_z0 = amrex::Real(0.5);
+    mapped.io.given = {"column_z0"};
+    EXPECT_TRUE(gust::check_column_guess(mapped.io, mapped.so, mapped.fopt, mapped.bin, mapped.surf, true).empty());
+    const auto rm = mapped.run();
+    ASSERT_TRUE(rm.steady);
+    EXPECT_EQ(rm.ustar, ru.ustar);
+    ASSERT_EQ(rm.u.size(), ru.u.size());
+    for (std::size_t k = 0; k < ru.u.size(); ++k) { EXPECT_EQ(rm.u[k], ru.u[k]); EXPECT_EQ(rm.tke[k], ru.tke[k]); }
+    const double z0m = 0.5;
+    // 1e-6 in double; in single the stored u* and U1 carry float round-off (about 5e-6 relative here).
+    const double rel = std::max(1e-6, 100.0 * static_cast<double>(std::numeric_limits<amrex::Real>::epsilon()));
+    EXPECT_NEAR(static_cast<double>(rm.ustar), kappa * speed1(rm) / std::log((z1 + z0m) / z0m),
+                rel * static_cast<double>(rm.ustar));
+    Column base;   // bc.surface_z0 = 0.1 m: a different column
+    EXPECT_GT(std::abs(static_cast<double>(base.run().ustar - rm.ustar)), 0.01);
+
+    mapped.io.given.clear();   // a map without init.column_z0
+    EXPECT_TRUE(mentions(gust::check_column_guess(mapped.io, mapped.so, mapped.fopt, mapped.bin, mapped.surf, true),
+                         "needs init.column_z0"));
+    Column nomap;   // init.column_z0 without a map
+    nomap.io.column_z0 = amrex::Real(0.5);
+    nomap.io.given = {"column_z0"};
+    EXPECT_TRUE(mentions(gust::check_column_guess(nomap.io, nomap.so, nomap.fopt, nomap.bin, nomap.surf, true),
+                         "init.column_z0 has no effect without bc.surface_z0_file"));
 }

@@ -225,6 +225,13 @@
 #     fixed or solved; with init.column_time > 0 only. fixed: the first cell's k is the surface layer's wall value,
 #     as in the steady column and the 3-D run. solved: the first cell's k is solved with the k equation of the other
 #     cells and no k flux through the ground (time-marching column, docs/initial_conditions.rst).
+#
+# init.column_z0 =    # none
+#     Finite, > 0 (m); column only. The roughness length of the column when bc.surface_z0_file gives the 3-D run a
+#     roughness map: required then, since the column has one surface. Refused without bc.surface_z0_file (the column
+#     then takes bc.surface_z0). The 3-D run keeps the map; the column only seeds the first guess (and, with
+#     init.column_target_u/_v, the adjusted forcing). A value near the map's upstream roughness keeps the first
+#     guess close to the flow that arrives at the domain.
 
 # ==================================================================================================================
 # bc
@@ -342,9 +349,9 @@
 # bc.surface_z0_file =    # none (bc.surface_z0)
 #     A file of x y z0 points (terrain.file's format), interpolated to the ground columns in ln z_0 with
 #     terrain.idw_neighbors and terrain.idw_power (roughness map, docs/boundary_conditions.rst). Not with
-#     bc.surface_z0 (both given aborts) or init.first_guess = column. Every value finite and > 0, at least
-#     terrain.idw_neighbors points, and the file readable, or the run aborts naming the key. bc.inflow_z0 stays the
-#     inflow's roughness.
+#     bc.surface_z0 (both given aborts). With init.first_guess = column it needs init.column_z0, the column's one
+#     roughness. Every value finite and > 0, at least terrain.idw_neighbors points, and the file readable, or the
+#     run aborts naming the key. bc.inflow_z0 stays the inflow's roughness.
 #
 # bc.surface_zref = 0
 #     Finite. ≤ 0: each column's first cell centre. Otherwise a height between the first and last cell-centre
