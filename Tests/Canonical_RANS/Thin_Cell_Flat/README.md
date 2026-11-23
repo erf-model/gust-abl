@@ -17,6 +17,9 @@ diffusion is stiff. The cap bounds that ratio (the VNN number) and leaves the st
 | `inputs_thin_cell_flat` | The strip (the cap, the iterations, the first guess and the restart on the command line). |
 | `check_w_vnn_cap.py` | Runs the deck with the cap off and on, and a capped restart chain; checks the results. |
 
+## Data and acknowledgements
+No external data.
+
 ## CTest
 `rt_thin_cell_w_vnn_cap` (double precision only; label `regression`).
 

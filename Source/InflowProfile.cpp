@@ -68,7 +68,7 @@ InflowTable parse_inflow_table (const std::string& text, const std::string& file
             const std::size_t end = line.find_first_of(ws, pos);
             const std::string tok = line.substr(pos, end == std::string::npos ? std::string::npos : end - pos);
             char* stop = nullptr;
-            // strtod reads in the C locale (nothing in GUST calls setlocale), as the stream parser did.
+            // strtod reads in the C locale (nothing in GUST calls setlocale).
             const double x = std::strtod(tok.c_str(), &stop);
             if (stop == tok.c_str() || *stop != '\0') {
                 amrex::Abort(where + "line " + std::to_string(lineno) + ": '" + tok + "' is not a number");

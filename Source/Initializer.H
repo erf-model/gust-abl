@@ -35,16 +35,20 @@
 // field whose divergence is only the removed residual.
 //
 // Inputs (init.*):
-//   first_guess     none | profile (none: the state stays at rest)
+//   first_guess     none | profile | column | nest (none: the state stays at rest; column: ColumnGuess.H;
+//                   nest: the parent's field, Nests.H)
 //   z_agl_min       floor on the height above the ground the profile is evaluated at (m, >= 0; 0)
 //   alpha_h         horizontal transmissivity (> 0; 1)
 //   alpha_v         vertical transmissivity (> 0; 1)
 //   k_decay_height  z_i of the k decay (m, >= 0; 0: no decay)
 //   obrien          0 | 1 (0)
+//   projection      0 | 1 (1): the mass-consistent correction of the first guess
+//   column_*        the 1-D column of first_guess = column (InitOptions below, ColumnGuess.H)
 // The profile and the sounding are bc.inflow_* and bc.theta_profile
 // (BoundaryConditions.H), the solver controls solver.poisson_*; the keys
-// other than first_guess have no effect without first_guess = profile and
-// are refused then.
+// other than first_guess have no effect with first_guess = none and are
+// refused then, as are the column_* keys without first_guess = column and
+// z_agl_min, k_decay_height and obrien with first_guess = nest.
 
 #include "BoundaryConditions.H"
 #include "InflowProfile.H"
@@ -130,13 +134,6 @@ struct InitResult
     amrex::Real obrien_top_residual{0}; //!< max |Omega_top| the O'Brien pass removed (m/s)
 };
 
-//! Steps 1-3 alone: the first guess (u0, v0, w0 = 0 or O'Brien), theta, k
-//! and p' of q (defined on the mesh's layout, z_phys_nd built); returns the
-//! O'Brien top residual (0 without O'Brien). Nothing with first_guess = none.
-//! column, when given (first_guess = column), replaces the inflow profile for
-//! u, v and k; theta stays the sounding at the absolute height, or with
-//! column_theta (a stratified column whose surface the run shares,
-//! ColumnGuess.H column_sets_theta) is the column's by height above the ground.
 //! The Poisson controls of the projection: popt, with backend gmres_fft when
 //! alpha_v != alpha_h (back end B has no split z-face coefficient).
 PoissonOptions initializer_poisson_options (const InitOptions& opt, const PoissonOptions& popt);
@@ -150,6 +147,13 @@ PoissonOptions initializer_poisson_options (const InitOptions& opt, const Poisso
 //! not the parent's).
 void zero_ground_flux (State& q, const Mesh& mesh, const amrex::Geometry& geom);
 
+//! Steps 1-3 alone: the first guess (u0, v0, w0 = 0 or O'Brien), theta, k
+//! and p' of q (defined on the mesh's layout, z_phys_nd built); returns the
+//! O'Brien top residual (0 without O'Brien). Nothing with first_guess = none.
+//! column, when given (first_guess = column), replaces the inflow profile for
+//! u, v and k; theta stays the sounding at the absolute height, or with
+//! column_theta (a stratified column whose surface the run shares,
+//! ColumnGuess.H column_sets_theta) is the column's by height above the ground.
 amrex::Real first_guess_state (const InitOptions& opt, const BoundaryInputs& bc, const Mesh& mesh,
                                const amrex::Geometry& geom, State& q, const CoriolisOptions& coriolis = CoriolisOptions{},
                                const InflowProfile* column = nullptr, bool column_theta = false);

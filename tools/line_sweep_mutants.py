@@ -69,6 +69,8 @@ M = [
   "if (opt.alternate != 0 && opt.alternate != 1) {", "if (opt.alternate < 0 || opt.alternate > 2) {"),
  ("M22", "line_alternate given with zjacobi accepted", "Source/Driver.cpp",
   '{"line_ghosts", "line_overlap", "line_order", "line_alternate"}', '{"line_ghosts", "line_overlap", "line_order"}'),
+ ("M23", "line_alternate = 1 with one sweep accepted", "Source/Driver.cpp",
+  "opt.line_alternate == 1 && opt.zline_sweeps < 2", "opt.line_alternate == 1 && opt.zline_sweeps < 1"),
 ]
 
 

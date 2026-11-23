@@ -399,28 +399,28 @@ TEST (LineSweeps, OverlapsReachTheSameState)
         }
     }
     {
-        PCase two = box_mesh(8, 4, 4, false, 4, 8), one = box_mesh(8, 4, 4, false, 8, 8);
-        ASSERT_EQ(two.ba.size(), 2);
-        ASSERT_EQ(one.ba.size(), 1);
+        PCase m2 = box_mesh(8, 4, 4, false, 4, 8), m1 = box_mesh(8, 4, 4, false, 8, 8);
+        ASSERT_EQ(m2.ba.size(), 2);
+        ASSERT_EQ(m1.ba.size(), 1);
         for (const Loc loc : {Loc::cell, Loc::yface, Loc::zface}) {   // owned regions of four in x
             amrex::MultiFab A1, ap1, r1, A2, ap2, r2;
-            random_system(one, loc, 31u, 0.3, 3.0, A1, ap1, r1);
-            const amrex::BoxArray ba2 = amrex::convert(two.ba, type_of(loc));
-            A2.define(ba2, two.dm, gust::n_implicit_coefs, 0);
-            ap2.define(ba2, two.dm, 1, 0);
-            r2.define(ba2, two.dm, 1, 0);
+            random_system(m1, loc, 31u, 0.3, 3.0, A1, ap1, r1);
+            const amrex::BoxArray ba2 = amrex::convert(m2.ba, type_of(loc));
+            A2.define(ba2, m2.dm, gust::n_implicit_coefs, 0);
+            ap2.define(ba2, m2.dm, 1, 0);
+            r2.define(ba2, m2.dm, 1, 0);
             A2.ParallelCopy(A1, 0, 0, gust::n_implicit_coefs);
             ap2.ParallelCopy(ap1);
             r2.ParallelCopy(r1);
             for (const auto order : {LineOrder::sequential, LineOrder::diagonal}) {
                 amrex::MultiFab d1, d2;
-                gust::zline_lusgs(loc, A1, ap1, r1, 3, one.mesh, one.geom, d1, lusgs(LineGhosts::zero, 0, order));
-                gust::zline_lusgs(loc, A2, ap2, r2, 3, two.mesh, two.geom, d2, lusgs(LineGhosts::zero, 4, order));
+                gust::zline_lusgs(loc, A1, ap1, r1, 3, m1.mesh, m1.geom, d1, lusgs(LineGhosts::zero, 0, order));
+                gust::zline_lusgs(loc, A2, ap2, r2, 3, m2.mesh, m2.geom, d2, lusgs(LineGhosts::zero, 4, order));
                 amrex::MultiFab g2(d1.boxArray(), d1.DistributionMap(), 1, 0);
                 g2.ParallelCopy(d2);
                 EXPECT_EQ(max_diff(d1, g2), 0) << loc_name(loc);
                 amrex::MultiFab d0;   // without the overlap the box face shows
-                gust::zline_lusgs(loc, A2, ap2, r2, 3, two.mesh, two.geom, d0, lusgs(LineGhosts::zero, 0, order));
+                gust::zline_lusgs(loc, A2, ap2, r2, 3, m2.mesh, m2.geom, d0, lusgs(LineGhosts::zero, 0, order));
                 amrex::MultiFab g0(d1.boxArray(), d1.DistributionMap(), 1, 0);
                 g0.ParallelCopy(d0);
                 EXPECT_GT(max_diff(d1, g0), 1e-3 * static_cast<double>(d1.norm0())) << loc_name(loc);

@@ -213,7 +213,7 @@ TEST (Inputs, UnknownKeysAreReported)
     const std::vector<InputEntry> entries{
         {"mesh.n_cell", true},              // read: fine
         {"mesh.ncell", false},              // typo in an owned namespace
-        {"turb.Cmu0", false},               // owned namespace, no inputs yet
+        {"turb.Cmu0", false},               // owned namespace, a key that was not read
         {"mehs.n_cell", false},             // unknown namespace
         {"mehs.used_somehow", true},        // unknown namespace, even if read
         {"amrex.fpe_trap_invalid", true},   // AMReX's

@@ -50,8 +50,9 @@
 // The column takes nu_t relaxed by a half between steps (turb.nut_relax is
 // the stage's) and the arithmetic face mean of the diffusivities
 // (turb.face_mean is the stage's). Converged when the largest change of u, v
-// (scaled by the geostrophic or first-cell speed) and k (its maximum) over
-// one step is below
+// (scaled by the largest of the geostrophic speed, 1e3 times the pressure
+// gradient and the first-cell speed), k (its maximum) and, when theta evolves,
+// theta (its spread over the column, at least 0.1 K) over one step is below
 // init.column_tol (lifted to 100 epsilon of Real, since the closure's point
 // kernels run in Real), or aborts after init.column_max_iterations. The column
 // needs the surface layer with the Dirichlet wall k (neutral, or the column's stability), a
@@ -118,7 +119,7 @@ struct ColumnGuessResult
 };
 
 //! Whether the column evolves theta (any surface but the neutral one: init.column_mol = 0 holds theta at the
-//! sounding, the form before init.column_stability).
+//! sounding, the neutral column).
 bool column_theta_evolves (const InitOptions& iopt, const SurfaceLayerOptions& surf);
 
 //! Businger-Dyer's stable side has a MOST root only for a bulk Richardson number below 1/beta = 0.2

@@ -11,6 +11,7 @@ Rayleigh damping of w alone, 32 x 32 x 16 over the same domain, four boxes.
 |---|---|
 | `inputs_steady_hill3d_neutral` | 16 z-line Jacobi sweeps, CFL cap 4. |
 | `inputs_steady_hill3d_neutral_lusgs` | The box-local line LU-SGS sweeps: zero ghosts, overlap 2, the diagonal ordering, two sweeps, CFL cap 16. |
+| `inputs_sequencing_restart` | `inputs_steady_hill3d_neutral` on two sequencing levels, for the restart with grid sequencing (`rt_sequencing_restart_first`, `rt_sequencing_restart`). |
 | `inputs_sequencing_z0map`, `z0_two_points.xyz` | The roughness map (`bc.surface_z0_file`) on two sequencing levels: two points (0.0003 m at x = −1000 m, 0.015 m at x = 1000 m), two IDW neighbours. |
 | `check_line_match.py` | Compares the two final plotfiles: u, v, w, p and k to `--rel_tol` of each field's maximum; theta after subtracting each run's mean. |
 
@@ -25,6 +26,9 @@ steady.sequencing=1` on the command line: 8 x 8 and 16 x 16 to the loose stop, t
 and `check_line_match.py` compares it with `rt_steady_hill3d_neutral_zjacobi` at 1e-8. The checker counts only
 `PREFIX<step>`, not the per-level plotfiles `PREFIX_level<l>_<step>` a hierarchy run also writes.
 
+## Data and acknowledgements
+No external data.
+
 ## CTest
 `rt_steady_hill3d_neutral_clean`, `rt_steady_hill3d_neutral_zjacobi`, `rt_steady_hill3d_neutral_lusgs`,
 `rt_poisson_default_gmres_fft`, `rt_steady_hill3d_neutral_sequencing` (four ranks each), `rt_steady_hill3d_neutral_matches`,
@@ -37,6 +41,15 @@ of each level's map, computed independently in Python from the two points (ln z0
 32 x 32 cell centres, then the geometric mean of each 2 x 2 block): level 0 min 0.0003023, max 0.01489; level 1
 min 0.0003134, max 0.01436; both geometric means 0.002121 m. Level 1 sampled by IDW at its own centres instead
 would give min 0.0003105, max 0.01449; the default terrain.idw_neighbors = 6 would abort (two points).
+
+Input refusals and sequencing and iteration-log tests on this folder's decks (labels `regression;smoke`; details in
+`docs/testing.rst`): `abort_sequencing_range`, `abort_sequencing_coarsest`, `abort_sequencing_unused`,
+`abort_sequencing_value`, `abort_sequencing_hold_value`, `abort_sequencing_cfl_start_value`,
+`abort_inflow_tke_length_value`, `abort_newton_preconditioner_value`, `abort_newton_preconditioner_no_newton`,
+`abort_frozen_switch_value`, `abort_frozen_switch_no_newton`, `abort_ri_gate_range`, `abort_simplec_theta_value`,
+`abort_simplec_theta_restart`, `abort_simplec_theta_no_sequencing`, `abort_newton_keys_no_newton_stage`,
+`abort_iteration_log_value`; `rt_sequencing_restart_first`, `rt_sequencing_restart`, `rt_sequencing_hold_kept`,
+`rt_sequencing_hold_released`, `rt_sequencing_cfl_previous`, `rt_iteration_log_full`, `rt_iteration_table_confidence`.
 
 ## Expected Results
 - Both runs reach near round-off: every residual below 1e-11 and eight orders down (ten orders put theta and p under the rounding floor; see the deck).

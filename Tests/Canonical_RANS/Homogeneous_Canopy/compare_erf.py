@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ERF on the homogeneous canopy deck against GUST (RT-8.6.4); not a CTest, it needs an ERF build:
+"""ERF on the homogeneous canopy deck against GUST; not a CTest, it needs an ERF build:
 
     compare_erf.py --erf ERF_EXEC --gust-runs DIR [--run] [--stop 12000]
 

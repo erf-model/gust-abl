@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 The one-line mutants of the conservative nest faces (nest.feedback_flux = nest; Source/NestFaceFlux.cpp and
-NestDefect::add in Source/NestDefect.cpp; tracker N-114, item 1).
+NestDefect::add in Source/NestDefect.cpp).
 
 Run against the NestFaceFlux.* unit tests by the shared runner tools/mutants.py
 (two ranks, the unit-test flags). The table is in docs/testing.rst.

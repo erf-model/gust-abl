@@ -1,14 +1,14 @@
-// PR-49 (plan rev. 6, sub-phase 6.4), UT-6.4.2 and UT-6.4.3, beyond the plan: the force on buildings
+// The force on buildings
 // (BuildingLoads.H), summed from the momentum residual on the blocked faces.
-//   UT-6.4.2: air at rest in a linear pressure field p = G.x around a block of nx ny nz cells: the
+//   air at rest in a linear pressure field p = G.x around a block of nx ny nz cells: the
 //   pressure gradient telescopes through the block to -G_x (nx + 1) ny nz V on x, likewise on y,
 //   and -G_z nz nx ny V on z (the ground's w rows left out), V the cell volume; with the
 //   buildings' fixed rows the residual on those faces is u = 0 and the sum 0. One box, four boxes
 //   (a face shared by two boxes) and any number of ranks give the same sum. R = 1 on every face gives the
 //   count of blocked faces, the ground's w left out.
-//   Beyond the plan: R = 1 with detJ linear in the cell indices: each face weighs the mean of its two
+//   R = 1 with detJ linear in the cell indices: each face weighs the mean of its two
 //   cells' J, the value of the linear J at the face (a J from one cell, or from the wrong neighbour, fails).
-//   UT-6.4.3: a linear shear u = S (z - dz/2) over a solid bottom layer: the viscous flux into the
+//   a linear shear u = S (z - dz/2) over a solid bottom layer: the viscous flux into the
 //   layer's fixed faces is the plate drag nu S Lx Ly.
 #include "BuildingForcing.H"
 #include "BuildingLoads.H"
@@ -115,7 +115,6 @@ struct LoadCase
     }
 };
 
-// UT-6.4.2
 TEST (BuildingLoads, PressureGradientTelescopesThroughABlock)
 {
     // Tile (2, 2): cells 3..4 in x and y; 30 m high: cells 0..2.
@@ -145,7 +144,7 @@ TEST (BuildingLoads, PressureGradientTelescopesThroughABlock)
     }
 }
 
-// Beyond the plan: the face volume J_f dx dy dzeta, J_f the mean of the face's two cells.
+// The face volume J_f dx dy dzeta, J_f the mean of the face's two cells.
 TEST (BuildingLoads, FaceVolumeIsTheMeanOfItsTwoCells)
 {
     const std::string map = write_map("block_j.txt", [] (int i, int j) { return (i == 2 && j == 2) ? 30.0 : 0.0; });
@@ -178,7 +177,6 @@ TEST (BuildingLoads, FaceVolumeIsTheMeanOfItsTwoCells)
     }
 }
 
-// UT-6.4.3
 TEST (BuildingLoads, ShearOverASolidLayerGivesThePlateDrag)
 {
     // Every tile 10 m high: the bottom layer of cells is solid; its u faces are fixed rows at z = 5 m.

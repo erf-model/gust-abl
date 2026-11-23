@@ -39,8 +39,8 @@ struct ConvectionOptions
 {
     Limiter limiter{Limiter::van_leer};
     //! eps of the van Albada limiter, in the units of q: one absolute value per
-//! call, not scaled with the mesh (> 0, eps^2 finite and normal). The driver
-//! passes a value per field.
+    //! call, not scaled with the mesh (> 0, eps^2 finite and normal). The driver
+    //! passes a value per field.
     amrex::Real smooth_eps{amrex::Real(1.e-5)};
     //! false: conservative form C(q). true: bounded form C(q) - q C(1), i.e.
     //! (1/J) sum over faces F (q_face - q): with upwind, every neighbour
@@ -55,7 +55,7 @@ std::vector<std::string> check_convection_options (const ConvectionOptions& opt)
 //! The convection options of a run, inputs convection.*:
 //! limiter (van_leer | van_albada | upwind) for the momentum and theta
 //! equations (k is always bounded upwind), smooth_eps_velocity (m/s) and
-//! smooth_eps_theta (K), the van Albada eps of each.
+//! smooth_eps_theta (K), the van Albada eps of each, and hybrid_* (HybridConvection.H).
 struct ConvectionInputs
 {
     ConvectionOptions momentum;

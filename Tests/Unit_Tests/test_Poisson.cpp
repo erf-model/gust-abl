@@ -81,11 +81,15 @@ TEST (Poisson, ManufacturedSecondOrderAllBCs)
 // ERF's ground treatment is first order on sloped ground when
 // the solution has a tangential gradient there (the mirror below the ground
 // sets d phi / d zeta = 0 in the cross terms; the Neumann condition on a slope
-// does not). Pinned, so a change to the ground treatment shows: on flat ground
+// does not). Pinned in double precision (skipped in single, where rounding
+// swamps the finest meshes), so a change to the ground treatment shows: on flat ground
 // the order is 2; over a 120 m hill it is 1 (64 -> 128 -> 256 cells); and the
 // fine-mesh error grows with the square of the slope (120 m vs 60 m: about 4).
 TEST (Poisson, GroundNeumannIsFirstOrderOnSlopes)
 {
+    if (!std::is_same_v<amrex::Real, double>) {
+        GTEST_SKIP() << "single-precision rounding swamps the error on the 128- and 256-cell meshes";
+    }
     double fine[3];
     int m = 0;
     for (const double H0 : {0.0, 60.0, 120.0}) {
@@ -98,7 +102,6 @@ TEST (Poisson, GroundNeumannIsFirstOrderOnSlopes)
             err[n++] = solve_ms(c, ms, make_bc(PoissonFace::periodic, PoissonFace::periodic, PoissonFace::dirichlet)).err;
         }
         fine[m++] = err[2];
-        if (!std::is_same_v<amrex::Real, double>) { continue; }   // float rounding swamps the finest meshes
         if (H0 == 0) {
             EXPECT_GE(order_of(err, 1), 1.95) << "flat: " << err[1] << " " << err[2];
         } else if (H0 == 120) {
@@ -108,10 +111,8 @@ TEST (Poisson, GroundNeumannIsFirstOrderOnSlopes)
             }
         }
     }
-    if (std::is_same_v<amrex::Real, double>) {
-        EXPECT_GT(fine[2] / fine[1], 3.0) << fine[1] << " " << fine[2];
-        EXPECT_LT(fine[2] / fine[1], 6.0) << fine[1] << " " << fine[2];
-    }
+    EXPECT_GT(fine[2] / fine[1], 3.0) << fine[1] << " " << fine[2];
+    EXPECT_LT(fine[2] / fine[1], 6.0) << fine[1] << " " << fine[2];
 }
 
 // Variable coefficients. The anisotropic operator

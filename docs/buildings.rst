@@ -51,7 +51,8 @@ So a building follows the ground: on a slope its roof is parallel to the terrain
 sets a fraction below it to 0 and one within it of 1 to 1. A cell is fluid at :math:`\beta = 0`, solid at
 :math:`\beta = 1` and partial otherwise.
 
-A vertical face takes the same mean along it, with its two-node mean heights; on a tile edge the taller tile counts. A
+A vertical face takes the same mean along it, with its two-node mean heights; on a tile edge the tile with the larger
+solid part counts. A
 horizontal face takes the part of its area inside a building or at its roof or underside. A face touching a solid cell then has
 fraction 1 and one between two fluid cells 0.
 
@@ -168,8 +169,8 @@ that face and of the opposite one, which is the area facing that way. The force 
 :math:`u_*^2` on the wall's area, along the flow parallel to it.
 
 On a slope the solid fraction of a roof's cells changes a little from column to column, so each carries a side bit
-(`Wall cells`_) with a small such area, 0.03 of the face on the block of the ridge below. Until this was taken as the
-area, the side's rate used the whole face's blocked part there, about 0.7, which is the building's own cross-section.
+(`Wall cells`_) with a small such area, 0.03 of the face on the block of the ridge below. The whole
+face's blocked part there is about 0.7, which is the building's own cross-section and not the area facing that way.
 
 **Edges and corners.** A cell with several walls takes the sum of their rates on each component: at an edge between a
 roof and a side normal to x, :math:`u` has the roof's rate, :math:`w` the side's, and :math:`v`, which runs along the edge,
@@ -189,8 +190,8 @@ face's row (25 % low), and ``open_faces`` and ERF give :math:`\tfrac{1}{2}` (50 
 and the mean with the zero 0.75 times; ``buildings.wall_k_speed = cell_mean`` gives that mean to the wall value of
 :math:`k` and leaves the stress as it is. On the other parallel component's row ERF takes a four-point mean that
 includes the fixed faces, so ``open_faces`` is above it there. A cell with no fixed face among those of
-its parallel components (a plain roof or side cell) is not affected. ``all_faces`` takes the mean of both faces, as
-before; it is the default with ``roof_stress``, which also accepts ``open_faces`` (the roofs' speed then skips the
+its parallel components (a plain roof or side cell) is not affected. ``all_faces`` takes the mean of both faces;
+it is the default with ``roof_stress``, which also accepts ``open_faces`` (the roofs' speed then skips the
 sides' fixed faces). A checkpoint written before this choice restarts with ``all_faces`` and is refused with
 ``open_faces``, so a ``fraction_stress`` deck that continues such a run has to name ``all_faces`` (and
 ``buildings.wall_tke = off`` and ``buildings.theta_mode = none``, for the same reason: `Turbulence`_, `Temperature`_).
@@ -377,7 +378,7 @@ cap holds :math:`\nu_t`: it is off where the cap is lifted and reduced in the ba
 buildings on terrain a hill's lee keeps them. The zone needs ``buildings.wall_tke = on`` (it reads :math:`d_b`) and acts
 only with ``turb.realizability`` > 0; the log gives the cells where it lifts the cap and where it fades. With it the
 cube's answer is the plain closure's within 0.001 m/s and 0.001 m (reattachment 1.35 H, rms 0.244 m/s). ``0`` keeps the cap
-everywhere, as before. The default rests on the cube's overall agreement; 3 is about the smallest size that keeps
+everywhere. The default rests on the cube's overall agreement; 3 is about the smallest size that keeps
 the cap off over its measured bubble. The weight is a geometric switch, not a detector of separation: a building in a
 hill's lee, or a building's wake longer than :math:`c H_b` (a wake grows with the building's width more than its
 height), gets the plain closure or the cap by its distance alone. A checkpoint
@@ -385,7 +386,7 @@ written with the cap and without the zone restarts with ``buildings.limiter_zone
 restarts only with the same ``buildings.limiter_zone`` and ``turb.realizability`` > 0. The default changes the answer of
 a run with buildings and ``turb.realizability`` > 0 written before it; no deck of the tests has that pair.
 
-``buildings.wall_tke = off`` leaves the closure as it was before these terms: :math:`k` is solved in every cell with
+``buildings.wall_tke = off`` leaves the closure without these terms: :math:`k` is solved in every cell with
 the ground's distance alone. A checkpoint written before them restarts with ``off``, together with ``buildings.wall_speed = all_faces``
 (`Momentum`_) and ``buildings.theta_mode = none`` (`Temperature`_), and is refused with ``on``. ``on``
 needs the wall law on every wall, so it is refused with ``roof_stress`` and ``drag``.
@@ -437,7 +438,7 @@ and in the implicit rows, as that of :math:`k`. The wall's flux above is the who
   heat, so a neutral run stays neutral; where :math:`\theta` leaves the profile the walls pull it back.
 - ``fixed``: :math:`\theta_b` = ``buildings.theta_surface`` (K) on every wall. Warm walls heat the air beside them,
   and with gravity on that air is buoyant, so the flow near the building is no longer neutral.
-- ``none``: :math:`\theta` as before these terms: solved in every cell, with diffusion through the buildings' faces.
+- ``none``: :math:`\theta` without these terms: solved in every cell, with diffusion through the buildings' faces.
 
 The log gives the heat the walls take from the air at the end of the run, the sum of :math:`f q` times the walls'
 area (K m³/s; negative when they heat it; with ``ambient`` in a neutral run it is zero but for the small drift of
@@ -640,10 +641,11 @@ Limits
 - A velocity row takes the mean of its two cells, so where a wall ends partway along a row's direction the sink and
   the closed flux are spread over the two rows beside the end (three quarters and one quarter where the wall ends
   mid-cell). The total force is kept.
-- The own distance is floored at :math:`10 z_0`. A wall cell less than :math:`20 z_0` across (2 m with the default
+- The distances are floored at :math:`10 z_0`. A wall cell less than :math:`20 z_0` across (2 m with the default
   ``buildings.z0``) is below it: the stress is then :math:`(\kappa / \ln 10)^2 U^2` whatever the cell size, lower than the
   log law at the true distance (about half for a 1 m cell with :math:`z_0` = 0.1 m). A partly solid cell can be below
-  it on any mesh; there the reference cell's term, which is not floored, carries most of :math:`u_*^2` (on the ridge's
+  it on any mesh; there the reference cell's term, whose distance is at least half the reference cell and so above the
+  floor on cells more than :math:`20 z_0` across, carries most of :math:`u_*^2` (on the ridge's
   36 roof cells the floored :math:`u_*^2` is 0.92 to 1.00 of the unfloored, the own term alone 0.42 to 0.83). The log gives the number of wall cells below the floor, for every wall with the law; the run goes on.
 - The distance to buildings takes one pass over the whole mesh per cell of distance it reaches. A wall as far as the
   mesh's tallest column is not looked for, since the ground is nearer (on ground rougher than the walls such a wall

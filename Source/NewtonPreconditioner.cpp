@@ -5,8 +5,6 @@
 #include "MassFlux.H"
 #include "PseudoTime.H"
 
-#include <AMReX_Print.H>
-
 #include <cmath>
 #include <limits>
 #include <string>
@@ -33,7 +31,7 @@ void copy_state (State& to, const State& from)
 {
     auto t = to.fields();
     const auto f = const_cast<State&>(from).fields();
-    for (std::size_t n = 0; n < t.size(); ++n) { amrex::MultiFab::Copy(*t[n].mf, *f[n].mf, 0, 0, 1, t[n].mf->nGrowVect()); }
+    for (int n = 0; n < static_cast<int>(t.size()); ++n) { amrex::MultiFab::Copy(*t[n].mf, *f[n].mf, 0, 0, 1, t[n].mf->nGrowVect()); }
 }
 
 //! y = r on the points with mask = 1 (the Dirichlet rows), y elsewhere.
@@ -95,11 +93,9 @@ SimplecPreconditioner::SimplecPreconditioner (const SimplecOptions& opt, int swe
     for (const auto& e : check_line_options(sweep)) { amrex::Abort(who + e); }
     // isnan first: an ordered comparison with NaN raises the invalid flag.
     if (std::isnan(inf_cfl) || !(std::isfinite(inf_cfl) && inf_cfl > 0)) {
-        amrex::Abort(who + "inf_cfl (steady.cfl_max) must be finite and > 0");
+        amrex::Abort(who + "inf_cfl (steady.newton_cfl_max) must be finite and > 0");
     }
     for (const auto& e : check_poisson_bc(m_pbc, geom)) { amrex::Abort(who + e); }
-    m_singular = true;
-    for (const PoissonFace f : m_pbc.face) { m_singular = m_singular && f != PoissonFace::dirichlet; }
     for (State* s : {&m_q0, &m_d, &m_qn}) {
         s->define(ba, dm);
         amrex::MultiFab::Copy(s->z_phys_nd, z_nd, 0, 0, 1, s->z_phys_nd.nGrow());

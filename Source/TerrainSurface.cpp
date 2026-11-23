@@ -149,8 +149,8 @@ double IdwInterpolator::operator() (double xq, double yq) const
             // dy, and no compiler can fuse it (dx * dx + dy * dy may become
             // fma(dx, dx, dy * dy) or fma(dy, dy, dx * dx)). Two points at the
             // same distance then tie exactly and the lower index wins, in
-            // every build (audit A5: on a regular grid of points the 6th and
-            // 7th neighbours tie, and the two contractions chose different
+            // every build (on a regular grid of points the 6th and 7th
+            // neighbours tie, and the two contractions choose different
             // ones, 0.23 m apart on Askervein).
             cand.emplace_back(std::fma(dx, dx, 0.0) + std::fma(dy, dy, 0.0), p);
         }

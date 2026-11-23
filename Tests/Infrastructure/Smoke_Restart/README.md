@@ -16,10 +16,14 @@ mistake and must stop.
 
 Check script: `Supporting_Files/expect_abort.py` (shared), which runs a command and requires the given messages.
 
+## Data and acknowledgements
+No external data.
+
 ## CTest
 `smoke_clean`, `smoke_run`, `smoke_restart`, `smoke_restart_matches`, `abort_restart_mesh`,
 `abort_restart_overwrite`, `abort_restart_overwrite_spelled`. All share the run directory `<build>/Tests/run/smoke`, which the reference-archive
-and Kestrel cases also read.
+and Kestrel cases also read. `inputs_smoke` is also the deck of `abort_nest_parent_missing` and
+`abort_nest_parent_not_a_checkpoint` (`Initialization/Nest_Patch_Hill`).
 
 ## Expected Results
 - The restart log shows `restarted from smoke_chk00000 at step 0` (the smoke state is mostly zeros, so the

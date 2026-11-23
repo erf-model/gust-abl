@@ -13,6 +13,11 @@ z0 = 0.03 m, along x), inflow at xlo, outflow at xhi, alpha_h = 1, alpha_v = 0.5
 
 Check script: `Supporting_Files/check_init.py askervein` (shared with `Bump_Speedup_Trend`).
 
+## Data and acknowledgements
+The terrain is ERF's Askervein terrain of `Exec/CanonicalTests/Real_Terrain/Askervein` (`extern_erf/askervein.txt`,
+recorded in `extern_erf/EXTRACTED.md`; BSD 3-clause with the LBNL clause, `extern_erf/LICENSE.md`). Thanks to the ERF
+developers. The file is redistributed in this repository; nothing has to be downloaded.
+
 ## CTest
 `rt_init_askervein`, `rt_init_askervein_matches` (double precision only, two ranks).
 

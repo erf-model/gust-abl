@@ -11,14 +11,14 @@
 // - buildings.wall_form = fraction_stress: every wall of a building takes the form 7
 //   wall law (ERF erf.if_wall_form = fraction_stress, Kynema-SGF wall_form 7), neutral:
 //     u*^2 = (1 - beta) u*_own^2 + beta u*_ref^2,  u*_x = kappa U_x / ln(d_x / z0),
-//   with the own distance floored at 10 z0 (Kynema-SGF 996cdc9e) and u*^2 = u*_own^2 where
+//   with both distances floored at 10 z0 (Kynema-SGF 996cdc9e) and u*^2 = u*_own^2 where
 //   there is no reference cell (d2 = 0). U is the speed
 //   parallel to the wall, at the cell centre: (u, v) at a roof or underside, (v, w) at a
 //   side normal to x, (u, w) at one normal to y. Each component is the mean of the cell's
 //   two faces that are not fixed rows (buildings.wall_speed = open_faces, the default with
 //   this form), in the cell and in its reference cell: in an edge or corner cell one face
 //   can lie on the other wall, and the mean with its zero would halve the speed. all_faces
-//   takes both faces, as before. A wall is a sink on the two velocity
+//   takes both faces. A wall is a sink on the two velocity
 //   components parallel to it,
 //     S = -r u_t,  r = f u*^2 / (Delta_n |U_own|),
 //   f the wall's part of its face's area (wall_area_fraction: the blocked part of the face in
@@ -38,8 +38,7 @@
 //   cell-centre spacing the cut cell read too slow and the cell above too fast, by up to 5 % of the
 //   log law in the Neutral_Column (docs/immersed_terrain.rst). Buildings keep the cell-centre spacing.
 // - buildings.wall_form = roof_stress: the law on roofs and undersides alone, the sides
-//   with their fixed rows and viscous fluxes to the zero velocity (the form before the
-//   sides had the law).
+//   with their fixed rows and viscous fluxes to the zero velocity.
 // - buildings.wall_form = drag: the fixed rows alone (Kynema-SGF's laminar pathway).
 //
 // - buildings.wall_k_speed = cell_mean: the wall value of k (BuildingTke.H) reads the law at the cell's
@@ -211,11 +210,13 @@ public:
     [[nodiscard]] const amrex::MultiFab& rate () const { return m_rate; }
     //! The component the wall value of k reads.
     [[nodiscard]] int wall_k_component () const { return m_k_cell_mean ? kBuildingUstar2K : kBuildingUstar2; }
-    //! buildings.wall_k_bound = impinging acts: the shares are filled by update.
+    //! buildings.wall_k_bound = impinging acts: the shares are filled by update. Like buildings.wall_k_speed =
+    //! cell_mean, it is off with an immersed ground and without the law on the sides.
     [[nodiscard]] bool wall_k_impinging () const { return m_k_towards; }
 
     //! The wall cells with a wall under the law, and those among them whose fluid centroid is
-    //! within 10 z0 of such a wall, where the law reads the speed as at 10 z0 (all ranks).
+    //! within 10 z0 of such a wall, where the law reads the speed as at 10 z0 (all ranks). Both are 0
+    //! with an immersed ground, whose law has no floor.
     [[nodiscard]] amrex::Long wall_cells () const { return m_wall_cells; }
     [[nodiscard]] amrex::Long cells_below_floor () const { return m_below_floor; }
 
@@ -252,8 +253,9 @@ public:
     //! The buildings' geometry of the last build (null before).
     [[nodiscard]] const Buildings* geometry () const { return m_b; }
     //! s = (cell-centre spacing) / (d2 - d1) at the roof cells, 1 elsewhere (one ghost layer); empty
-    //! without an immersed ground. Public because it launches device kernels.
+    //! without an immersed ground.
     [[nodiscard]] const amrex::MultiFab& centroid_spacing () const { return m_spacing; }
+    //! Fills centroid_spacing(). Public because it launches device kernels.
     void make_centroid_spacing ();
 
 private:
@@ -276,6 +278,14 @@ private:
 //! How many fluid cells have no open path to the largest-index region. Aborts are
 //! the caller's. A sealed pocket has its own null vector in the pressure correction.
 amrex::Long count_sealed_fluid_cells (const Buildings& b, const amrex::Geometry& geom);
+
+//! The label count_sealed_fluid_cells starts a fluid cell with: its index in the domain, x fastest. amrex::Long:
+//! above 2^31 cells the index does not fit an int.
+AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
+amrex::Long sealed_cell_label (int i, int j, int k, const amrex::Dim3& lo, const amrex::Dim3& len) noexcept
+{
+    return amrex::Long(i - lo.x) + amrex::Long(len.x) * (amrex::Long(j - lo.y) + amrex::Long(len.y) * amrex::Long(k - lo.z));
+}
 
 } // namespace gust
 

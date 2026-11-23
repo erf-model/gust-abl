@@ -21,6 +21,11 @@ hierarchy, and that invalid hierarchy inputs stop the run.
 
 Check scripts: `Supporting_Files/check_mesh.py` (shared with `Terrain_Mesh`) and `Supporting_Files/expect_abort.py`.
 
+## Data and acknowledgements
+The terrain is ERF's Askervein terrain of `Exec/CanonicalTests/Real_Terrain/Askervein` (`extern_erf/askervein.txt`,
+recorded in `extern_erf/EXTRACTED.md`; BSD 3-clause with the LBNL clause, `extern_erf/LICENSE.md`). Thanks to the ERF
+developers. The file is redistributed in this repository; nothing has to be downloaded.
+
 ## CTest
 - `rt_askervein_hierarchy`, `rt_askervein_hierarchy_level1_matches`, `rt_askervein_hierarchy_level2_matches`
   (both precisions; the JSON check in double precision only).

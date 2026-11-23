@@ -10,14 +10,12 @@
 
 
 #include <AMReX_BoxList.H>
-#include <AMReX_ParmParse.H>
 #include "NestFaces.H"
 
 #include <AMReX_TagParallelFor.H>
 
 #include <algorithm>
 #include <cmath>
-#include <cstdio>
 #include <limits>
 #include <string>
 
@@ -94,12 +92,6 @@ BoundaryConditions::BoundaryConditions (const BoundaryInputs& in, const amrex::G
     }
 }
 
-bool BoundaryConditions::has_inflow () const
-{
-    for (const FaceType t : m_in.face) { if (t == FaceType::inflow) { return true; } }
-    return false;
-}
-
 namespace {
 
 //! One field's ghosts at one face of one box: both ghost layers (and the face
@@ -110,7 +102,7 @@ namespace {
 //! never one that another point of the launch writes, when the domain is
 //! wider than the ghost layers along d (fill_direction checks that). The order
 //! within the launch then does not matter, and the values are those of the
-//! fill with one launch per field, face, box and layer (before audit A9).
+//! fill with one launch per field, face, box and layer.
 struct FillTag
 {
     amrex::Array4<amrex::Real> a;
@@ -259,7 +251,7 @@ void add_field_tags (amrex::Vector<FillTag>& tags, amrex::MultiFab& q, int f, in
 //! the rank, in one launch. When the domain is not wider than the ghost
 //! layers along d, one face's ghosts read the other face's points (on two
 //! cells, u(-2) mirrors the high face point u(2)), so the fill is two
-//! launches, low face first, as before audit A9.
+//! launches, low face first.
 void fill_direction (State& q, int d, const BoundaryInputs& in, const amrex::Geometry& geom, const InflowProfile::View& prof,
                      const CoriolisOptions& cor, const amrex::MultiFab* ground_grad, bool homogeneous)
 {
@@ -583,7 +575,7 @@ const BoundaryConditions::GhostSlabs& BoundaryConditions::ghost_slabs (const amr
 //! Make every copy of a ghost cell hold one value. A box fills the ghosts of
 //! its whole fab, but in its outermost lateral ghost layer some of what the
 //! rules read is not in the fab (the heights have one lateral ghost layer, the
-//! wall law's gradient two), so the box's value there differed from the one
+//! wall law's gradient two), so the box's value there differs from the one
 //! the box owning that column computes. Each cell outside the domain takes the
 //! value of the box whose (lateral) column it is in: the box touching that
 //! face, the slab outside it, across its valid extent along the face (the
@@ -613,7 +605,7 @@ void BoundaryConditions::sync_ghost_copies (amrex::MultiFab& mf) const
 namespace {
 
 //! Whether the normal velocity of direction d has a Dirichlet value on face
-//! (d, lo), and that value (profile: NaN marks "the inflow profile").
+//! (d, lo); t receives the face's type.
 bool dirichlet_normal (const BoundaryInputs& in, int d, bool lo, FaceType& t)
 {
     t = in.face[amrex::Orientation(d, lo ? amrex::Orientation::low : amrex::Orientation::high)];
@@ -625,10 +617,10 @@ bool dirichlet_normal (const BoundaryInputs& in, int d, bool lo, FaceType& t)
 //! w = z_x u_f + z_y v_f (MassFlux_K.H; 0 over flat ground), with the two
 //! ghost layers mirrored about it (2 V - the interior), after the generic
 //! value fill of w in z. u and v are filled (their lateral ghosts) before w.
-//! The same formula serves the homogeneous fill (it is linear).
-// With the homogeneous fill the value is linear in the perturbation's u, v
-// given their homogeneous ghosts (the wall law's gradient of the nonlinear
-// fill is not differentiated here; no production caller fills homogeneously).
+//! The same formula serves the homogeneous fill: the value is linear in the
+//! perturbation's u, v given their homogeneous ghosts (the wall law's gradient
+//! of the nonlinear fill is not differentiated here; no production caller
+//! fills homogeneously).
 void fill_no_flux_w (State& q, const BoundaryInputs& in, const amrex::Geometry& geom)
 {
     const amrex::Box& dom = geom.Domain();

@@ -19,4 +19,4 @@ Askervein hill run to steady on ERF's grid (`extern_erf/askervein.txt`). The fol
 | `RUSHIL` | (comparison case) | The RUSHIL 2-D hills (a/H = 3, 5, 8) against the wind tunnel (ERCOFTAC AC5-05). |
 | `URANS_Averages` | `rt_urans_mean_option` | The time mean of the unsteady run against the steady run of the same deck: RUSHIL Hill 5 and Askervein with ERF's setup (comparison cases); the CTest checks the `--mean` option of the readers. |
 
-The first three use `Supporting_Files/expect_abort.py --success "gust: steady after"` to require the verdict.
+`Askervein`, `Askervein_210` and `Askervein_CNBL` use `Supporting_Files/expect_abort.py --success "gust: steady after"` to require the verdict.

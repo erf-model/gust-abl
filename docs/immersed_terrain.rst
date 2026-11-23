@@ -9,8 +9,8 @@ choice is made once, at start-up, and cannot change across a restart.
 
 **Status.** A flat or sloping ground (``terrain.type`` = ``flat``, ``agnesi``, ``xyz`` or ``erf_grid``) in a neutral
 run with SIMPLEC and z-line sweeps, laterally periodic or with inflow and outflow faces (`Open faces`_).
-The roughness length is one value or a map (``bc.surface_z0_file``, `Roughness map`_). Stratification, buildings,
-canopies and nests on an immersed ground are not supported yet; `Limits`_ lists what the run refuses. ``body_fitted`` remains the default and its answers are
+The roughness length is one value or a map (``bc.surface_z0_file``, `Roughness map`_). Stratification, buildings
+and nests on an immersed ground are not supported yet; a forest canopy is, without ``canopy.heat = fixed``; `Limits`_ lists what the run refuses. ``body_fitted`` remains the default and its answers are
 unchanged.
 
 .. list-table::
@@ -187,7 +187,7 @@ fluid's depth. Buildings keep the force on the whole control volume.
 closed, in the residual and in the implicit rows (each coupling times the face's open part, the diagonal kept), as
 for :math:`k`. A solid cell's :math:`\theta` therefore reaches no fluid cell, also through the side faces on a steep
 slope where a column's ground drops by more than a layer to the next column (unit test
-``ImmersedTerrain.ThetaIsNotConductedThroughTheGround``). Before this closure the solid cells conducted
+``ImmersedTerrain.ThetaIsNotConductedThroughTheGround``). Without this closure the solid cells would conduct
 :math:`\theta` as fluid cells do. A uniform ``bc.theta_profile`` is still required (`Limits`_), so the answers of the
 runs that are accepted do not change; the closure is in place for a stratified immersed ground.
 
@@ -1003,6 +1003,5 @@ Limits
 - The column is verified with :math:`z_0` = 0.1 m on 15.6 m layers. With :math:`z_0` = 1 m the cells above the cut
   cell are 1.3 to 2.9 % below the log law at :math:`f = 0.7`.
 - Against the terrain-following mesh the wind over a ridge and a round hill is 2 to 5 % lower, and lower still in
-  the lee near the ground (`Verification`_); the cause is not isolated. Not run on an immersed ground: a terrain
-  from a file in the application (the unit tests fill and hash one), stretched layers on a slope, and slopes
-  above 18°.
+  the lee near the ground (`Verification`_); the cause is not isolated. Not run on an immersed ground: stretched
+  layers on a slope.

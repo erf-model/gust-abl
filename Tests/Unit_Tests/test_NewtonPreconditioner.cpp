@@ -2,7 +2,8 @@
 // system, on a terrain mesh in several boxes, shared faces included; a
 // constant shift of p leaves the preconditioned solve unchanged; GMRES
 // iterations per Newton step grow by less than 50 % from CFL 10 to 1e4 with
-// simplec, not with the identity; and also the reader of
+// simplec, not with the stage's own pressure denominator, and the identity
+// needs at least 5 times the iterations; and also the reader of
 // steady.newton_preconditioner, the range checks, the setup contract, the
 // linearity of apply in r and the identity-vs-simplec regression in the
 // continuation loop on the open hill.
@@ -64,7 +65,9 @@ void copy_state (gust::State& to, gust::State& from)
 {
     auto t = to.fields();
     const auto f = from.fields();
-    for (std::size_t n = 0; n < t.size(); ++n) { amrex::MultiFab::Copy(*t[n].mf, *f[n].mf, 0, 0, 1, t[n].mf->nGrowVect()); }
+    for (std::size_t n = 0; n < static_cast<std::size_t>(t.size()); ++n) {
+        amrex::MultiFab::Copy(*t[n].mf, *f[n].mf, 0, 0, 1, t[n].mf->nGrowVect());
+    }
 }
 
 // max |a - b| over the valid points (a and b on the same layout).
@@ -580,7 +583,7 @@ TEST(NewtonPreconditioner, IterationsBoundedOverCfl)
 // pseudo-transient continuation loop (Continuation.H) on the open hill: both
 // converge to 1e-8 of the first residual, to the same state (1e-6 of the
 // speed scale), the identity in the steps and with the first residual
-// test_Continuation.cpp pins (8 accepted steps, 11.343), simplec in at most
+// test_Continuation.cpp pins (8 accepted steps, 11.344), simplec in at most
 // as many steps with at most a fifth of the GMRES iterations. The
 // preconditioner is set up once per attempt, with that attempt's dtau (the
 // infinite dtau at the cap: the step from steady.cfl_max).
@@ -599,7 +602,8 @@ TEST(NewtonPreconditioner, ContinuationIdentityVersusSimplec)
     EXPECT_TRUE(ra.converged);
     EXPECT_TRUE(rb.converged);
     EXPECT_EQ(ra.steps, 8);
-    // 11.328 before audit A2; 11.343 with bc.outflow_transport = from_velocity (v1.0.0)
+    // 11.328 before the wall model took the ground cell's wind parallel to the ground; 11.344 with
+    // bc.outflow_transport = from_velocity (v1.0.0)
     EXPECT_NEAR(static_cast<double>(pa.records().front().residual), 11.344, 1e-3);
     EXPECT_LE(rb.steps, ra.steps);
     int ia = 0, ib = 0;

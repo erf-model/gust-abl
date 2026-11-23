@@ -1,9 +1,9 @@
 #ifndef GUST_JOINT_RUN_H_
 #define GUST_JOINT_RUN_H_
 
-// The joint two-level run (nest.feedback = defect; plan rev. 6 tracker,
-// PR-70; nest.feedback = relax, PR-71, takes NestRelax::set in place of
-// NestDefect::set in step 1, NestRelax.H; nest.feedback = inject, row N-114 item 2,
+// The joint two-level run (nest.feedback = defect; nest.feedback = relax
+// takes NestRelax::set in place of NestDefect::set in step 1, NestRelax.H;
+// nest.feedback = inject
 // replaces the outer state on the source's region in step 1 instead, NestInject.H). The outer domain and its nests have each run one way to steady
 // (Nests.H) and stay in memory (Run.cpp holds every run_domain open through
 // DomainRole::joint). Then, each exchange:
@@ -63,7 +63,7 @@ struct JointResult
     std::vector<amrex::Real> window;   //!< the window's changes at the end, oldest first (for the joint record)
 };
 
-//! Run the exchanges: members[0] is the outer domain (with its defect source),
+//! Run the exchanges: members[0] is the outer domain (with its feedback: defect source, relaxation or injection),
 //! the others its nests (with their parent images and faces); first_exchange: the exchanges an earlier run took
 //! (a joint restart; 0: none), so this run takes at most max_exchanges - first_exchange; prior_window: a joint
 //! restart's window from its record (JointRecord.H; empty: none), the outer domain's feedback already restored.

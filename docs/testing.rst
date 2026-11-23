@@ -10,14 +10,16 @@ Conventions
   log or a gold file, a few with ``amrex_fcompare`` against a gold plotfile. The check scripts print
   *measured / target / tolerance / pass* rows. ``ctest -L smoke`` runs the checks CI does on every pull request.
   The longer converged runs carry the label ``regression`` alone or ``nightly``; no CI job or Kestrel script runs
-  them yet, so they are run by hand (``ctest -L regression``, ``ctest -L nightly``).
+  them yet, so they are run by hand (``ctest -L regression``, ``ctest -L nightly``). The case folders
+  ``Nest_Placement_Runs``, ``Column_Marching`` and ``Smooth_Plateau_2D`` in ``Tests/Canonical_RANS/`` have no
+  CTest; they are run by hand (each folder's README).
 - **Performance tests** (iterations, wall time and allocation-unit cost against a stored value) do not exist yet.
 - **Gold files** change only in a reviewed commit.
 
 Every test is first shown to fail on the bug it guards against, or on a one-line mutant of the code it covers.
 
 The one-line mutants of the ``gmres_mlmg`` default (``Source/Poisson.H``, ``Source/Initializer.cpp``,
-``Source/App.cpp``), each run against ``unit_np2``, ``rt_steady_askervein`` and (M1) ``rt_init_askervein``; every one
+``Source/App.cpp``), each run against ``unit_np2``, ``rt_steady_askervein`` and (P1) ``rt_init_askervein``; every one
 is killed:
 
 .. list-table::
@@ -51,8 +53,8 @@ is killed:
      - ``PoissonB.UnsupportedCombinationsAreRefused`` (``unit_np2``)
 
 The one-line mutants of the line-sweep variants (``Source/LineSweeps.cpp`` and ``Source/Driver.cpp``), each run against
-``LineSweeps.*``, ``Driver.*`` and ``Predictor.Lusgs*`` on two ranks by ``tools/line_sweep_mutants.py``; every one
-is killed:
+``LineSweeps.*``, ``Driver.*`` and ``Predictor.Lusgs*`` on two ranks by
+``tools/line_sweep_mutants.py``; every one is killed:
 
 .. list-table::
    :header-rows: 1
@@ -385,7 +387,7 @@ for them. One candidate was equivalent and is not in the table: a zone that star
      - The rate without 1 / N
      - ``ZoneRateAndSourceEqualTheClosedForm``
    * - F14
-     - Bc.nest_relax_factor ignored
+     - ``bc.nest_relax_factor`` ignored
      - ``ZoneRateAndSourceEqualTheClosedForm``
    * - F15
      - The zone one cell short on a high face
@@ -439,10 +441,10 @@ for them. One candidate was equivalent and is not in the table: a zone that star
      - The blend's two grounds swapped
      - ``BlendedGroundIsTheParentsOnTheFaceAndThePatchsInside``
    * - F32
-     - Bc.nest_relax_width not bounded by the patch
+     - ``bc.nest_relax_width`` not bounded by the patch
      - ``InputFaultsAreRefusedNamingTheKey``
    * - F33
-     - Terrain.nest_blend_width of half the patch accepted
+     - ``terrain.nest_blend_width`` of half the patch accepted
      - ``InputFaultsAreRefusedNamingTheKey``
    * - F34
      - A nest face without bc.nest_parent accepted
@@ -586,7 +588,8 @@ off fails case ``nests_hill_stf`` of its self-test.
 
 The mutants of the two-way nests' restriction and defect source (``Source/NestDefect.cpp``), each run
 against ``NestDefect.*`` on two ranks with the unit-test flags by ``tools/nest_defect_mutants.py`` (macOS arm64,
-AppleClang). All 19 are killed (D11 came with N-114 item 8, D12–D19 with N-114 item 7).
+AppleClang). All 19 are killed (D11 came with the restriction of nests that touch, D12–D19 with the
+open-face-area weights of the restriction).
 
 .. list-table::
    :header-rows: 1
@@ -627,7 +630,7 @@ AppleClang). All 19 are killed (D11 came with N-114 item 8, D12–D19 with N-114
      - u copied onto the parent without the periodicity
      - ``RestrictionSetsBothCopiesOfAPeriodicSeamFace``
    * - D11
-     - Each nest restricted in full (u, v, then w) before the next, the order before N-114 item 8
+     - Each nest restricted in full (u, v, then w) before the next (the earlier order)
      - ``TouchingNestsKeepTheRestrictedOmegaOnBothFootprints``
    * - D12
      - u: the nest's full face areas (``ax``) in the flux, in place of ``flux_area``
@@ -778,7 +781,7 @@ log check, and the first two-nest layout (the crest nest ending at x = 900 m, on
 ratio at 3.33.
 
 The one-line mutants of the conservative nest faces (``Source/NestFaceFlux.cpp``, and ``NestDefect::add`` in
-``Source/NestDefect.cpp``; N-114 item 1), each run against ``NestFaceFlux.*`` on two ranks with the unit-test flags by
+``Source/NestDefect.cpp``), each run against ``NestFaceFlux.*`` on two ranks with the unit-test flags by
 ``tools/nest_face_flux_mutants.py`` (macOS arm64, AppleClang). All 8 are killed.
 
 .. list-table::
@@ -1076,9 +1079,9 @@ mesh (one box, dx the smaller spacing); the test now uses four boxes with dy < d
 The one-line mutants of ``simplec.theta = frozen`` (``Source/Simplec.cpp``, ``Source/Residual.cpp``,
 ``Source/Predictor.cpp``, ``Source/Sequencing.cpp``, ``Source/App.cpp``, ``Source/BoundaryConditions.cpp``) by
 ``tools/frozen_theta_mutants.py`` (macOS arm64, AppleClang): F1–F7 and F16–F19 against ``FrozenTheta.*`` on two ranks
-with the unit-test flags, F8–F15 and F20–F23 against the CTests ``rt_frozen_theta``, ``abort_simplec_theta_*`` and
-``rt_nests_flat_abl_buoyant``
-(the wiring of the application, which the unit tests do not reach). All 23 are killed.
+with the unit-test flags, F8–F15 and F20–F27 against the CTests ``rt_frozen_theta``, ``abort_simplec_theta_*``,
+``rt_nests_flat_abl_buoyant`` and ``*nest_faces_frozen*``
+(the wiring of the application, which the unit tests do not reach). All 27 are killed.
 
 .. list-table::
    :header-rows: 1
@@ -1277,7 +1280,7 @@ checked by ``rt_unsteady_hill2d``: without it every step stops at ``unsteady.max
 
 The one-line mutants of the unsteady outputs and the restart (``Source/UnsteadyOutput.cpp`` and
 ``Source/TimeDriver.cpp``), each run against ``UnsteadyOutput.*`` and ``TimeDriver.Resume*`` on two ranks with the
-unit-test flags by ``tools/unsteady_output_mutants.py`` (macOS arm64, AppleClang). All 10 are killed.
+unit-test flags by ``tools/unsteady_output_mutants.py`` (macOS arm64, AppleClang). All 15 are killed.
 
 .. list-table::
    :header-rows: 1
@@ -1334,8 +1337,10 @@ unit-test flags by ``tools/unsteady_output_mutants.py`` (macOS arm64, AppleClang
 
 The one-line mutants of the immersed ground (``Source/BuildingForcing.H``, ``Source/BuildingForcing.cpp``,
 ``Source/ImmersedStrain.cpp``, ``Source/Residual.cpp``, ``Source/ImmersedTerrain.cpp``, ``Source/Inputs.cpp``,
-``Source/Sequencing.cpp``, ``Source/Heights_K.H`` and ``Source/LogShear.cpp``),
-each run against ``ImmersedTerrain.*``, ``LogShear.*`` and ``Inputs.ImmersedTerrain*`` on one rank, with a rebuild
+``Source/Sequencing.cpp``, ``Source/Heights_K.H``, ``Source/LogShear.cpp``, ``Source/BoundaryDamping.cpp``,
+``Source/Canopy.cpp`` and ``Source/CanopyTke.cpp``),
+each run against ``ImmersedTerrain.*``, ``LogShear.*`` and ``Inputs.ImmersedTerrain*`` on one rank (IT22 to IT27 on
+two ranks, see below), with a rebuild
 from the restored sources between two mutants (macOS arm64, AppleClang). All are killed. IT9 (the check of
 ``mesh.is_periodic`` dropped) is retired: the check was removed when inflow and outflow faces were allowed, and
 ``Inputs.ImmersedTerrainChecksNameTheInput`` now requires that such a deck is accepted.
@@ -1887,8 +1892,13 @@ Clang and AppleClang 39 are, and C2 cannot be told apart from the original.
      - ``steady.newton_gmres_max_iters`` = 0 accepted
      - ``InputReadersAndRangeChecks``
 
-The tests run with the GPU CI flags (see :doc:`running`). Each test runs in its own directory under
-``<build>/Tests/run/``.
+The tests run with the GPU CI flags (see :doc:`running`). Each test runs in a directory under
+``<build>/Tests/run/``: its own by default; the tests of a chain (a run and the checks of its output) share one.
+The tests whose check reads plotfiles or arrays with numpy (``rt_immersed_open_faces`` and
+``rt_immersed_open_faces_*``, ``rt_immersed_roughness_step``, ``rt_immersed_canopy_*``,
+``rt_immersed_askervein_coarse``, ``rt_nests_two_way``, ``rt_nests_relax``, ``rt_nests_relax_consistent``,
+``rt_nests_feedback_flux``, ``rt_nests_inject``, ``rt_nests_flat_abl_*`` and ``speed_difference_selftest``) are
+registered only when the configure's Python has numpy; the configure names them when it leaves them out.
 
 Each case has its own folder ``Tests/<group>/<case>/`` with a ``README.md``, its input decks, its check script and
 its gold files (``Gold/``); ``Tests/README.md`` lists the groups. Check scripts used by more than one case and the
@@ -1997,6 +2007,13 @@ Current tests
        checkpoint with the ground's record; a restart on another box layout and 3 ranks accepts it; a restart with
        another ``terrain.flat_height``, or with a body-fitted ground, stops naming ``io.restart``; a ground inside
        the mesh's first layer, ``buildings.type``, ``canopy.heat = fixed`` and ``bc.surface_zref`` stop naming the input.
+   * - ``hybrid_ground_clean``, ``hybrid_ground_run``, ``hybrid_ground_restart``, ``abort_hybrid_restart_width``
+     - The hybrid mesh in the application (``terrain.representation = hybrid`` on the 2-D ridge of
+       ``Tests/Canonical_RANS/Immersed_Ridge_2D``, without ``terrain.flat_height`` and
+       ``terrain.hybrid_half_width``): the run on 2 ranks logs the default half-width (80 m, 2 cells) and writes
+       a checkpoint; a restart on 3 ranks with the defaults again accepts it; a restart with
+       ``terrain.hybrid_half_width = 100`` (the same 2 nodes, another value) stops naming ``io.restart``. Labels
+       ``regression;smoke``.
    * - ``immersed_z0_map_clean``, ``immersed_z0_map_run``, ``immersed_z0_map_restart``,
        ``abort_immersed_z0_map_restart_other_map``, ``abort_immersed_z0_map_restart_uniform``,
        ``abort_immersed_z0_map_restart_neighbors``, ``abort_immersed_z0_map_missing``, and the same seven with
@@ -2098,7 +2115,7 @@ Current tests
        mistakes stops, naming each input.
    * - ``abort_unknown_key``, ``abort_range``, ``abort_repeated_key``, ``abort_restart_mesh``,
        ``abort_restart_overwrite``, ``abort_restart_overwrite_spelled``, ``abort_column_guess_file_no_column``
-     - Decks that must stop, with the input named in the message. Audit A10: ``io.restart = ./smoke_chk00000/``
+     - Decks that must stop, with the input named in the message. ``io.restart = ./smoke_chk00000/``
        with ``io.chk_file = smoke_chk`` stops (before, the guard compared the strings, and the run moved the
        checkpoint it had read to ``smoke_chk00000.old.*``); ``io.column_guess_file`` without the column guess is
        refused.
@@ -2229,8 +2246,8 @@ Current tests
        ``nest``, ``nest`` without ``bc.nest_parent``, ``bc.nest_parent`` without ``nest`` and a directory with no
        checkpoint ``Header`` each stop the run, naming the key.
    * - ``rt_nest_validation_hill`` (fixtures ``rt_nest_validation_clean``, ``_parent``, ``_reference``, ``_d400``, ``_d600``)
-     - One-way nesting against a uniform fine run (``Tests/Canonical_RANS/Nest_Validation``; sub-phase 9.3, beyond
-       the plan): a 150 m round Agnesi hill of half-width 250 m in 3200 m × 2400 m. The whole domain runs to steady
+     - One-way nesting against a uniform fine run (``Tests/Canonical_RANS/Nest_Validation``):
+       a 150 m round Agnesi hill of half-width 250 m in 3200 m × 2400 m. The whole domain runs to steady
        on 100 m cells (the parent, 103 iterations) and on 50 m cells (the reference, 107), each in four boxes on two
        ranks, and 50 m patches of half-width 400 m (four boxes, two ranks) and 600 m (six boxes of 12 × 8 cells,
        three ranks) run to steady with four
@@ -2251,8 +2268,8 @@ Current tests
        boxes on 1, 2 and 4 ranks. Targets T1 to T5 of
        the README are the verdict (:doc:`boundary_conditions`, *Where to put the nest faces*).
    * - ``rt_nest_shapes_cube`` (fixtures ``rt_nest_shapes_clean``, ``_cube_parent``, ``_cube_reference``, ``_cube_d70``)
-     - A one-way patch around a building against a uniform fine run (``Tests/Canonical_RANS/Nest_Shapes``;
-       sub-phase 9.4, beyond the plan; RT-9.4.2): the 30 × 30 × 20 m block of ``Building_Cube`` in 480 m × 240 m,
+     - A one-way patch around a building against a uniform fine run (``Tests/Canonical_RANS/Nest_Shapes``):
+       the 30 × 30 × 20 m block of ``Building_Cube`` in 480 m × 240 m,
        periodic in y. The whole domain runs to steady on 10 m cells (the parent) and on 5 m cells (the reference),
        and a 5 m patch of half-width 70 m with four ``nest`` faces (walls 55 m from them) from the parent, each in four
        boxes on two ranks. ``nest_shapes.py compare``: the RMS of the velocity-vector difference between patch and
@@ -2260,7 +2277,7 @@ Current tests
        5.298 m/s (measured 1.394 %) and at most a quarter of the parent's (18.431 %). Mutant: the patch's buildings
        placed one cell off in x (``Source/Buildings.cpp``) fails it (10.823 %).
    * - ``rt_nest_shapes_cube_ratio4``, ``rt_nest_shapes_cube_chain2``, ``rt_nest_shapes_cube_ratio4_vs_chain``, ``rt_nest_shapes_cube_ratio4_ranks1``, ``rt_nest_shapes_cube_ratio4_ranks4`` (fixtures ``_cube_parent20``, ``_cube_r4``, ``_cube_r4_np1``, ``_cube_r4_np4``, ``_cube_c10``, ``_cube_chain``)
-     - ``bc.nest_ratio`` (beyond the plan). The same cube from a 20 m parent: a 5 m patch at ratio 4 (half-widths
+     - ``bc.nest_ratio``. The same cube from a 20 m parent: a 5 m patch at ratio 4 (half-widths
        70 m by 60 m) and a chain of two ratio-2 patches (10 m at 90 m by 100 m, then 5 m at 70 m by 60 m), against
        the 5 m reference. ROI velocity RMS: ratio 4 at most 5 % (measured 3.969 %) and 0.15 of the parent's
        (42.03 %); chain at most 3.5 % (2.598 %) and 0.1 of the parent's; ratio 4 against the chain at most 2 %
@@ -2269,7 +2286,7 @@ Current tests
    * - ``rt_nest_shapes_study`` (``nightly``; fixture ``rt_nest_shapes_study_clean``)
      - The study of the case README on four ranks for the hill, the escarpment, the cube and the plate: the
        reference, the parent and patches at three distances from each shape, and the middle distance in four boxes
-       on 1, 2 and 4 ranks for the hill and the cube (RT-9.4.1, RT-9.4.3, PT-9.4.1). Targets T1 to T4 of the README
+       on 1, 2 and 4 ranks for the hill and the cube. Targets T1 to T4 of the README
        are the verdict. The ridge, which misses T1 and T2 (README, *Expected Results*), is not run.
    * - ``rt_askervein_nest_study`` (``nightly``; fixture ``rt_askervein_nest_clean``)
      - One-way nesting on Askervein (``Tests/Real_Terrain/Askervein_Nest``) on four ranks: the 40 m parent, the 20 m
@@ -2278,8 +2295,8 @@ Current tests
        difference (measured 0.035 and 0.015 % against 1.208 %), no growth with the half-width, and no net-flux
        warning (targets A1 to A3).
    * - ``rt_nest_faces_flat``, ``rt_nest_faces_flat_zone`` (fixtures ``rt_nest_faces_clean``, ``rt_nest_faces_flat_parent``)
-     - A patch at 2 2 1 with four ``nest`` faces on flat ground (``Tests/Canonical_RANS/Nest_Faces``; sub-phase 9.2,
-       beyond the plan). The parent (32 × 24 × 16 cells of 50 m, periodic in y, log-law inflow from 20°, neutral)
+     - A patch at 2 2 1 with four ``nest`` faces on flat ground (``Tests/Canonical_RANS/Nest_Faces``).
+       The parent (32 × 24 × 16 cells of 50 m, periodic in y, log-law inflow from 20°, neutral)
        runs to steady on two ranks (79 iterations); the patch (parent cells 8–23 by 6–17, boxes of at most 13 × 9
        cells) starts from its checkpoint and runs to steady on three ranks (64 iterations), and on two ranks with
        ``bc.nest_relax_width = 4`` (63). ``check_nest_faces.py``: the log names the nest faces and the net flux as
@@ -2317,15 +2334,15 @@ Current tests
      - A ``nest`` face without ``bc.nest_parent``, without the parent's first guess or a restart, or with
        ``steady.sequencing = 1``; ``bc.nest_relax_width`` of half the patch or ``bc.nest_relax_factor`` = 0;
        ``terrain.nest_blend_width`` of half the patch; the three keys without a ``nest`` face; a building tile
-       (``building_near_face.txt``, x in [425, 450] m) within the 50 m gap of the face ``bc.xlo`` (UT-9.4.2 run end
+       (``building_near_face.txt``, x in [425, 450] m) within the 50 m gap of the face ``bc.xlo`` (the case of the ``NestBuildings`` unit tests run end
        to end; the message names the tile, its top, the gap and the face); and a Rayleigh layer on u, v and k with no
        ``inflow`` face: each stops the run, naming the key.
    * - ``rt_nest_faces_building_inside`` (fixture ``rt_nest_faces_hill_parent``)
      - The hill patch with a 75 m × 75 m × 20 m block clear of its nest faces (``building_inside.txt``) runs five iterations
-       on two ranks in nine boxes and writes its checkpoint; the log must report solid cells (9 solid, 9 partial and 33 wall cells; solid volume 112 500 m³) (sub-phase 9.4, beyond the plan; before, buildings with a
+       on two ranks in nine boxes and writes its checkpoint; the log must report solid cells (9 solid, 9 partial and 33 wall cells; solid volume 112 500 m³) (before, buildings with a
        ``nest`` face stopped the run).
    * - ``rt_nest_faces_frozen`` (fixture ``rt_nest_faces_frozen_parent``), ``rt_nest_faces_frozen_building``, ``_building_theta``, ``rt_nest_faces_frozen_inflow``, ``_inflow_theta``, ``abort_nest_faces_frozen_canopy_blend``, ``_building_theta``, ``_unsteady``
-     - ``simplec.theta = frozen`` in a patch of a parent run (beyond the plan). The hill parent with a sounding of 300 K
+     - ``simplec.theta = frozen`` in a patch of a parent run. The hill parent with a sounding of 300 K
        at the ground and 304 K at 800 m, θ solved, is steady in 85 iterations. Its patch, whose own sounding is 310 K to
        330 K, runs for 1 iteration and to steady (109 iterations) on two ranks in nine boxes: the log names the
        parent's θ as the held field; θ's residual is 0 in every iteration; θ is the same bit for bit in the two
@@ -2336,7 +2353,7 @@ Current tests
        one-iteration run's bit for bit. ``canopy.heat_frozen = blend`` (``canopy_inside.txt``),
        ``buildings.theta_mode = ambient`` and ``steady.stage = unsteady`` each stop the run, naming the key.
    * - ``rt_nests_one_process``
-     - Nests in one run (``Tests/Canonical_RANS/Nests_One_Process``; PR-69): the hill parent of ``Nest_Faces`` with a
+     - Nests in one run (``Tests/Canonical_RANS/Nests_One_Process``): the hill parent of ``Nest_Faces`` with a
        Rayleigh layer on every field above 400 m, and two touching nests given by ``nest.names`` and their corners
        only (32 × 24 × 16 and 12 × 12 × 16 cells of 25 m), on two ranks. ``check_nests_one_process.py``: the outer
        domain's final plotfile equals that of the same deck without nests, and each nest's that of its own deck with
@@ -2364,7 +2381,7 @@ Current tests
      - The ``rt_nests_one_process`` deck with one nest and ``init.z_agl_min = 5``, a key of the outer profile first
        guess: the nest runs (it does not check the outer deck's ``init.*`` keys).
    * - ``rt_nests_two_way``
-     - Two-way nests (``Tests/Canonical_RANS/Nests_Two_Way``; PR-70, ``nest.feedback = defect``): a 100 m Agnesi hill
+     - Two-way nests (``Tests/Canonical_RANS/Nests_Two_Way``; ``nest.feedback = defect``): a 100 m Agnesi hill
        (half-width 150 m) on 50 m outer cells, the uniform 25 m run as the reference, on two ranks with the GPU-CI
        flags. With the nest ``hill`` and again with the touching nests ``crest`` and ``lee``: the joint log's start
        line, the largest :math:`|S|` per exchange and the steady line; the one-way plotfiles before the joint ones;
@@ -2372,18 +2389,18 @@ Current tests
        0.418, ``lee`` 0.606) of the one-way one, and over the outer cells outside the footprints at most 0.6
        (0.340) or 0.9 (0.801).
    * - ``rt_nests_relax``
-     - Two-way nests by relaxation (``Tests/Canonical_RANS/Nests_Two_Way``, ``check_nests_two_way.py --relax``; PR-71,
+     - Two-way nests by relaxation (``Tests/Canonical_RANS/Nests_Two_Way``, ``check_nests_two_way.py --relax``;
        ``nest.feedback = relax``): the ``rt_nests_two_way`` hill with the nest ``hill``, the defect run beside joint
        runs at ``nest.feedback_factor`` = 1, 4 and 16, on two ranks with the GPU-CI flags. Each run's start line names
        the factor; the outer domain minus the restricted nest under the nest (the log's last RMS of u) falls with the
        factor, and at 16 is at most 0.35 of its value at 1 (measured 0.19); at factor 1 the nest's u RMS against the
        25 m run is at most 0.5 of the one-way one (0.41) and the outer domain's outside the footprint at most 0.6
-       (0.35). Old against new default (tracker N-114 item 13): a run without the key names 0.5 on its start line,
+       (0.35). Old against new default: a run without the key names 0.5 on its start line,
        and its nest u RMS is at most 0.8 of the factor-1 run's (measured 0.694) and its outer one at most 1.05
        (1.00). About 50 s alone on an Apple M-series laptop (about 2 minutes under ``ctest -j 4``), most of it the
        factor-16 run (508 exchanges).
    * - ``rt_nests_relax_consistent``
-     - Pressure-consistent relaxation (``check_nests_two_way.py --relax-consistent``; tracker N-114, item 12,
+     - Pressure-consistent relaxation (``check_nests_two_way.py --relax-consistent``;
        ``nest.feedback = relax_consistent``), old against new: the ``rt_nests_relax`` hill with the nest ``hill``, the
        defect run and ``relax`` at factor 1 beside ``relax_consistent`` at factors 1 and 4, on two ranks with the
        GPU-CI flags. The start line ends ``with the weighted residual of the target``; at factor 1 the outer domain
@@ -2393,7 +2410,7 @@ Current tests
        (mutant C2) the first bound fails (ratio 1.0).
    * - ``rt_nests_feedback_flux``
      - Conservative nest faces (``Tests/Canonical_RANS/Nests_Two_Way``, ``check_nests_two_way.py --feedback-flux``;
-       N-114 item 1, ``nest.feedback_flux``), old against new: the ``rt_nests_two_way`` hill, on two ranks with the
+       ``nest.feedback_flux``), old against new: the ``rt_nests_two_way`` hill, on two ranks with the
        GPU-CI flags, with the nest ``crest`` ending at x = 900 m on the lee slope, by the defect source alone
        (``outer``) and with the conservative faces (``nest``), and with the nest ``hill`` (``nest``). Only the
        ``nest`` runs log the first largest correction and end their joint lines with the ring's
@@ -2402,8 +2419,8 @@ Current tests
        over the outer cells outside it (0.96), and at most 0.6 of the ``outer`` run's (0.37 and 0.35). The hill keeps the same two bounds (0.26 and 0.33).
    * - ``rt_nests_flat_abl_neutral``, ``rt_nests_flat_abl_buoyant``, ``rt_nests_flat_abl_stable``,
        ``rt_nests_flat_abl_stable_joint``
-     - Nests on a flat, horizontally uniform ABL (``Tests/Canonical_RANS/Nests_Flat_ABL``, ``check_nests_flat_abl.py``;
-       beyond the plan), on two ranks with the GPU-CI flags: the doubly periodic outer domain starts from its steady
+     - Nests on a flat, horizontally uniform ABL (``Tests/Canonical_RANS/Nests_Flat_ABL``, ``check_nests_flat_abl.py``),
+       on two ranks with the GPU-CI flags: the doubly periodic outer domain starts from its steady
        column and a nest at 2 2 1 covers its middle. Neutral (Churchfield S) and buoyant (Churchfield B) freeze θ at
        the column's and damp u, v and w towards the column's table with ``nest.damping = outer``; stable (GABLS1,
        fixed surface flux) solves θ and damps w and θ only. The neutral and buoyant tests run one way then jointly
@@ -2431,7 +2448,7 @@ Current tests
        domain starts, naming ``nest.feedback_flux``.
    * - ``rt_nests_inject``
      - Two-way nests by injection (``Tests/Canonical_RANS/Nests_Two_Way``, ``check_nests_two_way.py --inject``;
-       tracker N-114, item 2, ``nest.feedback = inject``): the ``rt_nests_two_way`` hill with the nest ``hill``, the
+       ``nest.feedback = inject``): the ``rt_nests_two_way`` hill with the nest ``hill``, the
        defect run beside a joint run at the default ``nest.feedback_factor`` (0.5), on two ranks with the GPU-CI
        flags. The start line names the factor and each exchange logs the outer state minus the injected nest; the
        nest's u RMS against the 25 m run is at most 0.55 of the one-way one (measured 0.513) and the outer domain's
@@ -2475,7 +2492,7 @@ Current tests
        that names a nest checkpoint that is not there: each stops the run before the outer domain starts, naming
        ``io.restart``.
    * - ``abort_nests_feedback_value``, ``_no_nests``, ``_newton``, ``_damping``, ``_odd_boxes``, ``_narrow``
-     - ``nest.feedback = average`` (the message lists none, defect, relax and inject); ``defect`` without ``nest.names``; with ``steady.stage = simplec_newton``; with
+     - ``nest.feedback = average`` (the message lists none, defect, relax, relax_consistent and inject); ``defect`` without ``nest.names``; with ``steady.stage = simplec_newton``; with
        a Rayleigh layer on u, v and k; with ``mesh.max_grid_size = 15 12``, which splits the
        nest's 32 cells into boxes of 11, 11 and 10; with a nest 4 outer cells wide in x: each stops the run before the outer domain starts, naming
        ``nest.feedback``.
@@ -2539,7 +2556,7 @@ Current tests
      - The 2-D hill with Coriolis (``inputs_steady_hill2d_restart``, ``steady.max_iterations=40``,
        ``init.first_guess=profile``) for 40 iterations, from empty directories, twice on the same two ranks and
        layout: the plotfiles and the turbulence plotfiles (residual fields, wall state) identical at zero tolerance.
-       The Coriolis coupling's level mean of the other residual is a fixed-order sum since audit A4 (#60); before,
+       The Coriolis coupling's level mean of the other residual is a fixed-order sum since #60; before,
        the faces were added atomically, in an order that can change between runs on a GPU: with that sum put back,
        5 of 5 pairs differed on Kestrel's H100s (up to 3.9e-13 relative in v, at nearly every point). On a CPU two
        runs agree either way (no OpenMP; two ranks' sums add in a fixed order): the test is for the nightly H100 job
@@ -2579,13 +2596,13 @@ Current tests
        ``regression`` (the run time); double only.
    * - ``rt_homogeneous_canopy``
      - A uniform canopy under a pressure gradient (``Tests/Canonical_RANS/Homogeneous_Canopy``): the momentum budget,
-       :math:`U = \sqrt{F/f}` deep in the canopy, the exponential upper canopy, :math:`\beta`, and LAI 10 on 1, 2 and 4 ranks.
+       :math:`U = \sqrt{F/f}` deep in the canopy, the exponential upper canopy, :math:`\beta`, and LAI 10 on 1, 2 and 4 ranks. ``regression``, MPI builds, double only.
    * - ``rt_forest_edge``
      - A forest-clearing-forest pattern (``Tests/Canonical_RANS/Forest_Edge``): the momentum budget, the volume flux, the
-       adjustment length at LAI 2 against Dupont and Brunet (2008), shorter at LAI 5, 1, 2 and 4 ranks. About 12 min, ``regression``, MPI builds.
+       adjustment length at LAI 2 against Dupont and Brunet (2008), shorter at LAI 5, 1, 2 and 4 ranks. About 12 min, ``regression``, MPI builds, double only.
    * - ``rt_forested_hill``
      - A canopy on cosine hills (``Tests/Canonical_RANS/Forested_Hill``): the lower-canopy balance of Finnigan and Belcher
-       (2004), lee reversal on the geometry of Poggi et al. (2008) at four times its drag, 1, 2 and 4 ranks. About 3 min, ``regression``, MPI builds.
+       (2004), lee reversal on the geometry of Poggi et al. (2008) at four times its drag, 1, 2 and 4 ranks. About 3 min, ``regression``, MPI builds, double only.
    * - ``rt_forested_escarpment``
      - A dense canopy on steep terrain with an inflow face (``Tests/Canonical_RANS/Forested_Escarpment``: a
        200 m tanh escarpment in 2-D, steepest slope 22°, a canopy on the slope, stretched layers,
@@ -2597,7 +2614,7 @@ Current tests
        straight, bit for bit; with the forest at the inflow face, the inflow-face warning with its count. Measured:
        256 iterations on 1, 2 and 4 ranks, differences 1.6e-11 and 4.4e-11, u 0.72 against 3.52 m/s, 24 canopy cells at
        the inflow face (185 iterations at ``steady.cfl_max`` 2 before the floor). About 1 min on two ranks; label
-       ``regression``; double only.
+       ``regression``; double only; MPI builds.
    * - ``rt_frozen_theta``
      - ``simplec.theta = frozen`` on the forested escarpment with a stable sounding (``inputs_frozen_theta``: 300 K to
        1000 m, an 8 K inversion to 1100 m, 3 K/km above). ``check_frozen_theta.py``: steady within 400 iterations on 2
@@ -2610,7 +2627,7 @@ Current tests
        ``init.z_agl_min = 5``, 3 iterations: θ is the table's at the unfloored height on every level (1e-9 K), and
        every first cell has Rt > 0 (the ground ghosts extend the first two cells; the neutral wall's mirror gives 0).
        Measured: 209 iterations on 2 and 4 ranks, θ within 6e-14 K, ranks within 1.7e-10. About 40 s on two ranks;
-       label ``regression``; double only.
+       label ``regression``; double only; MPI builds.
    * - ``rt_canopy_tke``
      - The canopy terms of the k–L closure on ``Tests/Canonical_RANS/Canopy_Drag``. ``check_canopy_tke.py`` runs it
        with ``canopy.tke`` on and off to the verdict (and the turbulence plotfile): in every canopy cell
@@ -2620,7 +2637,7 @@ Current tests
        balance :math:`k = \kappa_c|U|^2` is pinned by ``CanopyTke.CappedBalanceIsKappaU2``; at the crown the shear
        layer above adds production and transport. About 3 min on two ranks; label ``regression``; double only.
    * - ``rt_canopy_column``
-     - The column first guess with a uniform canopy (UT-8.5.1, :doc:`initial_conditions`) on
+     - The column first guess with a uniform canopy (:doc:`initial_conditions`) on
        ``Tests/Canonical_RANS/Canopy_Drag`` (``inputs_canopy_column``, the drag deck without its canopy line, and a
        uniform map canopy of 20 m, LAI 3, :math:`C_d` 0.25 the script writes). ``check_canopy_column.py`` runs
        ``init.first_guess = column`` and ``profile`` to the verdict: the column run's first u and v residuals are
@@ -2649,18 +2666,18 @@ Current tests
        iterations; 1652 before the residual scales used the depth of the layers, 1895 before #44); with the margin off (the cap of #32) the pressure correction stalls and it is not. The run
        without the cap takes 2881 iterations (3983 before the Rayleigh layer ended at the mesh's top level, when it
        was not steady at 3500 either). Measured to 6 orders before that change: cap off 14154, margin 2 4142, and the
-       steady states agree to 3e-8 m/s.
+       steady states agree to 3e-8 m/s. Double only.
    * - ``rt_rampart_ground_step``
-     - The ground step of the mesh report on a 2-D rampart (``Tests/Canonical_RANS/Rampart_2D``, beyond the plan):
+     - The ground step of the mesh report on a 2-D rampart (``Tests/Canonical_RANS/Rampart_2D``):
        a tanh cliff 900 m high on 200 m cells, 80 × 2 × 60, with line LU-SGS, CFL cap 16 and ``simplec.w_vnn_cap = 16``. Three runs: the 750 m wide
        cliff under 2 m first layers and the 170 m wide one under 8 m to the verdict, the 170 m wide one under 2 m
        for one iteration. The reported ground step (62.85, 63.86 and 255.45 first layers) and aspect ratio (109.9
        and 27.5) within 0.1 % of their closed forms; the warning above 64 on the last run only; the gentle cliff
        steady within 400 iterations (260), the steep one within 4000 (2570) and more than four times the gentle
-       count. About 30 s on two ranks; label ``regression``.
+       count. About 30 s on two ranks; label ``regression``; double only.
    * - ``rt_terrain_shapes_settle``
      - The residual verdict against the wind at 2560 points on analytic 3-D terrain
-       (``Tests/Canonical_RANS/Terrain_Shapes_3D``, beyond the plan): a round butte 760 m high on 200 m cells,
+       (``Tests/Canonical_RANS/Terrain_Shapes_3D``): a round butte 760 m high on 200 m cells,
        80 × 64 × 40, 8 m first layers, with line LU-SGS, CFL cap 16 and ``simplec.w_vnn_cap = 16`` and ``steady.probes_file``. The 32° butte reaches
        the verdict within 250 iterations (136) with no ground-step warning. The 65° butte prints the warning (94)
        and has no verdict at 200 iterations, while every point stays within 0.5 m/s of the mean of rows 151 to
@@ -2669,13 +2686,13 @@ Current tests
        its last row from iteration 40 (29). The first guess is more than 1 m/s from row 200 somewhere, and the gentle butte's first probe
        ends within 0.02 m/s of the inflow log law at its cell centre (9.466 m/s at 72.65 m). Mutant:
        ``steady.cfl_max = 2`` gives 48 and 53 and fails both limits
-       of 40. One to two minutes on two ranks; label ``regression``. The matrix of fourteen shapes on 100 m cells
+       of 40. One to two minutes on two ranks; label ``regression``; double only. The matrix of fourteen shapes on 100 m cells
        is run by hand (the case's README).
    * - ``rt_aspect_ratio_hill``
      - Thin first cells on a 2-D Agnesi ridge (``Tests/Canonical_RANS/Aspect_Ratio_Hill_2D``: 100 m high, 250 m
        half-width, dx = 100 m, the recommended setting of the realizability sensor): ``aspect_ratio_sweep.py --check``
        runs dx/dz1 = 10, 100 and 200 and requires a relative residual below 1e-4 within 400 iterations (173, 161 and
-       284 measured). Without ``simplec.w_vnn_cap`` dx/dz1 = 100 and 200 do not reach it. Label ``regression``.
+       284 measured). Without ``simplec.w_vnn_cap`` dx/dz1 = 100 and 200 do not reach it. Label ``regression``; double only.
    * - ``outflow_steep_terrain_prepare``, ``rt_outflow_steep_terrain_flat``, ``rt_outflow_steep_terrain_cut``,
        ``rt_outflow_steep_terrain_from_velocity``
      - Steep terrain at an outflow face (``Tests/Canonical_RANS/Outflow_Steep_Terrain``): a 2-D domain ending on the
@@ -2685,7 +2702,7 @@ Current tests
        (``bc.outflow_transport = mirror``, :doc:`boundary_conditions`). ``_from_velocity`` keeps the condition up to
        v1.0.0 reachable: with ``bc.outflow_transport = from_velocity`` the cut slope alternates between two states
        (relative residual 0.176, checked above 0.1 at iteration 400); it is the mutant of ``_cut``. The fixture writes
-       the two terrain files. Label ``regression``.
+       the two terrain files. Label ``regression``; double only.
    * - ``rt_steady_hill2d``
      - ERF's Neutral_Hill_2D (``Tests/Canonical_RANS/Neutral_Hill_2D/inputs_steady_hill2d``: 128 × 1 × 64, the Witch of Agnesi of
        100 m and 500 m, the flat deck's sounding and forcing, Rayleigh damping of w and θ from 700 m, 16 sweeps, CFL
@@ -2697,7 +2714,7 @@ Current tests
        verdict after 4576 iterations (49 s on two ranks), speed-up 0.59/0.50/0.43, u* = 0.354 m/s, every check
        passing (:doc:`solution_algorithm`). Label ``regression``; double only.
    * - ``rt_unsteady_hill2d``
-     - RT-6.2.1 (plan rev. 6, sub-phase 6.2, beyond the plan): the same hill as unsteady RANS
+     - The same hill as unsteady RANS
        (``Tests/Canonical_RANS/Unsteady_Hill_2D``): ten steps of 60 s from the log-law first guess, each to two orders
        below its first residual (at most 60 inner iterations), on 2, 1 and 4 ranks. Checks: ten steps of 60 s ending at
        600 s, none at ``unsteady.max_inner``; the same inner counts on 1 and 4 ranks (measured 48 48 21 18 18 19 19 19
@@ -2705,14 +2722,14 @@ Current tests
        iterations (measured 12; 60, the limit, without the time term in the stage); the plotfile's header carries
        600 s; u at the hill top 50 m above the ground moves by more than 0.1 m/s over 600 s (0.134). It checks the
        driver's bookkeeping and rank independence, not a measured or closed-form answer (the order in :math:`\Delta t`
-       is the unit test's). RT-6.3.1 (sub-phase 6.3, beyond the plan), the outputs, with four probes, the averages
+       is the unit test's). The outputs, with four probes, the averages
        from 90 s and a plotfile and a checkpoint every five steps: 11 probe rows; plotfiles at 300 and 600 s whose
        averages at each probe's cell equal the two-pass weighted mean and variance of its rows; the restart from the
        2-rank checkpoint of step 5 continues at 300 s with steps 6 to 10 and the same inner counts, and its final
        plotfile and probe file are byte for byte the straight run's, as is its final checkpoint except the driver
-       history's wall-clock columns. About 16 s. Label ``regression``; MPI builds.
+       history's wall-clock columns. About 16 s. Label ``regression``; MPI builds; double only.
    * - ``rt_urans_mean_option``
-     - RT-6.4a.1 (sub-phase 6.4a, beyond the plan), with ``rt_urans_mean_option_clean`` and
+     - With ``rt_urans_mean_option_clean`` and
        ``rt_urans_mean_option_run``: the time-mean option of the column reader (``tools/askervein_lines.py``,
        ``Columns(mean=True)``; ``--mean`` of its ``sample`` and ``check`` and of ``rushil.py compare`` and ``plot``),
        which reads ``u_mean``, ``v_mean`` in place of ``u``, ``v``. Five steps of 60 s of the unsteady 2-D hill with
@@ -2729,7 +2746,7 @@ Current tests
        CTests. Label ``regression;smoke``; double only.
    * - ``rt_steady_hill2d_probes``, ``abort_steady_probes_with_unsteady``, ``abort_steady_probes_missing``,
        ``abort_steady_probes_empty``
-     - RT-6.4b.1 (sub-phase 6.4b, beyond the plan): ``steady.probes_file`` on the steady 2-D hill with the four
+     - ``steady.probes_file`` on the steady 2-D hill with the four
        probes of the unsteady hill (``check_steady_probes.py``, 2 ranks). Ten iterations: the file is
        ``<io.plot_file>_steady_probes.csv`` with the column line ``iteration, p1_u, …`` and the rows 0 to 10; row 0
        is the first guess (v = 0 and θ = 300 K exactly) and row 1 is not; row 10 is the final plotfile at the
@@ -2745,7 +2762,7 @@ Current tests
        Label ``regression;smoke``.
    * - ``rt_unsteady_hill2d_from_steady``
      - The unsteady deck restarted from the 5-iteration checkpoint of ``rt_steady_hill2d_restart_first``: two steps
-       of 60 s to 120 s, the restart and the summary line matched. Label ``regression;smoke``; MPI builds.
+       of 60 s to 120 s, the restart and the summary line matched. Label ``regression;smoke``.
    * - ``abort_unsteady_stop_time_missing``, ``abort_unsteady_dt_and_cfl``, ``abort_unsteady_steady_stop_keys``, ``abort_unsteady_hybrid``, ``abort_unsteady_key_without_stage``
      - The refusals of ``steady.stage = unsteady``, each message matched: ``unsteady.stop_time`` missing,
        ``unsteady.dt`` with ``unsteady.cfl``, ``steady.max_iterations`` and
@@ -2761,7 +2778,7 @@ Current tests
      - Two steps of 60 s with the four probes that write ``chk00096`` with its ``Unsteady`` record, and the refusals of
        a restart from it: another ``unsteady.average_start``, ``unsteady.stop_time`` not after the checkpoint's 120 s,
        and another probe file (``probes_restart_hill2d.txt``) than the one the probe CSV was written for. Label
-       ``regression;smoke``; MPI builds.
+       ``regression;smoke``.
    * - ``rt_steady_hill2d_lusgs``
      - The 2-D hill with the line LU-SGS sweeps (``inputs_steady_hill2d_lusgs``: two symmetric sweeps,
        CFL cap 16) to the verdict with a two-order drop and ERF's ``check_hill.py --physics``. Measured: 3048
@@ -2842,7 +2859,7 @@ Current tests
    * - ``rt_askervein_210_inflow_table``
      - ``Tests/Real_Terrain/Askervein_210/askervein_210_inflow.txt`` is the table ``tools/erf_inflow_table.py`` makes
        from ERF's Askervein inflow (``extern_erf/inflow_powerlaw.txt``, wind from 210°; w dropped, θ = 300 K, a z = 0
-       row added), to 1e-9. Label ``regression;smoke``.
+       row added), to 1e-9. Label ``regression;smoke``; double only.
    * - ``rt_steady_askervein_210``, ``rt_askervein_210_erf_lines``, ``rt_askervein_210_lines_gold``,
        ``rt_askervein_210_level_history``
      - Askervein with ERF's setup (``inputs_steady_askervein_210``: 300 × 300 ×
@@ -2853,7 +2870,7 @@ Current tests
        URANS average (``Gold/erf_urans_lines_10m.csv``) up to 300 m past the hilltop, and within 10 % at the four
        lee masts beyond (measured: 4.31 % and 9.85 %; the lee margin is 0.15 points, so a change of the closure, the
        wall model or the advection that crosses it needs a review, not a wider tolerance. It was 4.00 % and 9.21 %
-       before audit A2 took the ground cell's wind parallel to the ground; against the 40 measured masts that change
+       before the wall model took the ground cell's wind parallel to the ground; against the 40 measured masts that change
        lowers the RMSE from 1.28 to 1.27 m/s and the lee bias from +2.39 to +2.36 m/s). ``rt_askervein_210_lines_gold`` checks
        the same lines against ``Gold/askervein_210_lines.csv`` to 1e-4 (the ERF tolerances alone would pass the run
        with the inflow k of ``bc.inflow_tke_length = unbounded``). The level history (cells, stop reasons, iterations within
@@ -2871,7 +2888,7 @@ Current tests
      - The ``extern_erf`` drift check on a throw-away ERF repository (:doc:`extraction`).
    * - ``cmake_gust_omp_refused``
      - A configure with ``-DGUST_OMP=ON`` (with the parent build's generator and compilers) stops at the top-level
-       check with "GUST_OMP was removed": GUST runs MPI and GPUs, not OpenMP (audit A11). Label ``unit``.
+       check with "GUST_OMP was removed": GUST runs MPI and GPUs, not OpenMP. Label ``unit``.
    * - ``input_reference_current``, ``input_reference_selftest``
      - ``tools/input_reference.py --check``: ``Tests/inputs_reference`` is what ``--write`` gives from the
        detailed tables of :doc:`inputs`; every table row names a key and no key appears twice; the quick-reference
@@ -2913,6 +2930,11 @@ Current tests
        periodic square not wrapped, the slope rule off, the gap rule off, the relief doubled, a missing deck
        accepted. Dropping the final minimum with the terrain survives: the mean of the minima is never above the
        terrain, so that minimum only removes round-off (`Hybrid mesh`, :doc:`immersed_terrain`).
+   * - ``rt_bolund_files_converter``
+     - ``Tests/Real_Terrain/Bolund_Terrain_Files/to_gust_xyz.py selftest`` on small made-up grids: a 3 × 2 grid of
+       heights as an ESRI ASCII grid, a Surfer grid and a point file gives the same points (1e-9); a shift with
+       a crop; the roughness modes (a water level with ``--land-x-min``, land-cover classes); a class without a
+       roughness length and a zero roughness length are refused. Needs NumPy. Label ``unit``.
    * - ``erf_plotfile_selftest``
      - ``extern_erf/erf_plotfile.py`` (a local change, :doc:`extraction`) on hand-made one-box plotfiles in double
        and float, little- and big-endian: every value read back exactly. The upstream reader fails the two float
@@ -2944,7 +2966,7 @@ Current tests
        and writes a singleton login-shell job that requests the GPUs; a ``GUST_NIGHTLY_GPUS`` other than 3 or 4 is
        refused. Twelve one-line mutants each fail it. Label ``unit``.
    * - ``wn2019_timed_run``
-     - Not registered on Windows. Audit A10 (P1): the WindNinja2019 drivers' ``timed_run.sh`` writes one line
+     - Not registered on Windows. The WindNinja2019 drivers' ``timed_run.sh`` writes one line
        ``real <seconds>`` to ``time.txt``, the command's error output to ``err.txt``, returns its exit status and
        writes ``done`` only on success; an argument with spaces stays whole; ``sweep.sh`` run with stub
        ``mpirun``, ``gust`` and ``python3`` on a run directory with a space passes the terrain file whole and
@@ -2984,7 +3006,7 @@ Current tests
        label ``regression``): with :math:`\theta` solved and leaves cooler than the air, :math:`\theta` stays
        between the two and is the same on 2 and 4 ranks; with :math:`\theta` frozen, ``skip`` gives the frozen run
        bit for bit and ``blend`` changes :math:`\theta` in the canopy only; a run continued from its checkpoint
-       equals the uninterrupted one. MPI builds only.
+       equals the uninterrupted one. ``rt_canopy_heat`` is registered in MPI builds in double precision only.
    * - ``rt_column_target``, ``rt_column_target_mol``
      - The column's target wind carried into the 3-D run (``Tests/Canonical_RANS/Column_Target``,
        ``check_column_target.py``, ``init.column_target_*``): the 3-D wind at 10 m is the target of 8 m/s to
@@ -3091,22 +3113,35 @@ GoogleTest suite
        that layer's inflow faces is 0 and the faces above keep the profile, on boxes of 4 and of 2 cells. With
        ``bc.rayleigh_height = absolute`` the Rayleigh coefficient on :math:`w` follows
        :math:`0.05 \sin^2(\tfrac{\pi}{2}(z_a - 150)/(z_{top} - h_f - 150))` with :math:`z_a` the height above the
-       terrain's zero, :math:`h_f` = 25 m below the mesh's lower face, in the seven layers from 155 to 215 m, on boxes
+       terrain's zero, :math:`h_f` = 25 m above the mesh's lower face, in the seven layers from 155 to 215 m, on boxes
        of 4 and of 2 cells.
    * - ``ImmersedSurface.MomentsMatchAQuadrature``, ``ImmersedSurface.TiltedPlaneMatchesTheClosedForm``,
        ``ImmersedSurface.FlatSurfaceGivesTheFlatGroundsFields``, ``ImmersedSurface.HeightAboveTheGroundOnAnAgnesiHill``,
-       ``ImmersedSurface.EveryConsumerReadsTheHelper``, ``ImmersedSurface.HashFollowsTheGroundsInputs``
+       ``ImmersedSurface.EveryConsumerReadsTheHelper``, ``ImmersedSurface.HashFollowsTheGroundsInputs``,
+       ``ImmersedSurface.MapAfterAHybridSurfaceIsNotHybrid``
      - The sloping immersed ground (:doc:`immersed_terrain`): the closed-form moments of a triangle and a segment
        equal a quadrature; on planes tilted by 10°, 30° and 45° along x and along y, on boxes of 8 and of 4 cells,
        the solid fractions, the fluid's mean heights, the face fractions, the slopes and the two wall distances
        equal the closed form of a rectangle cut by a line, only the roof bit is set, and the wall areas of a column
-       add to 1; a flat surface gives the fields of the flat ground of PR-87; the height above the ground on an
+       add to 1; a flat surface gives the fields of the flat immersed ground (``terrain.flat_height``); the height above the ground on an
        Agnesi hill equals :math:`z - h(x, y)`, and each source file that needs a height reads the helper; the moments of a twisted footprint equal
        a sampling of its four triangles; the restart hash follows each of the ground's inputs, a file's contents
        and interpolation inputs included, the default flat ground's hash is pinned to its value before the
        wall-law options were removed, and a record of another version is refused by its version
        (``ImmersedTerrain.RestartRecordRefusesAChangedGround``); a ground filled from an xyz file returns the
-       file's heights above ``terrain.flat_height``.
+       file's heights above ``terrain.flat_height``; a geometry rebuilt from a height map after a hybrid surface
+       no longer reports a hybrid mesh.
+   * - ``HybridTerrain.*`` (9 tests)
+     - The hybrid mesh's envelope (``terrain.representation = hybrid``, :doc:`immersed_terrain`): on a plane the
+       envelope is the plane shifted down; in a valley it is the mean of the minimum, not the minimum; a
+       one-node spike is removed and the envelope is at most the ground; across a periodic face the square
+       wraps; the half-width in nodes is floor(width/dx); without the keys ``terrain.flat_height`` is the first
+       layer's thickness and ``terrain.hybrid_half_width`` 2 cells; the envelope on the mesh equals the host
+       envelope at every node, ghosts included, on boxes of 16 and of 8 cells and 1, 2 and 4 ranks; the
+       immersed-column mask is 1 where the first cell is cut, ghost columns included, with its count over all
+       ranks; the solid-pressure fill on a mesh that follows a ramp of slope 0.3 gives every solid cell the
+       value of the cut cell above it, so the x component of the pressure gradient of :math:`p = a x` is
+       :math:`a` on the fluid's x faces to the metric's error.
    * - ``Inputs.ImmersedTerrainChecksNameTheInput``, ``Inputs.ParsesTheImmersedTerrainKeys``,
        ``Inputs.RemovedImmersedTerrainKeysAreUnknown``
      - The three ``terrain`` keys of the immersed ground are read, and each of their range checks and refusals names
@@ -3121,7 +3156,7 @@ GoogleTest suite
      - The average equals a host-side recomputation bit for bit and, for fields linear in
        time, the mid-window value to 8 ε; trapezoid weights for uneven spacing; the half-window change is exact
        for a linear drift and zero for a steady field; a snapshot with a NaN, fewer than 3 snapshots and times out of
-       order are refused with their messages; a trailing ``/`` is handled.
+       order are refused (the first two with their messages); a trailing ``/`` is handled.
    * - ``Reference.AllocationUnits``, ``Reference.MetadataRangeChecks``
      - AU = nodes × hours × rate (10 CPU, 100 GPU); metadata range checks name their inputs.
    * - ``Sha256.*``
@@ -3151,9 +3186,9 @@ GoogleTest suite
    * - ``Mesh.MetricsEqualErf``
      - ``z_phys``, ``detJ`` and nodal heights equal ERF's own output for the same 2-D hill deck (BTF, STF,
        Sullivan; STF and Sullivan bit for bit on macOS, BTF to rounding because GUST keeps the ground layer as
-       given, all within 1e-13 elsewhere); STF capped at 2 of 16 levels, as ERF reports.
+       given, ``z_phys`` and ``detJ`` within 1e-13 and the nodal heights within 1e-12 elsewhere); STF capped at 2 of 16 levels, as ERF reports.
    * - ``Mesh.IdwMirrorTiesAreTheLowerIndex``
-     - Audit A5 (found by Pressel): the two mirror images of a query on the diagonal of a 0.1-spaced grid tie exactly,
+     - The two mirror images of a query on the diagonal of a 0.1-spaced grid tie exactly,
        and the lower index wins, for k = 2 to 8 and both point orders. The squared distance is each square rounded,
        then added, so no build can fuse it; with ``dx * dx + dy * dy`` contracted to an fma the 64 tied queries here
        picked by the last bit, and a build that contracts differently picked the other point (0.23 m on Askervein).
@@ -3215,7 +3250,7 @@ GoogleTest suite
    * - ``Residual.RestOverSteepTerrainIsBalanced``
      - Rest over a 300 m hill (slopes up to 0.94), θ = θ_ref(z) stratified, Coriolis on: the momentum, continuity and
        k residuals are below 1e-14. With a constant reference the hydrostatic :math:`p(z)` balances only to
-       truncation (R_u 1.6e-3 m/s², 0.5 % of the buoyancy; R_w exact on interior faces).
+       truncation (R_u 1.6e-3 m/s², 0.5 % of the buoyancy; R_u and R_w on interior faces below 1 % of the buoyancy).
    * - ``Jvp.*``
      - ``jvp`` on a laterally uniform column (affine residual) equals :math:`R(q+v) - R(q)` to 1e-5 (single 1e-2).
        On the hill with MUSCL convection, against a central difference, L1 error below 1e-5
@@ -3230,7 +3265,7 @@ GoogleTest suite
    * - ``Mesh.SharedNodesAgree``
      - Node heights shared by two boxes (or periodic images) are equal, for BTF, STF and Sullivan,
        periodic and not (under gcc each box's copy differed by up to 1e-13 m before ``Mesh`` synchronised them).
-   * - ``Mesh.NodeHeightsDoNotDependOnTheLayout`` (tracker N-114)
+   * - ``Mesh.NodeHeightsDoNotDependOnTheLayout``
      - The same mesh in one box and in boxes of at most 8 x 8 and 12 x 4 cells (``mesh.max_grid_size``) has the same node heights, bit for bit, at every node a
        box holds (every box's copy of a seam node, and the ghost nodes). BTF, STF and Sullivan, periodic and not.
        Under gcc-16 the BTF heights differed by up to 4.5e-13 m before the BTF formula was rearranged (each box's
@@ -3245,7 +3280,7 @@ GoogleTest suite
    * - ``Mesh.AgnesiGhostNodesWrapInPeriodicDirections``
      - The Agnesi ground as written, before any exchange: each ghost node in a periodic direction is its periodic
        image, bit for bit, and outside a non-periodic face the face node. Round hill and both ridges on a domain not
-       centred at the origin, x periodic and then y. Before audit A3 the periodic ghosts were clamped (2.5 m and 4.1 m off).
+       centred at the origin, x periodic and then y. Before, the periodic ghosts were clamped (2.5 m and 4.1 m off).
    * - ``SimilarityFunctions.MatchTheReferenceTable``
      - ERF's similarity functions (the copied ``ERF_MOSTUtils.H``, byte-identical by the drift check): Businger–Dyer
        ψ and φ and Jimenez ψ against a Python table of the same formulas, z/L from −5 to 5, to 1e-14 (single 1e-6);
@@ -3270,14 +3305,18 @@ GoogleTest suite
        wall flux minus the interior flux over the cell volume; the k rows are the wall-k rows (both modes). The
        ``line_jacobian`` rows lose the ground neighbour and gain the wall terms. At low wind the wall-k row uses
        u* ≥ 0.01 m/s. Invalid options and a reference height outside the columns stop with a message.
+   * - ``SurfaceLayer.ImmersedColumnsOfAHybridMesh``
+     - A hybrid mesh's immersed columns (every third column of the hill masked, ghost columns included): the
+       stress and the drag are 0 there and the wall-k rows of R_k and of the implicit coefficients are left as
+       they were; the other columns equal the run without the mask.
    * - ``Canopy.LalicMihailovicProfileIntegratesToOne``, ``Canopy.ThinCellGivesErfPointValue``
-     - UT-8.1.2: the profile's :math:`N` in closed form against quadrature (``scipy.integrate.quad``) for
+     - The profile's :math:`N` in closed form against quadrature (``scipy.integrate.quad``) for
        :math:`\eta_m` = 0, 0.3, 0.8, 0.95 to 1e-11; the shape integrates to :math:`N` (Simpson, 1e-8); :math:`F` is
        continuous at :math:`\eta_m`, rises from 0 to 1 with slope :math:`P/N`; the fraction between two heights equals
        :math:`F(b) - F(a)` and stays positive just below the top. A thin cell gives ERF's point value
        :math:`C_d\,\mathrm{LAI}\,P/(hN)`; a cell across the top takes the part below it.
    * - ``Canopy.ColumnIntegralIsCdLai``, ``Canopy.FollowsLocalGroundOnHill``
-     - UT-8.1.1 and UT-8.1.3: every column's sum of :math:`f J \Delta\zeta` is :math:`C_d` LAI with a height and LAI
+     - Every column's sum of :math:`f J \Delta\zeta` is :math:`C_d` LAI with a height and LAI
        that vary over the domain and the top inside stretched cells, both profiles, :math:`C_d` constant and from a
        map; :math:`f` is 0 exactly above the canopy and > 0 below. On a 50 m hill (BTF) the same holds and the first
        cell is :math:`C_d \mathrm{LAI}/h` in every column (heights from sea level would leave the hill bare).
@@ -3290,25 +3329,25 @@ GoogleTest suite
        a map, and a round patch 400 m across holds the map's values in its columns. The errors are reduced over
        the ranks.
    * - ``Canopy.PatchesSameOnEveryLayoutAcrossSeam``
-     - UT-8.1.4: three patches give the same field, bit for bit, on 1, 16 and uneven boxes; the patch across the
+     - Three patches give the same field, bit for bit, on 1, 16 and uneven boxes; the patch across the
        periodic seam reaches the columns on the other side; overlapping patches add, and a layer above the shorter
        patch holds the taller one's drag alone; the ghost column is the periodic image in x and the nearest column
        in y.
    * - ``Canopy.RestrictionKeepsLayerIntegrals``
-     - UT-8.1.5: on a hill smoothed differently on each level (levels 1 and 2, gathered on one box or not), each
+     - On a hill smoothed differently on each level (levels 1 and 2, gathered on one box or not), each
        layer's integral of :math:`f` over the coarse cells equals that over level 0.
    * - ``Canopy.RestartRefusesAnotherCanopy``, ``Canopy.OptionChecks``, ``Canopy.PatchFileChecks``
-     - UT-8.1.7: the same canopy restarts; one changed LAI, a canopy where the checkpoint has none and none where it
+     - The same canopy restarts; one changed LAI, a canopy where the checkpoint has none and none where it
        has one are refused; the hash follows the contents, not the file name. The option checks, the patch file's
        lines (named by number), negative map values and a patch wider than the periodic domain are refused with the
-       input named. UT-8.1.6 (``canopy.type = none`` leaves every answer bit-identical) is the existing suite and its
-       golds, unchanged by the canopy.
+       input named. That ``canopy.type = none`` leaves every answer bit-identical is shown by the existing suite and
+       its golds, unchanged by the canopy.
    * - ``CanopyDrag.SinkHasItsClosedForm``
-     - UT-8.2.1: on linear velocity fields (so every four-point mean is the value at the face) through a uniform
+     - On linear velocity fields (so every four-point mean is the value at the face) through a uniform
        patch, each face's residual is :math:`f_c |U| u_c` with :math:`f_c = C_d\,\mathrm{LAI}/h` or 0 in closed form,
        on 1 and 16 boxes (the faces on box edges read the ghost column), the ground z-faces taking the first cell.
    * - ``CanopyDrag.DiagonalIsTheDerivativeOfTheSink``
-     - UT-8.2.2: on sign-changing periodic velocities, the ``derivative`` diagonal equals the central difference of
+     - On sign-changing periodic velocities, the ``derivative`` diagonal equals the central difference of
        the sink in the face's own component (1e-8 relative), ``picard`` equals the sink over :math:`u_c`, ``none``
        adds nothing, ``canopy_rows`` holds the same diagonal, and every diagonal is :math:`\ge 0`.
    * - ``CanopyDrag.ResidualAndImplicitRowsCarryTheDrag``
@@ -3316,28 +3355,28 @@ GoogleTest suite
        (the off-diagonal coefficients and the :math:`\theta` rows unchanged); without the drag's rows
        ``implicit_rows`` refuses a canopy.
    * - ``TimeTerm.ResidualGainsTheClosedFormOnItsOwnRows``
-     - UT-6.1.1 (beyond the plan): on the 2-D hill (k–L closure, wall law with ``dirichlet`` wall-k rows, slip top,
+     - On the 2-D hill (k–L closure, wall law with ``dirichlet`` wall-k rows, slip top,
        Rayleigh damping, four boxes) with a smooth non-uniform :math:`q - q^n`, the residual of :math:`u, v, w,
        \theta, k` gains :math:`(q - q^n)/\Delta t` (1e-12 relative) on every row that keeps its residual, and nothing
        on the ground and top :math:`w` faces and the first cells' wall-k rows; :math:`p` is bit-identical.
    * - ``TimeTerm.DiagonalIsTheDerivativeOfTheTimeTerm``
-     - UT-6.1.2 (beyond the plan): ``implicit_rows``' off-diagonal coefficients are bit-identical with and without
+     - ``implicit_rows``' off-diagonal coefficients are bit-identical with and without
        the term; :math:`a_P` gains exactly :math:`1/\Delta t`, or nothing on the identity rows (counted); the change
        of the time term's residual along a direction equals :math:`a_P`'s change times that direction (one-sided
        difference, exact for a linear term up to round-off; 1e-6 relative).
    * - ``TimeTerm.NoChangeAtTheStoredState``, ``TimeTerm.OptionsNameTheInput``
-     - UT-6.1.3 (beyond the plan): at :math:`q = q^n` the residual is unchanged in value. That the steady path
+     - At :math:`q = q^n` the residual is unchanged in value. That the steady path
        (no time term) is bit-identical is shown by the regression tests, whose golds are unchanged. ``unsteady.dt`` of 0, :math:`-1`, :math:`\infty`, NaN
        and the smallest denormal (infinite :math:`1/\Delta t`) are refused with the input named.
    * - ``TimeDriver.StokesFirstProblemFirstOrder``
-     - UT-6.2.1 (beyond the plan): a lid started impulsively at 1 m/s over fluid at rest (:math:`\nu` = 0.01 m²/s,
+     - A lid started impulsively at 1 m/s over fluid at rest (:math:`\nu` = 0.01 m²/s,
        1 m deep, 64 layers, four boxes) to :math:`T` = 1 s with :math:`\Delta t` = 0.1, 0.05 and 0.025 s. The
        differences between successive runs halve: observed order 0.998, within 0.85–1.15. Against Stokes' first
        problem, :math:`u = U\,\mathrm{erfc}((H - z)/(2\sqrt{\nu T}))`, the error at 0.025 s is 4.2e-3, below 1.5 times
        the last difference (3.5e-3, the backward-Euler error); the Richardson value :math:`2u_{\Delta t/4} -
        u_{\Delta t/2}` is within 8.2e-4 (the space error), below 1.5e-3. Double precision only.
    * - ``TimeDriver.SteadyProblemReachedAndHeld``
-     - UT-6.2.2 (beyond the plan): the same channel from rest with :math:`\Delta t` = 10 s to 300 s reaches the Couette
+     - The same channel from rest with :math:`\Delta t` = 10 s to 300 s reaches the Couette
        profile :math:`u = Uz/H` within 1.6e-9 (bound 1e-8; single 1e-3). Started on the profile, each of three steps
        takes one inner iteration and the profile does not change (1e-10).
    * - ``TimeDriver.LastStepEndsAtStopTime``, ``TimeDriver.StepFromTargetCfl``, ``TimeDriver.MaxInnerIsReported``, ``TimeDriver.OptionsNameTheInput``
@@ -3356,8 +3395,8 @@ GoogleTest suite
        (tolerance 1e30, no drop, window 2) and ``steady.ser_max_growth = 1.1``, the verdict is Steady and the CFL
        still ramps above 2 over the Stokes run (from rest to 1 s in steps of 0.1 s).
    * - ``UnsteadyOutput.AveragesAreTheWeightedSeries``, ``UnsteadyOutput.NothingAveragedBeforeTheStart``
-     - UT-6.3.1 (beyond the plan): a non-uniform state that changes with time on six boxes, six irregular steps
-       (0.7 to 2.5 s) with ``unsteady.average_start`` = 1 s inside the second step. The running mean and variance of
+     - A non-uniform state that changes with time on four boxes, six irregular steps
+       (0.1 to 2.5 s) with ``unsteady.average_start`` = 1 s inside the second step. The running mean and variance of
        every cell and field equal a two-pass weighted mean and variance (1e-14 and 1e-11 relative), with the weights
        :math:`t^{n+1} - \max(t^n, t_a)` and the first step left out; the plot names are ``u_mean`` … ``tke_var``. Steps
        all before the start leave :math:`W = 0` and every plotted field 0.
@@ -3368,7 +3407,7 @@ GoogleTest suite
      - Comments and blank lines are skipped; two numbers, a word, NaN, :math:`h = 0` and four numbers are each refused
        with ``unsteady.probes_file``, the line and the reason; a file with no probe is refused.
    * - ``UnsteadyOutput.ProbesTakeTheNearestCell``
-     - UT-6.3.2 (beyond the plan): on flat ground with layers of 0.125 m, :math:`h` = 0.3 takes the cell at 0.3125 m,
+     - On flat ground with layers of 0.125 m, :math:`h` = 0.3 takes the cell at 0.3125 m,
        the tie :math:`h` = 0.25 the lower cell (0.1875 m), the domain's high corner the last cell and the low corner
        the first; a probe samples its cell's closed-form values. On a bump the cell is the one nearest :math:`h` above
        the local ground, from a host scan of the node heights.
@@ -3377,29 +3416,29 @@ GoogleTest suite
        the rows written after it make the file equal to the run without the restart. ``open`` reports the kept file
        (true) and a new file (false, also for a restart that finds no file: then only the header is written).
    * - ``TimeDriver.ResumeContinuesTheTime``
-     - UT-6.3.3 (beyond the plan): a driver resumed after step 3 of 0.1 s numbers its steps 4 to 10 and gives the
+     - A driver resumed after step 3 of 0.1 s numbers its steps 4 to 10 and gives the
        times of the run without the restart bit for bit; with 0.05 s after the checkpoint, the times are
        :math:`t_0 + n \cdot 0.05` and the run ends at its stop time. After a clipped last step (0.3 s steps to 1 s,
        anchor (1 s, 4)) a restart to 2 s ends its first step at 1.3 s, not 1.5 s. A chain of restarts (0.1 s to
        0.3 s, then 0.05 s to 0.6 s and on to 1 s) gives the steps and times of one restart (0.05 s to 1 s) bit for
        bit.
    * - ``CanopyTke.SourcesHaveTheirClosedForms``
-     - UT-8.3.1: with a uniform 5 m/s wind, :math:`P_c = \beta_p f |U|^3` and :math:`D_c = \beta_d f |U| k` on every
+     - With a uniform 5 m/s wind, :math:`P_c = \beta_p f |U|^3` and :math:`D_c = \beta_d f |U| k` on every
        cell; where :math:`k = \beta_p |U|^2/\beta_d` they balance; the Patankar diagonal gains :math:`\beta_d f |U|`
        and the exact one loses it.
    * - ``CanopyTke.CappedBalanceIsKappaU2``
-     - UT-8.3.1 with the cap: in a uniform wind (no shear production), neutral, every capped canopy cell has
+     - With the cap: in a uniform wind (no shear production), neutral, every capped canopy cell has
        :math:`P_c = D_c + \varepsilon` at :math:`k = \kappa_c |U|^2`, :math:`\kappa_c` the root of
        :math:`\beta_d \kappa + C_{\mu0}^3 \kappa^{3/2}/\alpha = \beta_p` (0.1728 for the defaults).
    * - ``CanopyTke.LengthCapActsOnlyInTheCanopy``
-     - UT-8.3.2: :math:`L = \min(L_\text{free}, \alpha/f)` where :math:`f > 0` and :math:`\varepsilon` follows it;
+     - :math:`L = \min(L_\text{free}, \alpha/f)` where :math:`f > 0` and :math:`\varepsilon` follows it;
        the same bits where :math:`f = 0` or with :math:`\alpha = 0`; both capped and uncapped canopy cells occur.
    * - ``CanopyTke.ExactDerivativeMatchesDifferences``
-     - UT-8.3.3: with the switches frozen, :math:`dS_k/dk` by central differences equals ``dSdk_exact`` in stably
+     - With the switches frozen, :math:`dS_k/dk` by central differences equals ``dSdk_exact`` in stably
        stratified cells with and without canopy (capped cells among them). It found that ``dSdk_exact`` held
        :math:`c_\mu'/c_\mu` fixed in :math:`P_b` since the closure was added (8c0d883); fixed here.
    * - ``CanopyTke.ZeroCanopyIsBitIdenticalAndResidualCarriesTheTerms``
-     - UT-8.3.4: a canopy with a zero drag field leaves every closure field bit for bit; the residual of :math:`k`
+     - A canopy with a zero drag field leaves every closure field bit for bit; the residual of :math:`k`
        gains exactly :math:`D_c - P_c`.
    * - ``CanopyTke.BoundaryZonesCountTheCanopyCells``
      - The count behind the inflow-face and damping-layer warnings: a patch covering only the first column of the
@@ -3408,7 +3447,7 @@ GoogleTest suite
        the first column or row of each of the four faces are counted with that face inflow; an outflow face and no
        damping count nothing.
    * - ``CanopyTke.CapSwitchIsFrozen``, ``CanopyTke.RoughGroundUnderTheCanopyIsCounted``
-     - UT-8.3.5: a capped decision held for a smaller :math:`k` keeps :math:`L = \alpha/f`; on the field the moved
+     - A capped decision held for a smaller :math:`k` keeps :math:`L = \alpha/f`; on the field the moved
        decisions are counted and the frozen evaluation keeps the cap. The ground-:math:`z_0` warning counts every
        canopy column when :math:`z_0` = 1 m and none when 0.05 m.
    * - ``CanopyDrag.PredictorTakesTheRowsOfTheLinearisationState``
@@ -3442,7 +3481,7 @@ GoogleTest suite
        face type (even, odd, value, profile, gradient, the Dirichlet face points, the top's θ gradient); the analytic
        profiles and their equilibrium k and :math:`\nu_t`, and a file table with and without a k column. On a domain
        two cells wide in x with slip walls on both x faces, the low face is filled first: :math:`u(-2) = -u(2)` before
-       the high face sets :math:`u(2) = 0`, and :math:`u(4) = -u(0) = 0` (audit A9: one launch for both faces would read
+       the high face sets :math:`u(2) = 0`, and :math:`u(4) = -u(0) = 0` (one launch for both faces would read
        the other face's points; a CPU build, which runs the tags in order, fails if the split is lost).
    * - ``BoundaryFill.GroundGradientIsTheWallLaw``, ``BoundaryImplicit.FoldsMatchTheHomogeneousFill``, ``BoundaryResidual.DirichletRowsAndIdentityLines``, ``BoundaryDamping.*``, ``BoundaryInputs.KeysAreReadAndChecked``
      - Over a 120 m hill with a stable heat flux, the ground ghosts of u, v and θ give MOST's
@@ -3451,7 +3490,7 @@ GoogleTest suite
        slab with too few ghost columns under ``init_snan``); k is even; the homogeneous fill gives zero gradients
        and keeps even rules. The implicit folds: :math:`A_1` on the interior values with the folds equals the unfolded
        :math:`A_1` on the homogeneously filled state, for u, v, w, θ and k, every lateral type and a geostrophic top
-       (1e-13; single 1e-5); Dirichlet face points carry identity rows. The residual's Dirichlet rows are
+       (1e-12; single 1e-5); Dirichlet face points carry identity rows. The residual's Dirichlet rows are
        :math:`q - V`; ``line_jacobian`` gives the identity there. The Rayleigh and sponge coefficients have their
        shapes (the :math:`\sin^2` ramp, zero below :math:`z_d`; the quadratic sponge, zero at its inner edge and on
        faces that are not inflow or outflow) in the residual and on the implicit diagonal. Every ``bc`` key is read
@@ -3465,7 +3504,7 @@ GoogleTest suite
      - The turbulence plotfile's ``cmu`` and ``cmu_prime`` equal ERF's AL01 ``cmu`` and ``cmu_prime`` of the plotted
        ``Rt``, in a stable and an unstable layer (R_t ≠ 0 checked), to 4 ulp (the plotfile kernel and the reference
        are compiled apart and may contract to FMA differently). The plotfile and the closure share
-       ``closure::stability_functions`` (audit A11). Mismatches are counted on every rank and all-reduced.
+       ``closure::stability_functions``. Mismatches are counted on every rank and all-reduced.
    * - ``Closure.MatchesKynemaKLAxellWhereTheyCoincide``
      - Kynema's ``KLAxell`` (transcribed) where the formulations coincide (neutral, z = d, λ = 30 m, no z₀, ρ = 1):
        L, ν_t, ε and P_s to 1e-12.
@@ -3488,11 +3527,11 @@ GoogleTest suite
      - Every ``turb`` key is read into its field and the constants follow (the floor, C_μ0³); each invalid value is
        refused with its key named, and the constructor refuses it before forming the constants.
    * - ``Closure.WallDistanceIsCheckedOnce``
-     - Audit A7: :math:`d + z_0 > 0` is checked once per level, where the wall distance is made, the ghost cells
+     - :math:`d + z_0 > 0` is checked once per level, where the wall distance is made, the ghost cells
        included: a zero ghost distance is refused with :math:`z_0 = 0` and accepted with 0.1, −0.1 with 0.1 is
-       refused. ``evaluate`` repeats the check only in debug builds (``GUST_TESTING``).
+       refused. ``evaluate`` repeats the check only with ``GUST_DEBUG_CHECKS`` (Debug builds and ``GUST_TESTING`` builds).
    * - ``Closure.FaceMeanIsLogarithmicAcrossVerticalPairsOnly``, ``Closure.LogarithmicFaceMeanReproducesTheLogLawFlux``, ``Closure.ResidualWithClosureIsTheResidualWithItsFields``, ``Closure.RelaxationCheckpointAndFrozenSwitches``
-     - The logarithmic mean against (a − b)/ln(a/b) on random pairs (1e-14), equal values, zero,
+     - The logarithmic mean against (a − b)/ln(a/b) on random pairs (1e-13; single 1e-5), equal values, zero,
        continuity across its series switch; on a log-law column the logarithmic face mean gives the wall flux u*² at
        every interior u face (1e-12) where the arithmetic mean misses the first by 2–12 %; the implicit operator with
        the same mean satisfies A₁u = −D(u). Over a 120 m hill the residual with the closure equals the residual with
@@ -3645,13 +3684,13 @@ GoogleTest suite
        entered at 6); every pair of switches is at
        least :math:`W` apart; the records carry each iteration's stage; one stage never switches.
    * - ``Driver.HistoryRecordsTheResidualNorm``
-     - Audit A5: a new run records the norm (driver history format 4) and a write and a read keep it; a format-3 file
+     - A new run records the norm (driver history format 4) and a write and a read keep it; a format-3 file
        reads as not recorded, and a restore from it says so in the log; a norm other than 0 or 1 is refused.
    * - ``Mesh.RestartAcceptsHeightsWithinAFewUlp``
-     - Audit A5 (U6): node heights one ulp above this build's, or ±32 ulp of the top level's height, restart, and the run
+     - Node heights one ulp above this build's, or ±32 ulp of the top level's height, restart, and the run
        continues on this build's heights; ±128 ulp, 64 000 ulp and a NaN node stop it (before, any difference did).
    * - ``Mesh.KeepsTheSmallestJacobian``
-     - Audit A7: the mesh keeps the smallest :math:`J` when it makes its metrics (the pressure correction reads it
+     - The mesh keeps the smallest :math:`J` when it makes its metrics (the pressure correction reads it
        every iteration). After ``build``, a restart check and ``adopt`` it equals the field's minimum bit for bit;
        on flat ground it is the first layer over the computational spacing, 40/100.
    * - ``Driver.HistoryIsRestartableBitForBit``
@@ -3680,16 +3719,14 @@ GoogleTest suite
      - The z-line solve (the vertical upwind weights of :math:`A_1` included) against a dense direct solve of the same
        system,
        assembled independently from the coefficient fields: on a single column (1 × 1 × 12, periodic sides, the
-       lagged neighbours are the column itself) to 1e-12 after 60 sweeps (single 1e-4); the ghosts outside the domain
-       stay 0.
+       lagged neighbours are the column itself) to 1e-12 after 60 sweeps (single 1e-4), and on a 3-D problem (4 × 4 × 6,
+       periodic, :math:`\Delta\tau` = 20 s) to 1e-10 after 400 sweeps (single 1e-4); in both cases the error falls
+       at every doubling of the sweeps (1, 2, 4, 8, 16), the last sweep's change is below the same tolerance and
+       the ghosts outside the domain stay 0.
    * - ``Predictor.UnderRelaxationIsAPseudoTimeStep``
      - :math:`\alpha_u` relaxation equals pseudo-time relaxation: with :math:`\Delta\tau = \alpha_u/(1-\alpha_u)/
        \mathrm{diag}(A_1)` on every face, :math:`a_P = \mathrm{diag}(A_1)/\alpha_u` to 1e-12 (single 1e-5) and the
        converged correction of u, v and w equals the dense solve of the relaxed system to 1e-12 (single 1e-4).
-   * - ``Predictor.ZLineJacobiConvergesToTheDenseSolution``
-     - z-line Jacobi on a 3-D linear advection-diffusion problem (4 × 4 × 6, periodic, :math:`\Delta\tau` = 20 s)
-       converges to the dense direct solution: the error falls at every doubling of the sweeps (1, 2, 4, 8, 16) and
-       is below 1e-10 after 400 sweeps, with the last sweep's change below 1e-10.
    * - ``Predictor.AConvergedStateIsAFixedPoint``
      - Fixed point: a uniform wind over flat ground with uniform pressure has a residual of exactly zero and the
        predictor changes nothing (:math:`|\Delta q| = 0`; with a zero right-hand side the solve is zero for any
@@ -3700,7 +3737,7 @@ GoogleTest suite
      - ``face_dtau`` is the mean of the two cells, the one cell at a wall, the ground and the top,
        and the periodic image across the seam; one sweep's change is the whole correction; ``sweeps < 1``, a
        non-positive step (one NaN cell on one rank too) and wrong layouts are refused. A non-positive step at the
-       faces is refused by the predictor in debug builds only (audit A7: ``face_dtau`` checked the cells).
+       faces is refused by the predictor in debug builds only (``face_dtau`` checked the cells).
    * - ``Predictor.DirichletRowsAreSetExactly``
      - With boundary conditions (inflow at xlo, outflow at xhi, slip ground and top), the Dirichlet
        rows (the inflow face of u, the ground and top faces of w) have :math:`a_P = 1`, :math:`d = 0`, and one
@@ -3712,7 +3749,7 @@ GoogleTest suite
        through the ghost exchange) gives the same corrected u, v, w, :math:`a_P`, :math:`d` and face step to 1e-12
        (single 1e-5).
    * - ``Predictor.CoriolisMeanIsRankIndependent``
-     - Audit A4: with the Coriolis coupling on, six boxes on their ranks and in reverse give the same u and v update
+     - With the Coriolis coupling on, six boxes on their ranks and in reverse give the same u and v update
        bit for bit (the level mean is a fixed-order sum; with the atomic sum it differed by 2.2e-16 on 2 and 4 ranks).
        On one rank the two maps are the same, so only the 2- and 4-rank runs can fail. The mean's value is pinned by
        ``Simplec.PointImplicitCouplingsArePinned``.
@@ -3785,7 +3822,7 @@ GoogleTest suite
        stage's refusals (sweeps < 1,
        no boundary conditions, a closure not the inputs', :math:`\alpha_p` out of range, a negative or non-finite
        SIMPLEC denominator, each of the three named in the message, a scalar sweep of a velocity, a negative floor; a non-positive step in debug builds
-       only, audit A7).
+       only).
    * - ``Simplec.WallKRowsAreFolded``
      - The wall-k rows folded into the implicit rows: with a surface layer the first cells' k
        rows are, for ``bc.surface_wall_k = dirichlet``, the diagonal :math:`\max(u_*, u_{*,\min})/d_0` alone with
@@ -3822,9 +3859,9 @@ GoogleTest suite
        > 0).
    * - ``Predictor.LusgsFixedPointAndRefusals``
      - A zero right-hand side gives a zero correction and zero change for one and three sweeps; the dispatcher
-       routes by kind (``line_sweeps``); sweeps < 1 and a wrong A are refused; the readers of ``steady.sweep``
-       (values, the default, an unknown word refused, ``zline_sweeps`` ≥ 1 with ``lusgs`` and ≥ 2 with
-       ``zjacobi``).
+       routes by kind (``line_sweeps``); sweeps < 1 and a wrong A are refused; the kinds have their names
+       (``sweep_name``). The readers of ``steady.sweep`` and the ``zline_sweeps`` bounds are checked in
+       ``Driver.DivergenceStopsAndTheChecksNameTheirInput``.
    * - ``Initializer.ColumnGuessAndProjectionSwitch``
      - The in-memory table profile evaluates its table (exact at the heights, linear between, constant beyond) and
        refuses a first height ≠ 0, non-increasing heights, θ ≤ 0, k < 0 and a single row; with the column override the
@@ -3833,7 +3870,8 @@ GoogleTest suite
        solve, divergence before = after) while the projection changes it over a hill; the readers of ``projection``,
        ``column_tol``, ``column_max_iterations`` (values, defaults, a bad value, no effect without the column, α
        without the projection) and ``check_column_guess`` (no forcing, no stage, no surface layer, a heat flux with the
-       ``mol`` column mode, the source wall k, each naming its key).
+       ``mol`` column mode, the source wall k, a reference height, a stable sounding without damping; the first
+       two naming their key).
    * - ``Initializer.ColumnGuessRunsTheColumn``
      - The 1-D column on 16 levels over 1000 m under the flat deck's sounding with the hill decks' Rayleigh layer on w
        and θ: converges within the limit, the ground row at z = 0, heights strictly increasing, u and v bounded, v > 0
@@ -3854,7 +3892,7 @@ GoogleTest suite
        the stable side (``QnseStableColumn``); the input checks, including the Rayleigh layer on θ, the 3-D refusals
        of a target, the flux hand-off of ``mol`` and the Rib bounds.
    * - ``ColumnCanopy.*``
-     - The column first guess with a canopy (UT-8.5.1's 1-D part): under a dense uniform canopy (f = 0.5 1/m over
+     - The column first guess with a canopy (the 1-D part): under a dense uniform canopy (f = 0.5 1/m over
        the lowest 40 of 64 layers, a pressure-gradient force F, no rotation) the layers at 10 to 30 m have
        :math:`|W| = \sqrt{F/f}` and :math:`k` the root of :math:`\beta_p |W|^3 = \beta_d |W| k + C_{\mu 0}^3
        k^{3/2}/\alpha`, both within 1e-3 (double), and v = 0; with ``canopy.tke = off`` the speed lies above
@@ -3862,7 +3900,7 @@ GoogleTest suite
        value with the terms on; a canopy of f = 0 everywhere gives the no-canopy table bit for bit and the dense
        forest's first cell is below 0.2 of the bare column's; a profile that is not one value per layer is refused.
    * - ``Canopy.ColumnProfileIsTheLayerMeanAndSpread``
-     - ``Canopy::column_profile`` and ``column_canopy`` (UT-8.5.1's field side): a uniform 20 m map canopy gives in
+     - ``Canopy::column_profile`` and ``column_canopy`` (the field side): a uniform 20 m map canopy gives in
        every layer the uniform profile's cell mean from the flat mesh's levels (1e-12) and a spread of 0, and
        ``column_canopy`` returns it; a map with LAI 3 on one half of the domain and 6 on the other gives the mean of
        LAI 4.5 and the spread 3/4.5, and ``column_canopy`` refuses it, naming ``init.first_guess``; on terrain it
@@ -3886,7 +3924,7 @@ GoogleTest suite
        as ``fixed``, the final state's MOST check).
    * - ``StabilityFunctions.*``, ``SurfaceLayer.QnseFrictionVelocity``, ``SurfaceLayer.StableFunctionsKeysAreRead``,
        ``BoundaryFill.GroundGradientIsTheWallLaw``
-     - QNSE's φ and ψ against Python values at ζ = 0.1–100 (1e-14) and with distinct coefficients per function, ψ
+     - QNSE's φ and ψ against Python values at ζ = 0.1–100 (φ to 1e-14, ψ to 1e-13) and with distinct coefficients per function, ψ
        against a Simpson integral of (1 − φ)/x (1e-10); the unstable side and the default equal ERF's Businger–Dyer
        functions; the 3-D u* with QNSE matches a bisection (1e-10) and is 8 % above Businger–Dyer's at ζ = 0.087; the
        ground ghosts take QNSE's φ; the keys are read and checked by name. Twelve one-line mutants are caught.
@@ -3987,7 +4025,7 @@ GoogleTest suite
      - With levels 1 and 2 gathered onto one box, restriction and interpolation between every pair, and
        ``prolong_state`` into level 0, give the distributed hierarchy's results bit for bit, over the hill, on 1, 2
        and 4 ranks. Both hierarchies use one rank map for level 0: ``DistributionMapping(ba)`` follows each rank's
-       memory at the call, and the Poisson solve's sums differ in the last bits between maps (found in audit A4,
+       memory at the call, and the Poisson solve's sums differ in the last bits between maps (found in a review,
        where a cache that keeps memory changed the map).
    * - ``Transfer.RoundTripIsTheClosedFormSmoother``
      - restrict(prolong(c)) on flat ground, periodic in x or in y, against the closed form:
@@ -4078,7 +4116,7 @@ GoogleTest suite
    * - ``IO.CheckpointRestartIsBitIdenticalOnANewLayout``, ``IO.CheckpointRestartRestoresNodalGhostsOnTheSameLayout``, ``IO.CheckpointWithOneGhostCellRestarts``
      - Checkpoint and restart onto another box layout, bit-identical; ghost nodes restored without overwriting
        valid nodes; a checkpoint written with one ghost cell on the solution fields (the earlier
-       layout) restarts bit-identical. ``IO.CheckpointGhostImagesAreTheNeighboursValues`` (audit A5): with the state's
+       layout) restarts bit-identical. ``IO.CheckpointGhostImagesAreTheNeighboursValues``: with the state's
        ghosts stale, every ghost image in the written file equals the neighbouring box's (or periodic image's) valid
        value, and the state keeps its own ghosts (main wrote the stale values: about 2800 per field here).
    * - ``IO.CheckpointHeaderKeepsTheZLevels``
@@ -4086,78 +4124,78 @@ GoogleTest suite
        cell counts, the box layout and every z-level bit for bit (hexadecimal floats). A Header with one z-level
        removed, and a Header without its ``zlevels`` line, stop the read, naming ``bc.nest_parent`` (not the token
        found in the key's place).
-   * - ``NestParent.BilinearFieldIsReproducedOnFlatGround``, ``NestParent.BilinearFieldIsReproducedOnAHill`` (UT-9.1.1)
+   * - ``NestParent.BilinearFieldIsReproducedOnFlatGround``, ``NestParent.BilinearFieldIsReproducedOnAHill``
      - A parent field bilinear in x and y with a different slope on each level, at each field's own staggered point,
        is reproduced on every patch point, ghosts included (the z ghost rows equal the nearest level), on flat ground
        and over a hill (relative 1e-11; 2e-5 in single precision).
-   * - ``NestParent.EachPlacementFaultIsRefusedNamingTheKey`` (UT-9.1.2)
+   * - ``NestParent.EachPlacementFaultIsRefusedNamingTheKey``
      - A patch outside the parent, within 2 parent cells of a low or high face, misaligned by 30 m or 25 m, at
        ratio 4 or 1, on other z-levels (cell count, top or ``mesh.dz0``), periodic in a direction where the parent is
-       not, periodic in z, or wider or narrower than a periodic parent, each stops with ``bc.nest_parent`` in the
+       not, periodic in z, or narrower than a periodic parent, each stops with ``bc.nest_parent`` in the
        message; a patch reaching a periodic parent's faces is accepted.
    * - ``NestParent.OldOrMissingCheckpointAbortsNamingTheKey``
      - A format-1 checkpoint still restarts, but as a nest parent stops naming ``bc.nest_parent`` and the format;
        a directory that does not exist stops too.
-   * - ``NestParent.ValuesDoNotDependOnLayoutOrRanks`` (UT-9.1.3)
+   * - ``NestParent.ValuesDoNotDependOnLayoutOrRanks``
      - A smooth, not bilinear parent field interpolated with four pairs of parent and patch box layouts (one box
        each, several, and rank maps in reverse order) gives the same patch values bit for bit; run on 1, 2 and 4
        ranks by the ``unit_np*`` tests.
-   * - ``NestParent.PeriodicSeamUsesThePeriodicNeighbours`` (beyond the plan)
+   * - ``NestParent.PeriodicSeamUsesThePeriodicNeighbours``
      - A patch reaching a periodic parent's face (its ghost cells cross the seam) and a periodic patch spanning the
        parent read the periodic neighbours: both match a host interpolation that wraps the index. Run at ratios 2,
        4, 8 and 16.
-   * - ``NestParent.BilinearFieldIsReproducedAtRatio4``, ``NestParent.BilinearFieldIsReproducedAtRatios8And16`` (beyond the plan)
-     - The bilinear test of UT-9.1.1 with ``bc.nest_ratio`` = 4 (flat ground and the hill), 8 and 16: every patch
+   * - ``NestParent.BilinearFieldIsReproducedAtRatio4``, ``NestParent.BilinearFieldIsReproducedAtRatios8And16``
+     - The bilinear test of ``NestParent.BilinearFieldIsReproducedOnFlatGround`` and ``…OnAHill`` with ``bc.nest_ratio`` = 4 (flat ground and the hill), 8 and 16: every patch
        point, ghosts included, matches the closed form (relative 1e-11).
-   * - ``NestParent.PlacementFollowsTheRatio``, ``NestParent.InvalidRatioAbortsNamingTheKey`` (beyond the plan)
+   * - ``NestParent.PlacementFollowsTheRatio``, ``NestParent.InvalidRatioAbortsNamingTheKey``
      - A patch with r times the parent's cells is accepted at r = 2, 4, 8 and 16, and at ratio 16 with the 2-cell
        margin to the parent's high faces (1 cell is refused); the ratio-2 patch at ratio 4 and the ratio-4 patch at 2
        and 8 are refused naming ``bc.nest_parent`` and the ratio; ratios −2, 0, 1, 3, 6, 10, 12, 32 and 64 are refused,
        naming ``bc.nest_ratio``.
-   * - ``NestParent.ValuesDoNotDependOnLayoutOrRanksAtRatio4``, ``NestParent.RestartRecordHoldsTheRatio`` (beyond the plan)
-     - UT-9.1.3 at ratio 4. The nest faces' restart record differs between ratio 4 and ratio 2, and at ratio 2 it
+   * - ``NestParent.ValuesDoNotDependOnLayoutOrRanksAtRatio4``, ``NestParent.RestartRecordHoldsTheRatio``
+     - ``NestParent.ValuesDoNotDependOnLayoutOrRanks`` at ratio 4. The nest faces' restart record differs between ratio 4 and ratio 2, and at ratio 2 it
        equals the digest of the record's text as written before ``bc.nest_ratio`` (so older checkpoints restart).
-   * - ``NestFaces.NetFluxIsZeroAfterTheCorrection`` (UT-9.2.1)
+   * - ``NestFaces.NetFluxIsZeroAfterTheCorrection``
      - A patch over a hill with four nest faces and a parent field whose net flux is above 1e-3 of the flux entering:
        the reported net, flux entering and δ equal sums made on the host from ``Mesh::flux_area``; after the
        correction the host's net is at most 1e-13 of the flux entering; every nest face point's outward velocity,
        and the normal velocity's two ghost layers outside it, moved by δ and no other value of u, v or θ changed.
-   * - ``NestFaces.NothingIsRemovedWithAnOutflowFace``, ``NestFaces.TheNetFluxDoesNotDependOnTheRankMap`` (beyond the plan)
+   * - ``NestFaces.NothingIsRemovedWithAnOutflowFace``, ``NestFaces.TheNetFluxDoesNotDependOnTheRankMap``
      - With an outflow face the parent's values are kept and δ = 0. The net, the weight and δ are the same bits with
        the rank map reversed.
-   * - ``NestFaces.GhostsAndFacePointsHoldTheParentsValues``, ``NestFaces.NoNestFaceAborts`` (beyond the plan)
+   * - ``NestFaces.GhostsAndFacePointsHoldTheParentsValues``, ``NestFaces.NoNestFaceAborts``
      - After ``fill_ghosts`` both ghost layers of u, v, w, θ and k outside the nest faces, and the normal velocity's
        face points, hold the parent's bilinear field at those points (0 for a homogeneous fill); p is untouched; the
        Dirichlet rows are :math:`q - V`. A ``NestFaces`` without a nest face, and a fill of a nest face without one,
        abort.
-   * - ``NestFaces.BlendedGroundIsTheParentsOnTheFaceAndThePatchsInside`` (UT-9.2.2)
+   * - ``NestFaces.BlendedGroundIsTheParentsOnTheFaceAndThePatchsInside``
      - With ``terrain.nest_blend_width``: the ground equals the parent's interpolated ground on the nest faces, the
        patch's own beyond the width, and the closed-form smoothstep between; a face that is not ``nest`` keeps the
        patch's ground.
-   * - ``NestFaces.NestNodeHeightsDoNotDependOnTheLayout`` (tracker N-114)
+   * - ``NestFaces.NestNodeHeightsDoNotDependOnTheLayout``
      - A nest with a blended ground (``blend_nest_ground``) and a joint run's nest (``follow_parent_levels``), BTF and
        Sullivan, in one box and in boxes of at most 9 x 7 and 6 x 10 cells: the node heights are the same, bit for bit, at every node a
        box holds. Under gcc-16 the blended BTF nest failed it before the BTF formula was rearranged.
-   * - ``NestFaces.JointNestLevelsFollowTheParentsAloft`` (beyond the plan)
+   * - ``NestFaces.JointNestLevelsFollowTheParentsAloft``
      - A joint run's nest (``follow_parent_levels``), BTF and Sullivan: every node equals the parent's interpolated
        surface plus :math:`(h - h_p)\sinh((H-\zeta)/s)/\sinh(H/s)`, with :math:`s` recomputed on the host; the ground
        is the nest's own and the top the parent's; with BTF the nest's detail aloft is nowhere larger than with its
        own surfaces and at least half smaller somewhere. A decay height without the factor 2, and a mesh build that
        skips the edit, both fail it.
-   * - ``NestFaces.ZoneRateAndSourceEqualTheClosedForm`` (UT-9.2.3)
+   * - ``NestFaces.ZoneRateAndSourceEqualTheClosedForm``
      - The rate at every point of u, v, w and the cell centres equals :math:`(1 - s/N)\,f\max(0, U_\mathrm{in})/(N\Delta x)`
        computed on the host (corners add; zero where the parent's flow leaves and beyond N cells), and the source
        equals :math:`c\,(q - q_\mathrm{parent})` for each of the five fields.
-   * - ``NestFaces.DiagonalIsTheSourcesDerivative`` (UT-9.2.4)
+   * - ``NestFaces.DiagonalIsTheSourcesDerivative``
      - The diagonal added for each equation equals the rate at its points, and equals the finite difference of the
        source for a perturbation of the field.
-   * - ``NestFaces.WidthZeroLeavesTheResidualAndTheDiagonal`` (UT-9.2.5)
+   * - ``NestFaces.WidthZeroLeavesTheResidualAndTheDiagonal``
      - With ``bc.nest_relax_width = 0`` the residual and the diagonal are bit for bit those without the hooks.
-   * - ``NestFaces.SummaryWarnsAboveTheNetFluxThreshold`` (beyond the plan)
+   * - ``NestFaces.SummaryWarnsAboveTheNetFluxThreshold``
      - The summary warns, naming ``terrain.nest_blend_width``, when the net flux removed is above 1e-3 of the flux
        entering, and not below it (a uniform flow on flat ground: net below 1e-6), nor when an outflow face carries
        the net. With no flux entering it reports the mean outward velocity, not a ratio.
-   * - ``NestFaces.InputFaultsAreRefusedNamingTheKey``, ``NestFaces.RestartRecordIsCheckedAgainstTheInputs`` (beyond the plan)
+   * - ``NestFaces.InputFaultsAreRefusedNamingTheKey``, ``NestFaces.RestartRecordIsCheckedAgainstTheInputs``
      - Each range and combination fault of ``bc.nest_relax_width`` (negative, half the patch),
        ``bc.nest_relax_factor``, ``terrain.nest_blend_width``, ``bc.nest_parent`` and the ``nest`` face types gives a
        message naming the key. ``bc.zlo`` or ``bc.zhi = nest``, and a lateral wall beside a nest face, are refused.
@@ -4167,111 +4205,112 @@ GoogleTest suite
        the same step, and the patch's place in the parent; not with the parent's path or a second read of the same
        parent. A checkpoint is accepted with its own record and refused, naming ``io.restart``, with another, with
        none where it has one, and with one where it has none.
-   * - ``NestFaces.JointNestSurfacesAreSmoothBetweenTheParentsNodes`` (beyond the plan)
+   * - ``NestFaces.JointNestSurfacesAreSmoothBetweenTheParentsNodes``
      - A parent whose surfaces are quadratic in x and y comes back exactly at every valid and ghost node of a joint
        nest (``interpolate_ground_smooth``, bicubic Catmull-Rom); the bilinear form misses the curvature by 0.75 m at
        the parent cells' centres.
-   * - ``NestDefect.RestrictionConservesTheFluxesOnAHill`` (PR-70)
+   * - ``NestDefect.RestrictionConservesTheFluxesOnAHill``
      - On a hill parent with an uneven patch layout, for an arbitrary nest field: on every footprint cell the
        parent's :math:`J\,\nabla\cdot` after the restriction is the mean of the nest's over its 2 × 2 cells (u, v and
        :math:`\Omega` restricted as fluxes), so a divergence-free nest field gives a divergence-free footprint.
-   * - ``NestDefect.RestrictionSetsBothCopiesOfAPeriodicSeamFace`` (PR-70)
+   * - ``NestDefect.RestrictionSetsBothCopiesOfAPeriodicSeamFace``
      - A parent periodic in x and a footprint starting at its face 0: after the restriction u on face 0 and on its
        periodic image, face 20, agree.
-   * - ``NestDefect.RestrictionOfCellFieldsAndThePressureLevel`` (PR-70)
+   * - ``NestDefect.RestrictionOfCellFieldsAndThePressureLevel``
      - θ linear in x and y on flat ground comes back at the parent cell's centre exactly; k constant on the hill is
        unchanged by the :math:`J` weights; p is the :math:`J`-weighted mean shifted by one constant that keeps the
        parent's footprint mean; outside the footprint every field keeps its values bit for bit.
-   * - ``NestDefect.ThePressureLevelDoesNotReachTheSource`` (PR-70)
+   * - ``NestDefect.ThePressureLevelDoesNotReachTheSource``
      - A constant added to p over the footprint leaves the parent's residual unchanged on the source's region
        (``kDefectMargin`` cells in) and changes it on the footprint's outer cells (the test is not vacuous).
-   * - ``NestDefect.RestrictionDoesNotDependOnTheNestLayout`` (PR-70)
-     - u, v, θ and k of the restriction are bit for bit the same for two nest box layouts and rank maps, on 1, 2 and
-       4 ranks. Each layout builds its own node heights (until tracker N-114 both took one single-box build, since
+   * - ``NestDefect.RestrictionDoesNotDependOnTheNestLayout``
+     - u, v, w, θ and k of the restriction are bit for bit the same for two nest box layouts and rank maps, on 1, 2 and
+       4 ranks. Each layout builds its own node heights (before, both took one single-box build, since
        under gcc the BTF heights changed with the layout).
-   * - ``NestDefect.TouchingNestsKeepTheRestrictedOmegaOnBothFootprints`` (N-114, item 8)
+   * - ``NestDefect.TouchingNestsKeepTheRestrictedOmegaOnBothFootprints``
      - Two nests that touch along a parent face, with different u on it, restricted by ``restrict_patches`` on a hill
        parent: on both footprints the parent's :math:`\Omega` is the :math:`a_z`-weighted mean of the nest's over its
        2 × 2 faces. Restricting the nests one after the other (the order before) misses by 0.066 against a tolerance
        of 8e-11, and fails.
-   * - ``NestDefect.RestrictionWeightsTheOpenFaceAreas`` (N-114, item 7)
+   * - ``NestDefect.RestrictionWeightsTheOpenFaceAreas``
      - Made-up face fractions on flat ground, partly open, closed and open faces on both levels: u, v and
        :math:`\Omega` are the nest's open-area flux over the parent's open area, against values by hand
        (:math:`8/3 + 0.1k`, :math:`2 + 0.05k`, :math:`3 + 0.1k` for u and v, :math:`2.4 + 0.1k` for :math:`\Omega`);
        a parent face closed in full gets 0 and stays finite. With the full areas the values are :math:`3 + 0.1k` and
        :math:`2.5 + 0.1k`, and the test fails (mutants D12–D19).
-   * - ``NestDefect.RegionAndSource`` (PR-70)
+   * - ``NestDefect.RegionAndSource``
      - ``defect_region``: the footprint and the inner box ``kDefectMargin`` cells in (not across a periodic
        direction); :math:`S = R` on the inner box's points (faces from L to H + 1 along their normal) and 0 elsewhere;
        ``add_to_residual`` subtracts it, and does nothing while inactive.
-   * - ``NestRelax.SourceIsItsClosedFormOnUnevenBoxes`` (UT-8.3.1)
+   * - ``NestRelax.SourceIsItsClosedFormOnUnevenBoxes``
      - Two overlapping footprints on a parent of 20 × 16 × 8 cells (dx 100 m, dy 80 m) in boxes of 7 × 6, with
        non-uniform u, v, w, θ and k: on every point of every location the rate is
        :math:`\max_g w(s_g) f U_g / \min(\Delta x, \Delta y)` computed from the point's position (``kDefectMargin``
        written as 2), 0 outside both footprints and on their faces, with points inside the margin; :math:`R` gains
        :math:`c(q - q^*)` and ``differences`` gives the largest :math:`|q - q^*|`; on 1, 2 and 4 ranks.
-   * - ``NestRelax.PeriodicSpanHasNoFaces`` (UT-8.3.1)
+   * - ``NestRelax.PeriodicSpanHasNoFaces``
      - A footprint spanning a periodic y: the rate does not fall towards the y ends, and falls to 0 at the x faces.
-   * - ``NestRelax.FootprintOnAPeriodicSeam`` (UT-8.3.1, beyond the plan)
+   * - ``NestRelax.FootprintOnAPeriodicSeam``
      - A footprint from face 0 of a periodic y that does not span it: the closed form with y faces, and a rate of 0
        on both copies of the seam face (0 and its image 16).
-   * - ``NestRelax.InactiveLeavesTheHillBitForBit`` (UT-8.3.2)
+   * - ``NestRelax.InactiveLeavesTheHillBitForBit``
      - On a hill, the residual and the implicit diagonals with an unset ``NestRelax`` attached are bit for bit those
        with none.
-   * - ``NestRelax.ResidualGainsTheSourceOnTheFootprintRows`` (UT-8.3.2)
+   * - ``NestRelax.ResidualGainsTheSourceOnTheFootprintRows``
      - On a hill, the residual with the source minus the one without equals :math:`c(q - q^*)` on every row the
        boundary conditions keep, and 0 on the rows they replace (40 ground and top w faces and 20 wall-k cells in the
        footprint) and outside the footprint; continuity's residual is unchanged.
-   * - ``NestRelax.DiagonalIsTheDerivativeOfTheSource`` (UT-8.3.3)
+   * - ``NestRelax.DiagonalIsTheDerivativeOfTheSource``
      - For each equation, the implicit diagonal with the source minus the one without equals the finite-difference
        derivative of the residual's change, point by point; no other coefficient changes.
-   * - ``NestRelax.SameSourceOnAnyRankMapAndLayout`` (UT-8.3.4)
+   * - ``NestRelax.SameSourceOnAnyRankMapAndLayout``
      - U and the rates at every point: bit for bit the same with the boxes of 7 × 6 on reversed ranks, and the same to
        round-off with one box; on 1, 2 and 4 ranks (on 1 rank the reversed map is the same map, so that half
        acts in ``unit_np2`` and ``unit_np4`` only).
    * - ``NestRelax.FactorCheckNamesTheKey``
      - ``check_feedback_factor`` accepts 1 and 16 and refuses 0, −1, NaN and infinity, naming
        ``nest.feedback_factor``.
-   * - ``NestRelax.BoxesOutsideEveryFootprintAreSkippedExactly`` (tracker N-114, item 14, beyond the plan)
+   * - ``NestRelax.BoxesOutsideEveryFootprintAreSkippedExactly``
      - Two small footprints on boxes of 4 × 4 cells (12 of the 20 boxes hold no footprint point, 3 are reached by
        one footprint's margin alone): with :math:`R` and :math:`A` preset, every point where the closed-form rate is
        positive gains :math:`c(q - q^*)` and :math:`c` on the diagonal, every other point and every off-diagonal
        coefficient keeps its value bit for bit; on 1, 2 and 4 ranks. Mutants X11 to X13 fail it. It checks that no
        box with a footprint point is skipped; the cost saving itself is not visible in values.
-   * - ``NestRelaxConsistent.AddedTermIsTheWeightedResidualOnUnevenBoxes`` (UT-12.1, tracker N-114, item 12)
-     - A periodic hill of 16 × 2 × 12 cells on four boxes, a footprint over cells 3 to 12 in x: the term
-       ``NestRelax`` stores for each of u, v, w, :math:`\theta` and k is :math:`w R_c(q^*)` with :math:`R_c(q^*)`
-       from ``NestDefect``'s evaluation, to a tolerance against :math:`\max|R_c(q^*)|` reduced over ranks; zero on
+   * - ``NestRelaxConsistent.AddedTermIsTheWeightedResidualOnUnevenBoxes``
+     - A flat parent of 20 × 16 × 8 cells in boxes of 7 × 6 with two overlapping footprints: the term
+       ``NestRelax`` stores for each of u, v, w, :math:`\theta` and k is :math:`w R^*` for a prescribed non-uniform
+       :math:`R^*` (1e30 outside the footprints), to 1e-14 (1e-6 in single precision) of :math:`\max|R^*|` reduced over ranks; zero on
        the footprint's faces and outside it; points on the margin and where :math:`w = 1` both present. 1, 2 and
        4 ranks. Mutants C3, C4 and C5 fail it (C1 changes the sign where the term is used, not the stored term).
-   * - ``NestRelaxConsistent.TargetIsAFixedPointWhereTheWeightIsOne`` (UT-12.2)
-     - The same hill: the outer residual with the source at :math:`q = q^*` is zero where :math:`w = 1` and
+   * - ``NestRelaxConsistent.TargetIsAFixedPointWhereTheWeightIsOne``
+     - A periodic hill of 16 × 2 × 12 cells on four boxes, a footprint over cells 3 to 12 in x: the outer residual
+       with the source at :math:`q = q^*` is zero where :math:`w = 1` and
        :math:`(1 - w) R_c(q^*)` on the margin; with ``relax`` it is :math:`R_c(q^*)`, not small there (so the test is
        not vacuous); continuity is unchanged bit for bit. Mutants C1 to C5 fail it.
-   * - ``NestRelaxConsistent.ImplicitRowsAreThoseOfRelax`` (UT-12.3)
+   * - ``NestRelaxConsistent.ImplicitRowsAreThoseOfRelax``
      - The implicit coefficients with ``relax_consistent`` are bit for bit those of ``relax``. A guard: no current
        mutant changes them.
-   * - ``JointRun.LogNamesAreTruncatedToTheColumnWidth`` (tracker N-114, item 14, beyond the plan)
+   * - ``JointRun.LogNamesAreTruncatedToTheColumnWidth``
      - A domain name of up to 24 characters is logged as it is; a longer one as its first 12 and last 9 characters
        around ``...``, so two names differing in a suffix of up to 9 characters stay apart, and the per-domain column
        of the run's last line keeps its numbers. Fails with the truncation removed.
-   * - ``NestInject.InjectsTheRestrictedNestOnTheInnerBoxOnAHill`` (UT-I.1, tracker N-114, item 2)
+   * - ``NestInject.InjectsTheRestrictedNestOnTheInnerBoxOnAHill``
      - On the hill parent, a full injection sets u, v, w, p, θ and k to the restricted nest on the inner box's points
        (faces from L to H + 1 along their normal; w's 96 ground and top faces are boundary values and keep the
        parent's) and leaves every other point bit for bit; an injection at the default factor moves the inner box
        halfway (to 1e-6 relative) and nothing else. After the full injection the inner cells above the ground layer
        carry the nest's :math:`J\,\nabla\cdot u` (its 2 × 2 mean; the ground cells read the ground w the
-       application's fill sets, which UT-I.4 covers) and, outside, only the 224 ring cells that share a face with
+       application's fill sets, which ``NestInject.InjectedRunReachesSteady`` covers) and, outside, only the 224 ring cells that share a face with
        the inner box change their divergence. Fails with the ground and top faces injected.
-   * - ``NestInject.ZeroRowsAndDifferencesOnUnevenBoxes`` (UT-I.2)
+   * - ``NestInject.ZeroRowsAndDifferencesOnUnevenBoxes``
      - Two regions, one spanning a periodic y (no y faces), on boxes of 7, the same on reversed ranks, and one box:
        ``zero_rows`` zeroes the six residual rows on the inner boxes only, and ``differences`` gives the largest and
        RMS :math:`|q - q^*|` over them (each point once), the same on the three layouts; on 1, 2 and 4 ranks.
-   * - ``NestInject.ResidualRowsOnTheHill`` (UT-I.3)
+   * - ``NestInject.ResidualRowsOnTheHill``
      - On the hill, an inactive ``NestInject`` leaves the residual bit for bit; an active one makes it 0 on every
        row of the inner box (the wall-k and ground w rows included; checked not vacuous: most rows had a residual
        there) and leaves it bit for bit elsewhere; the implicit rows do not change.
-   * - ``NestInject.InjectedRunReachesSteady`` (UT-I.4, the stop test)
+   * - ``NestInject.InjectedRunReachesSteady`` (the stop test)
      - The converged hill with a target of 1.1 times its velocity on the inner box, injected at the default factor
        before each SIMPLEC iteration: the first iteration leaves all six fields on the inner box at the injected
        values exactly (w's ground and top faces are boundary values); the residual falls 6 orders (100 iterations);
@@ -4283,26 +4322,26 @@ GoogleTest suite
        stop on each field's own bound: u, w, p and :math:`\theta` at 2e-4 of their largest in the first five
        iterations, k at 5e-4 (the hill) and 4e-3 (injected) of its, v at 5e-6 (63 injected iterations, 0.83 m/s,
        flux error 5.8e-8 against 1e-6).
-   * - ``NestInject.FactorCheckNamesTheKey`` (UT-I.5)
+   * - ``NestInject.FactorCheckNamesTheKey``
      - ``check_inject_factor`` accepts 1, 0.2 and the default and refuses 0, −0.5, 1.01, 2, infinity and NaN, naming
        ``nest.feedback_factor`` and ``inject``.
-   * - ``NestInject.PoissonHeldCellsAreData`` (UT-I.6)
+   * - ``NestInject.PoissonHeldCellsAreData``
      - The pressure-correction solve with ``NestInject``'s masks on a 16 × 16 × 8 Gaussian bump in boxes of 8, the
        inner box crossing four boxes, with both GMRES back ends: the mean removed is the :math:`J`-weighted mean of the
        right-hand side over the fluid cells; :math:`\phi = 0` on the held cells; no flux on a held face; on every
        fluid cell :math:`|\nabla \cdot F + (b - \bar b)| \le 10^{-6}` and the mean to 1e-9 (single precision: 1e-4 and
        1e-6; measured 2.5e-5 and 2.0e-8).
-   * - ``NestInject.TargetChangeIsTheWindowMeasure`` (UT-I.7)
+   * - ``NestInject.TargetChangeIsTheWindowMeasure``
      - The target's change that the joint run's stop window reads: at :math:`\omega = 0.4`, the first injection's
        change is :math:`\omega \max |q^* - q|` and the second's :math:`\omega (1 - \omega) \max |q^* - q|` over the
        inner data points, with the target's largest velocity component and largest k as the sizes (θ none), computed
        from gathered fields on boxes of 7 and on reversed ranks; never marked as a first exchange.
-   * - ``MaskedPoisson.EnclosedBlockOnABumpSolvesItsSystem`` (UT-5.2.6b, tracker N-114, item 2)
-     - The enclosed solid block of UT-5.2.6 on a bump: the true residual of the masked system is below the solver's
+   * - ``MaskedPoisson.EnclosedBlockOnABumpSolvesItsSystem``
+     - The enclosed solid block of ``MaskedPoisson.EnclosedBlockHasNoFluxThroughIt`` on a bump: the true residual of the masked system is below the solver's
        tolerance times the initial one and the divergence check holds. With :math:`\phi` shifted by its mean after
        the solve on terrain (the code from #86 to this change; the shift is kept on level ground, where the stencil
        has no cross terms) the residual is 0.458 against 2.4e-7, and the test fails.
-   * - ``JointRecord.RoundTripIsExactOnEveryRank``, ``JointRecord.NoFileIsNotAJointCheckpoint``, ``JointRecord.MalformedRecordsAbort``, ``JointRecord.LineEndsAreNotPartOfThePath`` (tracker N-114, beyond the plan)
+   * - ``JointRecord.RoundTripIsExactOnEveryRank``, ``JointRecord.NoFileIsNotAJointCheckpoint``, ``JointRecord.MalformedRecordsAbort``, ``JointRecord.LineEndsAreNotPartOfThePath``
      - The joint record (``Source/JointRecord.cpp``) written by the I/O rank reads back on every rank with the
        feedback, the exchanges, the CFL floors bit for bit (1/3, 0.1 and 0) and each nest's checkpoint path (one with
        a space). A checkpoint without a record reads as none. Another version, feedback ``none``, 0 exchanges, a
@@ -4310,36 +4349,36 @@ GoogleTest suite
        not ``nest`` each abort, as does a missing or bad factor line. A record with ``\r\n`` line ends and trailing spaces after a path reads the paths
        without them. Mutants: floors written as decimals fail the round trip; a floor with trailing text accepted
        fails the malformed test; the path not trimmed fails the line-end test.
-   * - ``NestBuildings.PatchHasTheWholeDomainsFractionsAndWalls`` (UT-9.4.1)
+   * - ``NestBuildings.PatchHasTheWholeDomainsFractionsAndWalls``
      - An L-shaped block with two tops and a lifted deck on sloping ground: a patch (16 × 17 cells in boxes of 5 × 6)
        builds the solid fractions, the three face fractions and the wall cells bit for bit as the whole domain (32 ×
        32 cells in boxes of 16) on the same cells, with more than 100 solid and 50 wall cells in the patch.
-   * - ``NestBuildings.TileOnTheGapEdgeIsClearAndOneCellInsideIsNamed``, ``NestBuildings.EachFaceAndCorner``, ``NestBuildings.ZoneAndBlendWidenTheGap``, ``NestBuildings.OnlyNestFacesAndTilesAlongThePatch``, ``NestBuildings.MessagesAreCappedWithACount`` (UT-9.4.2)
+   * - ``NestBuildings.TileOnTheGapEdgeIsClearAndOneCellInsideIsNamed``, ``NestBuildings.EachFaceAndCorner``, ``NestBuildings.ZoneAndBlendWidenTheGap``, ``NestBuildings.OnlyNestFacesAndTilesAlongThePatch``, ``NestBuildings.MessagesAreCappedWithACount``
      - A building tile within :math:`2\Delta x + \max(N\Delta x, W)` of a nest face is named with its extents and
        the face; a tile whose edge is on the gap's inner edge is clear, one cell further in is not. Each of the four
        faces and a corner tile (named twice); ``bc.nest_relax_width`` and ``terrain.nest_blend_width`` widen the gap, the larger of the two counting;
        faces that are not ``nest``, tiles beside a non-periodic patch and tiles with no height do not count, and a
        periodic direction counts every tile along the face; a cap on the messages (eight in a run), then a count of the rest.
    * - ``IO.SameDirectoryAsksTheFileSystem``
-     - Audit A10 (P3): ``./``, trailing and doubled separators, an absolute path, ``..`` and a symbolic link all
+     - ``./``, trailing and doubled separators, an absolute path, ``..`` and a symbolic link all
        name the restart directory; another directory, and one that does not exist yet, do not.
    * - ``InflowProfile.FileTokensAreParsedStrictly``
-     - Audit A10 (P4): comments, tabs, Windows line ends, a UTF-8 byte-order mark and a hex float are read;
+     - Comments, tabs, Windows line ends, a UTF-8 byte-order mark and a hex float are read;
        ``300.0K``, a fifth token ``junk``, ``0,0,0,300``, ``3.0D+02``, NaN and 1e400 are refused with the file
        and line (before, the stream parser kept the numbers before a bad token); in single precision 1e39 and two
        heights that round to one float are refused (the checks run on the Real values); the constructor refuses
        on every rank and names a file it cannot open.
    * - ``ColumnStability.TableReadsBackExactly``
-     - Audit A10 (P2): the column table (``io.column_guess_file``) parsed as a ``bc.inflow_file`` gives the
+     - The column table (``io.column_guess_file``) parsed as a ``bc.inflow_file`` gives the
        column's z, u, v, θ and k bit for bit (before, z and θ had six decimals); a table that cannot be written
        leaves the run going.
    * - ``Reductions.*``
      - The sum gives the same bits on 1, 2 and 4 ranks and within 16 ε Σ\|x\| of the exact sum; the maximum
-       handles NaN and −0. Audit A4: ``…DotCountsEachFaceOnceOnAnyLayout`` and ``…LevelSumsCountEachFaceOnceOnAnyLayout``
+       handles NaN and −0. ``…DotCountsEachFaceOnceOnAnyLayout`` and ``…LevelSumsCountEachFaceOnceOnAnyLayout``
        on an x-face field, x periodic and not, three layouts, the boxes on their ranks and in reverse: the same bits
        for both rank maps and the exact sum over the distinct faces to 1e-13. ``…ResidualRmsDoesNotDependOnTheLayout``:
        ``stage_norms`` gives the same six norms on the three layouts to 1e-13, and for u the exact RMS (before, a
-       box-seam face and both copies of a periodic face counted twice). Audit A7:
+       box-seam face and both copies of a periodic face counted twice).
        ``…CountNotPositiveFindsEveryBadPoint``: the validity check counts a NaN, ±∞, a negative denormal and the two
        zeros planted in different boxes (so on different ranks), zeros only when they are not allowed (−0 is zero),
        a ghost cell only when asked; every rank gets the full count per field, and the refusal names only the
@@ -4378,20 +4417,21 @@ GoogleTest suite
    * - ``Newton.*`` (``test_NewtonCoverage.cpp``)
      - Added after #19. ``BoundaryConditions.TerrainFillIsAFixedPoint``: on a 30 m hill under the wall law,
        periodic and inflow/outflow in x, on one box and six, :math:`\mathrm{fill}(\mathrm{fill}(q)) =
-       \mathrm{fill}(q)` on every field and ghost cell and :math:`R` likewise, bit for bit (audit A2; before, a second
-       fill moved a ghost by up to 0.056 and :math:`R` by 1e-5). ``…InMoreConfigurations``: a hill varying in x and y,
+       \mathrm{fill}(q)` on every field and ghost cell and :math:`R` likewise, bit for bit (before, a second
+       fill moved a ghost by up to 0.056 and :math:`R` by 1e-5).
+       ``BoundaryConditions.TerrainFillIsAFixedPointInMoreConfigurations``: a hill varying in x and y,
        inflow/outflow in x and y, reversed faces, heat flux of both signs, ``bc.surface_zref`` above the first centre,
-       a geostrophic top, one box, 3 × 2 boxes split evenly and unevenly, the fill and the homogeneous fill (from Aaron's
+       a geostrophic top, one box, 3 × 2 boxes split evenly and unevenly, the fill and the homogeneous fill (added in
        review; with the old ground-cell wind every configuration that uses the ground cell fails).
        ``BoundaryConditions.GhostCopiesAgreeAcrossBoxes``: in those configurations, on 3 × 2 boxes split evenly and
-       unevenly, every ghost cell equals the value one box over the domain gives it, bit for bit (audit A3; before, the
+       unevenly, every ghost cell equals the value one box over the domain gives it, bit for bit (before, the
        outermost lateral ghost layer differed by up to 5.0 m/s for u). ``…ResidualWithClosureAtInflowSeamsIsLayoutFree``:
        with the hill on the inflow faces and the closure's realizability cap, :math:`R` on those layouts equals
        :math:`R` on one box to 1e-12 of its norm (before, the cap's strain in the first lateral ghost layer read inflow
        face points from the clamped heights, and :math:`R` differed by up to 1.6e-5 of its norm).
        ``Newton.TerrainWallLawOperatorMatchesCentralDifference``: there the operator matches a central difference of
        :math:`q \mapsto R(\mathrm{fill}(q))` to 1e-5 on one and six boxes (2.5e-8 to 4.6e-8 measured), and the
-       base point :math:`R(q)` gives the same operator bit for bit (the fill is a fixed point; before audit A2 it was
+       base point :math:`R(q)` gives the same operator bit for bit (the fill is a fixed point; before, it was
        off by more than 1). ``Newton.TerrainWallLawStepsReduceResidual``: four default steps
        there reduce :math:`|R|` at every step. ``Newton.UpdateSkippedAboveRhsNorm``: the rule that skips an update.
        ``Newton.KrylovBudgetIsPerRank``: one box per rank fits a budget the total exceeds.
@@ -4427,7 +4467,8 @@ GoogleTest suite
        :math:`\lambda` is the largest :math:`\beta^j \le (1 - c)/K` (six cases, one rejected); NaN and infinite
        trials fail without raising the invalid flag. ``Continuation.InputReadersAndRangeChecks``: the defaults, the
        seven new keys read, each range check refusing a value just outside its range (and NaN) and naming the
-       key, the reader aborting on those and on repeated or two-valued keys, the SER checks of the driver, and
+       key, the reader aborting on those and on repeated or two-valued keys, the SER checks and the step floor's check
+       (``steady.dtau_floor``) of the driver, and
        the application's unknown-input hint. The line search's growth bound (``steady.newton_ptc_growth``) on the
        same quadratic with :math:`K` = 100: a bound of 100 accepts the full step, ``nextafter(100, 0)`` and 1 do
        not, a NaN full step never is. ``Continuation.GmresIterationLimit``: a limit of 3 stops GMRES at 3
@@ -4507,7 +4548,7 @@ GoogleTest suite
        ungated :math:`N^2`; the range check (0, or 1e-6 to 1) names the key. ``Smoothness.ModuleInputsAbortsAndCheckpoint``: the limiter swap (van Leer only; :math:`\epsilon` and
        the other inputs kept), ``turb.frozen_switch`` → the floor freeze, ``enter``/``leave`` (the moved floor
        decisions counted, the closure thawed; nothing frozen without a closure or with the switch off), the aborts
-       (twice, out of order, another closure), and the checkpoint read on one box from four (the frozen evaluation
+       (twice, out of order, another closure), and the checkpoint read on one box from two (the frozen evaluation
        bit for bit; a deck with ``turb.frozen_switch = 0`` and a corrupt file abort; no file reads as "not in the Newton
        stage"). ``Closure.InputsAreReadAndChecked`` reads ``turb.ri_gate`` and
        the new default of ``turb.frozen_switch``. CTest ``abort_frozen_switch_value``, ``abort_frozen_switch_no_newton``
@@ -4528,14 +4569,14 @@ GoogleTest suite
        thaws the closure.
    * - ``NewtonStage.*``
      - ``NewtonStage.SwitchesOnceAndConvergesInNewton``: the 2-D hill with a capping inversion
-       (8 × 2 × 8, van Albada, 6 orders): one switch (at r ≤ 1e-4, iteration 2768), at most 10 accepted Newton steps
-       (5 measured), steady in the Newton stage, at most 60 % of the SIMPLEC iterations of a SIMPLEC run (2769 of
+       (8 × 2 × 8, van Albada, 6 orders): one switch (at r ≤ 1e-4, iteration 2768), at most 16 accepted Newton steps
+       (8 measured), steady in the Newton stage, at most 60 % of the SIMPLEC iterations of a SIMPLEC run (2769 of
        5417) and the same solution to 1e-4 of the largest :math:`u` and :math:`k` (7e-8 measured).
        ``NewtonStage.HandsBackForTheFinalPassAfterTheSwap``: with van Leer the stage hands the run back for the final
        SIMPLEC pass once its smooth equations have converged, thaws the closure, refuses any later switch, and the run
        stays in SIMPLEC over two more windows. ``NewtonStage.RestartInsideTheStage``: a checkpoint two steps into the
        stage restarts it; three more steps give the uninterrupted run's records (to 1e-12) and fields bit for bit with
-       either preconditioner. Before audit A2 the ``simplec`` case agreed only to 1e-4 of the relative residual: the
+       either preconditioner. Before, the ``simplec`` case agreed only to 1e-4 of the relative residual: the
        stage's entry fill, which the uninterrupted run does not make, was not a fixed point. That test
        found that the continuation's diffusivity must be the stage's own (the SIMPLEC stage's is not restored by a
        restart inside the Newton stage), and the fallback test that a failed first step must not count as converged.
@@ -4559,14 +4600,15 @@ GoogleTest suite
        ERF's cube file and the two file formats; a void deck is open with a wall under the building; the
        reference distance on stretched layers; round-off leaves solid cells solid; the checkpoint's hash
        changes with the building inputs, and a checkpoint written without buildings is refused; files and inputs are checked.
-   * - ``BuildingLaw.*`` (3), ``BuildingForcing.*`` (4), ``BuildingSides.*`` (9)
+   * - ``BuildingLaw.*`` (3), ``BuildingForcing.*`` (5), ``BuildingSides.*`` (9)
      - The buildings' momentum terms: the wall law returns :math:`u_*` of an exact log profile, with its blend
        floor and with no reference cell; the sink, its diagonal and a closed face; part-covered walls and open
-       fluxes; the drag form has fixed rows only; a pocket under a lifted building is sealed. On the sides: the
+       fluxes; the drag form has fixed rows only; a pocket under a lifted building is sealed, and the
+       cell labels of that count stay distinct above :math:`2^{31}` cells (2048³). On the sides: the
        log law's stress on both parallel components; edge and corner cells sum their walls; rates use the cell
        size along each normal; partly blocked cells and a sloped roof's side; the viscous fluxes and couplings
        through a side are closed; a block across a periodic seam; the restart hash follows the law.
-   * - ``BuildingTke.*`` (20 tests)
+   * - ``BuildingTke.*`` (22 tests)
      - The buildings' terms of the closure: the wall distance in wall cells is the fluid centroid's; the distance
        to a block, to an L with a step, beside a step between two roofs and across a periodic seam equals the
        closed form of the boxes; where the ground is nearer its distance is kept, and the length takes the nearer
@@ -4608,7 +4650,6 @@ GoogleTest suite
      - The upwind blend reads the distance to the ground, not to the nearest building wall; the residual scales
        use the depth of the stretched layers, not ``mesh.prob_hi``.
    * - ``JointRecord.VersionTwoReadsWithoutAFactor``, ``JointRecord.RestoresOnlyWithTheRecordedFeedbackAndFactor``
-       (beyond the plan)
      - A joint record of version 2 reads with its window and no factor. A restart restores the window and the last
        feedback with the recorded feedback and factor, with any factor from a version 2 record and never from a
        version 1 record; otherwise the reason names both values. The round trip holds the factor bit for bit (1/3, 0

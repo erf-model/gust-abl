@@ -42,8 +42,8 @@ std::vector<double> lower_envelope (const std::vector<double>& h, int nx, int ny
 //! when a given width is below one cell (no envelope) or the terrain is flat (the immersed_forcing mesh).
 std::vector<std::string> apply_hybrid_defaults (Inputs& in);
 
-//! The envelope's half-widths in nodes for terrain.hybrid_half_width = width (m): floor(width / dx + 1e-9)
-//! in each lateral direction.
+//! The envelope's half-widths in nodes for terrain.hybrid_half_width = width (m): floor(width / dx + tol),
+//! tol = max(1e-9, 64 eps(Real)), in each lateral direction.
 amrex::IntVect hybrid_envelope_nodes (amrex::Real width, const amrex::Geometry& geom);
 
 //! Replaces the terrain's height in z_nd's component 0 at the domain's lowest nodes (valid and ghost

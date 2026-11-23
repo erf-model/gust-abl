@@ -74,7 +74,7 @@ and the terrain data and its acknowledgements.
 
 | Platform | Status in CI |
 |---|---|
-| Linux CPU (GCC Release and Debug, Clang; MPI) | built, unit and smoke tests run |
+| Linux CPU (GCC and Clang Release, GCC Debug nightly; MPI) | built, unit and smoke tests run |
 | Windows CPU (MSVC, serial) | built, unit and smoke tests run |
 | Single precision (Linux) | compiled |
 | NVIDIA CUDA sm_90 (Linux, Windows) | compiled |

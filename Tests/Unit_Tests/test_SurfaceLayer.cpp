@@ -222,8 +222,8 @@ double most_ustar (double U, double d, double z0, double qs, double m, bool qnse
     };
     double a = 1e-4, b = 5.0;
     for (int it = 0; it < 200; ++it) {
-        const double m = 0.5 * (a + b);
-        ((f(a) < 0) == (f(m) < 0) ? a : b) = m;
+        const double mid = 0.5 * (a + b);
+        ((f(a) < 0) == (f(mid) < 0) ? a : b) = mid;
     }
     return 0.5 * (a + b);
 }

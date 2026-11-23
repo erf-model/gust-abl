@@ -122,8 +122,7 @@ struct SteadyOptions
 SweepKind default_sweep () noexcept;
 //! The application's default steady.cfl_max for a sweep: 8 for lusgs (the
 //! cap with the fewest iterations in the sweep and CFL-cap study), 10 for
-//! zjacobi (kept from before the sweep and CFL-cap study, not a result of
-//! it).
+//! zjacobi (not a result of that study).
 amrex::Real default_cfl_max (SweepKind s) noexcept;
 
 //! The line solver options of opt (steady.sweep and steady.line_*).
@@ -166,13 +165,13 @@ public:
     //! false: the driver does not switch forward into the stage (a stage
     //! that has handed the run back for a final pass).
     [[nodiscard]] virtual bool accepts_switch () const { return true; }
+    //! The driver's relative residual r_n after the iterate (Driver::step), for a stage that adapts to it.
+    virtual void note_relative_residual (amrex::Real /*r*/, bool /*replay*/ = false) {}
     //! The confidence of the last iterate (steady.confidence): the share of
     //! the valid cells whose scaled residuals are all below threshold (one
     //! per residual_names(), in the units of residual_norms()), and the
     //! largest height above the ground of a cell that is not. Collective;
     //! false (nothing computed) for a stage without cell residuals.
-    //! The driver's relative residual r_n after the iterate (Driver::step), for a stage that adapts to it.
-    virtual void note_relative_residual (amrex::Real /*r*/, bool /*replay*/ = false) {}
     [[nodiscard]] virtual bool confidence (const std::vector<amrex::Real>& /*threshold*/, amrex::Real& /*share*/,
                                            amrex::Real& /*height*/) const
     {
@@ -259,7 +258,8 @@ public:
     //! after it.
     SteadyVerdict step (State& q);
     //! Iterations until Steady, Diverged or max_iterations (over the whole
-    //! run, restarts included) is reached.
+    //! run, restarts included) is reached. Used by the unit tests; the
+    //! application calls step().
     DriverResult run (State& q);
 
     [[nodiscard]] const DriverHistory& history () const { return m_h; }
@@ -274,7 +274,7 @@ public:
     //! with the pseudo-time step the SIMPLEC denominators d and the Poisson coefficients shrink,
     //! and p' = (divergence) / d grows in proportion while the velocity correction stays bounded.
     //! A floor at cfl0 instead keeps the nest's pseudo-time step a cfl_max / cfl0 fraction of the
-    //! parent's, and the exchanges then settle into a cycle (PR-70 hill tests).
+    //! parent's, and the exchanges then settle into a cycle (the two-way hill tests).
     void floor_cfl_at_current () { m_cfl_floor = m_h.cfl; }
     //! The floor floor_cfl_at_current set (0: none), for the joint record (JointRecord.H).
     [[nodiscard]] amrex::Real cfl_floor () const { return m_cfl_floor; }
@@ -290,8 +290,8 @@ public:
     //! Continue from a saved history: the criterion, the SER state (the CFL,
     //! brought within the current cfl0..cfl_max), the switch state and the
     //! stage (whose init is called on the next step; a stage's own state
-    //! lives in q, so the checkpoint of q restores it). Aborts on a history
-    //! that does not fit the stages or is inconsistent.
+    //! lives in q, so the checkpoint of q restores it). q is not read. Aborts
+    //! on a history that does not fit the stages or is inconsistent.
     void restore (const DriverHistory& h, State& q);
     //! Start the criterion's residual references at ref before the first
     //! step (SteadyCriterion::seed_reference; grid sequencing). Aborts after

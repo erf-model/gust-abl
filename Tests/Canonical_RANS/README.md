@@ -14,6 +14,8 @@ set-up, expected results and the full list of its CTests.
 | `Immersed_Ridge_2D` | `rt_immersed_along_*`, `rt_immersed_ridge_*`, `rt_immersed_hill_*` (nightly) | A sloping immersed ground (ridge with the wind along and across it, round hill) against the same ground on a terrain-following mesh. |
 | `Immersed_Ridge_Resolution` | none | The crest speed-up of a steep 2-D immersed ridge against its terrain-following partner as the column width and layer thickness change: the record behind the docs' grid-resolution guide. |
 | `Immersed_Open_Faces` | `rt_immersed_open_faces` | Flat immersed ground between an inflow and an outflow face at four cut-cell solid fractions, against the body-fitted channel: the steady verdict, the mass balance of the two faces, u and k in the outflow column. |
+| `Immersed_Roughness_Step` | `rt_immersed_roughness_step`, `*_z0_map_*` | A roughness map under an immersed ground and under the ground of a hybrid mesh, against the same flow on a body-fitted mesh with the same map; the map's restart and refusals. |
+| `Immersed_Canopy` | `rt_immersed_canopy_*` | A forest canopy over an immersed ground and on a hybrid mesh, against the same flow on a body-fitted mesh, on the decks of three canopy cases. |
 | `Neutral_ABL_Flat` | `rt_steady_neutral_flat` | ERF's Neutral_ABL_Flat to steady, with ERF's `check_neutral.py --physics`. |
 | `Neutral_Hill_2D` | `rt_steady_hill2d`, `rt_steady_hill2d_lusgs`, `rt_steady_hill2d_column` | ERF's Neutral_Hill_2D with Jacobi sweeps, line LU-SGS sweeps and the column first guess. |
 | `Neutral_Hill_3D` | `rt_steady_hill3d` | ERF's Neutral_Hill_3D (64 x 64 x 20); label `nightly`. |

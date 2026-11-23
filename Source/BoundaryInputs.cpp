@@ -1,13 +1,12 @@
 // The boundary-condition inputs: the face type names, the bc.* reader and its
-// range checks, and the Poisson boundary types of the faces (split from
-// BoundaryConditions.cpp, audit A11).
+// range checks, and the Poisson boundary types of the faces.
 #include "BoundaryConditions.H"
 
 #include <AMReX_ParmParse.H>
 
 #include <algorithm>
 #include <cmath>
-#include <limits>
+#include <cstdio>
 #include <string>
 #include <vector>
 
@@ -241,7 +240,7 @@ std::vector<std::string> check_boundary_inputs (const BoundaryInputs& in, const 
                               "inflow_alpha", "inflow_direction", "inflow_file", "inflow_tke_length"}) {
             if (given(k)) {
                 err.emplace_back(std::string("bc.") + k
-                                 + " has no effect without an inflow face, a damping layer or init.first_guess = profile or column");
+                                 + " has no effect without an inflow face, a damping layer, init.first_guess = profile or column, or io.restart");
             }
         }
     }

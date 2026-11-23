@@ -160,7 +160,7 @@ TEST (Reference, TrapezoidWeights)
 
 // The average equals the host-side fma accumulation bit for bit, and, since
 // each field is linear in the snapshot index on evenly spaced times, the
-// trapezoid average equals the mid value 3x/... up to rounding.
+// trapezoid average equals the mid value 2.5 x up to rounding.
 TEST (Reference, AverageIsTheTrapezoidTimeAverage)
 {
     const std::vector<double> times{100.0, 200.0, 300.0, 400.0};

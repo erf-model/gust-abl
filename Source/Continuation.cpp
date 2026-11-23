@@ -104,12 +104,13 @@ ContinuationOptions continuation_options (const SteadyOptions& steady)
 
 std::vector<std::string> check_continuation_options (const ContinuationOptions& opt)
 {
-    // The SER keys: the driver's own checks (the other fields at their defaults).
+    // The SER keys and the step floor: the driver's own checks (the other fields at their defaults).
     SteadyOptions s;
     s.cfl0 = opt.cfl0;
     s.cfl_max = opt.cfl_max;
     s.ser_exponent = opt.ser_exponent;
     s.ser_max_growth = opt.ser_max_growth;
+    s.dtau_floor = opt.dtau_floor;
     std::vector<std::string> err = check_steady_options(s);
     // isnan first: an ordered compare with NaN raises the invalid flag (gcc).
     auto open01 = [&] (amrex::Real x, const char* key, double hi) {

@@ -27,7 +27,7 @@ not reach:
 | `sweep_flat.py` | Runs the body-fitted deck and the immersed deck at each F, and compares the outflow columns. With `--limits` it is the test. |
 | `sweep_band.py` | The same on layers with a fine band, the ground placed in a coarse layer, in the transition, in the band and at its top. Not a CTest. |
 
-## Data
+## Data and acknowledgements
 None: the case is analytic.
 
 ## How to run

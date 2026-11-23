@@ -110,14 +110,14 @@ public:
     //! domain faces' ghost cells. z_phys_nd is not touched.
     void interpolate (State& patch) const;
 
-    //! The joint run (nest.feedback = defect): the parent's u, v, w, p', theta
+    //! The joint run (nest.feedback other than none): the parent's u, v, w, p', theta
     //! and k taken again from the parent's state in memory (valid points, with
     //! the parent's periodicity, as from the checkpoint). Aborts unless parent
     //! covers the domain the checkpoint gave. The node heights are not touched.
     void refresh (const State& parent);
 
     //! The parent's node heights at the patch's nodes (hp: nodal, on the
-    //! patch's layout, at least one ghost node in x and y; one or more
+    //! patch's layout, filled on up to one ghost node in x and y, as many as hp has; one or more
     //! z-levels from the ground up), bilinear per z-level as the fields: a
     //! patch node on a parent node takes its height, one between two or four
     //! takes their mean. The ground is level 0. Aborts unless the parent was

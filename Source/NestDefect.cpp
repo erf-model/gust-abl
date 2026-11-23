@@ -14,7 +14,7 @@ namespace gust {
 
 namespace {
 
-//! The parent cells under the nest's boxes, at type `like`'s, on the nest's DistributionMapping.
+//! The parent cells under the nest's boxes, at `type`'s, on the nest's DistributionMapping.
 amrex::MultiFab image (const amrex::BoxArray& fine_ba, const amrex::DistributionMapping& dm, int r,
                        const amrex::IntVect& offset, const amrex::IndexType& type)
 {

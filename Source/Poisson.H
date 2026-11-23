@@ -86,7 +86,7 @@ std::vector<std::string> check_poisson_options (const PoissonOptions& opt);
 //!    operator div(diag(b_h, b_h, b_v) grad phi) (the initializer's alpha_h^2,
 //!    alpha_v^2) needs x = y = z_cross = b_h and z = b_v; with only x, y, z the
 //!    vertical coefficient would also scale the horizontal gradient there.
-//!    Scalar coefficients (SIMPLEC's 1/a_P) leave it null.
+//!    Scalar coefficients (SIMPLEC's 1/d, d = a_P - sum a_nb) leave it null.
 //!
 //! precond_ratio is beta_v / beta_h, the vertical-to-horizontal ratio the FFT
 //! preconditioner assumes: it solves the flat Laplacian with vertical spacing
@@ -154,7 +154,8 @@ public:
     PoissonSolver& operator= (const PoissonSolver&) = delete;
 
     //! Solve A phi = rhs. rhs is cell-centred without ghosts needed; it may
-    //! be modified (singular case: its mean is removed). phi needs at least
+    //! be modified (singular case: its mean is removed; masked case: zeroed in the cells outside the solve).
+    //! phi needs at least
     //! one ghost cell; on return its ghosts hold the boundary conditions.
     //! When fluxes is given (face MultiFabs on the mesh's box array, no ghost
     //! cells), it receives the coefficient-weighted fluxes F = -g: adding F
@@ -198,7 +199,7 @@ private:
     // The cells in the solve: Mesh::fluid() (buildings) times FaceCoeffs::held_fluid (either, or both).
     amrex::MultiFab m_fluid;
     // Level ground (every node's height the same along x and y): the stencil has no cross terms, so a constant over
-    // the fluid cells is in the masked operator's null space and the solve removes its mean (as before held cells).
+    // the fluid cells is in the masked operator's null space and the solve removes its mean.
     bool m_level{true};
     bool m_level_known{false};
     // z-faces: beta_z - z_cross (only used when z_cross is given).
@@ -210,7 +211,6 @@ private:
     std::unique_ptr<TerrainPoisson> m_op;
     PoissonBC m_op_bc;
     amrex::Real m_op_ratio{-1};
-    amrex::BoxArray m_op_ba;
     // The layout the cached areas were built for (both back ends).
     amrex::BoxArray m_layout_ba;
     amrex::DistributionMapping m_layout_dm;

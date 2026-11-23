@@ -283,6 +283,15 @@ Quick reference
    * - ``canopy.beta_p``, ``canopy.beta_d``, ``canopy.length_alpha``
      - ``1``, ``4``, ``0.04``
      - Wake production fraction, short-circuit coefficient, length cap :math:`L \le \alpha/f`
+   * - ``canopy.heat``
+     - ``off``
+     - Leaf heat exchange at a fixed leaf temperature: ``off`` or ``fixed``
+   * - ``canopy.leaf_theta``
+     - required for ``fixed``
+     - Leaves' potential temperature (K)
+   * - ``canopy.heat_frozen``
+     - ``skip``
+     - Leaf heat with ``simplec.theta = frozen``: ``skip`` or ``blend``
    * - **Buildings** (`buildings`_)
      -
      -
@@ -784,7 +793,8 @@ A restart cannot be combined with ``init.*`` keys.
    * - ``init.column_tol``
      - ``1e-8``
      - Finite, > 0; ``column`` only. Convergence tolerance of the single-column solve: the largest relative change
-       of :math:`u, v, k` over a step. Raised to at least 100 machine epsilon (1.2e-5 single, 2.2e-14 double).
+       of :math:`u, v, k` (and of θ where the column solves it) over a step. Raised to at least 100 machine epsilon
+       (1.2e-5 single, 2.2e-14 double).
    * - ``init.column_max_iterations``
      - ``5000``
      - ≥ 1; ``column`` only. The run stops if a column has not converged after this many steps. The limit applies
@@ -802,7 +812,8 @@ A restart cannot be combined with ``init.*`` keys.
        the column's flux (``bc.surface_heat_flux`` is then refused).
    * - ``init.column_surface_theta``
      - ``0``
-     - Finite, > 0 (K), required with ``surface_temperature`` and only there: the surface potential temperature.
+     - Finite, ≥ 0; > 0 (K) and required with ``surface_temperature``, and given only there: the surface potential
+       temperature.
    * - ``init.column_target_u``, ``init.column_target_v``
      - ``0``, ``0``
      - Finite (m/s); ``column`` only. A target wind at ``init.column_target_height``: the geostrophic wind and the
@@ -875,7 +886,7 @@ types, the inflow profile and the sounding; the other keys act in the SIMPLEC st
    * - ``bc.inflow_profile``
      - ``log_law``
      - ``log_law``, ``power_law`` or ``file``. The inflow keys need an inflow face, a damping layer,
-       ``init.first_guess`` or a restart.
+       ``init.first_guess = profile`` or ``column``, or a restart.
    * - ``bc.inflow_ustar``
      - 0.4 m/s
      - Finite, > 0; ``log_law`` only.
@@ -913,8 +924,8 @@ types, the inflow profile and the sounding; the other keys act in the SIMPLEC st
      - ``0`` (off)
      - In [0, top level): start height of the Rayleigh layer (m); > 0 needs ``bc.rayleigh_dampcoef`` > 0. The top
        level is ``mesh.prob_hi`` z, or where the layers end with ``mesh.stretch_ratio`` or ``mesh.zlevels_file``.
-       With ``terrain.representation = immersed_forcing`` and absolute heights the limit is the top level minus
-       ``terrain.flat_height``, since heights are measured from the terrain's zero.
+       With ``terrain.representation = immersed_forcing`` or ``hybrid`` and absolute heights the limit is the top level
+       minus ``terrain.flat_height``, since heights are measured from the terrain's zero.
    * - ``bc.rayleigh_dampcoef``
      - ``0``
      - Finite, ≥ 0 (1/s); needs ``bc.rayleigh_zdamp`` > 0.
@@ -928,8 +939,8 @@ types, the inflow profile and the sounding; the other keys act in the SIMPLEC st
      - ``absolute``
      - ``absolute`` or ``above_ground``: the height used for the layer's coefficient and for θ's reference
        (:math:`u, v, k` always use the height above the ground). ``absolute`` is measured from the terrain's zero:
-       on an immersed ground (``terrain.representation = immersed_forcing``) that is ``terrain.flat_height`` above
-       the mesh's lower face.
+       on an immersed ground (``terrain.representation = immersed_forcing`` or ``hybrid``) that is
+       ``terrain.flat_height`` above the mesh's lower face.
    * - ``bc.sponge_width``
      - ``0`` (off)
      - Finite, ≥ 0 (m); > 0 needs an inflow or outflow face and ``bc.sponge_strength`` > 0. Refused with a ``nest``
@@ -1298,7 +1309,7 @@ See :doc:`turbulence_model`. Read with the SIMPLEC stage only.
    * - ``turb.frozen_switch``
      - ``1``
      - 0 or 1: freeze the k-floor decisions of the closure from the switch to Newton to the end of the Newton stage
-       (:doc:`solution_algorithm`). With ``steady.stage = simplec`` it aborts as a key with no effect.
+       (:doc:`solution_algorithm`). Without ``steady.stage = simplec_newton`` it aborts as a key with no effect.
    * - ``turb.ri_gate``
      - ``0``
      - 0 (off) or finite, ≥ 1e-6 and ≤ 1: :math:`Ri_0` of the stratification gate
@@ -1453,8 +1464,7 @@ writes them and stops; the other ``steady.*`` keys are then refused.
        iterations of the last one (hysteresis), except the Newton stage's own hand-back.
    * - ``steady.switch_residual``
      - ``1e-4``
-     - > 0 and ≤ 1. Relative residual at which the Newton stage starts (it was ``1e-2`` and unused
-       before the Newton stage).
+     - > 0 and ≤ 1. Relative residual at which the Newton stage starts.
    * - ``steady.switch_back_growth``
      - ``10``
      - Finite, > 1. Residual growth over a window that returns the run to the previous stage.
@@ -1591,7 +1601,8 @@ with no effect. In an unsteady run the steady stop does not apply, so ``steady.m
 ``steady.confidence_height`` and ``io.iteration_log`` abort as keys with no effect; ``steady.residual_tol`` is the
 floor of the inner stop. ``steady.residual_ref_iterations`` sets how many inner iterations, counted over the run,
 hold the CFL at ``steady.cfl0``; the other ``steady.*`` keys of the SIMPLEC stage act as in a steady run.
-``steady.sequencing = 1`` and ``convection.hybrid_sigma_max`` > 0 are not supported yet and abort.
+``steady.sequencing = 1``, ``convection.hybrid_sigma_max`` > 0, ``turb.nut_relax_end`` > 0 and an immersed ground
+(``terrain.representation = immersed_forcing`` or ``hybrid``) are not supported yet and abort.
 A run may start from a steady checkpoint (``io.restart``): its physical time starts at 0 and the driver's history
 (CFL, residual reference, hold) continues from the checkpoint (:ref:`time-driver`). From a checkpoint of an unsteady
 run it continues that run: its time, step count and averages. The outputs (averages, probes, plotfiles and checkpoints
@@ -1845,7 +1856,7 @@ the outer run's final forcing.
        the nest's mean horizontal speed and :math:`\Delta x` the smaller of the outer :math:`\Delta x, \Delta y`
        (:ref:`two-way-relax`). With ``relax`` a larger factor holds the outer domain closer to the nest under it, but
        does not by itself bring either domain closer to a fine run (:ref:`two-way-relax`, Results); its default was 1
-       before tracker N-114 item 13, and ``nest.feedback_factor = 1`` keeps that answer. With
+       in earlier versions, and ``nest.feedback_factor = 1`` keeps that answer. With
        ``relax_consistent`` the restricted nests satisfy the outer rows where the weight is 1 at any factor; the factor
        sets the rate on the margin and the iteration (:ref:`two-way-relax-consistent`). With ``inject``: finite,
        > 0 and <= 1, the fraction :math:`\omega` of the way the outer state moves towards the restricted nests at

@@ -127,11 +127,12 @@ struct IOInputs
     int write_plotfile{1};
     int write_checkpoint{1};
     //! Prefix of the turbulence diagnostics plotfile with ERF's variable
-    //! names (TurbulenceOutput.H); empty: none. Needs steady.stage = simplec.
+    //! names (TurbulenceOutput.H); empty: none. Needs a stage (steady.stage
+    //! other than none).
     std::string turb_plot_file;
     //! The per-iteration log: "table" (aligned columns: iteration, CFL, line
-    //! solver, the residuals, r) or "full" (one line with every diagnostic,
-    //! the log before io.iteration_log).
+    //! solver, the residuals, r) or "full" (one "gust: it" line with every
+    //! diagnostic).
     std::string iteration_log{"table"};
     //! The converged column's table (init.first_guess = column), written on
     //! the I/O rank; a bc.inflow_file for a later run. Not empty.
@@ -147,7 +148,7 @@ struct Inputs
     std::vector<std::string> parse_errors;
 };
 
-//! Read every key GUST knows from ParmParse. No range checks.
+//! Read the mesh.*, terrain.* and io.* keys from ParmParse. No range checks.
 Inputs parse_inputs ();
 
 //! Range checks. Returns one message per violation, each naming the input.
@@ -186,10 +187,6 @@ inline constexpr const char* kContinuationInputKeys[] = {"newton_armijo_c", "new
 
 //! The current ParmParse table as InputEntry records.
 std::vector<InputEntry> parmparse_entries ();
-
-//! parse_inputs + validate + unknown_inputs; aborts with every message if
-//! any check fails. Call after all inputs of this version have been read.
-Inputs read_inputs ();
 
 } // namespace gust
 

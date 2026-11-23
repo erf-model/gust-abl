@@ -155,7 +155,7 @@ iterations. The number marks a mesh outside the range of that case. It is not
 a limit and it does not predict the iteration count: at the same value a 31° cliff converges ten times faster than
 the 67° one, the 67° butte of ``Tests/Canonical_RANS/Terrain_Shapes_3D`` settles at its probes at 209, and the
 gentle ridge of ``Tests/Canonical_RANS/Aspect_Ratio_Hill_2D`` reaches the verdict with first layers of 0.05 m,
-which the report now also flags. Thicker
+which the report flags too. Thicker
 first layers or finer horizontal cells lower it. The layer is the mesh's own first layer, not ``mesh.dz0``: BTF
 thins it by :math:`1 - h/z_{top}`, and STF (``terrain.smoothing = 1``) thins it further at a convex edge, down to
 about ``terrain.gamma_m`` times the BTF value. The 67° butte of ``Terrain_Shapes_3D`` under 8 m layers has 33 with

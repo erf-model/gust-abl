@@ -10,11 +10,13 @@
 // init (on the switch): the smoothness handling enters
 // (Smoothness.H: the k-floor decisions frozen at q, the smooth limiter in
 // the Newton residual), and the pseudo-transient continuation (Continuation.H)
-// starts afresh at steady.cfl_max, which is also its SER law's start (its
-// cfl0; SIMPLEC's ramp from steady.cfl0 is done): with
-// steady.newton_dtau_inf_at_cap = 1 (the default) its first accepted step
-// switches to infinite dtau, plain Newton, and only failed attempts bring a
-// finite dtau back.
+// starts afresh at steady.cfl_max (SIMPLEC's ramp from steady.cfl0 is done)
+// and grows by steady.ser_max_growth per accepted step up to
+// steady.newton_cfl_max (the SER law's cfl0 and cap are both
+// steady.newton_cfl_max, so its residual term never limits the ramp); with
+// steady.newton_dtau_inf_at_cap = 1 (the default) the step after the cap has
+// infinite dtau, plain Newton, and only failed attempts bring a finite dtau
+// back.
 //
 // The momentum diffusivity of the continuation's finite dtau is the
 // closure's at the stage's current state (evaluated at init and after every
@@ -36,7 +38,11 @@
 // The hand-backs (fallback_requested, the driver switches at once):
 //  * steady.newton_fallback_failures consecutive failed steps (every retry
 //    of Continuation::step used): back to SIMPLEC, which may switch forward
-//    again after the hysteresis window;
+//    again after the hysteresis window; after three such visits the stage
+//    refuses later switches (accepts_switch false);
+//  * the continuation has converged on the run's own equations but the
+//    driver's criterion has not held for steady.monitor_window iterations:
+//    back to SIMPLEC, and the stage refuses any later switch;
 //  * the final pass: when the continuation has converged on its own
 //    equations, |R| <= 10^-steady.residual_drop_orders |R_0|, and those
 //    differ from the run's (the limiter was swapped, a floor decision has
@@ -49,9 +55,11 @@
 // printed).
 //
 // Checkpoint (write_checkpoint, read_checkpoint): <dir>/NewtonStage (the
-// failure count and the hand-back flag), the continuation state
-// (<dir>/Continuation) and the smoothness state (Smoothness.H), so a restart
-// inside the stage continues it; a restart outside it reads no files.
+// failure count, the hand-back flag, the failed visits and the idle count),
+// the continuation state (<dir>/Continuation, inside the stage only) and the
+// smoothness state (Smoothness.H), so a restart inside the stage continues
+// it; a checkpoint without <dir>/NewtonStage (a run that never built the
+// stage) starts the stage with no failures and no hand-back.
 
 #include "Closure.H"
 #include "Continuation.H"
@@ -93,8 +101,9 @@ class NewtonStage : public Stage
 {
 public:
     //! in: the run's residual inputs (bc set; closure as the run has it,
-    //! the same object as closure); simplec, popt and sweep: the SIMPLEC
-    //! preconditioner's (steady.newton_preconditioner = simplec);
+    //! the same object as closure); simplec and popt: the SIMPLEC
+    //! preconditioner's (steady.newton_preconditioner = simplec; its sweeps
+    //! are sopt's); z_nd: the mesh's node heights;
     //! norm_height: the height of the residual scales (the SIMPLEC
     //! stage's norm_height()); tke_floor: turb.tke_floor. hook: a
     //! preconditioner to use instead of the one sopt names (tests; null: the

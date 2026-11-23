@@ -18,8 +18,7 @@ namespace gust {
 //! column sums are added in storage order (i fastest, then j) on the host;
 //! each box sum lands in its own slot of a vector of length nboxes, which is
 //! all-reduced (every slot has one nonzero contributor, so adding the zeros
-//! is exact) and then added in box-index order. The result does depend on
-//! the BoxArray: a different box layout adds in a different order.
+//! is exact) and then added in box-index order.
 amrex::Real deterministic_sum (const amrex::MultiFab& mf, int comp);
 
 //! Sum over the valid region of a(acomp) * b(bcomp), any index type, in

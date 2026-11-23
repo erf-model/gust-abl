@@ -210,7 +210,7 @@ TEST (Terrain, RayleighFieldsAndHeight)
         EXPECT_EQ(R.tke.norm0(), 0);
         EXPECT_GT(R.w.norm0(), 0);
         EXPECT_GT(R.theta.norm0(), 0);
-        // the implicit diagonal: w and theta get the coefficient, u does not
+        // the implicit diagonal: theta and w get the coefficient, u does not
         amrex::MultiFab Au(c.mesh.ax.boxArray(), c.dm, gust::n_implicit_coefs, 0), At(c.ba, c.dm, gust::n_implicit_coefs, 0);
         Au.setVal(0.0);
         At.setVal(0.0);
@@ -218,8 +218,23 @@ TEST (Terrain, RayleighFieldsAndHeight)
         bc.add_damping_to_implicit(Equation::theta, gust::Loc::cell, c.z, At);
         EXPECT_EQ(Au.norm0(), 0);
         EXPECT_GT(At.norm0(), 0);
+        // w's residual is its diagonal times w (0.5 m/s, damped towards 0) on every z-face
+        amrex::MultiFab Aw(c.mesh.az.boxArray(), c.dm, gust::n_implicit_coefs, 0);
+        Aw.setVal(0.0);
+        bc.add_damping_to_implicit(Equation::w, gust::Loc::zface, c.z, Aw);
+        EXPECT_GT(Aw.norm0(), 0);
+        double worst_w = 0;
+        for (amrex::MFIter mfi(R.w, false); mfi.isValid(); ++mfi) {
+            const auto r = host_copy(R.w, mfi), a = host_copy(Aw, mfi);
+            amrex::LoopOnCpu(mfi.validbox(), [&] (int i, int j, int k) {
+                const amrex::IntVect iv(i, j, k);
+                worst_w = std::max(worst_w, std::abs(double(r(iv)) - 0.5 * double(a(iv, gust::coef_P))));
+            });
+        }
+        amrex::ParallelDescriptor::ReduceRealMax(worst_w);
+        EXPECT_LT(worst_w, tol(1e-14, 1e-6));
         // theta's residual is c (theta - theta_ref(z)) with the sounding at the absolute height
-        // (above_ground: at the height above the ground), checked at a column over the crest
+        // (above_ground: at the height above the ground), checked at every damped cell
         double worst = 0;
         int seen = 0;
         for (amrex::MFIter mfi(R.theta, false); mfi.isValid(); ++mfi) {

@@ -22,7 +22,7 @@
 //   would otherwise give u* < 0). bc.surface_denominator_floor sets m:
 //   log_law (default) m = min(ln((d + z0)/z0), 1), so the neutral u* is the
 //   log law's at every height, as in the inflow profile and the column guess;
-//   one, m = 1 (the earlier form): the neutral u* is then below the log law's
+//   one, m = 1: the neutral u* is then below the log law's
 //   when the reference point is below (e - 1) z0 = 1.72 z0. Both are the same
 //   where ln((d + z0)/z0) >= 1. Below that, with either floor, an unstable
 //   psi_m > 0 meets the floor at once and u* stays at its floor value, and
@@ -101,7 +101,7 @@ struct SurfaceLayerOptions
     enum class Stability { neutral, heat_flux };
     enum class WallK { dirichlet, source };
     //! The floor m of the MOST denominator: log_law m = min(ln((d + z0)/z0), 1),
-    //! one m = 1 (the earlier form).
+    //! one m = 1.
     enum class DenominatorFloor { log_law, one };
 
     //! Roughness length z0 (m, > 0): bc.surface_z0, every column's when z0_map is null.
@@ -188,7 +188,7 @@ struct SurfaceState
     bool reads_top_face{false};
 };
 
-//! Compute the surface layer from the state's velocity (two ghost cells
+//! Compute the surface layer from the state's velocity (one ghost cell
 //! filled; the ghost cells in x and y give the state's ghost columns).
 //! Aborts, naming the option, on invalid options, a z_ref outside a column,
 //! or a column whose u* is not positive and finite.

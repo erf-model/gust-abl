@@ -1,7 +1,7 @@
 #ifndef GUST_IMMERSED_SURFACE_K_H_
 #define GUST_IMMERSED_SURFACE_K_H_
 
-// The kernels of an immersed ground that is a continuous surface (ImmersedSurface.H). The ground
+// The kernels of an immersed ground that is a continuous surface (Buildings.H; BuildingsSurface.cpp). The ground
 // height h is given at the mesh's nodes. Over a cell's footprint it is piecewise linear on the four
 // triangles that the footprint's centre (the mean of the four corner heights) makes with each pair
 // of neighbouring corners; along a cell edge it is the line between the two nodes, so two cells

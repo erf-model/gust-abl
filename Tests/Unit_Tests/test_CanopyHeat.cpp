@@ -1,18 +1,15 @@
-// The leaves' heat exchange (CanopyHeat.H), plan rev. 6 beyond the plan,
-// sub-phase 8.4 (UT-8.4.x):
+// The leaves' heat exchange (CanopyHeat.H):
 //   the leaf area density is the drag field's cell means with Cd = 1, a patch
 //   with Cd = 0 still has leaves, and the coarse levels keep each layer's
-//   integral of a (UT-8.4.0, beyond the plan);
+//   integral of a;
 //   the source lambda (theta_l - theta), lambda = 2 a / r_b, against its closed
 //   form with ERF's constants on a sheared, stratified field, the wind floor
-//   included, and the pinned value lambda = a / 5 at |U| = 5 m/s (UT-8.4.1);
+//   included, and the pinned value lambda = a / 5 at |U| = 5 m/s;
 //   the theta rows' diagonal is lambda, the derivative of the residual by
-//   central differences, and the residual gains exactly lambda (theta - theta_l)
-//   (UT-8.4.2);
-//   no leaf heat leaves the residual and the theta rows bit for bit (UT-8.4.3);
+//   central differences, and the residual gains exactly lambda (theta - theta_l);
+//   no leaf heat leaves the residual and the theta rows bit for bit;
 //   the frozen-theta blend: theta_f exactly outside the canopy, the closed-form
-//   weight inside, the midpoint where lambda k = eps (UT-8.4.4, beyond the
-//   plan);
+//   weight inside, the midpoint where lambda k = eps;
 //   the option checks name the input.
 #include "Canopy.H"
 #include "CanopyHeat.H"
@@ -187,7 +184,7 @@ std::vector<double> layer_integrals (const amrex::MultiFab& f, const amrex::Mult
 
 } // namespace
 
-// UT-8.4.0: a = f / Cd where Cd > 0 (the same cell means), a > 0 under the
+// a = f / Cd where Cd > 0 (the same cell means), a > 0 under the
 // Cd = 0 patch where f = 0, a = 0 above the patches; without canopy.heat the
 // field is not built.
 TEST(CanopyHeat, LeafAreaDensityIsTheDragWithUnitCd)
@@ -222,7 +219,7 @@ TEST(CanopyHeat, LeafAreaDensityIsTheDragWithUnitCd)
     EXPECT_EQ(wrong_above, 0L);
 }
 
-// UT-8.4.0, canopy.type = map with a Cd map: a = f / Cd column by column
+// canopy.type = map with a Cd map: a = f / Cd column by column
 // (the Cd map is replaced by 1, not the height or the LAI), with the
 // Lalic–Mihailovic profile.
 TEST(CanopyHeat, LeafAreaDensityOfAMap)
@@ -286,7 +283,7 @@ TEST(CanopyHeat, LeafAreaDensityOfAMap)
     EXPECT_GT(cd_hi - cd_lo, 0.05);
 }
 
-// UT-8.4.0: the coarse levels of the grid hierarchy keep each layer's
+// The coarse levels of the grid hierarchy keep each layer's
 // integral of a (as of f), and take the fine level's heat options.
 TEST(CanopyHeat, RestrictionKeepsLayerIntegralsOfTheLeafArea)
 {
@@ -333,7 +330,7 @@ TEST(CanopyHeat, RestrictionKeepsLayerIntegralsOfTheLeafArea)
     }
 }
 
-// UT-8.4.1: the pinned value: at |U| = 5 m/s, r_b = 100 sqrt(0.05 / 5) = 10 s/m
+// The pinned value: at |U| = 5 m/s, r_b = 100 sqrt(0.05 / 5) = 10 s/m
 // and lambda = a / 5; below 0.01 m/s, r_b = 100 sqrt(5) s/m.
 TEST(CanopyHeat, ExchangeRatePinnedValues)
 {
@@ -343,7 +340,7 @@ TEST(CanopyHeat, ExchangeRatePinnedValues)
     EXPECT_EQ(static_cast<double>(gust::leaf_exchange_rate(amrex::Real(0), amrex::Real(3))), 0.0);
 }
 
-// UT-8.4.1: R_theta from add_canopy_heat alone is lambda (theta - theta_l),
+// R_theta from add_canopy_heat alone is lambda (theta - theta_l),
 // lambda from the hand formula at each cell's own wind, on two layouts, the
 // slow band (the wind floor) included.
 TEST(CanopyHeat, SourceHasItsClosedForm)
@@ -380,7 +377,7 @@ TEST(CanopyHeat, SourceHasItsClosedForm)
     }
 }
 
-// UT-8.4.2 and UT-8.4.3: the residual with the leaf heat minus without it is
+// The residual with the leaf heat minus without it is
 // lambda (theta - theta_l); its derivative in theta by central differences is
 // the theta rows' added diagonal lambda; without in.canopy_heat the theta
 // rows and the residual are those of a canopy run without heat, bit for bit.
@@ -468,13 +465,13 @@ TEST(CanopyHeat, ResidualAndDiagonal)
     ASSERT_GT(lmax, 0.0);
     EXPECT_LE(worst_rows, (kDouble ? 1e-13 : 1e-5) * lmax);
     EXPECT_LE(worst_fd, (kDouble ? 1e-9 : 1e-2) * lmax);
-    // UT-8.4.3: without in.canopy_heat the rows ignore canopy->theta.
+    // Without in.canopy_heat the rows ignore canopy->theta.
     amrex::MultiFab A2;
     gust::implicit_rows(Fp, s.q.z_phys_nd, in0, gust::Equation::theta, s.c.mesh, s.c.geom, A2, nullptr, &cf, &rows);
     EXPECT_EQ(gust::count_bit_differences(A0, A2, amrex::IntVect(0)), 0);
 }
 
-// UT-8.4.4: canopy.heat_frozen = blend: theta = theta_f exactly where a = 0,
+// canopy.heat_frozen = blend: theta = theta_f exactly where a = 0,
 // theta_f + w (theta_l - theta_f) with w = lambda k / (eps + lambda k) inside,
 // 0 <= w < 1; w = 1/2 where lambda k = eps; a second blend from the same
 // fields changes nothing (it sets theta from theta_f, not from theta).

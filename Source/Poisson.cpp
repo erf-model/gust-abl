@@ -168,7 +168,7 @@ amrex::Real largest_node_step (const amrex::MultiFab& cells, const amrex::MultiF
 //  * the z_cross correction (beta_z - z_cross) cross on the z-faces, and
 //  * the preconditioner applied to the residual divided by the cell's
 //    horizontal coefficient (a constant factor would not change GMRES; a
-//    varying one, as SIMPLEC's 1/a_P, it captures to first order).
+//    varying one, as SIMPLEC's 1/d (d = a_P - sum a_nb), it captures to first order).
 // Everything else is TerrainPoisson's.
 class PoissonSolver::Op
 {
@@ -610,7 +610,6 @@ void PoissonSolver::prepare (const FaceCoeffs& coeffs, const PoissonBC& bc)
     amrex::Gpu::streamSynchronize();   // dz_d is copied asynchronously
     m_op_bc = bc;
     m_op_ratio = coeffs.precond_ratio;
-    m_op_ba = m_mesh.detJ.boxArray();
 }
 
 void PoissonSolver::apply (amrex::MultiFab& Aphi, amrex::MultiFab& phi, const FaceCoeffs& coeffs,
@@ -690,9 +689,9 @@ PoissonResult PoissonSolver::solve (amrex::MultiFab& rhs, amrex::MultiFab& phi, 
     gmres.setVerbose(m_opt.verbose);
     gmres.setRestartLength(m_opt.restart);
     gmres.setMaxIters(m_opt.max_iter);
-    // The preconditioner is a fixed linear map, so standard (not flexible)
-    // GMRES applies; flexible GMRES would keep restart more vectors.
-    // The multigrid cycle's bottom solver (BiCGStab) is not a fixed linear map: flexible.
+    // The FFT preconditioner is a fixed linear map: standard GMRES (flexible
+    // GMRES would keep restart more vectors). The multigrid cycle's bottom
+    // solver (BiCGStab) is not: flexible GMRES with gmres_mlmg.
     gmres.setFlexible(mg != nullptr);
     m_op->usePrecond(mg == nullptr && m_opt.precond == "fft");
     {

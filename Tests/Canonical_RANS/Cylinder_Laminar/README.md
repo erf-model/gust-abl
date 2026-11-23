@@ -1,7 +1,7 @@
 # Cylinder_Laminar
 
 ## Purpose
-RT-6.4.1 to RT-6.4.3 (plan rev. 6, sub-phase 6.4): laminar flow past a circular cylinder, run as steady RANS and as
+Laminar flow past a circular cylinder, run as steady RANS and as
 unsteady RANS (dual time stepping, `steady.stage = unsteady`), with no turbulence model (`turb.closure = none`). The
 cylinder is a staircase of solid cells (`buildings.wall_form = drag`: no-slip walls on the blocked faces), and its
 drag and lift come from `buildings.force_file` (docs: Buildings, Force on the buildings).
@@ -65,16 +65,16 @@ We thank these authors.
 ```bash
 python3 make_cylinder.py --cells-per-d 20 --out cylinder_20.txt     # maps for other resolutions
 # Re = 40, steady, D/d = 10
-mpiexec -n 2 gust inputs_cylinder "mesh.n_cell=200 2 120" buildings.file=cylinder_10.txt \
+mpiexec -n 2 <build>/gust inputs_cylinder "mesh.n_cell=200 2 120" buildings.file=cylinder_10.txt \
     bc.inflow_file=inflow_uniform.txt turb.nu_molecular=0.025 steady.stage=simplec steady.max_iterations=3000
 python3 compare_cylinder.py --run . --re 40 --cells-per-d 10
 # Re = 40, unsteady (the same answer): 120 s in steps of 0.05 s, averages from 80 s
-mpiexec -n 2 gust inputs_cylinder "mesh.n_cell=200 2 120" buildings.file=cylinder_10.txt \
+mpiexec -n 2 <build>/gust inputs_cylinder "mesh.n_cell=200 2 120" buildings.file=cylinder_10.txt \
     bc.inflow_file=inflow_uniform.txt turb.nu_molecular=0.025 steady.stage=unsteady unsteady.stop_time=120 \
     unsteady.dt=0.05 unsteady.inner_drop_orders=2 unsteady.max_inner=40 unsteady.average_start=80
 python3 compare_cylinder.py --run . --re 40 --cells-per-d 10 --t-avg 80
 # Re = 100, unsteady, D/d = 10: 160 s in steps of 0.05 s, averages from 100 s
-mpiexec -n 2 gust inputs_cylinder "mesh.n_cell=200 2 120" buildings.file=cylinder_10.txt \
+mpiexec -n 2 <build>/gust inputs_cylinder "mesh.n_cell=200 2 120" buildings.file=cylinder_10.txt \
     bc.inflow_file=inflow_uniform.txt turb.nu_molecular=0.01 steady.stage=unsteady unsteady.stop_time=160 \
     unsteady.dt=0.05 unsteady.inner_drop_orders=2 unsteady.max_inner=40 unsteady.average_start=100 \
     unsteady.probes_file=probes_cylinder.txt

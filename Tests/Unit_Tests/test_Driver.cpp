@@ -339,7 +339,7 @@ TEST (Driver, SerRampFollowsTheLawAndItsCaps)
         return std::make_pair(cfl, dtmax);
     };
     // residuals: 1/4, 1/16, 1/64, ... (max |u| after each scaling); the
-    // reference is the max of the first two, 1/4; r_n = 4^-(n-1)
+    // reference is the max of the first two, 1/4; r_n = 4^-n (n from 0)
     const auto [cfl, dtmax] = run(o, 8);
     const std::vector<double> want{1, 1, 1, 4, 16, 64, 64, 64};
     //   iteration 0, 1, 2: cfl0 (the reference is being taken after 0 and 1;
@@ -353,8 +353,8 @@ TEST (Driver, SerRampFollowsTheLawAndItsCaps)
     for (std::size_t i = 1; i < want.size(); ++i) {
         EXPECT_NEAR(dtmax[i] / dtmax[0], want[i] / want[0] * std::pow(0.25, -double(i)), tol(1e-9, 1e-4) * dtmax[i] / dtmax[0]) << i;
     }
-    // p = 2: the law alone after the reference would give 256 at iteration 3;
-    // the growth cap 4 and cfl_max still bind: 1, 1, 1, 4, 16, 64
+    // p = 2 with the caps lifted (growth 1000, cfl_max 1e6): the law alone
+    // gives r^-2 = 256, 4096, 65536 from iteration 3
     SteadyOptions o2 = o;
     o2.ser_exponent = 2;
     o2.ser_max_growth = 1000;
@@ -672,11 +672,14 @@ TEST (Driver, OneStageHistoryContinuesWithTwoStages)
 }
 
 // ---------------------------------------------------------------------------
-// The history: written and read back bit for bit (every field,
-// strings with spaces included); a run interrupted after K iterations and
+// The history: written and read back bit for bit (every field but hold,
+// scale_height and norm, which have their own tests; strings with spaces
+// included); a run interrupted after K iterations and
 // continued from the written history by a new driver on the saved state
 // gives the same records (but wall times) and the same verdict as an
-// uninterrupted run; corrupt files and mismatched histories are refused.
+// uninterrupted run; truncated files, a missing directory and histories for
+// another number of stages are refused; text after a complete history is
+// ignored.
 TEST (Driver, HistoryIsRestartableBitForBit)
 {
     PCase c = make_mesh(0, false);
@@ -803,7 +806,8 @@ TEST (Driver, HistoryIsRestartableBitForBit)
         amrex::ParallelDescriptor::ReduceIntMax(st2);
         EXPECT_EQ(st, st2);
     }
-    // refusals: a corrupt file, a history for another number of stages
+    // refusals: truncated files, a missing directory, a history for another
+    // number of stages; text after a complete history is ignored
     {
         if (amrex::ParallelDescriptor::IOProcessor()) {
             std::ofstream os(dir + "/Driver", std::ios::app);
@@ -893,8 +897,9 @@ TEST (Driver, RestoreReplaysTheRelativeResiduals)
 // ---------------------------------------------------------------------------
 // The Diverged verdict stops the run; the stage receives
 // init once at the start; a driver refuses no stages, a null stage and
-// stages that disagree on residual names; the options reader takes every key
-// and refuses bad values, repeated keys and unknown machines, naming them.
+// stages that disagree on residual names; the options reader takes the keys
+// set below and refuses bad values, repeated keys and unknown machines;
+// check_steady_options names the input.
 TEST (Driver, DivergenceStopsAndTheChecksNameTheirInput)
 {
     PCase c = make_mesh(0, false);
@@ -904,7 +909,7 @@ TEST (Driver, DivergenceStopsAndTheChecksNameTheirInput)
     SteadyOptions o = base_options();
     {
         // a residual that grows by 1e10 per iteration from max/1e15 reaches
-        // infinity at the third iteration (second in single precision); the
+        // infinity at the second iteration (in either precision); the
         // field itself stays finite until then (an infinite velocity times a
         // zero slope would be NaN inside local_dtau under the traps)
         q.u.setVal(std::numeric_limits<amrex::Real>::max() / amrex::Real(1e15));
@@ -1064,7 +1069,8 @@ TEST (Driver, DivergenceStopsAndTheChecksNameTheirInput)
                               "max_iterations", "cfl0", "cfl_max", "ser_exponent", "ser_max_growth", "switch_window",
                               "switch_residual", "switch_back_growth", "zline_sweeps", "sweep", "machine", "nodes",
                               "line_ghosts", "line_overlap", "line_order", "line_alternate", "switch_monitor_tol",
-                              "newton_fallback_failures", "stage"};
+                              "newton_fallback_failures", "stage", "dtau_floor", "newton_preconditioner", "newton_cfl_max",
+                              "confidence", "confidence_height", "probes_file"};
         auto clear = [&] { for (const char* k : keys) { while (pp.remove(k) > 0) {} } };
         clear();
         pp.add("residual_tol", amrex::Real(1e-4));
@@ -1091,7 +1097,19 @@ TEST (Driver, DivergenceStopsAndTheChecksNameTheirInput)
         pp.add("switch_monitor_tol", amrex::Real(0.05));
         pp.add("newton_fallback_failures", 3);
         pp.add("stage", std::string("simplec_newton"));
+        pp.add("dtau_floor", amrex::Real(0.25));
+        pp.add("newton_preconditioner", std::string("identity"));
+        pp.add("newton_cfl_max", amrex::Real(256));
+        pp.add("confidence", amrex::Real(0.75));
+        pp.add("confidence_height", amrex::Real(50));
+        pp.add("probes_file", std::string("ut_probes.txt"));   // a name only: the reader does not open it
         const SteadyOptions r = gust::read_steady_options();
+        EXPECT_EQ(r.dtau_floor, amrex::Real(0.25));
+        EXPECT_EQ(r.newton_preconditioner, gust::NewtonPreconditionerKind::identity);
+        EXPECT_EQ(r.newton_cfl_max, amrex::Real(256));
+        EXPECT_EQ(r.confidence, amrex::Real(0.75));
+        EXPECT_EQ(r.confidence_height, amrex::Real(50));
+        EXPECT_EQ(r.probes_file, "ut_probes.txt");
         EXPECT_EQ(r.switch_monitor_tol, amrex::Real(0.05));
         EXPECT_EQ(r.newton_fallback_failures, 3);
         EXPECT_EQ(r.stage, gust::StageKind::simplec_newton);
@@ -1122,7 +1140,7 @@ TEST (Driver, DivergenceStopsAndTheChecksNameTheirInput)
         EXPECT_EQ(r.machine, gust::Machine::KestrelGpu);
         EXPECT_EQ(r.nodes, 3);
         EXPECT_EQ(r.zline_sweeps, 4);
-        EXPECT_EQ(r.given.size(), 24u);
+        EXPECT_EQ(r.given.size(), 30u);   // every steady.* key the reader knows
         clear();
         const SteadyOptions d = gust::read_steady_options();
         EXPECT_EQ(d.cfl0, 1);
@@ -1202,17 +1220,17 @@ TEST (Driver, DivergenceStopsAndTheChecksNameTheirInput)
         EXPECT_EQ(gust::read_steady_options().cfl_max, 3);
         // steady.cfl0 above a default cap: the message says the cap is the sweep's default.
         {
-            SteadyOptions o;
-            o.sweep = gust::SweepKind::lusgs;
-            o.cfl_max = gust::default_cfl_max(o.sweep);
-            o.cfl0 = 9;
-            o.given = {"cfl0", "sweep"};
-            const auto e = gust::check_steady_options(o);
+            SteadyOptions oc;
+            oc.sweep = gust::SweepKind::lusgs;
+            oc.cfl_max = gust::default_cfl_max(oc.sweep);
+            oc.cfl0 = 9;
+            oc.given = {"cfl0", "sweep"};
+            const auto e = gust::check_steady_options(oc);
             ASSERT_EQ(e.size(), 1u);
             EXPECT_NE(e[0].find("steady.cfl_max = 8"), std::string::npos) << e[0];
             EXPECT_NE(e[0].find("(the default with steady.sweep = lusgs; give steady.cfl_max)"), std::string::npos) << e[0];
-            o.given.emplace_back("cfl_max");
-            const auto g = gust::check_steady_options(o);
+            oc.given.emplace_back("cfl_max");
+            const auto g = gust::check_steady_options(oc);
             ASSERT_EQ(g.size(), 1u);
             EXPECT_EQ(g[0].find("the default with"), std::string::npos) << g[0];
         }
@@ -1478,8 +1496,8 @@ TEST (Driver, HistoryRecordsTheResidualScaleHeight)
     if (amrex::ParallelDescriptor::IOProcessor()) { amrex::FileSystem::RemoveAll(dir); }
 }
 
-// The history records the residual norm it was taken with (format 4, audit
-// A5): 1, each distinct point once (#60). A new run records 1 and a write and
+// The history records the residual norm it was taken with (format 4):
+// 1, each distinct point once (#60). A new run records 1 and a write and
 // a read keep it. A history that does not record it (format 3, as main wrote
 // it before #60) reads as 0, and a restore from it says in the log that the
 // reference may count box-seam and periodic faces twice; the restored history

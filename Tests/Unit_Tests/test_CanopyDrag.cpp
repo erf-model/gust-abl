@@ -1,10 +1,9 @@
-// The canopy's drag on the momentum equations (CanopyDrag.H), plan rev. 6
-// beyond the plan, sub-phase 8.2 (UT-8.2.x):
+// The canopy's drag on the momentum equations (CanopyDrag.H):
 //   the sink is f_c |U| u_c with f_c the face mean of the drag field and |U|
 //   from the four-point means, against its closed form on linear velocity
-//   fields, on two box layouts, ground faces included (UT-8.2.1);
+//   fields, on two box layouts, ground faces included;
 //   the derivative diagonal is the finite-difference derivative of the sink,
-//   picard is f_c |U| and none adds nothing, canopy_rows the same (UT-8.2.2);
+//   picard is f_c |U| and none adds nothing, canopy_rows the same;
 //   the residual and implicit_rows carry the drag, and implicit_rows refuses
 //   a canopy without its rows;
 //   the momentum predictor's a_P carries the rows of the linearisation state,
@@ -202,7 +201,7 @@ std::string abort_message (const std::function<void()>& f)
 
 } // namespace
 
-// UT-8.2.1: R_c = f_c |U| u_c on every face, against the closed form, with
+// R_c = f_c |U| u_c on every face, against the closed form, with
 // 1 box and with 16 boxes (the faces on box edges take the ghost column),
 // the ground and top z-faces taking the cell inside.
 TEST(CanopyDrag, SinkHasItsClosedForm)
@@ -233,8 +232,8 @@ TEST(CanopyDrag, SinkHasItsClosedForm)
     }
 }
 
-// UT-8.2.2: the derivative diagonal equals the central difference of the
-// sink in the face's own component (random velocities), picard is f_c |U|
+// The derivative diagonal equals the central difference of the
+// sink in the face's own component (smooth periodic, sign-changing velocities), picard is f_c |U|
 // (the sink over u_c) and none adds nothing; every diagonal is >= 0.
 TEST(CanopyDrag, DiagonalIsTheDerivativeOfTheSink)
 {
@@ -315,7 +314,7 @@ TEST(CanopyDrag, DiagonalIsTheDerivativeOfTheSink)
 
 // The residual's momentum rows gain the sink and implicit_rows' a_P the
 // diagonal (no boundary conditions: periodic sides, every row); without the
-// state implicit_rows refuses the canopy, and theta's rows are unchanged.
+// canopy's rows implicit_rows refuses the canopy, and theta's rows are unchanged.
 TEST(CanopyDrag, ResidualAndImplicitRowsCarryTheDrag)
 {
     PCase c = make_case(8);

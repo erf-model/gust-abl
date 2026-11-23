@@ -24,7 +24,7 @@ TEST (Sha256, NistVectors)
               "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0");
 }
 
-// Padding boundaries: messages of 55, 56, 63, 64 and 65 bytes, fed whole and
+// Padding boundaries: messages of 55, 56, 63, 64, 65 and 1000 bytes, fed whole and
 // one byte at a time, give the same digest.
 TEST (Sha256, ChunkingDoesNotMatter)
 {

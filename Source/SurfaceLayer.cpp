@@ -460,7 +460,7 @@ void compute_surface_state (const State& q, const SurfaceLayerOptions& opt, cons
     }
 
     // Every column the ground fluxes read (ghost columns included) needs a
-    // finite, positive u* and a finite k_w. NaN is tested with != first.
+    // finite, positive u* and a k_w that is not NaN. NaN is tested with != first.
     amrex::ReduceOps<amrex::ReduceOpSum> ops;
     amrex::ReduceData<int> data(ops);
     for (amrex::MFIter mfi(s.ustar, false); mfi.isValid(); ++mfi) {

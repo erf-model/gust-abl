@@ -8,7 +8,8 @@
 //   theta, KE (k), Kmv (nu_t: rho = 1), Khv (gamma_theta - alpha_molecular),
 //   Lturb (L), walldist, diss (eps), density (1), Rt, cmu, cmu_prime (the
 //   stability functions of Rt, AL01 Eqs. 31-32, as ERF writes them), ustar
-//   (the ground cells; 0 above) and z (the cell centre height).
+//   (the ground cells; 0 above) and z_phys (the cell centre height); with
+//   the residual, R_u, R_v, R_w, R_p, R_theta, R_tke; with a roughness map, z0.
 // Beside it, <dir>/surf_hist.dat holds "t u_star" and one row with the
 // pseudo-time iteration count and the mean u* over the ground (0 without a
 // surface layer), the file ERF's --physics checks read.

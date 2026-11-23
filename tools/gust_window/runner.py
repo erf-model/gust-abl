@@ -2,7 +2,6 @@
 step's log.txt, and the residual columns of the iteration table plotted as they come."""
 import codecs
 import math
-import os
 
 import pyqtgraph as pg
 from PySide6 import QtCore, QtGui, QtWidgets

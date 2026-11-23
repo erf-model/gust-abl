@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""A joint run stopped and restarted continues bit for bit (tracker N-114, item 3).
+"""A joint run stopped and restarted continues bit for bit.
 
     check_joint_restart.py [--relax | --relax-consistent | --inject] --stop M -- COMMAND [ARGS ...]
 

@@ -8,7 +8,7 @@
 //
 // What a box reads across its faces (steady.line_ghosts):
 //
-//  * lagged (the default and the original path, bit for bit):
+//  * lagged (the default):
 //    before every pass delta.FillBoundary copies the neighbouring boxes'
 //    values of the previous pass into the ghosts, a block Jacobi across
 //    boxes with one exchange per pass. Each box sweeps its whole valid box,
@@ -88,7 +88,7 @@ enum class LineOrder : int { sequential = 0, diagonal = 1 };
 //! bounds it by the narrowest box (check_line_overlap_layout).
 inline constexpr int max_line_overlap = 8;
 
-//! The sweep options (steady.sweep, line_ghosts, line_overlap, line_order).
+//! The sweep options (steady.sweep, line_ghosts, line_overlap, line_order, line_alternate).
 //! From a SweepKind the other options keep their defaults (the lagged
 //! sequential path); explicit, so a caller that passes steady.sweep alone
 //! cannot drop the line options silently.
@@ -136,7 +136,8 @@ amrex::IntVect line_overlap_width (int overlap, const amrex::Box& domain);
 std::string check_line_overlap_layout (const amrex::BoxArray& ba, int overlap);
 
 //! The points of vbox (a valid box of a field at loc) its box owns (the
-//! header's face ownership); the cell box itself for cells and z-faces.
+//! header's face ownership); the cell box itself for cells and z-faces. loc is
+//! not read: the box's own index type decides.
 amrex::Box line_owned_box (Loc loc, const amrex::Box& vbox, const amrex::Geometry& geom);
 
 //! The region a box sweeps with steady.line_ghosts = zero: owned grown by

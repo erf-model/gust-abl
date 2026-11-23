@@ -1,13 +1,13 @@
-// The buildings' terms of the closure (BuildingTke.H), beyond the plan, sub-phase 5.4 (UT-5.4.x):
+// The buildings' terms of the closure (BuildingTke.H):
 //   a wall cell's k row is a (k - u*^2 / Cmu0^2) with the law's u*, zero at the wall value, in the
-//   residual and in the implicit rows, and it is added to the ground's row in the first cells
-//   (UT-5.4.1); the closure's distance in wall cells is the fluid centroid's, (1 - beta) Delta_n / 2,
-//   at beta 0, 0.5 and 0.9, floored at buildings.z0 (UT-5.4.2); solid cells hold k at its floor
-//   (UT-5.4.3); where the ground is nearer than any building the wall distance keeps its bits
-//   (UT-5.4.4); the distance to a block equals the closed form of a box, on every box layout and
+//   residual and in the implicit rows, and it is added to the ground's row in the first cells;
+//   the closure's distance in wall cells is the fluid centroid's, (1 - beta) Delta_n / 2,
+//   at beta 0, 0.5 and 0.9, floored at buildings.z0; solid cells hold k at its floor;
+//   where the ground is nearer than any building the wall distance keeps its bits;
+//   the distance to a block equals the closed form of a box, on every box layout and
 //   across a periodic seam, and that to an L with a step the smallest over its boxes; the diffusive
 //   flux of k and its couplings are closed on blocked faces.
-// After 5.4 (tracker row N-88): the closure's d + z0 is the smaller of the ground's and the nearest
+// Also: the closure's d + z0 is the smaller of the ground's and the nearest
 //   wall's, each with its own roughness, with a uniform ground z0 and with a map; the distance beside a
 //   step between two roofs whose lower one ends inside a layer, and to a block whose sides and top lie
 //   inside cells, are the boxes'; the norm of R_k leaves the solid cells out; the rows through
@@ -185,7 +185,7 @@ std::pair<double, amrex::Long> distance_error (const Set& s, const std::vector<s
     return {err, n};
 }
 
-// UT-5.4.2: the fluid centroid's distance in wall cells, and the floor.
+// The fluid centroid's distance in wall cells, and the floor.
 TEST (BuildingTke, WallCellDistanceIsTheFluidCentroids)
 {
     // Roofs at 20, 25 and 29 m: the cell above 20 m is fluid, the others are half and nine tenths solid.
@@ -268,7 +268,7 @@ TEST (BuildingTke, DistanceToAnLWithAStep)
     EXPECT_EQ(s.tke.distance_passes(), 19);
 }
 
-// UT-5.4.4: the limit leaves the cells nearer to the ground than to a building as they were.
+// The limit leaves the cells nearer to the ground than to a building as they were.
 TEST (BuildingTke, LimitKeepsTheGroundsDistanceWhereItIsNearer)
 {
     for (const int mgs : {8, 3}) {
@@ -297,7 +297,7 @@ TEST (BuildingTke, LimitKeepsTheGroundsDistanceWhereItIsNearer)
         EXPECT_EQ(wrong, 0) << "cells with neither the building's distance where it is nearer nor the ground's bits";
         EXPECT_EQ(n, want);
         EXPECT_GT(n, 0);
-        EXPECT_EQ(value_at(dist, 0, 0, 0), 5.0) << "first cell far from the block: 5 m above the ground, 42 m from the block";
+        EXPECT_EQ(value_at(dist, 0, 0, 0), 5.0) << "first cell far from the block: 5 m above the ground, 35 m from the block";
         EXPECT_EQ(value_at(dist, 3, 3, 1), 15.0) << "a solid cell keeps the ground's distance";
         EXPECT_NEAR(value_at(dist, 5, 3, 3), 5.0, 100 * rtol) << "a side's wall cell at 35 m: 5 m from the side";
         EXPECT_NEAR(value_at(dist, 3, 3, 7), 30.0, 100 * rtol * 30) << "above the roof: 30 m, not 75 m";
@@ -749,7 +749,7 @@ TEST (BuildingTke, CapWeightLiftsTheCap)
     EXPECT_EQ(value_at(weighted, 5, 3, 2), value_at(plain, 5, 3, 2)) << "w = 1";
 }
 
-// UT-5.4.1, UT-5.4.3: the rows.
+// The rows.
 TEST (BuildingTke, WallCellsRelaxToTheLawsValueAndSolidCellsToTheFloor)
 {
     for (const int mgs : {8, 4, 3}) {

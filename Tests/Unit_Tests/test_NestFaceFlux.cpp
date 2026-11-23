@@ -1,5 +1,5 @@
-// The conservative variant of the defect source (NestFaceFlux.H; tracker N-114,
-// item 1, nest.feedback_flux = nest), on a flat parent of 20 x 16 x 8 cells with
+// The conservative variant of the defect source (NestFaceFlux.H;
+// nest.feedback_flux = nest), on a flat parent of 20 x 16 x 8 cells with
 // uneven boxes and its nest at ratio 2 (24 x 20 cells, boxes that do not line
 // up with the parent's):
 //   - the nest's fluxes summed onto the parent faces: given fluxes G = a x^2 +
@@ -46,11 +46,11 @@ constexpr double kTol = kDouble ? 1.0e-10 : 2.0e-3;
 struct Domain
 {
     gust::Inputs in;
-    amrex::Geometry geom;
-    amrex::BoxArray ba;
-    amrex::DistributionMapping dm;
-    gust::Mesh mesh;
-    gust::State q;
+    amrex::Geometry geom{};
+    amrex::BoxArray ba{};
+    amrex::DistributionMapping dm{};
+    gust::Mesh mesh{};
+    gust::State q{};
 
     void make ()
     {

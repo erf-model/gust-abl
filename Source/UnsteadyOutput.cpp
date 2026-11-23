@@ -66,8 +66,8 @@ void variance_box (const amrex::Box& bx, const amrex::Array4<amrex::Real>& out, 
     });
 }
 
-// The height above the ground of cell (i, j, k)'s centre (the mean of its eight nodes) in the
-// column whose ground is node level klo.
+// The mean height of the four nodes of level k in column (i, j) (the ground for the column's
+// lowest level), and the cell centre's height (the mean of its eight nodes).
 AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
 amrex::Real ground_of (const amrex::Array4<const amrex::Real>& z, int i, int j, int k)
 {
@@ -157,7 +157,7 @@ void probe_error (ProbeAxis axis, const std::string& file, const std::string& wh
     amrex::Abort(std::string("gust: ") + probes_key(axis) + " = " + file + ": " + what);
 }
 
-// The log's prefix and the first column's name and unit for an axis.
+// The log's prefix and the first column's name for an axis.
 const char* axis_run (ProbeAxis axis) { return axis == ProbeAxis::time ? "unsteady" : "steady"; }
 const char* axis_column (ProbeAxis axis) { return axis == ProbeAxis::time ? "t" : "iteration"; }
 

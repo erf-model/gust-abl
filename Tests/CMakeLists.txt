@@ -217,8 +217,10 @@ if(_gust_numpy EQUAL 0)
     set(GUST_PYTHON_NUMPY ON)
 else()
     set(GUST_PYTHON_NUMPY OFF)
-    message(STATUS "GUST: numpy not found for ${Python3_EXECUTABLE}; rt_nests_two_way, "
-                   "rt_immersed_open_faces, rt_immersed_roughness_step, rt_immersed_canopy_*, rt_immersed_askervein_coarse and "
+    message(STATUS "GUST: numpy not found for ${Python3_EXECUTABLE}; rt_nests_two_way, rt_nests_relax, "
+                   "rt_nests_feedback_flux, rt_nests_inject, rt_nests_relax_consistent, rt_nests_flat_abl_*, "
+                   "rt_immersed_open_faces, rt_immersed_open_faces_*, rt_immersed_roughness_step, "
+                   "rt_immersed_canopy_*, rt_immersed_askervein_coarse, rt_bolund_files_converter and "
                    "speed_difference_selftest are not registered")
 endif()
 
@@ -372,7 +374,7 @@ gust_add_test(NAME abort_unsteady_dt_and_cfl NP 1 LABELS "regression;smoke"
               PREFIX ${EXPECT_ABORT} "unsteady\\.dt and unsteady\\.cfl > 0 are exclusive" --
               COMMAND $<TARGET_FILE:gust> ${UNSTEADY_DECK} unsteady.stop_time=600 unsteady.dt=60 unsteady.cfl=0.5
                       io.write_checkpoint=0 init.first_guess=profile ${GUST_TEST_AMREX_FLAGS})
-# The outputs' inputs (sub-phase 6.3, UnsteadyOutput.H): their ranges, the
+# The outputs' inputs (UnsteadyOutput.H): their ranges, the
 # intervals without their output, the probe file.
 gust_add_test(NAME abort_unsteady_output_ranges NP 1 LABELS "regression;smoke"
               PREFIX ${EXPECT_ABORT} "unsteady\\.average_start = 700: must be finite, >= 0 and < unsteady\\.stop_time"
@@ -407,7 +409,7 @@ gust_add_test(NAME abort_unsteady_key_without_stage NP 1 LABELS "regression;smok
               PREFIX ${EXPECT_ABORT} "unsteady\\.dt has no effect without steady\\.stage = unsteady" --
               COMMAND $<TARGET_FILE:gust> ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Neutral_Hill_2D/inputs_steady_hill2d_restart
                       unsteady.dt=60 steady.max_iterations=1 init.first_guess=profile ${GUST_TEST_AMREX_FLAGS})
-# steady.probes_file (sub-phase 6.4b): the unsteady stage has its own key, and a missing file is named.
+# steady.probes_file: the unsteady stage has its own key, and a missing file is named.
 gust_add_test(NAME abort_steady_probes_with_unsteady NP 1 LABELS "regression;smoke"
               PREFIX ${EXPECT_ABORT} "steady\\.probes_file has no effect with steady\\.stage = unsteady" --
               COMMAND $<TARGET_FILE:gust> ${UNSTEADY_DECK} unsteady.stop_time=600 unsteady.dt=60 io.write_checkpoint=0
@@ -465,7 +467,7 @@ gust_add_test(NAME abort_buildings_z0_with_drag NP 1 LABELS "regression;smoke"
               COMMAND $<TARGET_FILE:gust> ${BUILDINGS_CASE}/inputs_buildings buildings.file=${BUILDINGS_CASE}/building_map.txt
                       buildings.z0=1 buildings.wall_form=drag buildings.wall_speed=all_faces ${GUST_TEST_AMREX_FLAGS})
 
-# --- Laminar cylinder (plan rev. 6, sub-phase 6.4, PR-49) ------------------------
+# --- Laminar cylinder ------------------------------------------------------------
 # turb.closure = none and buildings.force_file (Closure.H, BuildingLoads.H) on the
 # staircase cylinder of Canonical_RANS/Cylinder_Laminar: the refusals, and the
 # steady Re = 40 flow at D/d = 10 against its pinned drag, lift and wake length.
@@ -495,7 +497,7 @@ gust_add_test(NAME abort_force_file_without_stage NP 1 LABELS "regression;smoke"
               PREFIX ${EXPECT_ABORT} "buildings\\.force_file has no effect without steady\\.stage" --
               COMMAND $<TARGET_FILE:gust> ${CYLINDER_CASE}/inputs_cylinder "mesh.n_cell=200 2 120" ${CYLINDER_FILES}
                       turb.nu_molecular=0.025 ${GUST_TEST_AMREX_FLAGS})
-# RT-6.4.1: Re = 40, D/d = 10, steady (about 2 minutes on 2 ranks).
+# Re = 40, D/d = 10, steady (about 2 minutes on 2 ranks).
 set(CYLINDER_RE40_DIR ${CMAKE_CURRENT_BINARY_DIR}/run/rt_cylinder_re40)
 add_test(NAME rt_cylinder_re40_clean
          COMMAND ${Python3_EXECUTABLE} -c
@@ -766,7 +768,7 @@ gust_add_test(NAME building_cube_smooth_walls_flow NP 1 LABELS "regression;smoke
               FIXTURES_REQUIRED building_cube_smooth_walls
               COMMAND ${Python3_EXECUTABLE} ${BUILDING_CUBE_CASE}/check_cube.py --latest cube_plt --roof 2.855 --side 1.452
                       --k-roof 0.145 --k-ground 0.0152)
-# --- The cube of Snyder and Lawson (1994) against the measurements (tracker PR-44) ---
+# --- The cube of Snyder and Lawson (1994) against the measurements ---
 # 20 mm cells, 5 mm layers to 0.3 m: the plain closure; the lee options of the terrain decks with their zone around
 # the cube (buildings.limiter_zone, default 3), which gives the plain closure's answer; and the same without the
 # zone (0, the form before it), whose cap lengthens the bubble. compare_snyder.py pins the rms difference, the hit
@@ -807,7 +809,7 @@ foreach(variant plain lee lee_nozone)
                   FIXTURES_REQUIRED snyder_cube_${variant}
                   COMMAND ${Python3_EXECUTABLE} ${SNYDER_CASE}/compare_snyder.py --latest snyder_plt ${_pins})
 endforeach()
-# --- The staggered cube array of Castro et al. (2006) against its measurements (tracker PR-44) ---
+# --- The staggered cube array of Castro et al. (2006) against its measurements ---
 # The 25 % array as Munoz-Esparza et al. (2020) set it up for FastEddy: one periodic tile, pressure driven, 2 mm
 # cells. The run does not meet the steady criteria in 3000 iterations (the k residual falls slowly), but its
 # answer moves by less than 0.001 u_r between 3000 and 8000 iterations, so the run stops at 3000 and the test
@@ -1649,7 +1651,7 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
                          ${BUMP_CASE}/Gold/init_bump_trend.json --
                   COMMAND $<TARGET_FILE:gust> ${BUMP_CASE}/inputs_init_bump
                           terrain.file=${BUMP_CASE}/terrain_bump_fwt.txt ${GUST_TEST_AMREX_FLAGS})
-    # The nested patch (NestParent.H, plan sub-phase 9.1): the parent's
+    # The nested patch (NestParent.H): the parent's
     # initial field over a round hill and its checkpoint (2 ranks), then the
     # patch over parent cells 8 to 23 x 6 to 17 at 2 2 1 on 3 ranks (other
     # layouts): theta and k equal the parent's bilinear interpolation per
@@ -1695,8 +1697,8 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
                   PREFIX ${EXPECT_ABORT} "bc\\.nest_parent = no_such_chk: no checkpoint Header there" --
                   COMMAND $<TARGET_FILE:gust> ${SMOKE_CASE}/inputs_smoke init.first_guess=nest bc.nest_parent=no_such_chk
                           ${GUST_TEST_AMREX_FLAGS})
-    # The nest faces of a nested patch (NestFaces.H, sub-phase 9.2, beyond the
-    # plan): a parent to steady, then the patch over parent cells 8 to 23 x 6
+    # The nest faces of a nested patch (NestFaces.H):
+    # a parent to steady, then the patch over parent cells 8 to 23 x 6
     # to 17 at 2 2 1 with its four lateral faces taken from the parent, to
     # steady (check_nest_faces.py: the net flux removed, the first pressure
     # correction converged, the steady verdict, the patch against its parent).
@@ -1938,7 +1940,7 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
                   PREFIX ${EXPECT_ABORT} "terrain\\.nest_blend_width has no effect without a nest face" --
                   COMMAND $<TARGET_FILE:gust> ${NEST_FACES_CASE}/inputs_hill_parent terrain.nest_blend_width=50
                           ${GUST_TEST_AMREX_FLAGS})
-    # Nests in one process (Nests_One_Process, PR-69): the hill parent of
+    # Nests in one process (Nests_One_Process): the hill parent of
     # Nest_Faces with two touching nests given as nest.names and corners only.
     # The outer domain must be bit for bit that of the run without nests, and
     # each nest bit for bit that of its own deck with the derived settings
@@ -2000,7 +2002,7 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
     gust_add_test(NAME rt_nests_outer_init_keys NP 1 LABELS "regression;smoke"
                   COMMAND ${NESTS_OUTER} ${NESTS_A} init.z_agl_min=5
                           ${GUST_TEST_AMREX_FLAGS})
-    # Two-way nesting (PR-70): the outer domain and the nest of a steeper hill run one way, then jointly with the
+    # Two-way nesting: the outer domain and the nest of a steeper hill run one way, then jointly with the
     # defect source (nest.feedback = defect); against the uniform 25 m run, the joint nest's u error must be at most
     # half the one-way nest's, and the outer error outside the footprint at most 0.6 of the one-way one's
     # (README.md has the measured ratios).
@@ -2010,29 +2012,29 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
         gust_add_test(NAME rt_nests_two_way NP 2 LABELS "regression;smoke"
                       PREFIX ${Python3_EXECUTABLE} ${NESTS2_CASE}/check_nests_two_way.py --
                       COMMAND ${NESTS2_OUTER} ${GUST_TEST_AMREX_FLAGS})
-        # Feedback by relaxation (PR-71, nest.feedback = relax) on the same hill: the joint runs at
+        # Feedback by relaxation (nest.feedback = relax) on the same hill: the joint runs at
         # nest.feedback_factor = 1, 4 and 16 beside the defect run; the parent - restricted nest difference under the
         # nest must fall with the factor (at 16 at most 0.35 of its value at 1), and at factor 1 the nest and outer
         # errors against the 25 m run at most 0.5 and 0.6 of the one-way ones (README.md has the measured values).
-        # Old against new default (N-114 item 13): a run without the factor uses 0.5; its nest and outer errors at
+        # Old against new default: a run without the factor uses 0.5; its nest and outer errors at
         # most 0.8 and 1.05 of the factor-1 run's.
         gust_add_test(NAME rt_nests_relax NP 2 LABELS "regression"
                       PREFIX ${Python3_EXECUTABLE} ${NESTS2_CASE}/check_nests_two_way.py --relax --
                       COMMAND ${NESTS2_OUTER} ${GUST_TEST_AMREX_FLAGS})
-        # Conservative nest faces (tracker N-114, item 1), old against new: the nest crest alone with its downstream
+        # Conservative nest faces, old against new: the nest crest alone with its downstream
         # face on the lee slope (x = 900 m), nest.feedback_flux = outer and nest. With outer the joint nest error is
         # at least 2 times the one-way one; with nest at most 1.6 times (outer domain 1.25) and at most 0.6 of the
         # errors with outer; the hill with nest keeps the bounds of rt_nests_two_way (README.md has the values).
         gust_add_test(NAME rt_nests_feedback_flux NP 2 LABELS "regression"
                       PREFIX ${Python3_EXECUTABLE} ${NESTS2_CASE}/check_nests_two_way.py --feedback-flux --
                       COMMAND ${NESTS2_OUTER} ${GUST_TEST_AMREX_FLAGS})
-        # Feedback by injection (tracker N-114, item 2, nest.feedback = inject) on the same hill at the default
+        # Feedback by injection (nest.feedback = inject) on the same hill at the default
         # nest.feedback_factor (0.5): steady, and the nest and outer errors against the 25 m run pinned against the
         # one-way ones (README.md has the measured values).
         gust_add_test(NAME rt_nests_inject NP 2 LABELS "regression"
                       PREFIX ${Python3_EXECUTABLE} ${NESTS2_CASE}/check_nests_two_way.py --inject --
                       COMMAND ${NESTS2_OUTER} ${GUST_TEST_AMREX_FLAGS})
-        # Pressure-consistent relaxation (tracker N-114, item 12, nest.feedback = relax_consistent) on the same hill,
+        # Pressure-consistent relaxation (nest.feedback = relax_consistent) on the same hill,
         # old against new: relax at factor 1 and relax_consistent at 1 and 4. At factor 1 the parent - restricted
         # nest difference under the nest is pinned against relax's and falls from 1 to 4; the nest and outer errors
         # against the 25 m run are pinned against the one-way ones (README.md has the measured values).
@@ -2041,7 +2043,7 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
                       COMMAND ${NESTS2_OUTER} ${GUST_TEST_AMREX_FLAGS})
     endif()
     # A joint run stopped after 150 exchanges (steady.max_iterations) and restarted from the joint record its
-    # message names (tracker N-114, item 3): the restart is steady after the straight run's exchanges, and the last
+    # message names: the restart is steady after the straight run's exchanges, and the last
     # plotfiles and checkpoints are byte for byte the straight run's. The two nests on 3 ranks with the defect
     # source; the nest hill on 2 ranks with the relaxation (relax and relax_consistent) and with the injection.
     gust_add_test(NAME rt_nests_joint_restart NP 3 LABELS "regression;smoke"
@@ -2146,7 +2148,7 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
     gust_add_test(NAME abort_nests_feedback_newton NP 1 LABELS "regression;smoke"
                   PREFIX ${EXPECT_ABORT} "nest\\.feedback = defect needs steady\\.stage = simplec \\(not simplec_newton\\)" --
                   COMMAND ${NESTS2_ABORT} ${NESTS_A} nest.feedback=defect steady.stage=simplec_newton ${GUST_TEST_AMREX_FLAGS})
-    # A joint restart (tracker N-114, item 3) reads the joint record (Joint) in io.restart before anything runs:
+    # A joint restart reads the joint record (Joint) in io.restart before anything runs:
     # records written here stand in for a joint run's checkpoint.
     set(JOINT_RECORDS ${CMAKE_CURRENT_BINARY_DIR}/joint_records)
     file(WRITE ${JOINT_RECORDS}/names/Joint "GUST_JOINT 1\nfeedback defect\nexchanges 5\nouter 0x1p+3\nnest other 0x1p+3 chk_other00010\n")
@@ -2181,8 +2183,8 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
                   PREFIX ${EXPECT_ABORT} "nest\\.feedback = defect: nest\\.a spans 4 outer cells in x; it needs at least 5" --
                   COMMAND $<TARGET_FILE:gust> ${NESTS2_CASE}/inputs_outer nest.names=a "nest.a.lo=400 300" "nest.a.hi=600 900"
                           nest.feedback=defect ${GUST_TEST_AMREX_FLAGS})
-    # One-way nesting against a uniform fine run (Nest_Validation, sub-phase
-    # 9.3, beyond the plan): a 150 m hill in 3200 m x 2400 m. The smoke set
+    # One-way nesting against a uniform fine run (Nest_Validation):
+    # a 150 m hill in 3200 m x 2400 m. The smoke set
     # runs the whole domain on 100 m cells (the parent) and on 50 m cells (the
     # reference), and 50 m patches of half-width 400 and 600 m with four nest
     # faces. The 600 m patch must be within 0.2 % of U_ref of the reference
@@ -2237,8 +2239,8 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
                   PREFIX ${NESTV} study --
                   COMMAND $<TARGET_FILE:gust> -- ${GUST_TEST_AMREX_FLAGS})
     set_tests_properties(rt_nest_validation_study PROPERTIES TIMEOUT 7200)
-    # One-way patches around canonical shapes (Nest_Shapes, sub-phase 9.4,
-    # beyond the plan): the smoke set runs the cube of Building_Cube in a
+    # One-way patches around canonical shapes (Nest_Shapes):
+    # the smoke set runs the cube of Building_Cube in a
     # patch. The whole domain on 10 m cells (the parent) and on 5 m cells
     # (the reference), and a 5 m patch of half-width 70 m with four nest
     # faces, the walls 55 m from them. The patch must be within 2 % of U_ref
@@ -2282,7 +2284,7 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
              WORKING_DIRECTORY ${NESTS_DIR})
     set_tests_properties(rt_nest_shapes_cube PROPERTIES LABELS "regression;smoke"
                          FIXTURES_REQUIRED "nest_shapes_cube_reference;nest_shapes_cube_d70")
-    # bc.nest_ratio (beyond the plan): the same cube from a 20 m parent. A
+    # bc.nest_ratio: the same cube from a 20 m parent. A
     # 5 m patch at ratio 4 (half-widths 70 m by 60 m) and a chain of two
     # ratio-2 patches (20 m -> 10 m with half-widths 90 m by 100 m -> 5 m on
     # the same 70 m by 60 m) against the 5 m reference. Measured ROI RMS:
@@ -2660,7 +2662,7 @@ gust_add_test(NAME rt_steady_hill2d_restart_continued NP 2 LABELS "regression;sm
               FIXTURES_REQUIRED steady_hill2d_first FIXTURES_SETUP steady_hill2d_continued
               COMMAND $<TARGET_FILE:gust> ${HILL2D_CASE}/inputs_steady_hill2d_restart steady.max_iterations=10
                       io.restart=steady_hill2d_restart_chk00005 ${GUST_TEST_AMREX_FLAGS})
-# RT-6.4b.1: steady.probes_file, a row per iteration, and its restart (check_steady_probes.py).
+# steady.probes_file, a row per iteration, and its restart (check_steady_probes.py).
 # Double precision: the check wants theta off its first guess of 300 K after one iteration.
 if(GUST_PRECISION STREQUAL "DOUBLE")
     gust_add_test(NAME rt_steady_hill2d_probes NP 2 LABELS "regression;smoke"
@@ -2697,7 +2699,7 @@ gust_add_test(NAME abort_unsteady_restart_probes NP 2 LABELS "regression;smoke" 
                       unsteady.probes_file=${UNSTEADY_PROBES_DIR}/probes_restart_hill2d.txt
                       io.write_checkpoint=0 ${GUST_TEST_AMREX_FLAGS})
 # The time-mean option of the plotfile column reader (askervein_lines.py
-# sample --mean, rushil.py compare --mean; sub-phase 6.4a, beyond the plan):
+# sample --mean, rushil.py compare --mean):
 # five steps of 60 s with a plotfile each and the averages from t = 0, so the
 # last plotfile's u_mean, v_mean are the mean of the five fields. The run
 # directory is emptied first: a plotfile of an earlier run would enter the mean.
@@ -2737,7 +2739,7 @@ gust_add_test(NAME rt_steady_hill2d_restart_matches NP 1 LABELS "regression;smok
 # The 2-D hill with Coriolis, run twice on the same two ranks and layout: the
 # plotfiles and the turbulence plotfiles (which carry the residual fields and
 # the wall state) identical at zero tolerance. The Coriolis coupling takes a
-# horizontal mean of the other residual per level; before audit A4 (#60) that
+# horizontal mean of the other residual per level; before #60 that
 # mean added every face atomically into one address per level, an order that
 # can change from run to run on a GPU. On a CPU two runs are identical either
 # way; the test is there for the nightly H100 job (tools/kestrel/nightly_gpu.sh),
@@ -2824,7 +2826,7 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
                   COMMAND $<TARGET_FILE:gust> ${CANOPY_DRAG_CASE}/inputs_canopy_drag
                           canopy.file=${CANOPY_DRAG_CASE}/canopy_patches.txt ${GUST_TEST_AMREX_FLAGS})
     set_tests_properties(rt_canopy_tke PROPERTIES ENVIRONMENT PYTHONDONTWRITEBYTECODE=1 TIMEOUT 600)
-    # The column first guess with a uniform canopy (UT-8.5.1; Canonical_RANS/
+    # The column first guess with a uniform canopy (Canonical_RANS/
     # Canopy_Drag, about 3 min on two ranks): the column's first residuals are
     # below 2e-3 of the profile's (1e-9 measured), the converged 3-D column is
     # within 2e-3 of the table (1.3e-3), the column run needs at most 0.7 of the
@@ -2972,7 +2974,7 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
                   PREFIX ${Python3_EXECUTABLE} ${SUPPORT}/check_steady_hill.py
                          --erf-check check_hill.py --orders 2 --
                   COMMAND $<TARGET_FILE:gust> ${HILL2D_CASE}/inputs_steady_hill2d ${GUST_TEST_AMREX_FLAGS})
-    # RT-6.2.1 (plan rev. 6, sub-phase 6.2, beyond the plan): the same hill as
+    # The same hill as
     # unsteady RANS (Canonical_RANS/Unsteady_Hill_2D), ten steps of 60 s on 1,
     # 2 and 4 ranks: the step log, the same inner counts and the same answer
     # (1e-9). MPI builds only: the script sets the rank count through -n.
@@ -3246,8 +3248,8 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
     set_tests_properties(rt_askervein_210_zjacobi_matches PROPERTIES LABELS "nightly"
                     FIXTURES_REQUIRED "askervein_210_zjacobi;askervein_210_lines"
                     ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
-    # One-way nesting on Askervein (Askervein_Nest, sub-phase 9.3, beyond the
-    # plan): the 40 m parent, the 20 m reference and 20 m patches of half-width
+    # One-way nesting on Askervein (Askervein_Nest):
+    # the 40 m parent, the 20 m reference and 20 m patches of half-width
     # 1000, 1400 and 2000 m around the hilltop; the 10 m speeds at the masts of
     # lines A and AA against the reference, targets A1 to A3 of the README.
     set(ASKNEST_DIR ${CMAKE_CURRENT_BINARY_DIR}/run/rt_askervein_nest)
@@ -3377,10 +3379,13 @@ if(NOT WIN32)
              COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/Real_Terrain/WindNinja2019/test_timed_run.sh)
     set_tests_properties(wn2019_timed_run PROPERTIES LABELS unit)
 endif()
-# The terrain and roughness converter of Tests/Real_Terrain/Bolund_Terrain_Files on small made-up grids.
-add_test(NAME rt_bolund_files_converter
-         COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/Real_Terrain/Bolund_Terrain_Files/to_gust_xyz.py selftest)
-set_tests_properties(rt_bolund_files_converter PROPERTIES LABELS unit)
+# The terrain and roughness converter of Tests/Real_Terrain/Bolund_Terrain_Files on small made-up grids
+# (the script imports numpy).
+if(GUST_PYTHON_NUMPY)
+    add_test(NAME rt_bolund_files_converter
+             COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/Real_Terrain/Bolund_Terrain_Files/to_gust_xyz.py selftest)
+    set_tests_properties(rt_bolund_files_converter PROPERTIES LABELS unit)
+endif()
 
 # The plotfile reader of the check scripts (extern_erf/erf_plotfile.py, a
 # local change): hand-made one-box plotfiles in float and double, little- and
@@ -3437,7 +3442,7 @@ add_test(NAME input_reference_current
          WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
 set_tests_properties(input_reference_current PROPERTIES LABELS unit
                      ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
-# GUST_OMP was removed (audit A11; GUST runs MPI, not OpenMP): a configure
+# GUST_OMP was removed (GUST runs MPI, not OpenMP): a configure
 # with -DGUST_OMP=ON stops at the top-level check, before AMReX is configured.
 # The parent's generator and compilers, so the child reaches the check.
 add_test(NAME cmake_gust_omp_refused
@@ -3558,6 +3563,6 @@ if(_gust_case_python EQUAL 0)
 else()
     message(STATUS "GUST: PyYAML or numpy not found for ${Python3_EXECUTABLE}; "
                    "gust_case_selftest, gust_library_selftest, gust_ensemble_selftest, gust_resume_selftest, gust_fetch_selftest, "
-                   "rt_case_setup_*, rt_library_ensemble and "
+                   "gust_dem_selftest, gust_window_selftest, rt_case_setup_*, rt_library_ensemble and "
                    "rt_library_hill are not registered")
 endif()

@@ -7,6 +7,9 @@
 //   terrain interpolation
 //   metrics equal ERF's (gold from ERF at the pinned commit)
 // IDW against brute force, restart check, steep-ridge report.
+//   levels file, IDW mirror ties, map coordinates, periodic file terrain,
+//   smallest detJ, quality report (slope, ground step), refused terrain,
+//   ground layer, sentinel / shared / ghost nodes, layout independence
 #include "Mesh.H"
 #include "SmoothSurface.H"
 #include "State.H"
@@ -306,7 +309,7 @@ TEST (Mesh, FreeStreamIsPreserved)
     for (const int sm : {0, 1, 2}) {
         MeshCase s = hill3d(sm);
         s.mesh.build(s.in, s.geom, s.z);
-        const double scale = 15.0 * s.geom.InvCellSize(0);   // |U| + |V| over dx
+        const double scale = 15.0 * s.geom.InvCellSize(0);   // |U| + |V| over dx for the wind (10, 5)
         EXPECT_LT(gust::free_stream_divergence(s.mesh, s.geom, s.z, 10, 5), tol(1e-12, 1e-4) * scale)
             << "agnesi, smoothing " << sm;
 
@@ -354,7 +357,7 @@ TEST (Mesh, VolumesSumToTheDomain)
         // And close to the volume of the domain above the continuous hill, by
         // a 1 m midpoint rule; the difference is the mesh's bilinear ground on
         // 100 m cells (about 3 % of the domain is hill). The top must be flat
-        // (z_H below it; the quality report's top-node displacement is 0).
+        // (z_H below it; the quality report's top-node displacement is below 1e-6 of the top).
         double hill = 0;
         for (int jj = 0; jj < 2000; ++jj) {
             for (int ii = 0; ii < 2400; ++ii) {
@@ -384,7 +387,6 @@ TEST (Mesh, SmoothSurfaceKernel)
 
     h.setVal(123.25);
     gust::smooth_surface(h, geom, 5, amrex::Real(0.2));
-    auto [d0, m0] = max_diff(h, 0, h, 0);
     EXPECT_EQ(h.min(0, 0), 123.25);
     EXPECT_EQ(h.max(0, 0), 123.25);
 
@@ -412,11 +414,10 @@ TEST (Mesh, SmoothSurfaceKernel)
     EXPECT_LT(worst, tol(1e-12, 1e-6));
     EXPECT_THROW(gust::smooth_surface(h, geom, 1, amrex::Real(0.3)), std::runtime_error);
     EXPECT_THROW(gust::smooth_surface(h, geom, 1, amrex::Real(0.25)), std::runtime_error);
-    (void)d0; (void)m0;
 }
 
-// Smoothing on a non-periodic domain. One pass of a mode in x
-// on a 1-node-thick strip in y: interior nodes as the stencil gives them, edge
+// Smoothing on a non-periodic domain. One pass of a mode in x, constant in y,
+// on a 16 x 4 strip in two boxes: interior nodes as the stencil gives them, edge
 // nodes with the edge node as their own outside neighbour (as ERF clamps), and
 // ghost nodes outside the faces equal to the nearest domain node.
 TEST (Mesh, SmoothSurfaceNonPeriodic)
@@ -483,8 +484,14 @@ TEST (Mesh, TerrainInterpolation)
     for (const auto& [x, y] : std::vector<std::pair<double, double>>{{3.3, 7.1}, {57.0, 41.0}, {159.9, 74.9}, {90.0, 50.0}}) {
         EXPECT_NEAR(gust::erf_bilinear(g, x, y), plane(x, y), 1e-12) << x << " " << y;
     }
-    // More neighbours than points: refused, naming the input.
-    EXPECT_THROW(gust::IdwInterpolator(pts, 144, 2), std::runtime_error);
+    // More neighbours than points: refused, naming the input and the number of points.
+    try {
+        (void)gust::IdwInterpolator(pts, 144, 2);
+        ADD_FAILURE() << "144 neighbours of 143 points were accepted";
+    } catch (const std::runtime_error& e) {
+        EXPECT_NE(std::string(e.what()).find("terrain.idw_neighbors = 144"), std::string::npos) << e.what();
+        EXPECT_NE(std::string(e.what()).find("143"), std::string::npos) << e.what();
+    }
     EXPECT_NO_THROW(gust::IdwInterpolator(pts, 143, 2));
 
     // Outside the table: ERF's fallback clamps to the edge value.
@@ -518,7 +525,7 @@ double idw_brute (const gust::TerrainPoints& pts, int k, double xq, double yq)
 }
 
 // Mirror-image neighbours tie exactly and the lower index wins, whatever the
-// compiler does with multiply-adds (audit A5, found by Pressel: with
+// compiler does with multiply-adds (with
 // dx * dx + dy * dy contracted to fma(dx, dx, dy * dy) the two mirror images
 // of a query on the diagonal of a regular grid differ in the last bit, and a
 // build that contracts differently picked the other one: the Askervein
@@ -548,8 +555,8 @@ TEST (Mesh, IdwMirrorTiesAreTheLowerIndex)
     }
 }
 
-// The bucket search gives the brute-force IDW answer, the
-// same neighbours to the last bits (double precision in every build): a random cloud with queries inside and
+// The bucket search gives the brute-force IDW answer to within kSameBits
+// (1e-13 relative: the same neighbours; double precision in every build): a random cloud with queries inside and
 // far outside; a regular grid, whose queries at bucket corners and edge
 // midpoints have exact distance ties; a transect (all y = 0) queried from a
 // 2-D domain, which once took minutes; and a single point.
@@ -726,7 +733,7 @@ TEST (Mesh, MetricsEqualErf)
 }
 
 // The mesh keeps the smallest detJ when it makes its metrics (the pressure
-// correction reads it every iteration; audit A7): after build, adopt and a
+// correction reads it every iteration): after build, adopt and a
 // restart check, the kept value is the field's minimum to the last bit. On
 // flat ground it is the first layer over the computational spacing, 40/100.
 TEST (Mesh, KeepsTheSmallestJacobian)
@@ -768,7 +775,7 @@ TEST (Mesh, RestartWithOtherTerrainIsRefused)
 // A checkpoint whose node heights lie within restart_height_tolerance of
 // this build's (as from a compiler that contracts the multiply-adds
 // differently) restarts, on this build's heights; one beyond it, or with a
-// NaN height, is refused (audit A5, U6). Before, any difference refused it.
+// NaN height, is refused. Before, any difference refused it.
 TEST (Mesh, RestartAcceptsHeightsWithinAFewUlp)
 {
     MeshCase s = hill3d(1);
@@ -1112,7 +1119,7 @@ TEST (Mesh, GhostNodesStandForTheirImages)
 
 } // namespace
 
-// The Agnesi ground's ghost nodes as written (audit G6): in a periodic
+// The Agnesi ground's ghost nodes as written: in a periodic
 // direction each is its periodic image (equal to what FillBoundary gives,
 // bit for bit), and outside a non-periodic face the nearest domain node.
 // The three hill shapes on a domain not centred at the origin, on boxes of 8 cells, with x periodic and
@@ -1162,7 +1169,7 @@ TEST(Mesh, AgnesiGhostNodesWrapInPeriodicDirections)
 }
 
 // The node heights do not depend on the layout: the same mesh cut into one
-// box, 8 x 8 boxes and 12 x 4 boxes has the same heights, bit for bit, at
+// box, boxes of at most 8 x 8 cells and of at most 12 x 4 cells has the same heights, bit for bit, at
 // every node a box holds (every box's copy of a seam node, and the ghost
 // nodes). Each box computes its own copy of a
 // shared node and OverrideSync keeps one; with gcc's contracted multiply-adds

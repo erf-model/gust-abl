@@ -64,7 +64,7 @@ takes 2234 iterations at 0, 2012 at 0.05, 2558 at 0.1 and more than 3500 at 0.3 
 before it falls, and the floor lengthens that excursion); the thin-cell cap case is unchanged at 0.1 and 0.3 and
 needs the cap less at 1 (287 iterations without it against 3713). :math:`U_{\max}` is
 one all-reduce per iteration, a maximum, so it is the same on any ranks; ``steady.dtau_floor = 0`` is the plain
-local step, the form before the floor. The floor changes the pseudo-time path, not the converged answer.
+local step. The floor changes the pseudo-time path, not the converged answer.
 
 **Cost of the global form.** The floor binds wherever a cell's own rate is below :math:`\varphi` of the fastest
 cell's. On a neutral log law (12 m/s aloft, 20 m cells, an 8 m first layer) it binds nowhere at :math:`\varphi` ≤
@@ -110,11 +110,11 @@ ABL meshes have cells much thinner than they are wide, so the vertical coupling 
 therefore solves each vertical column exactly (a tridiagonal solve with the Thomas algorithm). The coupling to the
 horizontal neighbours is handled by sweeps; ``steady.sweep`` selects how:
 
-- ``zjacobi`` (default): **z-line Jacobi.** All columns are solved at once, with the horizontal neighbours taken
-  from the previous sweep. ``steady.zline_sweeps`` (at least 2) sets the sweeps per iteration. More sweeps allow a
+- ``zjacobi`` (the default of a GPU build): **z-line Jacobi.** All columns are solved at once, with the horizontal
+  neighbours taken from the previous sweep. ``steady.zline_sweeps`` (at least 2) sets the sweeps per iteration. More sweeps allow a
   larger stable CFL; the terrain cases use 16 sweeps with a CFL cap of 4.
-- ``lusgs``: **line LU-SGS** (lower–upper symmetric Gauss–Seidel). The columns of each box are visited in order: a
-  forward pass uses the already-updated lower neighbours, and a backward pass the updated upper neighbours. One sweep
+- ``lusgs`` (the default of a CPU build): **line LU-SGS** (lower–upper symmetric Gauss–Seidel). The columns of each
+  box are visited in order: a forward pass uses the already-updated lower neighbours, and a backward pass the updated upper neighbours. One sweep
   is a forward and a backward pass. When the wind blows along the sweep direction, a pass resolves the upwind
   coupling exactly, which allows a much larger CFL. The hill cases use two sweeps with a CFL cap of 16. When
   :math:`u` and :math:`v` have opposite signs, one sweep is stable only to a CFL of about 2.5 (two sweeps to about
@@ -497,14 +497,14 @@ Switching and fallback
 
 **Limits.**
 
-- Before the Newton CFL cap, the stage went to infinite :math:`\Delta\tau` after one step; GMRES(30) and GMRES(200)
-  then stalled on ERF's 2-D hill (2000 iterations at a Krylov residual of 0.9) and the run cycled between the
+- Without the Newton CFL cap the stage goes to infinite :math:`\Delta\tau` after one step; GMRES(30) and GMRES(200)
+  then stall on ERF's 2-D hill (2000 iterations at a Krylov residual of 0.9) and the run cycles between the
   stages.
 - On that hill at full size (128 × 1 × 64, no Coriolis) the ramp does not remove the stall: GMRES(30) needs 105, 180
   and 323 iterations at CFL 16, 32 and 64, and reaches the 2000-iteration limit from CFL 128 on (Krylov residual
   0.08 at 128, 0.75 at 256, 0.97–0.99 at infinite :math:`\Delta\tau`); those steps are still accepted, and
   :math:`|R|` falls from 1.8e-4 to 7.8e-5 over 11 steps. The SIMPLEC preconditioner holds GMRES(30) to about CFL 64
-  on that grid (the measurement used a cap of 1000; the default is now 128). The cap, the restart length and the
+  on that grid (the measurement used a cap of 1000; the default is 128). The cap, the restart length and the
   switch residual are provisional: a Newton study on Askervein has not been run yet.
 - The stage's continuation takes its momentum diffusivity from the closure at its own state, not from the SIMPLEC
   stage (whose is not restored by a restart inside the Newton stage).
@@ -543,7 +543,7 @@ no preconditioner. ``simplec`` (the default) applies one SIMPLEC iteration to th
 The sweeps are those of the SIMPLEC stage: ``steady.zline_sweeps`` of ``steady.sweep``. ``setup`` rebuilds the
 coefficients once per Newton step, at the current state and :math:`\Delta\tau`. Inside the continuation loop
 that is every attempt. At infinite :math:`\Delta\tau` the preconditioner uses the local time step at
-``steady.cfl_max``.
+``steady.newton_cfl_max``.
 
 **The denominator.** The SIMPLEC stage divides by :math:`d = a_P - \sum a_{nb}`. In the interior that is about
 :math:`1/\Delta\tau`, so the pressure increment vanishes as :math:`\Delta\tau` grows. The preconditioner
@@ -572,8 +572,8 @@ a constant added to :math:`p` changes neither the preconditioner nor the solve
 Pseudo-transient continuation
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-A continuation loop (``Continuation``, ``Source/Continuation.H``) wraps the Newton step. The application does not
-run it yet. One continuation step from :math:`q_n`:
+A continuation loop (``Continuation``, ``Source/Continuation.H``) wraps the Newton step. The Newton stage runs it
+(above). One continuation step from :math:`q_n`:
 
 1. :math:`\Delta\tau` from the local time step at :math:`\mathrm{CFL}_n`, or no pseudo-time term (:math:`D = 0`)
    once the CFL has reached its cap and ``steady.newton_dtau_inf_at_cap = 1``.
@@ -601,11 +601,12 @@ run it yet. One continuation step from :math:`q_n`:
    with ``steady.cfl0``, ``steady.cfl_max``, :math:`g` = ``steady.ser_max_growth`` and :math:`p` =
    ``steady.ser_exponent``. :math:`|R_0|` is the first finite :math:`|R|`, or one the caller supplies
    (``set_reference_residual``). While :math:`\Delta\tau` is infinite the law starts from
-   :math:`\mathrm{CFL}_\mathrm{max}`.
+   :math:`\mathrm{CFL}_\mathrm{max}`. In the Newton stage :math:`\mathrm{CFL}_0` and
+   :math:`\mathrm{CFL}_\mathrm{max}` are both ``steady.newton_cfl_max``, and the first CFL is ``steady.cfl_max``.
 5. A skipped update or a line search that accepts no :math:`\lambda` leaves :math:`q_n` unchanged, multiplies the
    CFL by ``steady.newton_cfl_cut`` (from infinite :math:`\Delta\tau`, :math:`\mathrm{CFL}_\mathrm{max}` times it)
    and retries, up to ``steady.newton_max_retries`` times. Then the step returns *failed*, and the Newton stage
-   will fall back to SIMPLEC.
+   falls back to SIMPLEC after ``steady.newton_fallback_failures`` such steps.
 
 Every attempt prints one line: the step, :math:`|R|` before and after, the CFL (``inf`` for :math:`D = 0`),
 :math:`\lambda`, the backtracks, the GMRES iterations and status, the Krylov relative residual and the outcome
@@ -623,7 +624,8 @@ Every attempt prints one line: the step, :math:`|R|` before and after, the CFL (
   and measured worse.
 - With GMRES(30) and infinite :math:`\Delta\tau`, the 30 m hill stagnates near 6e-3 of :math:`|R_0|` for twelve
   steps at the 2000-iteration limit, then fails at 7e-8. With ``steady.newton_dtau_inf_at_cap = 0`` it reaches
-  1e-8 in 23 steps, and with GMRES(200) in 8. The restart length and the cap will be tuned with the Newton stage.
+  1e-8 in 23 steps, and with GMRES(200) in 8. The restart length and the cap are provisional (the Newton stage's
+  limits above).
 
 Smoothness handling
 ^^^^^^^^^^^^^^^^^^^
@@ -875,15 +877,16 @@ divided by a fixed scale:
 
 - :math:`r_{q,i}`: the residual of equation :math:`q` at cell or face :math:`i`; :math:`N_q`: their number. Each
   point counts once: a face shared by two boxes, or a periodic face and its image, is one point, so the norm does
-  not depend on ``mesh.max_grid_size``. (Before audit A4 such a face counted twice. A checkpoint written before then
+  not depend on ``mesh.max_grid_size``. (An earlier version counted such a face twice. A checkpoint written by it
   holds its reference and residuals in that norm; a restart compares them with the new norm, which differs by
   about the share of seam faces, so the restarted run is not bit for bit the run it was. The driver history
   records the norm from format 4 on; a restart from format 1 to 3 says in the log that it cannot tell.)
 - :math:`U` = 10 m/s, :math:`\theta_s` = 10 K, :math:`k_s` = 0.1 m²/s²: fixed scales, not inputs.
 - :math:`H`: the depth of the layers, from the ground level to the top level. On a uniform mesh this is
   ``mesh.prob_hi`` z; with ``mesh.stretch_ratio`` or ``mesh.zlevels_file`` it is where the layers end, which can be
-  well above ``mesh.prob_hi`` z (749 m against 440 m on Askervein). Before this was fixed, :math:`H` was
-  ``mesh.prob_hi`` z on every mesh, so on a stretched mesh the norms were smaller by that ratio.
+  well above ``mesh.prob_hi`` z (749 m against 440 m on Askervein). A checkpoint of driver history format 1 or 2
+  holds norms scaled with ``mesh.prob_hi`` z on every mesh, smaller by that ratio on a stretched mesh (Restart,
+  below).
 - :math:`H` is a property of the mesh, not of the flow. The same flow on a taller mesh has larger norms, so
   :math:`\tau_R` is a tighter test there. The drop :math:`N` does not depend on :math:`H`.
 

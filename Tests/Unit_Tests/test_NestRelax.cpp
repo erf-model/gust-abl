@@ -1,6 +1,6 @@
 // The patches' feedback by relaxation over their footprints (NestRelax.H;
-// plan rev. 6 tracker, PR-71, nest.feedback = relax, beyond the plan):
-//   UT-8.3.1: on a flat parent with uneven boxes and dx != dy, two
+// nest.feedback = relax):
+//   on a flat parent with uneven boxes and dx != dy, two
 //     overlapping footprints: U is the mean over the footprint's cells of
 //     the horizontal speed of q* (cell value from its faces); c = f U /
 //     min(dx, dy) times w(s) = min(1, s / 2), s the distance in cells from
@@ -10,27 +10,26 @@
 //     non-uniform field, exactly 0 elsewhere; differences() is max |q - q*|
 //     where c > 0. A footprint that spans a periodic direction has no faces
 //     there.
-//   UT-8.3.2: on the hill of HillTestHelpers.H as the application sets it up
+//   on the hill of HillTestHelpers.H as the application sets it up
 //     (wall law, wall-k rows, Dirichlet ground and top w faces): an inactive
 //     source leaves the residual and the implicit rows bit for bit; an active
 //     one changes the residual by c (q - q*) on the footprint's rows that
 //     keep their residual, nothing on the rows that replace theirs, and
 //     nothing (by value) outside the footprint.
-//   UT-8.3.3: implicit_rows gains c on the diagonal of those rows, no other
+//   implicit_rows gains c on the diagonal of those rows, no other
 //     coefficient changes, and the change of the residual along a direction
 //     is that diagonal times it, by finite differences.
-//   UT-8.3.4: the rates and U do not depend on the rank map (bit for bit),
-//     and agree with a one-box layout; with UT-8.3.1's closed form on 1, 2
+//   the rates and U do not depend on the rank map (bit for bit),
+//     and agree with a one-box layout; with the flat parent's closed form on 1, 2
 //     and 4 ranks (the unit_np* tests).
 //   nest.feedback_factor's check names the key.
 //   The change of the target between two sets (the joint run's stop test,
-//     JointRun.H; tracker row N-114, item 6, beyond the plan): max |q*_new -
+//     JointRun.H): max |q*_new -
 //     q*_old| where c > 0 only (a larger change on a footprint face, where
 //     c = 0, and outside is not counted), the sizes (one velocity scale, 0 for
 //     theta, the largest k), against values computed here; first on the
 //     first set only.
-//   Boxes outside every footprint (tracker row N-114, item 14, beyond the
-//     plan): on 4 x 4-cell boxes with two small footprints, the source and
+//   Boxes outside every footprint: on 4 x 4-cell boxes with two small footprints, the source and
 //     the diagonal reach every point where the closed-form rate is > 0 (the
 //     boxes B's margin alone reaches among them) and leave every other point
 //     bit for bit; 12 of the 20 boxes hold no footprint point. The test
@@ -71,7 +70,7 @@ constexpr bool kDouble = std::is_same_v<amrex::Real, double>;
 constexpr double kTol = kDouble ? 1.0e-12 : 2.0e-5;
 constexpr double kMargin = 2;   // kDefectMargin, written out so a change of the constant shows here
 
-// --- UT-8.3.1 and 8.3.4: a flat parent -----------------------------------------------------------
+// --- A flat parent -------------------------------------------------------------------------------
 
 struct Parent
 {
@@ -209,7 +208,7 @@ void reduce (Tally& t)
 
 constexpr double kFactor = 3;
 
-// UT-8.3.1's checks of a set of regions on parent p.
+// The closed-form checks of a set of regions on parent p.
 void check_closed_form (Parent& p, const std::vector<gust::DefectRegion>& regions)
 {
     gust::State qstar;
@@ -287,7 +286,7 @@ void check_closed_form (Parent& p, const std::vector<gust::DefectRegion>& region
     }
 }
 
-// --- UT-8.3.2 and 8.3.3: the hill as the application sets it up ------------------------------------
+// --- The hill as the application sets it up --------------------------------------------------------
 
 using gust::hilltest::HillRun;
 
@@ -308,7 +307,7 @@ void perturb (HillRun& h, const gust::State& q0, gust::State& q, double s)
     q.define(h.c.ba, h.c.dm);
     auto t = q.fields();
     const amrex::MultiFab* f0[7] = {&q0.u, &q0.v, &q0.w, &q0.p, &q0.theta, &q0.tke, &q0.z_phys_nd};
-    for (std::size_t n = 0; n < t.size(); ++n) {
+    for (std::size_t n = 0; n < static_cast<std::size_t>(t.size()); ++n) {
         amrex::MultiFab::Copy(*t[n].mf, *f0[n], 0, 0, 1, t[n].mf->nGrowVect());
     }
     const double L = HillRun::Lx, H = HillRun::H, pi = HillRun::kPi;
@@ -351,7 +350,7 @@ long footprint_columns () { return 10 * 2; }
 
 } // namespace
 
-TEST(NestRelax, SourceIsItsClosedFormOnUnevenBoxes)   // UT-8.3.1
+TEST(NestRelax, SourceIsItsClosedFormOnUnevenBoxes)
 {
     ASSERT_EQ(gust::kDefectMargin, 2);
     Parent p(false);
@@ -362,7 +361,7 @@ TEST(NestRelax, SourceIsItsClosedFormOnUnevenBoxes)   // UT-8.3.1
     check_closed_form(p, {a, b});
 }
 
-TEST(NestRelax, PeriodicSpanHasNoFaces)   // UT-8.3.1
+TEST(NestRelax, PeriodicSpanHasNoFaces)
 {
     Parent p(true);
     const amrex::Box dom = p.geom.Domain();
@@ -372,7 +371,7 @@ TEST(NestRelax, PeriodicSpanHasNoFaces)   // UT-8.3.1
     check_closed_form(p, {a});
 }
 
-TEST(NestRelax, FootprintOnAPeriodicSeam)   // UT-8.3.1, beyond the plan
+TEST(NestRelax, FootprintOnAPeriodicSeam)
 {
     // A nest from parent face 0 in a periodic y that does not span it: it has y faces, and the seam face (0 and its
     // periodic image 16) gets 0 on both copies.
@@ -398,7 +397,7 @@ TEST(NestRelax, FootprintOnAPeriodicSeam)   // UT-8.3.1, beyond the plan
     EXPECT_EQ(seam, 0.0) << "a rate on the periodic seam face";
 }
 
-TEST(NestRelax, InactiveLeavesTheHillBitForBit)   // UT-8.3.2
+TEST(NestRelax, InactiveLeavesTheHillBitForBit)
 {
     HillRun h = make_hill();
     gust::NestRelax S(h.c.ba, h.c.dm, h.c.geom, amrex::Real(kFactor));
@@ -413,7 +412,7 @@ TEST(NestRelax, InactiveLeavesTheHillBitForBit)   // UT-8.3.2
     gust::residual(q, off, h.c.mesh, h.c.geom, Roff);
     const auto a = Ron.fields();
     const auto b = Roff.fields();
-    for (std::size_t n = 0; n < a.size(); ++n) {
+    for (std::size_t n = 0; n < static_cast<std::size_t>(a.size()); ++n) {
         EXPECT_EQ(gust::test::count_bit_differences(*a[n].mf, *b[n].mf, 0), 0) << a[n].name;
     }
     const Equation eqs[5] = {Equation::u, Equation::v, Equation::w, Equation::theta, Equation::tke};
@@ -425,7 +424,7 @@ TEST(NestRelax, InactiveLeavesTheHillBitForBit)   // UT-8.3.2
     }
 }
 
-TEST(NestRelax, ResidualGainsTheSourceOnTheFootprintRows)   // UT-8.3.2
+TEST(NestRelax, ResidualGainsTheSourceOnTheFootprintRows)
 {
     HillRun h = make_hill();
     gust::NestRelax S(h.c.ba, h.c.dm, h.c.geom, amrex::Real(kFactor));
@@ -486,7 +485,7 @@ TEST(NestRelax, ResidualGainsTheSourceOnTheFootprintRows)   // UT-8.3.2
     EXPECT_EQ(gust::test::count_bit_differences(Ron.p, Roff.p, 0), 0);
 }
 
-TEST(NestRelax, DiagonalIsTheDerivativeOfTheSource)   // UT-8.3.3
+TEST(NestRelax, DiagonalIsTheDerivativeOfTheSource)
 {
     HillRun h = make_hill();
     gust::NestRelax S(h.c.ba, h.c.dm, h.c.geom, amrex::Real(kFactor));
@@ -564,7 +563,7 @@ TEST(NestRelax, DiagonalIsTheDerivativeOfTheSource)   // UT-8.3.3
     }
 }
 
-TEST(NestRelax, SameSourceOnAnyRankMapAndLayout)   // UT-8.3.4
+TEST(NestRelax, SameSourceOnAnyRankMapAndLayout)
 {
     std::vector<std::vector<double>> rates;
     std::vector<double> speeds;
@@ -675,7 +674,7 @@ TEST(NestRelax, ChangeOfTheTargetBetweenTwoSets)
     EXPECT_GT(U, 1.0);
 }
 
-TEST(NestRelax, BoxesOutsideEveryFootprintAreSkippedExactly)   // tracker row N-114, item 14, beyond the plan
+TEST(NestRelax, BoxesOutsideEveryFootprintAreSkippedExactly)
 {
     // 4 x 4-cell boxes (5 x 4 of them); A over cells 1-6 x 1-6, B over 13-17 x 9-13. add_to_residual and
     // add_to_implicit skip a box with no point of a footprint: every point where the closed-form rate is > 0 still

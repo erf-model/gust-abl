@@ -8,7 +8,7 @@ pins that the iteration converges and that the flow keeps out of the block. It a
 forms' values, the deck with the ground's wall k as a source (`bc.surface_wall_k = source`), and the fixed rows alone
 (`buildings.wall_form = drag`, where `buildings.wall_tke` is off when not given), walls 5 K warmer than the air with
 gravity on (`buildings.theta_mode = fixed`), theta without its building terms (`buildings.theta_mode = none`), and walls smoother than the ground
-(`buildings.z0 = 0.01`), where the closure's length beside a wall takes the wall's roughness. It is not a validation; PR-44 compares with measurements.
+(`buildings.z0 = 0.01`), where the closure's length beside a wall takes the wall's roughness. It is not a validation; `Snyder_Lawson_Cube` and `Castro_Cube_Array` compare with measurements.
 
 ## Files
 | File | Role |
@@ -17,7 +17,7 @@ gravity on (`buildings.theta_mode = fixed`), theta without its building terms (`
 | `inputs_cube_drag` | The same with `buildings.wall_form = drag` and no `buildings.z0` or `buildings.wall_tke`. |
 | `inputs_cube_smooth_walls` | The same with `buildings.z0 = 0.01` (the ground has 0.1 m) and a turbulence plotfile. |
 | `inputs_cube_heated` | The same with walls at 305 K (`buildings.theta_mode = fixed`) and gravity on. |
-| `inputs_cube_unsteady` | `inputs_cube` without a stage or first guess and with checkpoints, for the force file's unsteady CTests (PR-49): the command line gives `steady.stage = unsteady`. |
+| `inputs_cube_unsteady` | `inputs_cube` without a stage or first guess and with checkpoints, for the force file's unsteady CTests: the command line gives `steady.stage = unsteady`. |
 | `cube.txt` | The block in ERF's format. |
 | `cube_24p6.txt` | The block 24.6 m high: its roof ends 4.6 m into a 5 m layer, so the roof's cells are 0.92 solid. |
 | `inputs_abort_newton`, `inputs_abort_lusgs` | The deck with a stage or sweep that has no buildings yet: refused. |
@@ -96,6 +96,6 @@ it moves with the buoyancy of the warmed air, not with the walls' terms.
 `force_file_cube_clean`, `force_file_cube_plain`, `force_file_cube_file`, `force_file_cube_bit_identical`,
 `force_file_cube_first`, `force_file_cube_stray_row`, `force_file_cube_restart`, `force_file_cube_restart_rows`,
 `force_file_cube_restart_no_file`, `force_file_cube_restart_no_file_rows`, `force_file_cube_other_header`,
-`abort_force_file_restart_header` (PR-49): `buildings.force_file` in four unsteady steps of 0.5 s on two ranks does not
+`abort_force_file_restart_header`: `buildings.force_file` in four unsteady steps of 0.5 s on two ranks does not
 change the solution, a restart reproduces the uninterrupted file (a stray row past the checkpoint dropped), a restart
 that finds no file starts it at the checkpoint's time, and a file of another header is refused.

@@ -215,7 +215,6 @@ void BuildingTke::build (const Buildings& b, const BuildingForcing& law, const B
         cutoff = amrex::get<0>(data.value(op));
         amrex::ParallelDescriptor::ReduceRealMax(cutoff);
     }
-    m_cutoff = cutoff;
     // In a periodic direction every index has an image; else the domain's own.
     const int ilo = geom.isPeriodic(0) ? dom.smallEnd(0) - 1 : dom.smallEnd(0), ihi = geom.isPeriodic(0) ? dom.bigEnd(0) + 1 : dom.bigEnd(0);
     const int jlo = geom.isPeriodic(1) ? dom.smallEnd(1) - 1 : dom.smallEnd(1), jhi = geom.isPeriodic(1) ? dom.bigEnd(1) + 1 : dom.bigEnd(1);
@@ -338,7 +337,7 @@ void BuildingTke::build (const Buildings& b, const BuildingForcing& law, const B
                             const amrex::Real d = rectangle_distance(px, py, pz, c[0], c[1], c[2], h[0], h[1], h[2], lx, ly);
                             if (d < best && d < cutoff) {
                                 best = d;
-                                for (int n = 0; n < 3; ++n) { bc[n] = c[n]; bh[n] = h[n]; }
+                                for (int m = 0; m < 3; ++m) { bc[m] = c[m]; bh[m] = h[m]; }
                                 // The wall's building: the tallest solid column next to the wall's cell.
                                 bhb = 0;
                                 for (int jb = jj - 1; jb <= jj + 1; ++jb) {

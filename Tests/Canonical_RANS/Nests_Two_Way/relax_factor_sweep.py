@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The nest.feedback_factor of nest.feedback = relax on four nests (tracker N-114, item 13).
+"""The nest.feedback_factor of nest.feedback = relax on four nests.
 
     relax_factor_sweep.py run --gust GUST [--work DIR] [--cases C ...] [--factors F ...] [--keep]
                               [--mpi2 "mpiexec -n 2"] [--mpi4 "mpiexec -n 4"] [--timeout S]

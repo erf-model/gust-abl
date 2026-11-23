@@ -13,6 +13,11 @@ evaluates it once.
 | `check_closure.py` | Runs the driver and checks the closure fields and residuals against their closed forms. |
 | `Gold/closure_column_plt00000/` | The driver's plotfile. |
 
+## Data and acknowledgements
+No measured data. The mesh and sounding are those of ERF's Neutral_ABL_Flat case, and the check script reads the
+plotfile with ERF's reader (`extern_erf/erf_plotfile.py`, recorded in `extern_erf/EXTRACTED.md`; BSD 3-clause with
+the LBNL clause, `extern_erf/LICENSE.md`). Thanks to the ERF developers. Nothing has to be downloaded.
+
 ## CTest
 `rt_closure_column`, `rt_closure_column_matches` (double precision only).
 

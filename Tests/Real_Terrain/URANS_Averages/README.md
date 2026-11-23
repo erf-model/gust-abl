@@ -1,8 +1,8 @@
 # URANS_Averages
 
 ## Purpose
-The time average of an unsteady RANS run against the steady answer of the same deck (sub-phase 6.4a, beyond the
-plan), on two cases that have a reference:
+The time average of an unsteady RANS run against the steady answer of the same deck,
+on two cases that have a reference:
 
 - RUSHIL Hill 5 (`../RUSHIL`), against the wind tunnel, with the default closure (steady) and with a setting
   whose steady run stops at the iteration limit;
@@ -133,14 +133,14 @@ the window of ERF's averages).
   6.6e-5 m/s), in the outflow corner. At the 30 masts the two give the same speed to the three decimals printed.
 - From step 210 (840 s) every step is one iteration. The standard deviation of u over 2400–4800 s is at most
   1e-11 m/s: the unsteady run is steady well before the averaging starts.
-- Against ERF's unsteady RANS the 5 % target of the test RT-6.4.4 is met at the 26 masts up to 300 m past the
+- Against ERF's unsteady RANS the 5 % target is met at the 26 masts up to 300 m past the
   hilltop and missed at the four lee masts, by the same amount in both runs: line A d = 393 m −9.85 %; line AA
   d = 382, 477, 575 m −6.91, −8.19, −6.86 %. The time average does not change the lee difference. It is the
   difference recorded for the steady run in `../Askervein_210/README.md`, with the reasons given there; the check
   above passes with that folder's 10 % lee tolerance.
 - The unsteady run takes 17 times the iterations of the steady run (2248 against 135).
 
-**Laminar cylinder** (`../../Canonical_RANS/Cylinder_Laminar/README.md`, 2 ranks; measured in sub-phase 6.4). At
+**Laminar cylinder** (`../../Canonical_RANS/Cylinder_Laminar/README.md`, 2 ranks; measured with that case). At
 Re = 40 the steady run takes 733 iterations and the unsteady run 4430 (2400 steps, 1.8 per step) for the same
 drag coefficient to four digits. At Re = 100 the steady run stops at its limit of 6000 with no verdict and the
 unsteady run takes 14 449 (3200 steps, 4.5 per step) and sheds.

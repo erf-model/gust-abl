@@ -33,7 +33,7 @@ struct State;
 //! are valid while the hook that receives it runs.
 struct JointMember
 {
-    std::string name;                 //!< "outer" or "nest.<name>"
+    std::string name;                 //!< "outer domain" or "nest.<name>"
     State* state{nullptr};
     const Mesh* mesh{nullptr};
     const amrex::Geometry* geom{nullptr};

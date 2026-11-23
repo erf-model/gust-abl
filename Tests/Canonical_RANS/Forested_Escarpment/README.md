@@ -9,7 +9,7 @@ low x face, outflow on the high x face, periodic in y, LU-SGS with grid sequenci
 The check shows that the case converges at the default CFL cap (8) with the default step floor
 (`steady.dtau_floor = 0.1`) with the same answer on 1, 2 and 4 ranks, that the canopy slows the wind, that a restart
 continues bit for bit, and that the inflow-face warning fires when the forest reaches the inflow face. Without the
-floor (`steady.dtau_floor = 0`, the step before PR-62b) the case cycles at caps of 4 and above and needs
+floor (`steady.dtau_floor = 0`) the case cycles at caps of 4 and above and needs
 `steady.cfl_max` 2 to 2.5 (docs/canopy.rst, "Steep terrain and the boundaries", has the cause and the measurements).
 
 The same escarpment with a stable sounding tests `simplec.theta = frozen` (θ prescribed from the inflow profile by
@@ -95,3 +95,6 @@ unstably stratified; the check does not run that case. θ frozen with `blend` is
 ## CTest
 `rt_forested_escarpment` (label `regression`, double precision only; about 1 minute on two ranks) and
 `rt_frozen_theta` (label `regression`; about 30 s on two ranks) and `rt_canopy_heat` (label `regression`; about 2 min).
+`abort_canopy_heat_frozen_unused` and `abort_nests_canopy_heat_blend` (labels `regression;smoke`, one rank) run this
+folder's decks with inputs that must stop the run: `canopy.heat_frozen` without `simplec.theta = frozen`, and
+`nest.names` with `simplec.theta = frozen` and `canopy.heat_frozen = blend`.

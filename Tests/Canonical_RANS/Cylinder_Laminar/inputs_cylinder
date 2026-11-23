@@ -1,4 +1,4 @@
-# Plan rev. 6, sub-phase 6.4 (PR-49), RT-6.4.1 to RT-6.4.3: laminar flow past a circular cylinder,
+# Laminar flow past a circular cylinder,
 # D = 1 m, U = 1 m/s, Re = U D / nu = 1 / turb.nu_molecular (README.md). The cylinder is a staircase
 # of solid cells (buildings.wall_form = drag: blocked faces are fixed rows u = 0, viscous fluxes to
 # the zero velocity, so the wall is no-slip) lying along y, which is periodic and two cells thick:

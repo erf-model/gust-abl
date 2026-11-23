@@ -6,13 +6,16 @@ half-width, max ground slope 14.6 deg) with dx = dy = 100 m and the first layer 
 5000; the layers are stretched by 1.1 up to the first level at or above 1.5 km (1.5-1.65 km). Log-law inflow (u* 0.4 m/s, z0 0.01 m), outflow,
 slip top with Rayleigh damping of w above 1000 m, no gravity, the basic terrain-following mapping, and the recommended
 setting of the realizability sensor. The quantity is the number of iterations until the relative residual falls below
-1e-4. Beyond the plan.
+1e-4.
 
 ## Files
 | File | Role |
 |---|---|
 | `inputs_aspect_ratio_hill` | The deck (the dx/dz1 = 10 member). |
 | `aspect_ratio_sweep.py` | Copies the deck with `mesh.dz0` = dx/ratio and enough layers for the same top, runs each ratio, and prints the iterations to r < 1e-4 and the verdict. `--check` exits non-zero unless every ratio up to 200 reaches 1e-4 within `--max-iterations`. |
+
+## Data and acknowledgements
+No external data.
 
 ## How to run
 ```bash

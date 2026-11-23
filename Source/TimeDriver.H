@@ -47,7 +47,7 @@
 // inner iterations of the run, which may span several steps, and a restart
 // continues the checkpoint's history (no new hold, its CFL and reference).
 //
-// The time: t^n is accumulated in double (n dt for a fixed step), so that
+// The time: t^n is accumulated in double (t_* + (N - n_*) dt for a fixed step, below), so that
 // the last-step decision does not drift in a single-precision build.
 //
 // MPI: the stage's norms and convective_dt are all-reduced, so every rank
@@ -186,10 +186,10 @@ private:
     const amrex::Geometry& m_geom;
     amrex::Real m_tol;
     GhostFill m_fill;
-    double m_time{0};   //!< t^n, in double (n dt for a fixed step)
+    double m_time{0};   //!< t^n, in double (t_* + (N - n_*) dt for a fixed step)
     std::int64_t m_steps_ref{0}; //!< the steps of the checkpoint resumed (resume)
     double m_anchor_t{0};  //!< the fixed step's time anchor t_*
-    std::int64_t m_anchor_n{0}; //!< its total step n_a
+    std::int64_t m_anchor_n{0}; //!< its total step n_*
     bool m_done{false};
     bool m_diverged{false};
     std::vector<StepRecord> m_records;

@@ -1,8 +1,8 @@
 #ifndef GUST_NEST_INJECT_H_
 #define GUST_NEST_INJECT_H_
 
-// The patches' feedback on the parent by injection (nest.feedback = inject;
-// plan rev. 6 tracker, row N-114 item 2, left from PR-70). The joint run
+// The patches' feedback on the parent by injection (nest.feedback = inject).
+// The joint run
 // (JointRun.H) is the same as with nest.feedback = defect, relax or relax_consistent, with this
 // in place of their source or relaxation. Each exchange:
 //
@@ -151,7 +151,6 @@ public:
 
     [[nodiscard]] bool active () const { return m_active; }
     [[nodiscard]] amrex::Real factor () const { return m_factor; }
-    [[nodiscard]] const std::vector<DefectRegion>& regions () const { return m_regions; }
 
 private:
     amrex::BoxArray m_ba;

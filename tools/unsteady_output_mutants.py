@@ -36,7 +36,7 @@ M = [
  ("UO9", "another step after a restart keeps the old anchor", D,
   "const bool same_dt = m_opt.cfl <= 0 && double(m_opt.dt) == dt_ref;", "const bool same_dt = true;"),
  ("UO10", "a resumed run numbers its steps from 1", D,
-  "s.step = static_cast<int>(m_steps_ref + static_cast<long>(m_records.size())) + 1;",
+  "s.step = static_cast<int>(m_steps_ref + static_cast<std::int64_t>(m_records.size())) + 1;",
   "s.step = static_cast<int>(m_records.size()) + 1;"),
  ("UO11", "a clipped last step keeps the anchor (the old (n_ref + n) dt)", D,
   "if (last && m_opt.cfl <= 0 && std::abs(m_time - fixed) > 1.0e-3 * double(m_opt.dt)) {", "if (false) {"),

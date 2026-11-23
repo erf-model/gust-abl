@@ -14,7 +14,7 @@
 // with C, D the convection and diffusion operators (Convection.H,
 // Diffusion.H), G and D(U) the pressure gradient and divergence
 // (MassFlux.H), and S the sources (Forcing.H): buoyancy on w, Coriolis and
-// geostrophic forcing on u and v. The transport fluxes of C come from the
+// geostrophic forcing on u and v, and the constant pressure-gradient force. The transport fluxes of C come from the
 // state's velocity (transport_fluxes). p is the kinematic perturbation
 // pressure. Every residual is per unit volume (m/s^2 for momentum, 1/s for
 // continuity, K/s for theta, m^2/s^3 for k). Diffusion is assembled from its
@@ -271,7 +271,7 @@ enum LineCoef : int { line_lower = 0, line_diag, line_upper, n_line_coefs };
 //! upper = -a_{dir+}; the neighbours across the other directions are lagged.
 //! tri: n_line_coefs components at the field's location (defined here if
 //! empty). The caller adds 1/dtau and source Jacobians to the diagonal.
-//! Uses the diffusivities of in, not its reference profile or options.
+//! Uses the diffusivities (or the closure), boundary conditions, wall model and canopy of in.
 void line_jacobian (const State& q, const ResidualInputs& in, Equation eq, int dir, const Mesh& mesh,
                     const amrex::Geometry& geom, amrex::MultiFab& tri);
 
@@ -286,7 +286,7 @@ void implicit_rows (const amrex::Array<const amrex::MultiFab*, AMREX_SPACEDIM>& 
                     amrex::MultiFab& A, const SurfaceState* surface = nullptr, const ClosureFields* fields = nullptr,
                     const CanopyRows* canopy = nullptr);
 
-//! The same from transport fluxes F already computed (transport_fluxes), for
+//! As line_jacobian(q, ...) above, from transport fluxes F already computed (transport_fluxes), for
 //! line solvers that sweep every direction with one state.
 //! With a wall model (and eq not w), surface must be the state's surface
 //! layer (compute_surface_state): the first cells' rows lose the ground

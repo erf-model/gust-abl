@@ -12,7 +12,6 @@
 #include <AMReX_ParallelDescriptor.H>
 #include <AMReX_ParallelReduce.H>
 #include <AMReX_ParmParse.H>
-#include <AMReX_Print.H>
 
 #include <algorithm>
 #include <cmath>
@@ -75,7 +74,7 @@ std::string file_hash (const std::string& file, const std::string& key)
     return h;
 }
 
-// A map's values at the column centres, checked (key names the input):
+// A map file's points, checked (key names the input):
 // every value finite and >= 0, at least idw_neighbors points.
 TerrainPoints read_map_points (const std::string& file, const std::string& key, int k)
 {
@@ -167,7 +166,7 @@ void fill_map_drag (amrex::MultiFab& f, const amrex::MultiFab& cols, const amrex
 }
 
 // A patch on the device: its centre, radius squared, height, Cd, LAI, and
-// its profile (lm.c = 0 marks uniform; type 2 always has c > 0).
+// its profile (the flag lm marks the Lalic-Mihailovic profile; 0 is uniform).
 struct DevicePatch
 {
     double x, y, r2, h, cd, lai;
@@ -660,7 +659,7 @@ std::string Canopy::summary (const amrex::MultiFab& detJ, const amrex::Geometry&
 {
     if (!m_active) { return "none"; }
     // Per column: the largest f, the integral of f (sum of f detJ dzeta),
-    // canopy at the ground, canopy in the top cell.
+    // the column has canopy, canopy in the top cell.
     const amrex::Box& dom = geom.Domain();
     const int k0 = dom.smallEnd(2), k1 = dom.bigEnd(2);
     const amrex::Real dz = geom.CellSize(2);

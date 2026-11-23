@@ -257,8 +257,6 @@ struct SolveOut
     gust::PoissonResult res;
 };
 
-// Solve the manufactured problem; beta (if given) is a scalar field on all
-// faces, or (aniso) beta_h on x/y-faces and beta_v on z-faces.
 //! Back end A's options (gmres_fft): the tests of ERF's operator, its FFT
 //! preconditioner and its split coefficient (the default is gmres_mlmg).
 inline gust::PoissonOptions back_end_a ()
@@ -268,6 +266,8 @@ inline gust::PoissonOptions back_end_a ()
     return o;
 }
 
+// Solve the manufactured problem; beta (if given) is a scalar field on all
+// faces, or (aniso) beta_h on x/y-faces and beta_v on z-faces.
 inline SolveOut solve_ms (PCase& c, Manufactured ms, const gust::PoissonBC& bc, const Fn* beta = nullptr,
                    double beta_h = 1, double beta_v = 1, bool aniso = false,
                    gust::PoissonOptions opt = back_end_a(), double precond_ratio = 1, bool z_cross = true)

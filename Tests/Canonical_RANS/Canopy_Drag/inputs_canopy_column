@@ -5,7 +5,7 @@
 # 520 m), the surface layer on the ground (z0 = 0.1 m), the geostrophic wind
 # (10, 0) m/s at latitude 90 without buoyancy, a Rayleigh layer on w above
 # 400 m. Patch 1: uniform profile, 20 m, LAI 3; patch 2: Lalic-Mihailovic,
-# 25 m, LAI 6 (C_d LAI up to 1.2, the dense end of PT-8.2.1). The first
+# 25 m, LAI 6 (C_d LAI up to 1.2, the dense end of the canopy drag tests). The first
 # guess (init.first_guess = profile) is given on the command line, as a
 # restart may not repeat it.
 mesh.n_cell        = 16 16 40

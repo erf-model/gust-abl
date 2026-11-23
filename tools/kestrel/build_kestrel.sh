@@ -39,6 +39,7 @@ if [ "$target" = gpu ]; then
 fi
 
 git -C "$src" submodule update --init --recursive
+# ABLSTEADY_BUILD_JOBS: the name before the rename to GUST (October 2026); it is still read.
 cmake -S "$src" -B "$build" "${opts[@]}"
 cmake --build "$build" -j "${GUST_BUILD_JOBS:-${ABLSTEADY_BUILD_JOBS:-16}}"
 echo "Built $build/gust and $build/gust_refavg"

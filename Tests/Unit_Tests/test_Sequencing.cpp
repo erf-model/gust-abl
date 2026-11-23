@@ -4,7 +4,7 @@
 // Also: the reference seeding sequencing carries across levels
 // (SteadyCriterion::seed_reference) and the input checks.
 //
-// The pinned iterations (92, 88) come from an independent Python
+// The pinned iterations (92, 137, 88) come from an independent Python
 // implementation of the definition in Sequencing.H, not from this code.
 #include "Sequencing.H"
 #include "SteadyCriterion.H"
@@ -182,7 +182,10 @@ TEST (Sequencing, SeededReferenceIsTheDropOrigin)
 // steady.sequencing_hold = 0: on a released seeded level
 // (hold 0) the loose residual branch tests from the third iteration
 // (min(3, residual_ref_iterations)) instead of after residual_ref_iterations;
-// the monitor branch still waits residual_ref_iterations.
+// the monitor branch still waits residual_ref_iterations. With the 5
+// reference iterations used here that is the third iteration (index 2); the
+// first iteration (index 0) is reached only with residual_ref_iterations = 1,
+// the third case below.
 TEST (Sequencing, ReleasedHoldStopsFromTheFirstIteration)
 {
     const SteadyParams p = params();   // residual_ref_iterations = 5

@@ -1,5 +1,5 @@
-# A patch around the building of inputs_building_domain (tracker row PR-76,
-# beyond plan rev. 6): nest faces at xlo and xhi, the parent's field as the
+# A patch around the building of inputs_building_domain:
+# nest faces at xlo and xhi, the parent's field as the
 # first guess, the same layers, building file and settings. nest_shapes.py
 # gives the place and cells, the y faces (nest, or periodic where the patch
 # spans the parent's width), the parent (bc.nest_parent), the boxes and the

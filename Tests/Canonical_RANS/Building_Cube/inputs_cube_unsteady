@@ -1,4 +1,4 @@
-# inputs_cube without a stage or first guess (a restart refuses it), for the force file's unsteady CTests (PR-49): the
+# inputs_cube without a stage or first guess (a restart refuses it), for the force file's unsteady CTests: the
 # command line gives steady.stage = unsteady and the unsteady keys, and io.restart for the restart.
 # The same run with and without buildings.force_file must be bit-identical, and a restart must
 # reproduce the uninterrupted force file. buildings.file on the command line: cube.txt.

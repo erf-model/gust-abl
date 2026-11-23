@@ -153,13 +153,13 @@ public:
     }
 
     void take (int eq, FluxPart part, const amrex::Array<amrex::MultiFab, AMREX_SPACEDIM>& G,
-               const amrex::MultiFab* sigma) override
+               const amrex::MultiFab* upwind_sigma) override
     {
         if (eq < 0 || eq >= kEq) { amrex::Abort("gust: NestFaceFlux: flux of an unknown equation " + std::to_string(eq)); }
         const int pi = part_index(part);
         if (part == FluxPart::convective_upwind) {
             upwind[eq] = true;
-            this->sigma = sigma;
+            sigma = upwind_sigma;
         }
         amrex::MultiFab& acc = field(m_acc[pi], eq);
         const int t = kLoc[eq];

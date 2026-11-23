@@ -50,8 +50,8 @@
 //
 // Dirichlet rows (the normal velocities on inflow and outflow faces: R = q
 // - V, identity in A1; BoundaryConditions::dirichlet_rows) get no 1/dtau:
-// the step sets the boundary value exactly. a_P is 1 there, which the
-// pressure correction (Simplec.H) must treat as "no correction on this face".
+// the step sets the boundary value exactly. a_P is 1 and d is 0 there; d = 0
+// tells the pressure correction (Simplec.H) "no correction on this face".
 //
 // Point-implicit buoyancy (with gravity on): the w and theta equations are
 // the oscillator dw/dtau = (g/theta_0) theta', dtheta'/dtau = -w dtheta/dz
@@ -103,17 +103,14 @@
 // the drag is weak (the free atmosphere) the amplification of the pure
 // rotation is (1 + f^2 dtau^2)^(1/2) / (1 + r f dtau), about 1 - r f dtau:
 // a damping of r f dtau per iteration. r < 1 because the right-hand-side
-// term carries the whole residual of the other component, f tau_c R_v, not
-// its rotation part alone: in an inviscid stratified layer (k at its floor
-// in an inversion) that is a fraction r of a residual that holds internal
-// gravity waves and pressure, and at r = 1 the injection makes a
-// horizontally varying wave grow by 1.4 per iteration until the SER ramp
-// collapses (the Neutral_ABL_Flat bursts); r = 0.1 to 0.5
+// term carries the level mean of the other component's residual at the step
+// tau_c, f tau_c <R_v>, not its rotation part alone: in an inviscid
+// stratified layer (k at its floor in an inversion) that is a fraction r of
+// a residual that holds internal gravity waves and pressure; r = 0.1 to 0.5
 // converge on every path tried and r = 1 bursts; 0.3 converges in half the
 // iterations of 0.2 on every path, so it is the default. Where a drag
-// dominates
-// (the net diagonal above |f|/r:
-// the wall-drag fold of the first cell, a damping layer) tau_c = 1/(net
+// dominates (the net diagonal above |f|/r: the wall-drag fold of the first
+// cell, a damping layer) tau_c = 1/(net
 // diagonal) keeps the cross term from carrying the other component's drag
 // residual at many times its strength, which would slow that relaxation
 // from 1/(1 + a dtau) to about 0.9 per iteration (a 2 x 2 analysis
@@ -229,7 +226,7 @@ struct MomentumPredictorResult
 //! options give the point-implicit buoyancy of the w rows), dtau_faces from
 //! face_dtau, sweeps >= 1. surface and
 //! fields as for line_jacobian (the wall model's state and the closure's
-//! evaluation at q). ap receives a_P (defined here if empty). q's ghost cells
+//! evaluation at q). ap receives a_P and d (defined here if empty). q's ghost cells
 //! are not refilled (the caller's BoundaryConditions::fill_ghosts does that
 //! before the next residual). Aborts, naming the argument, on a wrong layout
 //! or sweeps < 1.

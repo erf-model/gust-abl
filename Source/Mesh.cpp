@@ -137,7 +137,6 @@ void Mesh::build_from_ground (const Inputs& in, const amrex::Geometry& geom, amr
                               const LevelsEdit& levels_edit)
 {
     m_zlevels = make_zlevels(in.mesh, geom);
-    m_smoothing = in.terrain.smoothing;
     auto bc = terrain_bc(geom);
     int n_capped = 0;
     make_terrain_fitted_coords(0, geom, z_phys_nd, m_zlevels, bc, in.terrain.smoothing,
@@ -145,12 +144,10 @@ void Mesh::build_from_ground (const Inputs& in, const amrex::Geometry& geom, amr
     m_quality.stf_capped_levels = n_capped;
     if (levels_edit) { levels_edit(z_phys_nd, m_zlevels); }
     // A node shared by two boxes (or a periodic image) gets one value. Each
-    // box computes its own copy; under gcc the BTF copies differed in the last
-    // bits (1e-13 m on a BTF hill) until the formula was rearranged (tracker
-    // N-114). The operators read each box's copy, so the boxes that share a
-    // face would compute different values there; the sync stays for the edits
-    // and mappings that might still leave two copies. The ghost nodes are
-    // refilled to match.
+    // box computes its own copy and the operators read each box's copy, so
+    // two boxes that share a face would compute different values there if the
+    // copies differed in the last bits; the sync covers any edit or mapping
+    // that leaves two copies. The ghost nodes are refilled to match.
     z_phys_nd.OverrideSync(geom.periodicity());
     z_phys_nd.FillBoundary(geom.periodicity());
     fill_ghost_columns(z_phys_nd, geom);
@@ -174,7 +171,6 @@ void Mesh::build_from_ground (const Inputs& in, const amrex::Geometry& geom, amr
 void Mesh::adopt (const Mesh& from, const amrex::Geometry& geom, amrex::MultiFab& z_phys_nd)
 {
     m_zlevels = from.m_zlevels;
-    m_smoothing = from.m_smoothing;
     m_quality.stf_capped_levels = from.m_quality.stf_capped_levels;
     make_metrics(geom, z_phys_nd);
     make_quality(geom, z_phys_nd);

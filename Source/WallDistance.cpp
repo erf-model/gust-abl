@@ -2,8 +2,6 @@
 
 #include <ERF_TerrainMetrics.H>
 
-#include <AMReX_Print.H>
-
 #include <cmath>
 
 namespace gust {

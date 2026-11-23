@@ -1,12 +1,11 @@
 # Nest_Shapes
 
 ## Purpose
-One-way nested patches around six canonical shapes, against a uniform fine run of the whole domain (tracker row
-PR-76; sub-phase 9.4 in the repository's numbering, 7.4 in the tracker's; beyond plan rev. 6). Each patch is at
+One-way nested patches around six canonical shapes, against a uniform fine run of the whole domain. Each patch is at
 refinement 2 2 1 (4 4 1 in the ratio runs below) of a coarse parent run, with the same z-levels (for the solar
 farm, a chain of two such nests, and 4 4 1 beside it), and its `nest` faces lie at a distance D from the shape's
 centre. The reference is the whole domain on the patch's cells. Three terrain shapes test patches over steep ground
-(the ridge's lee separates); a cube, a raised plate and a solar farm (rows of flat raised panels, tracker row PR-68)
+(the ridge's lee separates); a cube, a raised plate and a solar farm (rows of flat raised panels)
 test buildings inside a patch (`buildings.type` with `nest` faces, allowed when every building keeps clear of the
 faces, `docs/boundary_conditions.rst`). `Tests/Canonical_RANS/Nest_Validation` is the same study on a
 gentler hill; `Tests/Canonical_RANS/Nest_Faces` tests the faces themselves.
@@ -49,7 +48,7 @@ patches of the middle one at each D. The targets judge a 0.25 m patch against it
 1 m parent is reported too. Beside the chain, the study runs 0.25 m patches straight from the 1 m parent at 4 4 1
 (`bc.nest_ratio = 4`, runs `solar_r4_dD`) at the same D, for the record, with no target. The solar farm's 0.02 m
 layers reach twice the panel top (3.2 m), so each panel is five layers thick. The panels are a stand-in for the
-tilted panels of the PV phase (tracker row PR-52). The middle patch's faces are 16 m from the domain's inflow and
+tilted panels of a photovoltaic array. The middle patch's faces are 16 m from the domain's inflow and
 outflow faces. The solar runs set `simplec.pressure_reltol` = 1e-6; see Expected Results.
 
 ## Data and acknowledgements
@@ -111,15 +110,15 @@ Fixed in this file while the first cube and ridge studies were running, before a
 | T2 | Ridge, hill, escarpment, cube and solar farm: ROI velocity RMS does not grow with D (5 % allowance) |
 | T3 | With `--ranks`: the middle D in four boxes on 1, 2 and 4 ranks reaches the steady verdict, and the velocity fields of 2 and 4 ranks differ from that of 1 rank by at most 1e-8 of U_ref anywhere in the patch |
 | T4 | Every run reaches the steady verdict |
-| — | Plate: no accuracy target (tracker row PR-76). Reported: the four regions and the iterations of each patch and of the reference |
+| — | Plate: no accuracy target. Reported: the four regions and the iterations of each patch and of the reference |
 
-The solar farm was added after the first five shapes (tracker row PR-68). Its T1 and T2 were applied after one trial
+The solar farm was added after the first five shapes. Its T1 and T2 were applied after one trial
 study had been read, on another mesh: one nest (1 m parent, 0.5 m patches and reference), 72 layers, a 4 m periodic
 width, `simplec.pressure_reltol` = 1e-3, the parent on four ranks (ROI RMS 0.269, 0.121 and 0.065 % at D = 32, 40
 and 48 m, parent 1.438 %; 564 iterations for the parent). Unlike the other shapes, the targets were not fixed before
 its numbers were known.
 
-The iterations of each patch against those of the reference are reported (PT-9.4.1), with no target. A target that
+The iterations of each patch against those of the reference are reported, with no target. A target that
 is missed is reported as missed, with the number.
 
 T3 first asked the three ROI RMS values to agree to 10 %. The review of the PR found that too loose to catch an
@@ -188,7 +187,7 @@ U_ref around the cube took 85 m (2.8 cube widths).
 | T3 | Met for the cube (D = 70 m), the hill (D = 600 m), the plate (D = 8 m) and the solar farm (D = 40 m): 2.3e-10, 1.9e-10, 2.1e-15 and 1.4e-15 of U_ref; the same iterations on 1, 2 and 4 ranks (110, 161, 2412, 1435). |
 | T4 | Met: every run above reached the steady verdict. The solar farm's reference did so in a second run; the first, on four ranks of a shared laptop, was stopped at iteration 2550 (confidence 0.947) by the 8 h limit per run that the script had then. |
 
-The patches take about as many iterations as the reference, or fewer (PT-9.4.1): 108–110 against 131 (cube), 118–165 against
+The patches take about as many iterations as the reference, or fewer: 108–110 against 131 (cube), 118–165 against
 106 (hill), 111–112 against 129 (escarpment), 1951–2412 against 2235 (plate), 1350–1511 against 2574 (solar
 farm, chain) and 1565–1668 (solar farm, 4 4 1).
 
@@ -211,7 +210,7 @@ in place of the nest face at x = 3100 m left the patch's numbers unchanged (8.55
 the parent gives 8.44 % and the patches of D = 900 and 1500 m 5.20 and 5.27 %. At D ≤ 900 m the face at the
 downwind end lies in or next to the parent's reversed flow, so the faces play a part there as well.
 
-**Refinement ratio (`bc.nest_ratio`, beyond the plan).** The cube from a 20 m parent, to 5 m cells in one step
+**Refinement ratio (`bc.nest_ratio`).** The cube from a 20 m parent, to 5 m cells in one step
 (ratio 4) or in two (ratio 2 to 10 m, then ratio 2 to 5 m). D takes two half-widths, `DX,DY`, because the cube's
 centre (130, 120) m does not lie on a 20 m face in y. ROI velocity RMS against the 5 m reference, four boxes on two
 ranks:

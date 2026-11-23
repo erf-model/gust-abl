@@ -54,8 +54,8 @@ namespace gust {
 inline constexpr amrex::Real kMinRate = amrex::Real(1.0e-12);
 
 //! dtau: cell-centred on the mesh's layout, no ghosts needed (defined here if
-//! empty). q's u, v, w must have at least one ghost cell filled (Omega reads
-//! the neighbouring faces of the slopes). phi: the step floor above (0:
+//! empty). q's u and v must have at least one ghost cell filled (Omega reads
+//! the neighbouring faces of the slopes); w needs none. phi: the step floor above (0:
 //! none; collective when > 0). Aborts, naming the argument, on a wrong
 //! layout, cfl <= 0 or a non-finite cfl, or a phi that is negative or not finite.
 void local_dtau (const State& q, const amrex::MultiFab* nu, const Mesh& mesh, const amrex::Geometry& geom,

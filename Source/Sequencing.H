@@ -130,11 +130,10 @@ struct LooseStop
     std::string reason;   //!< which branch held (empty when stop is false)
 };
 
-//! The loose stop after the last iteration recorded in h (the header's (a),
-//! (b) or the strict criterion), with the strict parameters p and the
-//! stage's monitor specs. Never stops on a history with a NaN or infinite
-//! value (the driver reports Diverged) or with fewer than
-//! p.residual_ref_iterations iterations for branch (a).
+//! The loose stop after the last iteration recorded in h (the header's (a)
+//! or (b); the caller tests the strict criterion), with the strict
+//! parameters p and the stage's monitor specs. Never stops on a history with
+//! a NaN or infinite value (the driver reports Diverged).
 //! hold_iterations: the level's reference hold (Driver::hold_iterations).
 //! Branch (a) waits for it: residual_ref_iterations, or, on a seeded level
 //! with steady.sequencing_hold = 0 (hold 0), min(3, residual_ref_iterations)

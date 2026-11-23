@@ -1,10 +1,10 @@
 // The immersed ground as a continuous surface (Buildings::build_from_surface, ImmersedSurface_K.H):
-//   UT-14.2.1  the solid fraction, the face fractions, the fluid's mean height above the ground and the
-//              wall cells of a tilted plane at 10, 30 and 45 degrees against the closed form (the cell
-//              clipped by the plane), with the slope along x and along y;
-//   UT-14.2.2  the height above the ground on an Agnesi hill is z - h at every cell, and the parts of
-//              the solver that need it read the helper (a search of the sources);
-//   beyond the plan: a flat surface gives the fields of PR-87's flat ground.
+//   the solid fraction, the face fractions, the fluid's mean height above the ground and the
+//     wall cells of a tilted plane at 10, 30 and 45 degrees against the closed form (the cell
+//     clipped by the plane), with the slope along x and along y;
+//   the height above the ground on an Agnesi hill is z - h at every cell, and the parts of
+//     the solver that need it read the helper (a search of the sources);
+//   a flat surface gives the fields of the flat immersed ground.
 #include "BuildingForcing.H"
 #include "Buildings_K.H"
 #include "Closure.H"
@@ -284,7 +284,6 @@ TEST (ImmersedSurface, MomentsMatchAQuadrature)
     EXPECT_EQ(gust::fluid_height({}, {}), 0.0);
 }
 
-// UT-14.2.1.
 TEST (ImmersedSurface, TiltedPlaneMatchesTheClosedForm)
 {
     for (const int mgs : {8, 4}) {
@@ -371,7 +370,7 @@ TEST (ImmersedSurface, TiltedPlaneMatchesTheClosedForm)
     }
 }
 
-// Beyond the plan: a slope that rises through many layers across a column keeps its whole footprint
+// A slope that rises through many layers across a column keeps its whole footprint
 // as roof with any terrain.small_volfrac. 0.15 over 80 m columns of 1 m layers: 12 cut cells, about
 // 1/12 of the footprint each. The buildings' test (wall_on_low_side) with a tolerance of 0.1 keeps a
 // third of the footprint as roof (the test fails with it at every terrain.small_volfrac here).
@@ -416,7 +415,7 @@ TEST (ImmersedSurface, RoofsAddToTheFootprintOnASlopeThroughManyLayers)
     }
 }
 
-// Beyond the plan: a flat surface gives the cells, faces and wall cells of PR-87's flat ground
+// A flat surface gives the cells, faces and wall cells of the flat immersed ground
 // (Buildings::build_from_map), with the ground inside a layer and on a cell face.
 TEST (ImmersedSurface, FlatSurfaceGivesTheFlatGroundsFields)
 {
@@ -444,7 +443,7 @@ TEST (ImmersedSurface, FlatSurfaceGivesTheFlatGroundsFields)
     }
 }
 
-// UT-14.2.2, the helper: on an Agnesi hill filled as the solver fills it, the height above the
+// The helper: on an Agnesi hill filled as the solver fills it, the height above the
 // ground is the cell centre's height less the ground's mean over the four nodes of its column.
 TEST (ImmersedSurface, HeightAboveTheGroundOnAnAgnesiHill)
 {
@@ -478,7 +477,7 @@ TEST (ImmersedSurface, HeightAboveTheGroundOnAnAgnesiHill)
     }
 }
 
-// UT-14.2.2, the consumers: each part that needs the height above the ground reads the helper, the
+// The consumers: each part that needs the height above the ground reads the helper, the
 // helper reads the ground's component, and the parts not yet on it are refused with an immersed ground.
 TEST (ImmersedSurface, EveryConsumerReadsTheHelper)
 {
@@ -677,4 +676,25 @@ TEST (ImmersedSurface, HybridKernelsOnAFlatMeshMatchImmersed)
     EXPECT_LT(diff(b.surface(), flat.b.surface()), 100 * tol);
     for (int d = 0; d < 3; ++d) { EXPECT_LT(diff(b.beta_face(d), flat.b.beta_face(d)), tol) << d; }
     EXPECT_LT(diff(b.wall(), flat.b.wall()), 100 * tol);
+}
+
+// A geometry rebuilt from a height map after a hybrid surface is no longer a hybrid mesh's: the residual and
+// the surface layer take their hybrid kernels from Buildings::hybrid_mesh().
+TEST (ImmersedSurface, MapAfterAHybridSurfaceIsNotHybrid)
+{
+    const PCase c = gust::lamtest::flat_case(4, 4, 24, 40, 40, 240, true, true, 2);
+    gust::TerrainInputs t = immersed();
+    t.flat_height = 23;
+    const gust::BuildingsOptions flat = gust::immersed_terrain_options(t, kZ0);
+    ASSERT_FALSE(flat.hybrid_mesh);
+    gust::TerrainInputs th = immersed();
+    th.representation = "hybrid";
+    const gust::BuildingsOptions hybrid = gust::immersed_terrain_options(th, kZ0);
+    ASSERT_TRUE(hybrid.hybrid_mesh);
+    const amrex::MultiFab z = with_ground(c, [] (double, double) { return 23.0; });
+    gust::Buildings b;
+    b.build_from_surface(hybrid, "test", c.geom, z, c.ba, c.dm);
+    EXPECT_TRUE(b.hybrid_mesh());
+    b.build_from_map(flat, gust::immersed_terrain_map(t, c.geom), "terrain.flat_height", c.geom, c.z, c.ba, c.dm);
+    EXPECT_FALSE(b.hybrid_mesh());
 }

@@ -3,11 +3,11 @@
 The parts with no Qt (field text, the log reader, the run steps) always run. The window's own tests need PySide6
 and pyqtgraph and are skipped without them; they run with QT_QPA_PLATFORM=offscreen (set here when unset).
 
-    UT-12.3.1  the form has one widget per key of the schema (test_one_widget_per_key)
-    UT-12.3.2  a YAML file read into the form and saved again is unchanged (test_yaml_round_trip_*)
-    UT-12.3.3  a refused key marks its own field (test_refused_key_marks_*)
-    LibraryTabTests  the Library tab: one wind and a distribution drawn and exported; skipped without
-                     PySide6
+    - the form has one widget per key of the schema (test_one_widget_per_key)
+    - a YAML file read into the form and saved again is unchanged (test_yaml_round_trip_*)
+    - a refused key marks its own field (test_refused_key_marks_*)
+    - the Library tab: one wind and a distribution drawn and exported; skipped without PySide6
+      (LibraryTabTests)
 
     cd tools && python3 -m unittest -v test_gust_window
 """
@@ -332,7 +332,7 @@ class FormTests(unittest.TestCase):
         return [w for w in self.form.findChildren(QtWidgets.QWidget) if w.property("gust_key")]
 
     def test_one_widget_per_key(self):
-        """UT-12.3.1: one widget per key, named after it, of the key's kind; each patch has one per nest key."""
+        """One widget per key, named after it, of the key's kind; each patch has one per nest key."""
         names = [n for n, _ in values.field_names()]
         self.assertEqual(sorted(self.form.fields), sorted(names))
         self.assertEqual(sorted(w.objectName() for w in self.keyed_widgets()), sorted(names))
@@ -367,7 +367,7 @@ class FormTests(unittest.TestCase):
             self.assertEqual(load_yaml(path), raw)
 
     def test_yaml_round_trip_case_files(self):
-        """UT-12.3.2: the repository's case files, read into the form and saved, read back unchanged."""
+        """The repository's case files, read into the form and saved, read back unchanged."""
         self.assertGreaterEqual(len(CASE_FILES), 4)
         for path in CASE_FILES:
             with self.subTest(path=os.path.basename(path)):
@@ -375,7 +375,7 @@ class FormTests(unittest.TestCase):
         self.round_trip(yaml.safe_load(make_gust_case.EXAMPLE))
 
     def test_yaml_round_trip_every_key(self):
-        """UT-12.3.2: every key given (two patches, gust_inputs with a null), and keys the schema does not know."""
+        """Every key given (two patches, gust_inputs with a null), and keys the schema does not know."""
         raw = every_key_case()
         validate(raw)                                     # every sample value is one the schema accepts
         self.round_trip(raw)
@@ -478,7 +478,7 @@ class FormTests(unittest.TestCase):
         self.assertEqual(field.text(), ".")
 
     def test_refused_key_marks_its_field(self):
-        """UT-12.3.3: the field the refusal names is marked, and no other."""
+        """The field the refusal names is marked, and no other."""
         raw = yaml.safe_load(make_gust_case.EXAMPLE)
         raw["mesh"]["layers"] = 0
         raw["nests"] = [{"name": "a", "half_width": [200.0]}, {"name": "b"}]
@@ -494,7 +494,7 @@ class FormTests(unittest.TestCase):
         self.assertFalse(any(f.marked for f in self.form.all_fields().values()))
 
     def test_refused_key_marks_text_that_is_not_yaml(self):
-        """UT-12.3.3: a field whose text is not YAML is refused by name and marked."""
+        """A field whose text is not YAML is refused by name and marked."""
         self.form.set_raw(yaml.safe_load(make_gust_case.EXAMPLE))
         self.form.fields["domain.half_width"].set_text("[2000,")
         with self.assertRaises(CaseError) as err:
@@ -525,7 +525,7 @@ class WindowTests(unittest.TestCase):
         return w
 
     def test_refused_key_marks_the_field_from_check(self):
-        """UT-12.3.3 through the window: a refusal of the builder (two keys related) marks the key it names."""
+        """Through the window: a refusal of the builder (two keys related) marks the key it names."""
         raw = yaml.safe_load(make_gust_case.EXAMPLE)
         raw["nests"] = [{"name": "a", "center": [0.0, 0.0], "half_width": 300.0, "blend_width": 100.0}]
         w = self.window(raw)

@@ -421,8 +421,8 @@ KnownSolve solve_known (int max_grid, int nx, int ny, NewtonVector* out, const a
 // eps B(v, v) exactly. The sweep of steady.newton_fd_eps_scale over nine
 // and a half decades (three in single precision) shows the V: the truncation branch
 // (error = eps |B| / |J v|, to 1e-3 of itself) at large h, the round-off
-// branch (growing as 1/h) at small h, both ends at least 10 times (5 in
-// single precision) the minimum, and the default sqrt(machine epsilon)
+// branch (growing as 1/h) at small h, both ends at least 10 times the minimum
+// (the truncation end 5 times in single precision), and the default sqrt(machine epsilon)
 // within a factor 3 of the sweep's minimum. eps = c h with one c for every
 // h. A uniform dtau = 20 s adds exactly x / dtau on every row but continuity
 // and the Dirichlet w faces (the ground and the top), and those faces are
@@ -446,18 +446,18 @@ TEST(Newton, JvpEpsSweepAgainstQuadraticResidual)
     gust::residual(q2, in, c.mesh, c.geom, R2);
 
     NewtonOperator op0(qc.q, R0, in, c.mesh, c.geom, nullptr);
-    NewtonVector Jex = op0.makeVecRHS(), Bvv = op0.makeVecRHS(), tmp = op0.makeVecRHS(), third = op0.makeVecRHS();
+    NewtonVector Jex = op0.makeVecRHS(), Bvv = op0.makeVecRHS(), tmp = op0.makeVecRHS(), third_v = op0.makeVecRHS();
     residual_vector(Rp, 0.5, Rm, -0.5, op0, Jex);
     residual_vector(Rp, 0.5, Rm, 0.5, op0, Bvv);
     residual_vector(R0, -1, R0, 0, op0, tmp);
     op0.increment(Bvv, tmp, 1);
     // Third difference R(q+2v) - 3 R(q+v) + 3 R(q) - R(q-v) = 0 for a quadratic R.
-    residual_vector(R2, 1, Rp, -3, op0, third);
+    residual_vector(R2, 1, Rp, -3, op0, third_v);
     residual_vector(R0, 3, Rm, -1, op0, tmp);
-    op0.increment(third, tmp, 1);
+    op0.increment(third_v, tmp, 1);
     const double nJ = static_cast<double>(op0.norm2(Jex));
     const double nB = static_cast<double>(op0.norm2(Bvv));
-    EXPECT_LT(static_cast<double>(op0.norm2(third)), tol(1e-11, 2e-3) * nJ);
+    EXPECT_LT(static_cast<double>(op0.norm2(third_v)), tol(1e-11, 2e-3) * nJ);
     EXPECT_GT(nB, 1e-3 * nJ);   // the quadratic part is not negligible
 
     NewtonVector x = op0.makeVecLHS(), Ax = op0.makeVecRHS();
@@ -611,7 +611,8 @@ TEST(Newton, ColumnConvergesQuadratically)
 // problem of Simplec.PoiseuilleToMachinePrecision): R is linear in the column,
 // so one Newton step from rest with GMRES to a relative 1e-12 gives the
 // discrete solution u_k = (F / 2 nu) (z_k (H - z_k) + dz^2 / 4), here to 1e-9
-// of the peak (the forward difference's round-off). v, w and p stay zero.
+// of the peak (the forward difference's round-off). v, w and p stay zero and
+// theta stays 300 K.
 TEST(Newton, PoiseuilleInOneStep)
 {
     const double H = 500, F = 1e-4, nu = 10;
@@ -651,6 +652,8 @@ TEST(Newton, PoiseuilleInOneStep)
     EXPECT_LT(static_cast<double>(q.w.norm0()), tol(1e-12, 1e-5) * umax);
     EXPECT_EQ(q.theta.min(0), amrex::Real(300));
     EXPECT_EQ(q.theta.max(0), amrex::Real(300));
+    // the force is balanced by the shear stress alone: p stays at its initial 0
+    EXPECT_LT(static_cast<double>(q.p.norm0()), tol(1e-12, 1e-5) * F * H);
 }
 
 // ---------------------------------------------------------------------------
@@ -806,7 +809,7 @@ TEST(Newton, JvpBitIdenticalForAnyDistribution)
         const auto fa = Ja.fields();
         const auto fb = Jb.fields();
         ASSERT_EQ(fa.size(), fb.size());
-        for (std::size_t n = 0; n < fa.size(); ++n) {
+        for (std::size_t n = 0; n < static_cast<std::size_t>(fa.size()); ++n) {
             amrex::MultiFab back(fa[n].mf->boxArray(), fa[n].mf->DistributionMap(), 1, 0);
             back.ParallelCopy(*fb[n].mf, 0, 0, 1, 0, 0);
             amrex::MultiFab::Subtract(back, *fa[n].mf, 0, 0, 1, 0);
@@ -1022,9 +1025,9 @@ TEST(Newton, PreconditionerHookAndOptionsReachTheSolver)
     EXPECT_LT(state_diff(a.q, qb), tol(1e-7, 1e-2));
     // The hook's output is what GMRES uses: a hook that returns zero gives
     // no step (GMRES stops at once on the zero Krylov vector).
-    ZeroHook zero;
-    const auto iz = nk.step(qz, &dtau, &zero);
-    EXPECT_EQ(zero.applies, 1);
+    ZeroHook zero_hook;
+    const auto iz = nk.step(qz, &dtau, &zero_hook);
+    EXPECT_EQ(zero_hook.applies, 1);
     EXPECT_EQ(iz.gmres_iterations, 1);
     EXPECT_EQ(nk.last().gmres_iterations, 1);   // last() follows the latest step
     EXPECT_NE(nk.last().gmres_iterations, ib.gmres_iterations);

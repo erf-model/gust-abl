@@ -6,7 +6,6 @@
 
 #include <AMReX_ParallelDescriptor.H>
 #include <AMReX_PlotFileUtil.H>
-#include <AMReX_Print.H>
 
 #include <cctype>
 #include <cerrno>

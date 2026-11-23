@@ -13,6 +13,11 @@ match the same gold. The test-only driver is `poisson_projection` (`Supporting_F
 | `check_poisson.py` | Runs the driver, then checks iterations and divergence against a JSON gold (`--write` rewrites it). |
 | `Gold/` | `poisson_askervein.json`, `poisson_askervein_mlmg.json`, `poisson_askervein_plt00000/`. |
 
+## Data and acknowledgements
+The terrain is ERF's Askervein terrain of `Exec/CanonicalTests/Real_Terrain/Askervein` (`extern_erf/askervein.txt`,
+recorded in `extern_erf/EXTRACTED.md`; BSD 3-clause with the LBNL clause, `extern_erf/LICENSE.md`). Thanks to the ERF
+developers. The file is redistributed in this repository; nothing has to be downloaded.
+
 ## CTest
 `abort_poisson_options` (both precisions); `rt_poisson_askervein`, `rt_poisson_askervein_matches`,
 `rt_poisson_askervein_mlmg`, `rt_poisson_askervein_mlmg_matches` (double precision only).

@@ -20,3 +20,7 @@ one layer of `Source/`; the tests (GoogleTest names `Suite.Test`) and what each 
 ```bash
 ctest --test-dir <build> -L unit
 ```
+
+## Expected Results
+Every test passes. The `DISABLED_*` tests print measurements and run only on request
+(`--gtest_also_run_disabled_tests`).

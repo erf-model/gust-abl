@@ -137,8 +137,7 @@ struct BoundaryInputs
     //! bc.outflow_transport: the transport fluxes of the ghost cells outside
     //! an outflow face are the mirror image of the edge cells' (mirror, the
     //! default; outflow_transport), or computed from the ghosts' own
-    //! velocities and flat geometry (from_velocity, the only choice up to
-    //! v1.0.0).
+    //! velocities and flat geometry (from_velocity).
     bool outflow_mirror_transport{true};
     //! Sponge: width (m, > 0 enables) and strength (1/s, >= 0).
     amrex::Real sponge_width{0};
@@ -270,7 +269,6 @@ public:
 
     [[nodiscard]] const BoundaryInputs& inputs () const { return m_in; }
     [[nodiscard]] const InflowProfile& profile () const { return m_profile; }
-    [[nodiscard]] bool has_inflow () const;
     [[nodiscard]] bool damping_on () const { return m_in.rayleigh_zdamp > 0 || m_in.sponge_width > 0; }
 
     //! simplec.theta = frozen: fill theta's two ground ghost layers by the

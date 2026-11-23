@@ -367,8 +367,9 @@ std::vector<std::string> unknown_inputs (const std::vector<InputEntry>& entries,
         const std::string ns = e.name.substr(0, dot);
         if (contains(owned, ns)) {
             if (!e.used) {
-                // The keys of read_newton_options only: a misspelt
-                // steady.newton_* key gets no hint that it will be read later.
+                // The keys of read_newton_options and read_continuation_options
+                // only: a misspelt steady.newton_* key gets no hint that it
+                // will be read later.
                 const auto is_key = [&] (const char* k) { return e.name == std::string("steady.") + k; };
                 const bool newton = std::any_of(std::begin(kNewtonInputKeys), std::end(kNewtonInputKeys), is_key)
                                     || std::any_of(std::begin(kContinuationInputKeys), std::end(kContinuationInputKeys), is_key);
@@ -396,21 +397,6 @@ std::vector<InputEntry> parmparse_entries ()
         out.push_back({name, unused.count(name) == 0});
     }
     return out;
-}
-
-Inputs read_inputs ()
-{
-    Inputs in = parse_inputs();
-    auto err = validate(in);
-    auto unk = unknown_inputs(parmparse_entries());
-    err.insert(err.end(), unk.begin(), unk.end());
-    if (!err.empty()) {
-        std::string all = "gust: invalid inputs:";
-        for (const auto& e : err) { all += "\n  " + e; }
-        amrex::Abort(all);
-    }
-    apply_hybrid_defaults(in);   // HybridTerrain.H: needs valid mesh inputs
-    return in;
 }
 
 } // namespace gust

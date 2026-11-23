@@ -20,7 +20,7 @@ namespace gust {
 //! The cap on the closure's cells (the valid cells and one lateral ghost ring; defined here if empty) from
 //! k (q.tke) and S2 = S^2. weight (null: none): w in [0, 1] on the same cells, the cap divided by it, the
 //! largest Real where w = 0 (Closure::set_cap_weight; the buildings' zone, BuildingTke.H). Without it the
-//! cap is bit for bit the one before the weight.
+//! cap is bit for bit the cap with w = 1.
 void nut_cap_field (const State& q, const amrex::MultiFab& S2, const ClosureOptions& opt, const ClosureConstants& c,
                     amrex::MultiFab& cap, const amrex::MultiFab* weight = nullptr);
 

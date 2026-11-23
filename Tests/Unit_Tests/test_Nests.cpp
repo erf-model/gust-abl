@@ -157,9 +157,9 @@ TEST (Nests, ReadErrorsNameTheKey)
     EXPECT_TRUE(opt.nests.empty());
 }
 
-// nest.feedback_factor's default with relax is 0.5 (tracker N-114, item 13; 1 before it), and
+// nest.feedback_factor's default with relax is 0.5 (1 before), and
 // nest.feedback_factor = 1 still reads as 1: the old answer stays reachable. Inject and relax_consistent keep their
-// own defaults (0.5 and 1; the sweep of item 13 covered relax only).
+// own defaults (0.5 and 1; the sweep that gave 0.5 covered relax only).
 TEST (Nests, RelaxFactorDefaultAndTheOldValue)
 {
     const std::vector<std::pair<std::string, amrex::Real>> cases = {
@@ -340,7 +340,7 @@ TEST (Nests, AgnesiHillStaysAtTheOuterCentre)
     t.hill_shape = "round";
     t.hill_height = 60;
     t.hill_half_width = 250;
-    // The nest over outer cells 10 to 14 in x and 3 to 7 in y, centre (1200, 500).
+    // The nest over outer cells 10 to 13 in x and 3 to 6 in y, centre (1200, 500).
     gust::MeshInputs m = gust::nest_mesh(nest("e", 1000, 300, 1400, 700), outer);
     const double tol = 1e-4;   // m: single precision of 60 m heights
     t.hill_centre = {800, 600};

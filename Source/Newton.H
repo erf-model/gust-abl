@@ -45,9 +45,8 @@
 // BoxArray.
 //
 // The preconditioner is a hook (NewtonPreconditioner): the identity (a copy)
-// when none is given; NewtonPreconditioner.H plugs in one SIMPLEC iteration
-// (SimplecPreconditioner, NewtonPreconditioner.H) through it without
-// changing NewtonKrylov.
+// when none is given; SimplecPreconditioner (NewtonPreconditioner.H) plugs
+// in one SIMPLEC iteration through it without changing NewtonKrylov.
 //
 // Memory: FGMRES(m) keeps m + 1 Arnoldi vectors, m preconditioned vectors
 // and two work vectors, all of state size: 2m + 3 vectors. The estimate is
@@ -74,15 +73,17 @@
 #include <AMReX_MultiFab.H>
 #include <AMReX_iMultiFab.H>
 
+#include <cmath>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <string>
 #include <vector>
 
 namespace gust {
 
-//! The Newton–Krylov inputs. The defaults are provisional until a Newton
-//! study on Askervein.
+//! The Newton–Krylov inputs. The defaults are provisional
+//! (docs/solution_algorithm.rst).
 struct NewtonOptions
 {
     int gmres_restart{30};                    //!< steady.newton_gmres_restart (5..200)

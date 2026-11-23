@@ -16,6 +16,9 @@ takes the column's surface flux and starts from its theta.
 | `inputs_column_target` | The neutral run; the stable run adds its keys on the command line. |
 | `check_column_target.py` | Runs the application and checks the 3-D wind at the target height and the surface's L. |
 
+## Data and acknowledgements
+No external data.
+
 ## How to run
 ```bash
 ctest --test-dir <build> -R "^rt_column_target"

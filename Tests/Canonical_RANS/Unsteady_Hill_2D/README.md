@@ -1,7 +1,7 @@
 # Unsteady_Hill_2D
 
 ## Purpose
-RT-6.2.1 and RT-6.3.1 (plan rev. 6, sub-phases 6.2 and 6.3, beyond the plan): the 2-D hill of `Neutral_Hill_2D` (ERF's Neutral_Hill_2D: the
+The 2-D hill of `Neutral_Hill_2D` (ERF's Neutral_Hill_2D: the
 Witch of Agnesi ridge, 100 m high, half-width 500 m, 128 x 1 x 64 cells, the surface layer, Coriolis and the
 geostrophic wind) run as unsteady RANS by dual time stepping (`steady.stage = unsteady`, docs: Solution algorithm,
 Time driver). Ten backward-Euler steps of 60 s from the log-law first guess to t = 600 s; each step converges two
@@ -33,7 +33,7 @@ ctest --test-dir <build> -R rt_unsteady_hill2d
 - 1 and 4 ranks: the same inner iteration count in every step; u, v, w within 1e-9 of the largest |u| and p, θ, k
   within 1e-9 of their own largest values, against 2 ranks.
 - u at the hill top, 50 m above the ground, differs from the first guess by more than 0.1 m/s at t = 600 s.
-- Outputs (RT-6.3.1): the probe file has 11 rows (t = 0 and one per step); plotfiles at t = 300 s and 600 s carry
+- Outputs: the probe file has 11 rows (t = 0 and one per step); plotfiles at t = 300 s and 600 s carry
   `u_mean ... tke_mean` and `u_var ... tke_var`, equal at each probe's cell to the two-pass weighted mean and variance
   of that probe's rows, with weights 30 s for step 2 and 60 s after it (averages from t = 90 s, mid-step 2). The
   unit test `UnsteadyOutput.AveragesAreTheWeightedSeries` checks every cell.
@@ -48,4 +48,8 @@ closed form; the first-order accuracy in dt is checked against Stokes' first pro
 ## CTest
 `rt_unsteady_hill2d` (label `regression`, MPI builds only). The checkpoint fixture `rt_unsteady_hill2d_chk` and the
 restart refusals `abort_unsteady_restart_average_start`, `abort_unsteady_restart_past_stop` and
-`abort_unsteady_restart_probes` use the same deck.
+`abort_unsteady_restart_probes` use the same deck, as do `rt_unsteady_hill2d_from_steady` (two steps of 60 s from the
+steady run's checkpoint) and the refusals of `steady.stage = unsteady`: `abort_unsteady_stop_time_missing`,
+`abort_unsteady_dt_and_cfl`, `abort_unsteady_output_ranges`, `abort_unsteady_interval_needs_output`,
+`abort_unsteady_probes_missing`, `abort_unsteady_steady_stop_keys`, `abort_unsteady_hybrid` and
+`abort_steady_probes_with_unsteady` (labels `regression;smoke`).

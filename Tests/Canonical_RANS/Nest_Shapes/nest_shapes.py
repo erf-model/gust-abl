@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""One-way patches around canonical shapes against uniform fine runs (tracker row PR-76).
+"""One-way patches around canonical shapes against uniform fine runs.
 
     nest_shapes.py files   SHAPE
     nest_shapes.py run     SHAPE NAME DX         -- COMMAND [ARGS ...]

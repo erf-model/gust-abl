@@ -254,7 +254,7 @@ TEST(NewtonStage, FallsBackAfterFailedSteps)
 // fields as three more steps of the uninterrupted run, with either
 // preconditioner the fields bit for bit (the Newton iterates' reductions are
 // in box order) and the recorded norms to 1e-12 (their sums follow the
-// DistributionMapping). Before the ghost fill was a fixed point (audit A2) the
+// DistributionMapping). Before the ghost fill was a fixed point the
 // simplec case agreed only to 1e-4 of the relative residual: the stage's entry
 // fill, which the uninterrupted run does not make, moved the ground w face and
 // GMRES amplified it. The bit-identical case needed the stage's own
@@ -262,7 +262,7 @@ TEST(NewtonStage, FallsBackAfterFailedSteps)
 // by a restart inside the Newton stage (its init is not called).
 TEST(NewtonStage, RestartInsideTheStage)
 {
-    if constexpr (!kDouble) { GTEST_SKIP() << "the switch at 1e-3 is near single precision"; }
+    if constexpr (!kDouble) { GTEST_SKIP() << "the recorded norms are compared to 1e-12, below single precision"; }
     for (const auto pc : {gust::NewtonPreconditionerKind::identity, gust::NewtonPreconditionerKind::simplec}) {
         auto hr = make_run(Limiter::van_albada, StageKind::simplec_newton, 1e-3, pc);
         auto& d = hr->ls->driver();
@@ -281,7 +281,7 @@ TEST(NewtonStage, RestartInsideTheStage)
         // On hr's ranks: DistributionMapping(ba) follows each rank's memory at
         // the call, and the simplec preconditioner's Poisson solve sums per
         // rank, so two maps could differ in the last bits (with two boxes they
-        // happen not to; audit A5).
+        // happen not to).
         auto hr2 = make_run(Limiter::van_albada, StageKind::simplec_newton, 1e-3, pc, &hr->c.dm);
         ASSERT_TRUE(hr2->c.dm == hr->c.dm);
         gust::read_checkpoint(dir, hr2->q, hr2->c.in.mesh);
@@ -296,7 +296,7 @@ TEST(NewtonStage, RestartInsideTheStage)
         for (std::size_t n = ra.size() - 3; n < ra.size(); ++n) {
             EXPECT_EQ(ra[n].stage, rb[n].stage);
             // The recorded norms are MultiFab::Dot sums, whose order follows the
-            // DistributionMapping (the two runs need not share one): to 1e-12.
+            // DistributionMapping: to 1e-12.
             ASSERT_EQ(ra[n].residuals.size(), rb[n].residuals.size());
             for (std::size_t i = 0; i < ra[n].residuals.size(); ++i) {
                 EXPECT_NEAR(rb[n].residuals[i], ra[n].residuals[i], 1e-12 * std::abs(ra[n].residuals[i])) << n << " " << i;

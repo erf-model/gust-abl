@@ -1,5 +1,4 @@
-# Plan rev. 6, sub-phases 6.2 and 6.3 (beyond the plan), RT-6.2.1 and
-# RT-6.3.1: the 2-D hill of
+# The 2-D hill of
 # Tests/Canonical_RANS/Neutral_Hill_2D/inputs_steady_hill2d_restart (ERF's
 # Neutral_Hill_2D: the Witch of Agnesi ridge, 100 m high, half-width 500 m,
 # on 128 x 1 x 64 cells, the surface layer, Coriolis and the geostrophic wind

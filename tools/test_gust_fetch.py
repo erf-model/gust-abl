@@ -80,7 +80,7 @@ class BinnedMapTests(unittest.TestCase):
 
 class UpstreamTests(unittest.TestCase):
     def test_half_plane_map_gives_each_side_its_own_z0(self):
-        """UT-13.4.1: z0 0.03 m west of the domain, 1 m east: the wind from 270 gets 0.03 m, from 90 gets 1 m."""
+        """z0 0.03 m west of the domain, 1 m east: the wind from 270 gets 0.03 m, from 90 gets 1 m."""
         x = np.arange(-8000.0, 8000.1, 100.0)
         binned = fetch.BinnedMap(*grid_points(x, x, lambda gx, gy: np.where(gx < 0.0, 0.03, 1.0)), "k")
         f = frame(2000.0, 2000.0)
@@ -95,7 +95,7 @@ class UpstreamTests(unittest.TestCase):
         self.assertAlmostEqual(west.cover, 1.0, places=12)
 
     def test_uniform_map_returns_its_z0_for_every_sector(self):
-        """UT-13.4.2."""
+        """A uniform map returns its z0 for every sector."""
         x = np.arange(-9000.0, 9000.1, 250.0)
         binned = fetch.BinnedMap(*grid_points(x, x, lambda gx, gy: 0.2 + 0.0 * gx), "k")
         for direction in np.arange(0.0, 360.0, 22.5):
@@ -105,7 +105,7 @@ class UpstreamTests(unittest.TestCase):
                 self.assertAlmostEqual(face.mismatch(), 0.0, places=12)
 
     def test_step_map_weight_against_the_closed_form(self):
-        """UT-13.4.3: z0_near within s of the face, z0_far beyond: the weight exp(-x/L) integrated in closed form.
+        """z0_near within s of the face, z0_far beyond: the weight exp(-x/L) integrated in closed form.
         Map points every h upwind of the face; a step half-way between two points lies on a segment edge, so the
         discrete sum is the integral."""
         x_lo, h = -200.0, 5.0

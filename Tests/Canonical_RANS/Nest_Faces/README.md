@@ -2,13 +2,13 @@
 
 ## Purpose
 A nested patch whose four lateral faces take their values from the parent run (`bc.xlo`, `bc.xhi`, `bc.ylo`,
-`bc.yhi = nest`; sub-phase 9.2, beyond plan rev. 6). The parent runs to steady on 50 m cells; the patch refines its
+`bc.yhi = nest`). The parent runs to steady on 50 m cells; the patch refines its
 centre at 2 2 1 (25 m cells), starts from the parent's checkpoint and runs to steady with the parent's normal velocity
 on its faces and the parent's u, v, w, theta and k in its ghost cells. The wind is from 20 degrees off the x axis, so
 every face of the patch has the parent's flow entering on one part or leaving on another. Two grounds: flat (the patch
 must keep the parent's flow) and a 60 m round Witch of Agnesi hill (the finer cells change the flow over the hill).
 The relaxation zone (`bc.nest_relax_width`), the ground blend (`terrain.nest_blend_width`) and the restart record are
-exercised too. One patch holds the theta of a stratified parent (`simplec.theta = frozen`, beyond the plan).
+exercised too. One patch holds the theta of a stratified parent (`simplec.theta = frozen`).
 
 ## Files
 | File | Role |
@@ -19,6 +19,8 @@ exercised too. One patch holds the theta of a stratified parent (`simplec.theta 
 | `inputs_hill_parent_pair` | The hill parent without `bc.inflow_ustar` or an iteration count: two parents on the same mesh at the same step with different flows (u* 0.4 and 0.6 m/s, 30 iterations), for the restart tests. |
 | `inputs_hill_patch_restart` | The hill patch without a first guess, box size, parent or iteration count: the restart tests give them on the command line. |
 | `inputs_hill_patch_inflow` | The same with an inflow face on xlo (the parent's log law) and an outflow face on xhi; nest faces on ylo and yhi. For the frozen-theta test. |
+| `building_inside.txt` | A 75 m x 75 m x 20 m block on the hill's crest, well inside the nest faces of the hill patch. |
+| `building_near_face.txt` | A 25 m block one patch cell inside the nest face `bc.xlo` of the hill patch, for `abort_nest_faces_buildings`. |
 | `canopy_inside.txt` | One canopy patch inside the hill patch, for the refusal of `canopy.heat_frozen = blend`. |
 | `check_nest_faces.py` | Runs a parent or a patch and checks it (below). |
 
@@ -26,7 +28,7 @@ The decks do not name their outputs; `check_nest_faces.py` appends `io.plot_file
 last plotfile and checkpoint to `<prefix>_plt_final` and `<prefix>_chk_final` (the names the patch decks use for
 `bc.nest_parent`).
 
-## Data
+## Data and acknowledgements
 None. The cases are analytic.
 
 ## How to run
@@ -112,6 +114,7 @@ Double precision only.
 | `rt_nest_faces_restart_first`, `_continued`, `_straight`, `_matches` | Zone of 2 cells and blend of 100 m; 10 + 10 iterations against 20 straight: `fcompare` with zero tolerance; the restarted log names the zone and the blend. |
 | `rt_nest_faces_frozen_parent` | Fixture: the hill parent with the 300 to 304 K sounding, theta solved, to steady on 2 ranks. |
 | `rt_nest_faces_frozen` | Its patch with `simplec.theta = frozen` on 2 ranks, boxes of 13 x 9 cells: the log line, zero theta residual, theta unchanged bit for bit between 1 iteration and steady, theta within 1e-10 K of the parent's interpolated, level range above 0.01 K, 2 x 2 means of u, v, w, k within 0.15 m/s and 0.06 m2/s2 of the parent. The patch's own sounding is 310 to 330 K. |
+| `rt_nest_faces_building_inside` | The hill patch with the block of `building_inside.txt`, well inside the nest faces, on 2 ranks: 5 iterations, solid cells reported and a checkpoint written. |
 | `abort_nest_faces_frozen_canopy_blend` | `simplec.theta = frozen` with `canopy.heat_frozen = blend` in a patch stops, naming the keys. |
 | `rt_nest_faces_frozen_building`, `_building_theta` | The frozen-theta patch with the block of `building_inside.txt`: 5 iterations, solid cells reported and a checkpoint; theta equal bit for bit to the one-iteration patch's. |
 | `rt_nest_faces_frozen_inflow`, `_inflow_theta` | `inputs_hill_patch_inflow` with frozen theta: 20 iterations; theta equal bit for bit to the one-iteration patch's. |

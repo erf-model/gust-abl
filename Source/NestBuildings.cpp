@@ -23,7 +23,7 @@ std::vector<std::string> check_nest_buildings (const BuildingHeightMap& map, con
         const double lo = static_cast<double>(geom.ProbLo(d)), hi = static_cast<double>(geom.ProbHi(d));
         const double olo = static_cast<double>(geom.ProbLo(o)), ohi = static_cast<double>(geom.ProbHi(o));
         // The geometry is in Real: in single precision its round-off is far above 1e-9 of a cell
-        // (the same allowance as Buildings::build).
+        // (the form of the allowance of Buildings::build_from_map, which takes the domain's length).
         const double eps_real = 64 * static_cast<double>(std::numeric_limits<amrex::Real>::epsilon());
         const double tol = std::max(1e-9 * dx, eps_real * std::max(std::abs(lo), std::abs(hi)));
         const double otol = std::max(1e-9 * static_cast<double>(geom.CellSize(o)),

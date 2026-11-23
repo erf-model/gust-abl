@@ -12,7 +12,7 @@ with the keys written out, bit for bit, and a deck that contradicts its name mus
 
 The other runs use `Tests/Canonical_RANS/Neutral_Column/inputs_steady_column` and its check script.
 
-## Data
+## Data and acknowledgements
 None.
 
 ## How to run

@@ -1,5 +1,5 @@
-// Unit tests of the unsteady outputs (UnsteadyOutput.H, sub-phase 6.3, beyond
-// the plan): the running averages against a two-pass weighted series, the
+// Unit tests of the unsteady outputs (UnsteadyOutput.H):
+// the running averages against a two-pass weighted series, the
 // probes' cells and values, the probe file on a restart, the checkpoint record
 // and the averages' checkpoint on another layout, and the time of a resumed
 // TimeDriver.
@@ -171,7 +171,7 @@ std::string slurp (const std::string& file)
 
 } // namespace
 
-// UT-6.3.1: the running averages after irregular steps, the averaging start in
+// The running averages after irregular steps, the averaging start in
 // the middle of the second step, equal the two-pass weighted mean and variance
 // with the weights t^{n+1} - max(t^n, start), cell by cell, on several boxes.
 TEST(UnsteadyOutput, AveragesAreTheWeightedSeries)
@@ -328,7 +328,7 @@ TEST(UnsteadyOutput, ParseProbes)
     ASSERT_EQ(err.size(), 1U);
     EXPECT_NE(err[0].find("no probe"), std::string::npos);
 
-    // The steady run's probes (sub-phase 6.4b): the messages name its key, and its file has another name.
+    // The steady run's probes: the messages name its key, and its file has another name.
     err.clear();
     gust::parse_probes("1 2\n", "g.txt", err, gust::ProbeAxis::iteration);
     ASSERT_EQ(err.size(), 1U);
@@ -342,7 +342,7 @@ TEST(UnsteadyOutput, ParseProbes)
     EXPECT_EQ(gust::probes_output_file("plt", gust::ProbeAxis::iteration), "plt_steady_probes.csv");
 }
 
-// UT-6.3.2: each probe takes its column's cell whose centre height above the
+// Each probe takes its column's cell whose centre height above the
 // ground is nearest h, the lower one on a tie, and samples that cell's values.
 // Flat ground at 0, 8 layers of 0.125 m: centres 0.0625 + 0.125 k. Then a
 // bump, where h counts from the ground under the probe.
@@ -472,7 +472,7 @@ TEST(UnsteadyOutput, ProbeFileOnRestart)
     EXPECT_TRUE(from_io(dropped));
 }
 
-// UT-6.3.3: a resumed TimeDriver numbers its steps on from the checkpoint's and,
+// A resumed TimeDriver numbers its steps on from the checkpoint's and,
 // with the checkpoint's fixed step and time anchor, gives the times of the run
 // without the restart, bit for bit. With another fixed step the time is
 // t_ref + n dt. After a clipped last step the next step is one dt later, and a

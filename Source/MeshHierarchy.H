@@ -58,7 +58,8 @@ int ground_passes (int level, int passes_per_level);
 
 //! Problems with the hierarchy inputs (empty: none), each naming its key:
 //! mesh.hierarchy_levels in [1, kMaxHierarchyLevels]; n_cell x and y
-//! divisible by 2^(L-1); mesh.max_grid_size x and y multiples of 2^(L-1);
+//! divisible by 2^(L-1); the coarsest level larger than 1 x 1 cells;
+//! mesh.max_grid_size x and y multiples of 2^(L-1);
 //! terrain.hierarchy_passes in [0, kMaxHierarchyPasses] and given only with L > 1.
 std::vector<std::string> check_hierarchy_inputs (const MeshInputs& mesh, const TerrainInputs& terrain);
 

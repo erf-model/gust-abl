@@ -1,7 +1,7 @@
 # Terrain_Shapes_3D
 
 ## Purpose
-Which terrain shapes the steady stage settles on, and how soon. Beyond the plan. Fourteen analytic shapes, all
+Which terrain shapes the steady stage settles on, and how soon. Fourteen analytic shapes, all
 760 m high, stand in the same neutral log-law wind: round buttes of four slopes, a butte steep on one side only,
 ridges across, oblique to and along the wind, two buttes with a gap, a butte with a ridge behind it, a narrow
 butte, a crater rim, and a ridge that spans the domain. Each run records the wind at 2560 points after every
@@ -29,7 +29,7 @@ A body is h = H/2 (1 - tanh(d / W)) with d the distance outside an ellipse; W se
 | `check_terrain_shapes.py` | The CTest: the gentle and the steep round butte on 200 m cells. |
 | `tools/probe_settle.py` | Reads a `steady.probes_file` output: when the points settle. Not specific to this case. |
 
-## Data
+## Data and acknowledgements
 None: the terrain is analytic.
 
 ## How to run

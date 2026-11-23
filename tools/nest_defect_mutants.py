@@ -32,13 +32,13 @@ M = [
  ("D10", "u copied without the periodicity", F, "coarse.u.ParallelCopy(img, 0, 0, 1, 0, 0, geom_c.periodicity());",
   "coarse.u.ParallelCopy(img, 0, 0, 1);"),
  # the order for several nests
- ("D11", "each nest restricted in full before the next (the order before N-114 item 8)", F,
+ ("D11", "each nest restricted in full before the next (the earlier order)", F,
   "        restrict_horizontal(*n.fine, *n.mesh, n.ratio, n.offset, mesh_c, geom_c, coarse);\n    }\n"
   "    // The parent's ghost cells with the new u and v, for its Omega and for w_from_omega.\n"
   "    coarse_ghosts(coarse);\n    for (const NestImage& n : nests) {\n",
   "        restrict_horizontal(*n.fine, *n.mesh, n.ratio, n.offset, mesh_c, geom_c, coarse);\n"
   "        coarse_ghosts(coarse);\n"),
- # the open face areas with buildings (N-114 item 7)
+ # the open face areas with buildings
  ("D12", "u: the nest's full face areas in the flux", F, "restrict_faces<0>(mesh_f.flux_area(0), fine.u",
   "restrict_faces<0>(mesh_f.ax, fine.u"),
  ("D13", "u: the parent's full face area as the divisor", F, "ac.ParallelCopy(mesh_c.flux_area(0), 0, 0, 1);",

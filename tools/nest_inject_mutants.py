@@ -37,7 +37,7 @@ M = [
  ("J10", "the inner box's faces left out of the open masks", F, "        for (auto& o : m_open) { zero_region(g.inner, o); }\n", ""),
  ("J11", "a flux through the held faces", P,
   "                amrex::MultiFab::Multiply((*fluxes)[d], *coeffs.held_open[d], 0, 0, 1, 0);", ""),
- ("J12", "phi shifted by its mean with a mask", P, "    if (res.singular && !masked) {", "    if (res.singular) {"),
+ ("J12", "phi shifted by its mean with a mask", P, "    if (res.singular && (!masked || m_level)) {", "    if (res.singular) {"),
 ]
 EQUIVALENT = {}
 

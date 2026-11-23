@@ -1,5 +1,5 @@
 // The immersed ground (terrain.representation = immersed_forcing; ImmersedTerrain.H, ImmersedStrain.H,
-// BuildingForcing.H), plan sub-phase PR-87:
+// BuildingForcing.H):
 //   the wall law at the exact distances returns u* of an exact log profile for any beta, below the
 //   buildings' 10 z0 floor too, and its heat velocities; the vertical couplings of u and v across the
 //   cut cell's top face span the distance between the fluid centroids, in the implicit rows (a_P =
@@ -9,7 +9,7 @@
 //   with a roughness map (bc.surface_z0_file) each cut cell takes its column's z0, in the law and in the strain.
 // turb.shear_stencil = log_law (LogShear.H): the strain of an exact log profile is the log-law gradient
 // in every cell above the wall cell, over a body-fitted ground and above the cut cell of an immersed
-// one, where the central difference is 21 % high in the second cell; the body-fitted wall cell and
+// one, where the central difference is 20 % high in the second cell; the body-fitted wall cell and
 // the top cell keep the closure's strain, the cut cell takes the wall law's gradient.
 #include "BoundaryConditions.H"
 #include "BuildingForcing.H"
@@ -316,7 +316,7 @@ TEST (ImmersedTerrain, HeightInTheCutLayerIsItsOpenCentroid)
 // turb.shear_stencil = log_law over a body-fitted ground: for an exact log profile at 30 degrees to x,
 // sqrt(S2) = u* / (kappa (d + z0)) in every cell between the wall cell and the top cell, across the box
 // seams; the closure's central difference is higher by (d + z0) ln((d_{k+1} + z0)/(d_{k-1} + z0)) / (2 dz),
-// 1.21 in the second cell; the wall cell and the top cell keep the closure's value.
+// 1.20 in the second cell; the wall cell and the top cell keep the closure's value.
 TEST (LogShear, LogProfileGivesTheLogLawGradient)
 {
     const PCase c = ground_case(2);

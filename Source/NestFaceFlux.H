@@ -2,7 +2,7 @@
 #define GUST_NEST_FACE_FLUX_H_
 
 // nest.feedback_flux = nest: the conservative variant of the defect source
-// (NestDefect.H; tracker N-114, item 1; the conservative local defect
+// (NestDefect.H; the conservative local defect
 // correction of Anthonissen, Bennink, Mattheij and ten Thije Boonkkamp,
 // Numerical Algorithms 32, 2003).
 //

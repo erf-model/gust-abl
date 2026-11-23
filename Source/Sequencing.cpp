@@ -130,7 +130,8 @@ std::vector<std::string> check_sequencing_options (const SequencingOptions& opt,
 {
     std::vector<std::string> err;
     // The ranges only matter with sequencing on: off, the defaults must not
-    // refuse a deck main accepts (steady.residual_drop_orders may be below 2).
+    // refuse a deck that runs without sequencing (steady.residual_drop_orders
+    // may be below 2).
     // isfinite first: an ordered compare with a NaN traps under amrex.fpe_trap_invalid.
     if (opt.enabled) {
         if (!std::isfinite(opt.drop_orders) || !(opt.drop_orders > 0)
@@ -444,7 +445,7 @@ void reset_frozen_theta (const MeshHierarchy& h, int l, const RunSetup& setup, c
     amrex::Print() << line << "\n";
 }
 
-//! The old "gust: it ..." line (io.iteration_log = full).
+//! The "gust: it ..." line of io.iteration_log = full.
 void print_full (const Driver& driver, const SimplecStage& stage, bool last, const std::string& label,
                  const NewtonStage* newton)
 {

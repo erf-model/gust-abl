@@ -455,7 +455,7 @@ CASES = [
      "nest.feedback = defect\nnest.feedback_flux = fine\n", ["E nest.feedback_flux values"], []),
     ("nests_feedback_flux_with_relax", "inflow", "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 1200 900\n"
      "nest.feedback = relax\nnest.feedback_flux = nest\n", ["E nest.feedback_flux nests"], []),
-    # nest.feedback = relax_consistent (tracker row N-114, item 12): the factor and the refusals of relax.
+    # nest.feedback = relax_consistent: the factor and the refusals of relax.
     ("nests_relax_consistent_ok", "inflow", "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 1200 900\n"
      "nest.feedback = relax_consistent\nnest.feedback_factor = 0.5\n", [], ["E *"]),
     ("nests_relax_consistent_factor_zero", "inflow", "nest.names = a\nnest.a.lo = 400 300\nnest.a.hi = 1200 900\n"

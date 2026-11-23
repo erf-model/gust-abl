@@ -33,7 +33,7 @@ run that read a uniform value, or another column's, differs from the body-fitted
 | `check_roughness_step.py` | Runs the three decks with the map and the body-fitted deck with a uniform z0 = 0.03 m, and compares every column. With `--limits` it is the test. |
 | `inputs_map_checkpoint`, `inputs_map_restart` | Two iterations that write a checkpoint with the map, and a restart from it on another box layout. They leave out the convection blend, which a restart does not support. |
 
-## Data
+## Data and acknowledgements
 None: the case is analytic.
 
 ## How to run
@@ -86,8 +86,8 @@ layer higher; the script's `dk wall` does not follow that and such an F is not i
 | Test | Label | What it checks |
 |---|---|---|
 | `rt_immersed_roughness_step` | regression | The comparison above with `--limits 4 18 13` (du, dk far, dk wall), the runs on 2, 4 and 1 ranks in turn (8 boxes); the map's effect on u must be at least 20 %. Needs numpy. |
-| `immersed_z0_map_clean`, `hybrid_z0_map_clean` | smoke | Empty the run folders of the tests below. |
-| `immersed_z0_map_run`, `hybrid_z0_map_run` | smoke | Two iterations on two ranks with the map; the log names the map as the wall law's z0; a checkpoint is written. |
-| `immersed_z0_map_restart`, `hybrid_z0_map_restart` | smoke | A restart on another box layout and three ranks with the same map is accepted. |
-| `abort_immersed_z0_map_restart_other_map`, `..._uniform`, `..._neighbors` and the three `abort_hybrid_z0_map_restart_*` | smoke | A restart with another map file, with a uniform `bc.surface_z0`, or with another `terrain.idw_neighbors` is refused. |
-| `abort_immersed_z0_map_missing`, `abort_hybrid_z0_map_missing` | smoke | A map file that cannot be read stops the run naming `bc.surface_z0_file`. |
+| `immersed_z0_map_clean`, `hybrid_z0_map_clean` | regression, smoke | Empty the run folders of the tests below. |
+| `immersed_z0_map_run`, `hybrid_z0_map_run` | regression, smoke | Two iterations on two ranks with the map; the log names the map as the wall law's z0; a checkpoint is written. |
+| `immersed_z0_map_restart`, `hybrid_z0_map_restart` | regression, smoke | A restart on another box layout and three ranks with the same map is accepted. |
+| `abort_immersed_z0_map_restart_other_map`, `..._uniform`, `..._neighbors` and the three `abort_hybrid_z0_map_restart_*` | regression, smoke | A restart with another map file, with a uniform `bc.surface_z0`, or with another `terrain.idw_neighbors` is refused. |
+| `abort_immersed_z0_map_missing`, `abort_hybrid_z0_map_missing` | regression, smoke | A map file that cannot be read stops the run naming `bc.surface_z0_file`. |

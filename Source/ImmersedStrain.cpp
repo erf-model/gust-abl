@@ -3,7 +3,6 @@
 #include "Stencil_K.H"
 
 #include <cmath>
-#include <limits>
 #include <string>
 
 namespace gust {

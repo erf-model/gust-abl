@@ -27,7 +27,7 @@ c. against the reference (RMS of u over the nest, and over the outer cells
    and the joint outer error outside the footprint at most OUTER_RATIO of
    the one-way one's (measured: README.md).
 
-With --relax (PR-71, nest.feedback = relax) the script runs ref/ and joint/
+With --relax (nest.feedback = relax) the script runs ref/ and joint/
 as above, then relax1/, relax4/ and relax16/: COMMAND with the nest hill and
 nest.feedback = relax at nest.feedback_factor = 1, 4 and 16, and
 relax_default/: relax without nest.feedback_factor. Checked:
@@ -36,7 +36,7 @@ d. the last logged RMS of u of the parent minus the restricted nest under the
    nest (where the relaxation's rate is > 0) falls as the factor grows, and at
    16 is at most RELAX_FALL of its value at 1 (measured: README.md);
 e. against the reference, the nest and outer errors (as in c.) of the run at
-   factor 1 (the default before tracker N-114, item 13): at most
+   factor 1 (the earlier default): at most
    RELAX_NEST_RATIO and RELAX_OUTER_RATIO of the one-way ones. At 4 and 16
    they are printed, not checked: they grow with the factor (README.md, with
    the defect run's beside them);
@@ -45,11 +45,11 @@ h. old against new default: relax_default/, the same run without
    and its nest error is at most RELAX_DEFAULT_NEST of the factor-1 run's,
    its outer error at most RELAX_DEFAULT_OUTER of it (README.md).
 
-With --feedback-flux (tracker N-114, item 1; nest.feedback_flux, old against new)
+With --feedback-flux (nest.feedback_flux, old against new)
 the script runs ref/ as above, then, with nest.feedback = defect,
 flux_outer/ and flux_nest/: the nest crest alone (CREST: its downstream face
 at x = 900 m, on the lee slope) with nest.feedback_flux = outer (the default,
-the PR-70 source alone) and nest (the ring rows take the nest's face fluxes),
+the defect source alone) and nest (the ring rows take the nest's face fluxes),
 and flux_hill/: the nest hill with nest.feedback_flux = nest. Checked:
 a. as above for each run; the nest runs log the first correction
    ("nest.feedback_flux = nest: ... first max |correction|") and end their
@@ -62,7 +62,7 @@ f. CREST with outer: the joint nest error is at least FLUX_OLD_RATIO of the
 g. the hill with nest: the bounds of c. (NEST_RATIO, OUTER_RATIO).
 Measured: README.md.
 
-With --inject (tracker row N-114, item 2, nest.feedback = inject) the script
+With --inject (nest.feedback = inject) the script
 runs ref/ and joint/ as above, then inject/: COMMAND with the nest hill and
 nest.feedback = inject at the default nest.feedback_factor (0.5). Checked:
 a. as above (its own start line and per-exchange line);
@@ -70,7 +70,7 @@ f. against the reference, the nest and outer errors (as in c.): at most
    INJECT_NEST_RATIO and INJECT_OUTER_RATIO of the one-way ones. The defect
    run's are printed beside them (README.md).
 
-With --relax-consistent (tracker row N-114, item 12, nest.feedback =
+With --relax-consistent (nest.feedback =
 relax_consistent) the script runs ref/ and joint/ as above, then relax1/
 (nest.feedback = relax at nest.feedback_factor = 1) and rc1/ and rc4/
 (relax_consistent at factors 1 and 4). Checked:
@@ -124,7 +124,7 @@ RELAX_FACTORS = (1, 4, 16)
 RELAX_FALL = 0.35            # parent - restricted nest, u RMS at 16 over that at 1, measured 0.19
 RELAX_NEST_RATIO = 0.5       # factor 1: nest error over the one-way one (u), measured 0.41
 RELAX_OUTER_RATIO = 0.6      # factor 1: outer error outside the footprint over the one-way one (u), measured 0.35
-RELAX_DEFAULT = 0.5          # the default nest.feedback_factor with relax (1 before tracker N-114, item 13)
+RELAX_DEFAULT = 0.5          # the default nest.feedback_factor with relax (1 was the earlier default)
 RELAX_DEFAULT_NEST = 0.8     # default run's nest error over the factor-1 run's (u), measured 0.69
 RELAX_DEFAULT_OUTER = 1.05   # default run's outer error over the factor-1 run's (u), measured 1.00
 INJECT_FACTOR = 0.5          # the default nest.feedback_factor with inject

@@ -1,11 +1,11 @@
-// The buildings' terms of theta (BuildingTheta.H), beyond the plan, sub-phase 5.5 (UT-5.5.x):
+// The buildings' terms of theta (BuildingTheta.H):
 //   the walls' heat exchange equals the closed form of the form 7 law with a given surface temperature, on a
 //   non-uniform theta: a roof's partly solid cell with its reference cell, a side with the flow along it, a side
-//   half blocked, a side the flow is normal to (UT-5.5.1); with the reference profile as the walls' temperature a
-//   state at that profile, stratified, exchanges nothing and its solid rows are zero (UT-5.5.2); the implicit
-//   diagonal is the derivative of the exchange to the cell's own theta, by a finite difference (UT-5.5.3); the
+//   half blocked, a side the flow is normal to; with the reference profile as the walls' temperature a
+//   state at that profile, stratified, exchanges nothing and its solid rows are zero; the implicit
+//   diagonal is the derivative of the exchange to the cell's own theta, by a finite difference; the
 //   diffusive flux of theta and its couplings are closed on blocked faces, so no heat is conducted out of a
-//   building (UT-5.5.4). Also: solid cells hold theta at the walls' temperature; the heat the walls take, summed;
+//   building. Also: solid cells hold theta at the walls' temperature; the heat the walls take, summed;
 //   the solid cells out of the norm of theta; the options, their defaults and the restart hash.
 #include "BoundaryConditions.H"
 #include "BuildingTheta.H"
@@ -159,7 +159,7 @@ gust::ReferenceProfile uniform_profile ()
 
 } // namespace
 
-// UT-5.5.1: the exchange of a roof, of a side along the flow, of a half blocked side and of a side across the flow.
+// The exchange of a roof, of a side along the flow, of a half blocked side and of a side across the flow.
 TEST (BuildingTheta, WallExchangeIsTheForm7ClosedForm)
 {
     const double U = 3, tb = 305;
@@ -195,7 +195,7 @@ TEST (BuildingTheta, WallExchangeIsTheForm7ClosedForm)
     }
 }
 
-// UT-5.5.2: with the reference profile as the walls' temperature a state at that profile exchanges nothing, also
+// With the reference profile as the walls' temperature a state at that profile exchanges nothing, also
 // where the profile changes with height (a roof's reference cell is one layer up), and the solid rows are zero.
 TEST (BuildingTheta, AmbientWallsExchangeNothingAtTheReferenceProfile)
 {
@@ -221,7 +221,7 @@ TEST (BuildingTheta, AmbientWallsExchangeNothingAtTheReferenceProfile)
     EXPECT_NEAR(value_at(R, 3, 3, 1), 1.0, ttol);
 }
 
-// UT-5.5.3: the implicit rows. a_P gains the derivative of the exchange to the cell's own theta (a finite
+// The implicit rows. a_P gains the derivative of the exchange to the cell's own theta (a finite
 // difference of the row), solid cells are identity rows, and the reference cell's part stays in the residual.
 TEST (BuildingTheta, ImplicitDiagonalIsTheDerivativeOfTheExchange)
 {
@@ -263,7 +263,7 @@ TEST (BuildingTheta, ImplicitDiagonalIsTheDerivativeOfTheExchange)
     EXPECT_EQ(value_at(A, 0, 0, 0, gust::coef_P), 2.0);
 }
 
-// UT-5.5.4: no heat is conducted out of a building. The diffusive flux through a blocked face is zero, half of it
+// No heat is conducted out of a building. The diffusive flux through a blocked face is zero, half of it
 // passes a half blocked face, and the implicit couplings follow.
 TEST (BuildingTheta, DiffusiveFluxOfThetaIsClosedOnBlockedFaces)
 {

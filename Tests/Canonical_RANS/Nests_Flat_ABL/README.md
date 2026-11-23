@@ -2,7 +2,7 @@
 
 ## Purpose
 Nests on a flat, horizontally uniform atmospheric boundary layer, neutral, buoyant (unstable) and stable, one way
-(`nest.feedback = none`) and joint (`nest.feedback = defect`). Beyond the plan.
+(`nest.feedback = none`) and joint (`nest.feedback = defect`).
 
 The outer domain is doubly periodic over flat ground and starts from its own steady column
 (`init.first_guess = column`). Its steady 3-D state is then the column, the same at every (x, y). A nest at 2 2 1

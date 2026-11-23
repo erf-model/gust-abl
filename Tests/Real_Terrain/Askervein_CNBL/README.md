@@ -16,6 +16,11 @@ The table check is `tools/make_inflow_table.py --check`; the run verdicts use `S
 the precursor deck with `steady.max_iterations` set to the step in the table's header and an unreachable
 `steady.residual_drop_orders`.
 
+## Data and acknowledgements
+The terrain is ERF's Askervein terrain of `Exec/CanonicalTests/Real_Terrain/Askervein` (`extern_erf/askervein.txt`,
+recorded in `extern_erf/EXTRACTED.md`; BSD 3-clause with the LBNL clause, `extern_erf/LICENSE.md`). Thanks to the ERF
+developers. The file is redistributed in this repository; nothing has to be downloaded.
+
 ## CTest
 `rt_precursor_askervein_cnbl`, `rt_precursor_askervein_cnbl_fixed`, `rt_precursor_askervein_cnbl_table`,
 `rt_steady_askervein_cnbl` (label

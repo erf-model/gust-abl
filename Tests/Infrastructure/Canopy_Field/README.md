@@ -44,4 +44,5 @@ ctest --test-dir <build> -R "^canopy_|^abort_canopy_"
 ## CTest
 `canopy_clean`, `canopy_run`, `canopy_column_integrals`, `canopy_check_detects_change` (expected to fail),
 `canopy_restart`, `canopy_restart_matches`, `abort_canopy_restart_changed`, `abort_canopy_restart_none`,
-`abort_canopy_inputs`. All but the last share the run directory `<build>/Tests/run/canopy`.
+`abort_canopy_inputs`. All but the last share the run directory `<build>/Tests/run/canopy`. `abort_canopy_heat_inputs`
+and `abort_canopy_heat_celsius` run `inputs_canopy` with leaf-heat inputs that must stop the run.

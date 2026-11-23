@@ -2,13 +2,13 @@
 
 #include "BoundaryConditions.H"
 #include "FileMagic.H"
-#include "PseudoTime.H"
 
 #include <AMReX_ParallelDescriptor.H>
 #include <AMReX_Print.H>
 #include <AMReX_Utility.H>
 
 #include <cmath>
+#include <cstdio>
 #include <fstream>
 #include <sstream>
 
@@ -175,7 +175,7 @@ void NewtonStage::iterate (State& q, const amrex::MultiFab& /*dtau*/)
         std::snprintf(b, sizeof(b), "%g", static_cast<double>(m_sopt.criterion.residual_drop_orders));
         m_reason = "Newton converged on its own equations (|R| " + sci(double(st.r_last)) + ", " + b
                    + " orders below |R_0| " + sci(double(st.r0))
-                   + "), which differ from the run's (limiter or k floor): the final SIMPLEC pass";
+                   + "), which differ from the run's (limiter, k floor or turb.nut_relax): the final SIMPLEC pass";
     }
 }
 

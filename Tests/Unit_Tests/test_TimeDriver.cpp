@@ -1,7 +1,7 @@
-// The time driver of dual time stepping (TimeDriver.H), plan rev. 6
-// sub-phase 6.2 (beyond the plan): Stokes' first problem against the erfc
-// profile with first order in dt (UT-6.2.1), a steady problem reached and
-// then held (UT-6.2.2), the step from a target CFL, the last step clipped to
+// The time driver of dual time stepping (TimeDriver.H):
+// Stokes' first problem against the erfc
+// profile with first order in dt, a steady problem reached and
+// then held, the step from a target CFL, the last step clipped to
 // the stop time, steps that reach unsteady.max_inner, and the option checks.
 #include "Driver.H"
 #include "LaminarTestHelpers.H"
@@ -146,7 +146,7 @@ gust::UnsteadyOptions fixed_dt (double stop, double dt, double drop, int max_inn
 
 } // namespace
 
-// UT-6.2.1: the impulsively started lid over fluid at rest is Stokes' first
+// The impulsively started lid over fluid at rest is Stokes' first
 // problem while the layer it sets moving is thin next to the depth: u =
 // U erfc((H - z) / (2 sqrt(nu t))). Backward Euler is first order in dt: the
 // differences between runs at dt, dt/2 and dt/4 halve.
@@ -193,7 +193,7 @@ TEST(TimeDriver, StokesFirstProblemFirstOrder)
     EXPECT_GT(d2, 1e-3);   // the time error is resolved (not round-off)
 }
 
-// UT-6.2.2: a long run reaches the steady Couette profile u = U z / H within
+// A long run reaches the steady Couette profile u = U z / H within
 // the inner tolerance, and a run started on it holds it, one inner iteration
 // a step (the residual at q^n is already below the floor).
 TEST(TimeDriver, SteadyProblemReachedAndHeld)
@@ -295,18 +295,18 @@ TEST(TimeDriver, StepFromTargetCflFillsTheGhostsFirst)
 // iterations than with d = 4.
 TEST(TimeDriver, InnerStopIsRelativeToTheStepStart)
 {
-    Channel two(fixed_dt(0.3, 0.1, 2, 200), 1e-30);
-    two.run();
-    Channel four(fixed_dt(0.3, 0.1, 4, 200), 1e-30);
-    four.run();
-    ASSERT_EQ(two.td->records().size(), 3U);
-    for (const auto& s : two.td->records()) {
+    Channel two_sub(fixed_dt(0.3, 0.1, 2, 200), 1e-30);
+    two_sub.run();
+    Channel four_sub(fixed_dt(0.3, 0.1, 4, 200), 1e-30);
+    four_sub.run();
+    ASSERT_EQ(two_sub.td->records().size(), 3U);
+    for (const auto& s : two_sub.td->records()) {
         EXPECT_TRUE(s.converged) << "step " << s.step;
         EXPECT_LE(s.inner_residual, 1e-2) << "step " << s.step;
         EXPECT_GT(s.inner, 1) << "step " << s.step;
     }
-    EXPECT_EQ(four.td->unconverged_steps(), 0);
-    EXPECT_LT(two.td->inner_iterations(), four.td->inner_iterations());
+    EXPECT_EQ(four_sub.td->unconverged_steps(), 0);
+    EXPECT_LT(two_sub.td->inner_iterations(), four_sub.td->inner_iterations());
 }
 
 // A step that reaches unsteady.max_inner is reported and the run goes on.

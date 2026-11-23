@@ -8,13 +8,16 @@ between two states in the last column. With the terrain levelled beyond x = 2380
 just inside the domain), so that only the face has no normal slope, it converged. The ghost cells outside the outflow
 face now carry the transport fluxes of the cells inside, mirrored through the face (`bc.outflow_transport = mirror`,
 the default), and both terrains converge. Found on Big Southern Butte, where the eastern outflow face crosses a ridge and
-a valley (`Tests/Paper/JWEIA2026`). Beyond the plan.
+a valley (`Tests/Paper/JWEIA2026`).
 
 ## Files
 | File | Role |
 |---|---|
 | `make_terrain.py` | Writes `outflow_slope.xyz` (the cut slope) and `outflow_slope_flat.xyz` (levelled beyond x = 2380 m). |
 | `inputs_outflow_slope` | Log-law inflow (u* 0.21 m/s, z0 0.01 m), outflow, slip top, the grid of the Ishihara-Zhou case (4 m cells, 0.5 m first layer stretched by 1.081), the realizability limit without the near-ground blending. `terrain.file` on the command line. |
+
+## Data and acknowledgements
+No external data.
 
 ## How to run
 ```bash
@@ -60,4 +63,4 @@ no longer needed for convergence.
 - `rt_outflow_steep_terrain_from_velocity`: the cut slope with `bc.outflow_transport = from_velocity` is not steady after 400 iterations and
   its relative residual is still above 0.1 (the old behaviour, kept reachable).
 
-All label `regression`, 2 ranks, about 3 min together.
+All label `regression`; the runs use 2 ranks (the fixture is one Python process), about 3 min together.

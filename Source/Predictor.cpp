@@ -344,10 +344,11 @@ MomentumPredictorResult momentum_predictor (State& q, const ResidualFields& R,
         }
         if (c == 2 && in.buoyancy.gravity > 0 && in.buoyancy_in_momentum) {
             // Point-implicit buoyancy (the header): the w rows gain the
-            // stiffness (g/theta_0) max(d theta/dz, 0) dtau on the diagonal
+            // stiffness (g/theta_0) max(d theta/dz, 0) tau_theta on the diagonal
             // (into d as well) and the buoyancy of the theta change the theta
-            // equation predicts, -(g/theta_0) dtau R_theta, on the right-hand
-            // side; nothing on the Dirichlet rows.
+            // equation predicts, -(g/theta_0) tau_theta R_theta, on the right-hand
+            // side, with tau_theta = 1/(1/dtau + a_P,theta); nothing on the
+            // Dirichlet rows.
             check_operator_field(op, "R_theta", R.theta, Loc::cell, mesh, 0);
             check_operator_field(op, "theta", q.theta, Loc::cell, mesh, 1);
             const amrex::Real gt = in.buoyancy.gravity / in.buoyancy.theta0;

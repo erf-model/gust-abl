@@ -107,7 +107,7 @@ amrex::Real coriolis_parameter (const CoriolisOptions& opt);
 
 //! theta_ref(z) at every cell centre, ghost cells included (z the mean of the
 //! cell's eight node heights). theta_ref: cell-centred on z_nd's cells with
-//! at most one ghost cell.
+//! no more ghost cells than z_nd has.
 void fill_theta_ref (const ReferenceProfile& prof, const amrex::MultiFab& z_nd, amrex::MultiFab& theta_ref);
 
 //! Rw -= B on the valid z-faces, B = g (theta - theta_ref) / theta_0 averaged

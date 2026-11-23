@@ -15,6 +15,11 @@ to trigger the STF warnings, and the 2-D Witch of Agnesi hill of ERF's Neutral_H
 Check script: `Supporting_Files/check_mesh.py` (shared with `Grid_Hierarchy`). It runs the application, then compares
 field statistics of `z` and `detJ` and the quality report with a JSON gold (`--write` rewrites it).
 
+## Data and acknowledgements
+The terrain is ERF's Askervein terrain of `Exec/CanonicalTests/Real_Terrain/Askervein` (`extern_erf/askervein.txt`,
+recorded in `extern_erf/EXTRACTED.md`; BSD 3-clause with the LBNL clause, `extern_erf/LICENSE.md`). Thanks to the ERF
+developers. The file is redistributed in this repository; nothing has to be downloaded.
+
 ## CTest
 `rt_askervein_mesh`, `rt_steep_ridge_quality` (double precision only), `rt_hill2d_run`, `rt_hill2d_matches`.
 
