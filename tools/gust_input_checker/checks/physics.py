@@ -440,10 +440,14 @@ class AblChecker(Checker):
         if drive in ("geostrophic_column", "geostrophic_inflow"):
             if not (c.flag("forcing.coriolis") and c.flag("forcing.geostrophic")):
                 need("forcing.geostrophic", "needs forcing.coriolis = 1 and forcing.geostrophic = 1")
-            target = drive == "geostrophic_column" and (c.r("init.column_target_u") or c.r("init.column_target_v"))
+            # bc.inflow_profile = column: a target wind stands for the forcing, and a restart takes it from the record.
+            own_column = c.inflow_profile == "column"
+            can_target = drive == "geostrophic_column" or own_column
+            target = ((can_target and (c.r("init.column_target_u") or c.r("init.column_target_v")))
+                      or (own_column and bool(c.restart)))
             if not ug and not vg and not target:
                 need("forcing.ug", "needs a wind: forcing.ug, forcing.vg"
-                     + (" or init.column_target_u, init.column_target_v" if drive == "geostrophic_column" else ""),
+                     + (" or init.column_target_u, init.column_target_v" if can_target else ""),
                      "Give the geostrophic wind.")
         elif c.flag("forcing.coriolis"):
             need("forcing.coriolis", "refuses forcing.coriolis = 1", "Use abl.drive = geostrophic_column or "

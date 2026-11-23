@@ -25,6 +25,7 @@
 
 #include "BoundaryConditions.H"
 #include "ColumnGuess.H"
+#include "Forcing.H"
 #include "Initializer.H"
 #include "InflowProfile.H"
 #include "SurfaceLayer.H"
@@ -43,6 +44,9 @@ struct InflowColumnRecord
     amrex::Real z0{0};        //!< the faces' roughness: the column's (m)
     bool target{false};       //!< the forcing below was adjusted to a target wind
     amrex::Real ug{0}, vg{0}, pressure_gradient_x{0}, pressure_gradient_y{0};   //!< the forcing the column ran with
+    bool z0_map{false};       //!< z0 is init.column_z0 under a roughness map (bc.surface_z0_file), not bc.surface_z0
+    bool coriolis{false};     //!< the column ran with Coriolis (forcing.coriolis), at:
+    amrex::Real latitude{0}, rotation_period{0};   //!< forcing.latitude (deg), forcing.rotation_period (s)
 };
 
 //! The roughness the column runs on: init.column_z0 under a roughness map (bc.surface_z0_file), else bc.surface_z0.
@@ -52,11 +56,28 @@ amrex::Real column_roughness (const InitOptions& iopt, const SurfaceLayerOptions
 //! message naming the key. restart: io.restart is given; nests: the run has nest.names.
 std::vector<std::string> check_inflow_column (const BoundaryInputs& bin, const InitOptions& iopt, bool restart, bool nests);
 
-//! The record of a converged column (the table, the faces' z0 and the forcing it ran with).
-InflowColumnRecord make_inflow_column_record (const ColumnGuessResult& cg, amrex::Real z0);
+//! The record of a converged column (the table, the faces' z0, the forcing and the Coriolis settings it ran with).
+//! z0_map: z0 is init.column_z0 under a roughness map.
+InflowColumnRecord make_inflow_column_record (const ColumnGuessResult& cg, amrex::Real z0, bool z0_map,
+                                              const CoriolisOptions& cor);
+
+//! Why a restart deck cannot continue the record's column (empty: it can), each message naming io.restart and the
+//! key: the record's Coriolis settings and, without a map, its z0 must be the deck's; a geostrophic wind needs
+//! geostrophic forcing; without a target wind the deck's forcing must be the record's. With a target the record's
+//! forcing replaces the deck's (apply_inflow_column_forcing).
+std::vector<std::string> check_inflow_column_restart (const InflowColumnRecord& rec, const ForcingOptions& fopt,
+                                                      const SurfaceLayerOptions& surf, const std::string& restart);
+//! With a target wind, the record's forcing replaces the deck's (ug, vg with geostrophic forcing; the pressure
+//! gradient in x and y).
+void apply_inflow_column_forcing (const InflowColumnRecord& rec, ForcingOptions& fopt);
 
 //! The faces' profile options from a record: the column kind with its table and z0 (the other options kept).
 void use_inflow_column (const InflowColumnRecord& rec, InflowProfileOptions& opt);
+
+//! Warnings, one per inflow face (xlo, ylo, xhi, yhi) through which the column's wind leaves in some rows
+//! (u . n <= 0, n the face's inward normal; the z = 0 row, at rest, is skipped). Nothing is refused: a wind that
+//! turns with height may leave through an inflow face aloft and still converge.
+std::vector<std::string> inflow_column_outflow_rows (const InflowTable& table, const BoundaryInputs& bin);
 
 //! The record as text, and back (where names the source in the messages; aborts on a bad or truncated record).
 std::string format_inflow_column_record (const InflowColumnRecord& rec);

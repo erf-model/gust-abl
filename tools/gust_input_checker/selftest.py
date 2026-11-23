@@ -265,6 +265,12 @@ CASES = [
      "bc.rayleigh_fields = w\n" + COLUMN, [], ["E bc.rayleigh_fields"]),
     ("inflow_column_geostrophic_column", "inflow", "bc.inflow_profile = column\nabl.drive = geostrophic_column\n"
      + COLUMN, [], ["E bc.inflow_profile"]),
+    # geostrophic_inflow with the run's own column: the target wind stands for forcing.ug, forcing.vg.
+    ("inflow_column_inflow_drive_target", "inflow", "bc.inflow_profile = column\nabl.drive = geostrophic_inflow\n"
+     + COLUMN.replace("forcing.ug = 10", "forcing.ug = 0") + "init.column_target_u = 7\ninit.column_target_height = 100\n",
+     [], ["E forcing.ug"]),
+    ("inflow_column_inflow_drive_no_wind", "inflow", "bc.inflow_profile = column\nabl.drive = geostrophic_inflow\n"
+     + COLUMN.replace("forcing.ug = 10", "forcing.ug = 0"), ["E forcing.ug"], []),
     # --- sounding ---------------------------------------------------------------------------------------
     ("sounding_lengths", "solve", "bc.theta_profile_z = 0 400 800\nbc.theta_profile = 300 302\n",
      ["E bc.theta_profile sounding"], []),

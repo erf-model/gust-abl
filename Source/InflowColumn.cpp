@@ -2,6 +2,7 @@
 
 #include <AMReX.H>
 #include <AMReX_ParallelDescriptor.H>
+#include <AMReX_Utility.H>
 
 #include <algorithm>
 #include <cmath>
@@ -68,7 +69,8 @@ std::vector<std::string> check_inflow_column (const BoundaryInputs& bin, const I
     return err;
 }
 
-InflowColumnRecord make_inflow_column_record (const ColumnGuessResult& cg, amrex::Real z0)
+InflowColumnRecord make_inflow_column_record (const ColumnGuessResult& cg, amrex::Real z0, bool z0_map,
+                                              const CoriolisOptions& cor)
 {
     InflowColumnRecord rec;
     rec.table.z = cg.z;
@@ -83,7 +85,62 @@ InflowColumnRecord make_inflow_column_record (const ColumnGuessResult& cg, amrex
     rec.vg = cg.vg;
     rec.pressure_gradient_x = cg.pressure_gradient_x;
     rec.pressure_gradient_y = cg.pressure_gradient_y;
+    rec.z0_map = z0_map;
+    rec.coriolis = cor.enabled;
+    rec.latitude = cor.enabled ? cor.latitude : amrex::Real(0);
+    rec.rotation_period = cor.enabled ? cor.rotation_period : amrex::Real(0);
     return rec;
+}
+
+std::vector<std::string> check_inflow_column_restart (const InflowColumnRecord& rec, const ForcingOptions& fopt,
+                                                      const SurfaceLayerOptions& surf, const std::string& restart)
+{
+    std::vector<std::string> err;
+    const std::string pre = "io.restart = " + restart + ": ";
+    const auto& cor = fopt.coriolis;
+    auto g9 = [] (amrex::Real x) { char b[40]; std::snprintf(b, sizeof(b), "%.9g", static_cast<double>(x)); return std::string(b); };
+    // The column is the balance of its forcing with Coriolis at its latitude: the deck keeps both.
+    if (cor.enabled != rec.coriolis) {
+        err.push_back(pre + "the checkpoint's column ran " + (rec.coriolis ? "with" : "without")
+                      + " Coriolis; give the same forcing.coriolis in the restart deck (the faces keep that column)");
+    } else if (rec.coriolis && (cor.latitude != rec.latitude || cor.rotation_period != rec.rotation_period)) {
+        err.push_back(pre + "the checkpoint's column ran at forcing.latitude = " + g9(rec.latitude)
+                      + ", forcing.rotation_period = " + g9(rec.rotation_period)
+                      + "; give the same in the restart deck (the faces keep that column)");
+    }
+    // The faces' z0 is the column's; without a map it is bc.surface_z0, which the wall takes too.
+    if (!rec.z0_map && (!surf.z0_file.empty() || surf.z0 != rec.z0)) {
+        err.push_back(pre + "the checkpoint's column ran on bc.surface_z0 = " + g9(rec.z0)
+                      + "; give the same bc.surface_z0 (and no bc.surface_z0_file) in the restart deck");
+    } else if (rec.z0_map && surf.z0_file.empty()) {
+        err.push_back(pre + "the checkpoint's column ran under a roughness map (bc.surface_z0_file); the restart deck needs "
+                      "bc.surface_z0_file");
+    }
+    const bool geo = cor.enabled && cor.geostrophic;
+    if ((rec.ug != 0 || rec.vg != 0) && !geo) {
+        err.push_back(pre + "the checkpoint's column ran with a geostrophic wind; the restart deck needs Coriolis with "
+                      "geostrophic forcing (forcing.coriolis, forcing.geostrophic)");
+    }
+    // Without a target the deck's forcing is the column's: it must be the one the column ran with.
+    if (!rec.target && ((geo && (cor.ug != rec.ug || cor.vg != rec.vg))
+                        || fopt.pressure_gradient[0] != rec.pressure_gradient_x
+                        || fopt.pressure_gradient[1] != rec.pressure_gradient_y)) {
+        err.push_back(pre + "the checkpoint's column ran with forcing.ug = " + g9(rec.ug) + ", forcing.vg = " + g9(rec.vg)
+                      + ", forcing.pressure_gradient = " + g9(rec.pressure_gradient_x) + " " + g9(rec.pressure_gradient_y)
+                      + "; give the same forcing in the restart deck (the faces keep that column)");
+    }
+    return err;
+}
+
+void apply_inflow_column_forcing (const InflowColumnRecord& rec, ForcingOptions& fopt)
+{
+    if (!rec.target) { return; }
+    if (fopt.coriolis.enabled && fopt.coriolis.geostrophic) {
+        fopt.coriolis.ug = rec.ug;
+        fopt.coriolis.vg = rec.vg;
+    }
+    fopt.pressure_gradient[0] = rec.pressure_gradient_x;
+    fopt.pressure_gradient[1] = rec.pressure_gradient_y;
 }
 
 void use_inflow_column (const InflowColumnRecord& rec, InflowProfileOptions& opt)
@@ -93,12 +150,45 @@ void use_inflow_column (const InflowColumnRecord& rec, InflowProfileOptions& opt
     opt.z0 = rec.z0;
 }
 
+std::vector<std::string> inflow_column_outflow_rows (const InflowTable& table, const BoundaryInputs& bin)
+{
+    std::vector<std::string> out;
+    for (int dir = 0; dir < 2; ++dir) {
+        for (const auto side : {amrex::Orientation::low, amrex::Orientation::high}) {
+            const amrex::Orientation o(dir, side);
+            if (bin.face[o] != FaceType::inflow) { continue; }
+            const amrex::Real sign = side == amrex::Orientation::low ? amrex::Real(1) : amrex::Real(-1);
+            const auto& un = dir == 0 ? table.u : table.v;
+            int n = 0, rows = 0;
+            amrex::Real zmin = 0, zmax = 0;
+            for (amrex::Long i = 0; i < un.size(); ++i) {
+                if (table.z[i] <= 0) { continue; }
+                ++rows;
+                if (sign * un[i] <= 0) {
+                    if (n == 0) { zmin = table.z[i]; }
+                    zmax = table.z[i];
+                    ++n;
+                }
+            }
+            if (n > 0) {
+                char m[300];
+                std::snprintf(m, sizeof(m), "bc.%s%s = inflow: the column's wind leaves through this face in %d of %d rows "
+                              "(z %.6g to %.6g m)", dir == 0 ? "x" : "y", side == amrex::Orientation::low ? "lo" : "hi",
+                              n, rows, static_cast<double>(zmin), static_cast<double>(zmax));
+                out.emplace_back(m);
+            }
+        }
+    }
+    return out;
+}
+
 std::string format_inflow_column_record (const InflowColumnRecord& rec)
 {
     std::string s = std::string(kMagic) + " " + std::to_string(kVersion) + "\n";
-    s += "z0 " + g17(rec.z0) + "\n";
+    s += "z0 " + g17(rec.z0) + " " + std::string(rec.z0_map ? "1" : "0") + "\n";
     s += "forcing " + std::string(rec.target ? "1" : "0") + " " + g17(rec.ug) + " " + g17(rec.vg) + " "
          + g17(rec.pressure_gradient_x) + " " + g17(rec.pressure_gradient_y) + "\n";
+    s += "coriolis " + std::string(rec.coriolis ? "1" : "0") + " " + g17(rec.latitude) + " " + g17(rec.rotation_period) + "\n";
     s += "rows " + std::to_string(rec.table.z.size()) + "\n";
     for (amrex::Long i = 0; i < rec.table.z.size(); ++i) {
         s += g17(rec.table.z[i]) + " " + g17(rec.table.u[i]) + " " + g17(rec.table.v[i]) + " " + g17(rec.table.theta[i])
@@ -143,6 +233,9 @@ InflowColumnRecord parse_inflow_column_record (const std::string& text, const st
     };
     expect("z0");
     rec.z0 = number("z0");
+    const long map = count("the map flag");
+    if (map != 0 && map != 1) { amrex::Abort(pre + "the map flag must be 0 or 1"); }
+    rec.z0_map = map == 1;
     expect("forcing");
     const long flag = count("the forcing flag");
     if (flag != 0 && flag != 1) { amrex::Abort(pre + "the forcing flag must be 0 or 1"); }
@@ -151,6 +244,12 @@ InflowColumnRecord parse_inflow_column_record (const std::string& text, const st
     rec.vg = number("vg");
     rec.pressure_gradient_x = number("the pressure gradient (x)");
     rec.pressure_gradient_y = number("the pressure gradient (y)");
+    expect("coriolis");
+    const long cflag = count("the Coriolis flag");
+    if (cflag != 0 && cflag != 1) { amrex::Abort(pre + "the Coriolis flag must be 0 or 1"); }
+    rec.coriolis = cflag == 1;
+    rec.latitude = number("the latitude");
+    rec.rotation_period = number("the rotation period");
     expect("rows");
     const long n = count("the row count");
     if (n < 2) { amrex::Abort(pre + "the row count must be at least 2"); }
@@ -191,7 +290,8 @@ void write_inflow_column_checkpoint (const std::string& dir, const InflowColumnR
         std::ofstream os(name);
         if (!os.good()) { amrex::FileOpenFailed(name); }
         os << format_inflow_column_record(rec);
-        if (!os.good()) { amrex::Abort("gust: " + name + ": the record could not be written"); }
+        os.close();   // the flush happens here: a full disk shows only after it
+        if (os.fail()) { amrex::Abort("gust: " + name + ": the record could not be written"); }
     }
     amrex::ParallelDescriptor::Barrier();
 }
@@ -202,11 +302,15 @@ int read_record_text (const std::string& dir, std::string& text)
 {
     int found = 0;
     if (amrex::ParallelDescriptor::IOProcessor()) {
-        std::ifstream is(inflow_column_checkpoint_file(dir), std::ios::binary);
-        if (is) {
+        const std::string name = inflow_column_checkpoint_file(dir);
+        if (amrex::FileExists(name)) {
+            // A file that exists but cannot be read is an error, not a checkpoint without the record.
             found = 1;
+            std::ifstream is(name, std::ios::binary);
+            if (!is) { amrex::Abort("gust: io.restart = " + dir + ": " + name + " exists but could not be opened"); }
             std::ostringstream ss;
             ss << is.rdbuf();
+            if (is.bad()) { amrex::Abort("gust: io.restart = " + dir + ": " + name + " could not be read"); }
             text = ss.str();
         }
     }

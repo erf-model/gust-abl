@@ -18,9 +18,12 @@
 
 #include <gtest/gtest.h>
 
+#include <sys/stat.h>
+
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <fstream>
 #include <functional>
 #include <stdexcept>
 #include <string>
@@ -77,6 +80,10 @@ InflowColumnRecord sample_record ()
     r.vg = amrex::Real(6.4327676801) / amrex::Real(3);
     r.pressure_gradient_x = amrex::Real(1) / amrex::Real(7000);
     r.pressure_gradient_y = amrex::Real(-2.5e-5);
+    r.z0_map = true;
+    r.coriolis = true;
+    r.latitude = amrex::Real(39.7) / amrex::Real(3);
+    r.rotation_period = amrex::Real(86164.1);
     return r;
 }
 
@@ -88,6 +95,10 @@ void expect_same_record (const InflowColumnRecord& a, const InflowColumnRecord& 
     EXPECT_EQ(a.vg, b.vg);
     EXPECT_EQ(a.pressure_gradient_x, b.pressure_gradient_x);
     EXPECT_EQ(a.pressure_gradient_y, b.pressure_gradient_y);
+    EXPECT_EQ(a.z0_map, b.z0_map);
+    EXPECT_EQ(a.coriolis, b.coriolis);
+    EXPECT_EQ(a.latitude, b.latitude);
+    EXPECT_EQ(a.rotation_period, b.rotation_period);
     EXPECT_EQ(b.table.ncol, 5);
     ASSERT_EQ(a.table.z.size(), b.table.z.size());
     for (amrex::Long i = 0; i < a.table.z.size(); ++i) {
@@ -296,6 +307,18 @@ TEST(InflowColumn, RecordRoundTrip)
     std::string flag = text;
     flag.replace(flag.find("forcing 1"), 9, "forcing 2");
     aborts(flag, "the forcing flag must be 0 or 1");
+    std::string map = text;
+    map.replace(map.find(" 1\nforcing"), 2, " 3");
+    aborts(map, "the map flag must be 0 or 1");
+    std::string cor = text;
+    cor.replace(cor.find("coriolis 1"), 10, "coriolis 2");
+    aborts(cor, "the Coriolis flag must be 0 or 1");
+    InflowColumnRecord flat = r;
+    flat.z0_map = false;
+    flat.coriolis = false;
+    const InflowColumnRecord fr = gust::parse_inflow_column_record(gust::format_inflow_column_record(flat), "test");
+    EXPECT_FALSE(fr.z0_map);
+    EXPECT_FALSE(fr.coriolis);
     std::string rows = text;
     rows.replace(rows.find("rows 6"), 6, "rows 1");
     aborts(rows, "the row count must be at least 2");
@@ -358,6 +381,24 @@ TEST(InflowColumn, CheckpointRecord)
     // A restart with no stage: the record if there is one, nothing otherwise.
     expect_same_record(r, gust::read_inflow_column_checkpoint_if_present(dir));
     EXPECT_TRUE(gust::read_inflow_column_checkpoint_if_present(bare).table.z.empty());
+    // A record that exists but cannot be opened is a read error, not a checkpoint without the record.
+    const std::string locked = "ut_inflow_column_locked";
+    if (amrex::ParallelDescriptor::IOProcessor()) {
+        amrex::UtilCreateDirectory(locked, 0755);
+        std::ofstream(locked + "/InflowColumn") << "x";
+        chmod((locked + "/InflowColumn").c_str(), 0);
+    }
+    amrex::ParallelDescriptor::Barrier();
+    if (amrex::ParallelDescriptor::IOProcessor() && !std::ifstream(locked + "/InflowColumn")) {   // not as root
+        EXPECT_NE(abort_message([&] { (void) gust::read_inflow_column_checkpoint_if_present(locked); })
+                      .find("InflowColumn exists but could not be opened"),
+                  std::string::npos);
+    }
+    amrex::ParallelDescriptor::Barrier();
+    if (amrex::ParallelDescriptor::IOProcessor()) {
+        chmod((locked + "/InflowColumn").c_str(), 0644);
+        amrex::FileSystem::RemoveAll(locked);
+    }
     // An empty record is not written.
     EXPECT_NE(abort_message([&] { gust::write_inflow_column_checkpoint(bare, InflowColumnRecord{}); })
                   .find("the inflow column record is not set"),
@@ -455,4 +496,97 @@ TEST(InflowColumn, ColumnStartsFromTheDefaults)
         differs = differs || c.u[i] != a.u[i] || c.v[i] != a.v[i] || c.tke[i] != a.tke[i];
     }
     EXPECT_TRUE(differs);
+}
+
+// A restart deck must keep what the stored column depends on: Coriolis and its latitude, the surface roughness, and
+// (without a target wind) the forcing; with a target the record's forcing replaces the deck's.
+TEST(InflowColumn, RestartChecks)
+{
+    InflowColumnRecord r = sample_record();
+    r.z0_map = false;
+    gust::ForcingOptions f;
+    f.coriolis.enabled = true;
+    f.coriolis.geostrophic = true;
+    f.coriolis.latitude = r.latitude;
+    f.coriolis.rotation_period = r.rotation_period;
+    f.coriolis.ug = 10;
+    gust::SurfaceLayerOptions surf;
+    surf.z0 = r.z0;
+    auto msg = [&] (const InflowColumnRecord& rec, const gust::ForcingOptions& fopt, const gust::SurfaceLayerOptions& sopt) {
+        std::string m;
+        for (const auto& e : gust::check_inflow_column_restart(rec, fopt, sopt, "chk9")) { m += e + "\n"; }
+        return m;
+    };
+    EXPECT_EQ(msg(r, f, surf), "");   // a target wind: the deck's ug, vg are replaced
+    auto has = [&] (const std::string& m, const std::string& what) {
+        EXPECT_NE(m.find("io.restart = chk9: " + what), std::string::npos) << m;
+    };
+    { auto g = f; g.coriolis.latitude += amrex::Real(1); has(msg(r, g, surf), "the checkpoint's column ran at forcing.latitude"); }
+    { auto g = f; g.coriolis.rotation_period *= 2; has(msg(r, g, surf), "the checkpoint's column ran at forcing.latitude"); }
+    { auto g = f; g.coriolis.enabled = false; has(msg(r, g, surf), "the checkpoint's column ran with Coriolis"); }
+    { auto g = f; g.coriolis.geostrophic = false; has(msg(r, g, surf), "the checkpoint's column ran with a geostrophic wind"); }
+    { auto o = surf; o.z0 = amrex::Real(0.5); has(msg(r, f, o), "the checkpoint's column ran on bc.surface_z0"); }
+    { auto o = surf; o.z0_file = "z0.txt"; has(msg(r, f, o), "the checkpoint's column ran on bc.surface_z0"); }
+    {   // under a map: the deck's map, whatever bc.surface_z0 says (init.column_z0 is refused on a restart)
+        auto m = r; m.z0_map = true;
+        auto o = surf; o.z0 = amrex::Real(0.5); o.z0_file = "z0.txt";
+        EXPECT_EQ(msg(m, f, o), "");
+        has(msg(m, f, surf), "the checkpoint's column ran under a roughness map");
+    }
+    {   // without Coriolis in the record, a deck with it is refused
+        auto n = r; n.coriolis = false; n.latitude = 0; n.rotation_period = 0; n.ug = 0; n.vg = 0;
+        has(msg(n, f, surf), "the checkpoint's column ran without Coriolis");
+    }
+    {   // no target wind: the deck's forcing must be the record's, value for value
+        auto n = r; n.target = false;
+        auto g = f; g.coriolis.ug = n.ug; g.coriolis.vg = n.vg;
+        g.pressure_gradient[0] = n.pressure_gradient_x; g.pressure_gradient[1] = n.pressure_gradient_y;
+        EXPECT_EQ(msg(n, g, surf), "");
+        auto h = g; h.coriolis.ug = std::nextafter(h.coriolis.ug, amrex::Real(100));
+        has(msg(n, h, surf), "the checkpoint's column ran with forcing.ug");
+        h = g; h.coriolis.vg += amrex::Real(1); has(msg(n, h, surf), "the checkpoint's column ran with forcing.ug");
+        h = g; h.pressure_gradient[0] = 0; has(msg(n, h, surf), "the checkpoint's column ran with forcing.ug");
+        h = g; h.pressure_gradient[1] = 0; has(msg(n, h, surf), "the checkpoint's column ran with forcing.ug");
+        // apply: nothing replaced without a target
+        auto a = h; gust::apply_inflow_column_forcing(n, a); EXPECT_EQ(a.pressure_gradient[1], amrex::Real(0));
+    }
+    // With a target the record's forcing replaces the deck's.
+    auto a = f;
+    gust::apply_inflow_column_forcing(r, a);
+    EXPECT_EQ(a.coriolis.ug, r.ug);
+    EXPECT_EQ(a.coriolis.vg, r.vg);
+    EXPECT_EQ(a.pressure_gradient[0], r.pressure_gradient_x);
+    EXPECT_EQ(a.pressure_gradient[1], r.pressure_gradient_y);
+    auto p = f; p.coriolis.geostrophic = false; p.coriolis.ug = 3;
+    gust::apply_inflow_column_forcing(r, p);
+    EXPECT_EQ(p.coriolis.ug, amrex::Real(3));   // no geostrophic forcing: ug left alone
+    EXPECT_EQ(p.pressure_gradient[0], r.pressure_gradient_x);
+}
+
+// A wind that leaves through an inflow face is reported per face, with the rows and heights; the ground row is skipped.
+TEST(InflowColumn, OutflowRowsWarned)
+{
+    gust::InflowTable t;
+    t.ncol = 5;
+    t.z = {0, 10, 100, 1000};
+    t.u = {0, 5, 3, -2};    // turns westward aloft
+    t.v = {0, 1, 2, 4};
+    t.theta = {300, 300, 300, 300};
+    t.k = {1, 1, 1, 1};
+    gust::BoundaryInputs bin;
+    using O = amrex::Orientation;
+    bin.face[O(0, O::low)] = gust::FaceType::inflow;
+    bin.face[O(1, O::low)] = gust::FaceType::inflow;
+    bin.face[O(0, O::high)] = gust::FaceType::outflow;
+    bin.face[O(1, O::high)] = gust::FaceType::outflow;
+    auto w = gust::inflow_column_outflow_rows(t, bin);
+    ASSERT_EQ(w.size(), 1u);
+    EXPECT_EQ(w[0], "bc.xlo = inflow: the column's wind leaves through this face in 1 of 3 rows (z 1000 to 1000 m)");
+    bin.face[O(1, O::high)] = gust::FaceType::inflow;   // v > 0 leaves through yhi in every row
+    w = gust::inflow_column_outflow_rows(t, bin);
+    ASSERT_EQ(w.size(), 2u);
+    EXPECT_EQ(w[1], "bc.yhi = inflow: the column's wind leaves through this face in 3 of 3 rows (z 10 to 1000 m)");
+    t.u[3] = 1;
+    bin.face[O(1, O::high)] = gust::FaceType::outflow;
+    EXPECT_TRUE(gust::inflow_column_outflow_rows(t, bin).empty());
 }

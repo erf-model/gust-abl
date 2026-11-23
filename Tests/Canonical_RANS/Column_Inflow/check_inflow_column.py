@@ -73,23 +73,29 @@ def record(chk, table_path, log, z0):
     path = os.path.join(chk, "InflowColumn")
     with open(path) as f:
         tok = f.read().split()
-    if tok[:2] != ["GustInflowColumn", "1"] or tok[2] != "z0" or tok[4] != "forcing" or tok[10] != "rows":
+    # GustInflowColumn 1 / z0 <z0> <map> / forcing <target> <ug> <vg> <px> <py> / coriolis <on> <lat> <period> / rows <n>
+    if (tok[:2] != ["GustInflowColumn", "1"] or tok[2] != "z0" or tok[5] != "forcing" or tok[11] != "coriolis"
+            or tok[15] != "rows"):
         sys.exit("%s: not a GustInflowColumn 1 record" % path)
     if abs(float(tok[3]) - float(z0)) > 1e-6 * float(z0):   # 1e-6: Z0 as a single-precision build stores it
         sys.exit("%s: z0 %s, expected %s" % (path, tok[3], z0))
-    if tok[5] != "1":
-        sys.exit("%s: the forcing flag is %s, expected 1 (a target wind)" % (path, tok[5]))
+    if tok[4] != "0":
+        sys.exit("%s: the map flag is %s, expected 0 (a uniform bc.surface_z0)" % (path, tok[4]))
+    if tok[6] != "1":
+        sys.exit("%s: the forcing flag is %s, expected 1 (a target wind)" % (path, tok[6]))
     want = forcing(log)
     got = {}
     if "pressure_gradient" in want:   # z from the log: the record holds x and y
-        got["pressure_gradient"] = "%.9g %.9g %.9g" % (float(tok[8]), float(tok[9]),
+        got["pressure_gradient"] = "%.9g %.9g %.9g" % (float(tok[9]), float(tok[10]),
                                                       float(want["pressure_gradient"].split()[2]))
     if "ug" in want:
-        got.update(ug="%.9g" % float(tok[6]), vg="%.9g" % float(tok[7]))
+        got.update(ug="%.9g" % float(tok[7]), vg="%.9g" % float(tok[8]))
+        if tok[12] != "1":   # a geostrophic wind: the column ran with Coriolis
+            sys.exit("%s: the Coriolis flag is %s, expected 1" % (path, tok[12]))
     if got != want:
         sys.exit("%s: the forcing %s is not the log's %s" % (path, got, want))
-    n = int(tok[11])
-    vals = [float(t) for t in tok[12:]]
+    n = int(tok[16])
+    vals = [float(t) for t in tok[17:]]
     if len(vals) != 5 * n:
         sys.exit("%s: %d values for %d rows" % (path, len(vals), n))
     rows = [tuple(vals[5 * i:5 * i + 5]) for i in range(n)]

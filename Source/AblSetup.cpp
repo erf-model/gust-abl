@@ -59,11 +59,13 @@ void check_drive (Drive drive, const AblSetupFacts& f, std::vector<std::string>&
             err.emplace_back(pre + "needs forcing.coriolis = 1 and forcing.geostrophic = 1");
         }
         // The column's target wind adjusts the forcing (ColumnGuess.H); with inflow faces only under
-        // bc.inflow_profile = column (InflowColumn.H).
-        const bool target = drive == Drive::geostrophic_column
-                            && (f.init.column_target_u != 0 || f.init.column_target_v != 0);
+        // bc.inflow_profile = column (InflowColumn.H), whose restart takes the wind from the checkpoint's record.
+        const bool own_column = f.bc.inflow.kind == InflowProfileOptions::Kind::column;
+        const bool can_target = drive == Drive::geostrophic_column || own_column;
+        const bool target = (can_target && (f.init.column_target_u != 0 || f.init.column_target_v != 0))
+                            || (own_column && f.restart);
         if (cor.ug == 0 && cor.vg == 0 && !target) {
-            err.emplace_back(pre + (drive == Drive::geostrophic_column
+            err.emplace_back(pre + (can_target
                                     ? "needs a wind: forcing.ug, forcing.vg or init.column_target_u, init.column_target_v"
                                     : "needs a wind: forcing.ug, forcing.vg"));
         }

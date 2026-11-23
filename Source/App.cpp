@@ -821,8 +821,12 @@ std::string run_domain (const DomainRole& role)
                 column = std::make_unique<InflowProfile>(cg.z, cg.u, cg.v, cg.theta, cg.tke, bin.theta_ref);
                 if (inflow_column) {
                     // The faces and the damping layers take the converged column, on the column's roughness.
-                    inflow_column_rec = make_inflow_column_record(cg, column_roughness(iopt, surf));
+                    inflow_column_rec = make_inflow_column_record(cg, column_roughness(iopt, surf), !surf.z0_file.empty(),
+                                                                  fopt.coriolis);
                     use_inflow_column(inflow_column_rec, bin.inflow);
+                    for (const auto& w : inflow_column_outflow_rows(inflow_column_rec.table, bin)) {
+                        amrex::Print() << "gust: warning: " << w << "\n";
+                    }
                     std::snprintf(cl, sizeof(cl), "gust: inflow faces: the converged column (bc.inflow_profile = column), %d rows, "
                                   "z0 %.6g m%s\n", static_cast<int>(cg.z.size()), static_cast<double>(inflow_column_rec.z0),
                                   inflow_column_rec.target ? ", with the target wind's forcing (kept in the checkpoint):" : "");
@@ -873,32 +877,13 @@ std::string run_domain (const DomainRole& role)
         if (inflow_column) {
             use_inflow_column(inflow_column_rec, bin.inflow);
             const bool geo = fopt.coriolis.enabled && fopt.coriolis.geostrophic;
-            const auto& rc = inflow_column_rec;
-            if ((rc.ug != 0 || rc.vg != 0) && !geo) {
-                amrex::Abort("gust: io.restart = " + in.io.restart + ": the checkpoint's column ran with a geostrophic wind; "
-                             "the restart deck needs Coriolis with geostrophic forcing (forcing.coriolis, forcing.geostrophic)");
-            }
-            // Without a target the deck's forcing is the column's: it must be the one the column ran with, or the faces
-            // would keep the column of another forcing.
-            if (!rc.target && ((geo && (fopt.coriolis.ug != rc.ug || fopt.coriolis.vg != rc.vg))
-                               || fopt.pressure_gradient[0] != rc.pressure_gradient_x
-                               || fopt.pressure_gradient[1] != rc.pressure_gradient_y)) {
-                char m[600];
-                std::snprintf(m, sizeof(m), "gust: io.restart = %s: the checkpoint's column ran with forcing.ug = %.9g, "
-                              "forcing.vg = %.9g, forcing.pressure_gradient = %.9g %.9g; give the same forcing in the restart "
-                              "deck (the faces keep that column)", in.io.restart.c_str(), static_cast<double>(rc.ug),
-                              static_cast<double>(rc.vg), static_cast<double>(rc.pressure_gradient_x),
-                              static_cast<double>(rc.pressure_gradient_y));
+            const auto rerr = check_inflow_column_restart(inflow_column_rec, fopt, surf, in.io.restart);
+            if (!rerr.empty()) {
+                std::string m = "gust: the restart deck cannot continue the checkpoint's column:";
+                for (const auto& e : rerr) { m += "\n  " + e; }
                 amrex::Abort(m);
             }
-            if (inflow_column_rec.target) {
-                if (fopt.coriolis.enabled && fopt.coriolis.geostrophic) {
-                    fopt.coriolis.ug = inflow_column_rec.ug;
-                    fopt.coriolis.vg = inflow_column_rec.vg;
-                }
-                fopt.pressure_gradient[0] = inflow_column_rec.pressure_gradient_x;
-                fopt.pressure_gradient[1] = inflow_column_rec.pressure_gradient_y;
-            }
+            apply_inflow_column_forcing(inflow_column_rec, fopt);
             char cl[400];
             std::snprintf(cl, sizeof(cl), "gust: inflow faces: the column of the checkpoint (bc.inflow_profile = column), %d rows, "
                           "z0 %.6g m%s\n", static_cast<int>(inflow_column_rec.table.z.size()),
@@ -1150,7 +1135,7 @@ std::string run_domain (const DomainRole& role)
             buildings.write_checkpoint(name);
             write_immersed_terrain_checkpoint(name, immersed_hash);
             NestFaces::write_checkpoint(name, nest_hash);
-            if (inflow_column) { write_inflow_column_checkpoint(name, inflow_column_rec); }
+            if (!inflow_column_rec.table.z.empty()) { write_inflow_column_checkpoint(name, inflow_column_rec); }
             if (newton_stage != nullptr) { newton_stage->write_checkpoint(name); }
             if (rec != nullptr) {
                 write_unsteady_record(name, *rec);

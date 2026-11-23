@@ -284,6 +284,19 @@ TEST (AblSetup, DriveAccepts)
     f.bc.inflow.kind = gust::InflowProfileOptions::Kind::column;
     f.init.column_target_u = 8;
     EXPECT_TRUE(gust::check_abl_setup(options(Drive::geostrophic_column, Theta::neutral), f).empty());
+    // geostrophic_inflow with the run's own column: the target wind stands for forcing.ug, forcing.vg, and a restart
+    // takes the wind from the checkpoint's record.
+    f = deck(Drive::geostrophic_inflow, Theta::neutral);
+    f.bc.inflow.kind = gust::InflowProfileOptions::Kind::column;
+    f.forcing.coriolis.ug = 0;
+    f.forcing.coriolis.vg = 0;
+    f.init.column_target_u = 8;
+    EXPECT_TRUE(gust::check_abl_setup(options(Drive::geostrophic_inflow, Theta::neutral), f).empty());
+    f.init.column_target_u = 0;
+    EXPECT_FALSE(gust::check_abl_setup(options(Drive::geostrophic_inflow, Theta::neutral), f).empty());
+    f.init.first_guess = gust::InitOptions::FirstGuess::none;
+    f.restart = true;
+    EXPECT_TRUE(gust::check_abl_setup(options(Drive::geostrophic_inflow, Theta::neutral), f).empty());
 }
 
 TEST (AblSetup, ThetaRefusals)

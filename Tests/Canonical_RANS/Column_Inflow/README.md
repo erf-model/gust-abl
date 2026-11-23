@@ -14,8 +14,10 @@ inflow faces' profile, and keeps the adjusted forcing. The case checks four thin
 
 - **Same column.** The single run writes the two-run table to the last bit (every value in `%.17g`), and its log
   prints the same forcing.
-- **Checkpoint record.** The checkpoint holds that column, its roughness and its forcing.
-- **Restart.** A restart from the checkpoint continues the run to the same answer, bit for bit.
+- **Checkpoint record.** The checkpoint holds that column, its roughness and its forcing, and the Coriolis setting
+  (latitude, rotation period) the column ran with.
+- **Restart.** A restart from the checkpoint continues the run to the same answer, bit for bit. A restart deck at
+  another latitude or roughness is refused.
 - **Restart with no stage.** A restart that reads no `bc.*` keys still writes the record into its own checkpoint.
 
 The 3-D deck is a round Agnesi hill (100 m high, 400 m half-width) on a 3.2 km square domain, 16 x 16 x 32 cells
@@ -26,7 +28,9 @@ deck is the same column on a 4 x 4 x 32 periodic mesh with the same levels.
 
 What "same" means here: the table and the forcing are bit-equal between the two ways. A true two-run 3-D result
 copies the forcing from the log, which prints 9 significant digits, so its 3-D fields differ from the single run's
-by about 1e-11 (relative). The single run keeps the forcing in full precision.
+by about 1e-11 (relative). The single run keeps the forcing in full precision. The CTests pin the table and the
+forcing; the 3-D fields of the two ways are not compared by a CTest (run locally to 100 iterations: both steady
+after 93, largest relative difference 1e-10 in p).
 
 ## Files
 | File | Role |
@@ -34,8 +38,9 @@ by about 1e-11 (relative). The single run keeps the forcing in full precision.
 | `inputs_column` | First of the two runs: the periodic column with the target wind; writes `two_run_inflow.txt` and logs the forcing. |
 | `inputs_inflow_column` | The single run: the hill with `bc.inflow_profile = column`; writes `one_run_inflow.txt`, logs the forcing, and writes checkpoints. `steady.max_iterations` is given on the command line. |
 | `inputs_inflow_column_restart` | The single run's deck for a restart: no `init.*` keys and no `io.column_guess_file` (a restart refuses them), with its own output names. |
+| `inputs_inflow_column_restart_changed` | The restart deck at latitude 40 deg and z0 0.1 m: refused, naming `forcing.latitude` and `bc.surface_z0`. |
 | `inputs_inflow_column_nostage` | A restart with no stage: mesh, terrain and output names only. It writes a plotfile and a checkpoint of the state it read. |
-| `check_inflow_column.py` | `same-column` compares the two tables value for value and the forcing keys both logs print. `record` checks a checkpoint's `InflowColumn` record against the table, the log and z0. `drop-record` copies a checkpoint without its record. |
+| `check_inflow_column.py` | `same-column` compares the two tables value for value and the forcing keys both logs print. `record` checks a checkpoint's `InflowColumn` record against the table, the log and z0 (and its map and Coriolis flags). `drop-record` copies a checkpoint without its record. |
 
 ## Data and acknowledgements
 No external data.
@@ -75,8 +80,14 @@ Limits, shared with `bc.inflow_profile = file`:
 
 - Below the first cell centre, the faces interpolate linearly from the table's z = 0 row; they do not follow the
   column's log law there.
-- Nothing checks that the column's wind, turned by Coriolis, enters through the faces set to `inflow`.
+- Nothing refuses a column whose wind, turned by Coriolis, leaves through a face set to `inflow`; the log warns
+  per face (`gust: warning: bc.ylo = inflow: the column's wind leaves through this face in ...`). A target from
+  the north-east on this deck (inflow on x-lo and y-lo) does not converge.
+- The target is measured with the column's log interpolation between cell centres; the faces interpolate the
+  table linearly. Off the column's centre heights a face cell sees up to about 0.5 % less wind (50 m cells).
 - The column's surface heat flux is not in the record. A stratified restart takes the heat flux from its deck.
+- The restart checks Coriolis, latitude, rotation period and `bc.surface_z0`, not the theta sounding. Under a
+  roughness map it checks only that a map is given (`init.column_z0` is refused on a restart).
 
 ## CTest
 All tests have the labels `regression;smoke` and run on 1 or 2 ranks, about 5 s in all.
@@ -90,6 +101,7 @@ All tests have the labels `regression;smoke` and run on 1 or 2 ranks, about 5 s 
 | `rt_column_inflow_record` | `record`: the checkpoint `chk00004` holds the table, z0 and forcing. |
 | `rt_column_inflow_first`, `rt_column_inflow_restart` | 2 iterations, then a restart to 4 ("4 over the run"). |
 | `rt_column_inflow_restart_matches` | fcompare with zero tolerances: the restart's plotfile at 4 equals the single run's. |
+| `abort_column_inflow_restart_changed` | A restart deck at latitude 40 deg and z0 0.1 m is refused, naming both keys. |
 | `rt_column_inflow_drop_record`, `abort_column_inflow_no_record` | A checkpoint without the record is refused, naming `io.restart`. |
 | `rt_column_inflow_nostage`, `rt_column_inflow_nostage_record` | A restart with no stage from `chk00004`; its checkpoint `nostage_chk00004` holds the same record. |
 | `abort_column_inflow_no_face` | `bc.inflow_profile = column` on the periodic deck is refused ("needs an inflow face"). |
@@ -105,6 +117,10 @@ Mutants: each of these makes a test fail.
 - The faces take z0 from `bc.inflow_z0`'s default instead of the column's: `rt_column_inflow_one_run` and
   `rt_column_inflow_restart` fail.
 
+- The restart's latitude check or `bc.surface_z0` check removed: `abort_column_inflow_restart_changed` and
+  `InflowColumn.RestartChecks` fail.
+
 The unit tests `InflowColumn.*` (`Tests/Unit_Tests/test_InflowColumn.cpp`) cover the checks, the record's round
-trip and parser, the checkpoint record, the roughness, and the column's start from the analytic defaults, each with
-its own mutant.
+trip and parser, the checkpoint record (an unreadable record is an error, not a missing one), the restart checks one
+by one, the outflow warning, the roughness, and the column's start from the analytic defaults, each with its own
+mutant.

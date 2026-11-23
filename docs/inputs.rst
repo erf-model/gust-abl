@@ -907,7 +907,10 @@ types, the inflow profile and the sounding; the other keys act in the SIMPLEC st
        ``abl.theta = frozen``. A restart refuses a checkpoint written with another kind, and the other kinds refuse
        a checkpoint written with ``column``. On a restart, the record's forcing replaces the deck's when the column
        had a target wind; otherwise the deck's ``forcing.ug``, ``forcing.vg`` and ``forcing.pressure_gradient``
-       must equal the record's.
+       must equal the record's. The restart deck must also keep ``forcing.coriolis``, ``forcing.latitude``,
+       ``forcing.rotation_period`` and ``bc.surface_z0`` (or a ``bc.surface_z0_file`` when the column ran under a
+       map); each difference aborts, naming the key. ``abl.drive = pressure_driven`` with a stratified
+       :math:`\theta` is refused with ``column``: that drive needs a Rayleigh layer on ``u`` and ``v``.
    * - ``bc.inflow_ustar``
      - 0.4 m/s
      - Finite, > 0; ``log_law`` only.

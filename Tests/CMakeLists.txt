@@ -2838,6 +2838,13 @@ gust_add_test(NAME abort_column_inflow_no_record NP 1 LABELS "regression;smoke" 
               PREFIX ${EXPECT_ABORT} "io\\.restart = chk_no_record: the checkpoint was written without bc\\.inflow_profile = column" --
               COMMAND $<TARGET_FILE:gust> ${COLUMN_INFLOW_CASE}/inputs_inflow_column_restart steady.max_iterations=3
                       io.restart=chk_no_record ${GUST_TEST_AMREX_FLAGS})
+# A restart deck at another latitude or roughness than the checkpoint's column is refused, naming each key.
+gust_add_test(NAME abort_column_inflow_restart_changed NP 1 LABELS "regression;smoke" RUN_DIR ${COLUMN_INFLOW_DIR}/restart
+              FIXTURES_REQUIRED column_inflow_first
+              PREFIX ${EXPECT_ABORT} "io\\.restart = chk00002: the checkpoint's column ran at forcing\\.latitude = 45"
+                     "io\\.restart = chk00002: the checkpoint's column ran on bc\\.surface_z0 = 0\\.05" --
+              COMMAND $<TARGET_FILE:gust> ${COLUMN_INFLOW_CASE}/inputs_inflow_column_restart_changed steady.max_iterations=3
+                      io.restart=chk00002 ${GUST_TEST_AMREX_FLAGS})
 # A restart with no stage reads no bc.* keys; its checkpoint carries the record of the one it read.
 gust_add_test(NAME rt_column_inflow_nostage NP 2 LABELS "regression;smoke" RUN_DIR ${COLUMN_INFLOW_DIR}/one
               FIXTURES_REQUIRED column_inflow_one FIXTURES_SETUP column_inflow_nostage
