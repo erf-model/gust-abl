@@ -31,7 +31,7 @@ std::vector<std::string> check_inflow_profile_options (const InflowProfileOption
         }
         positive(opt.z_ref, "zref");
         positive(opt.alpha, "alpha");
-    } else if (opt.file.empty()) {
+    } else if (opt.kind == K::file && opt.file.empty()) {
         err.emplace_back("bc.inflow_file must be given for bc.inflow_profile = file");
     }
     if (!std::isfinite(opt.direction)) {
@@ -154,7 +154,13 @@ InflowProfile::InflowProfile (const InflowProfileOptions& opt, const ReferencePr
     m_rt.resize(theta_ref.theta.size());
     amrex::Gpu::copy(amrex::Gpu::hostToDevice, theta_ref.z.begin(), theta_ref.z.end(), m_rz.begin());
     amrex::Gpu::copy(amrex::Gpu::hostToDevice, theta_ref.theta.begin(), theta_ref.theta.end(), m_rt.begin());
-    if (opt.kind != InflowProfileOptions::Kind::file) { return; }
+    using K = InflowProfileOptions::Kind;
+    if (opt.kind == K::column) {
+        if (opt.table.ncol != 5) { amrex::Abort("gust: bc.inflow_profile = column: the column's table is not set (with k)"); }
+        set_table(opt.table.z, opt.table.u, opt.table.v, opt.table.theta, opt.table.k, "bc.inflow_profile = column");
+        return;
+    }
+    if (opt.kind != K::file) { return; }
 
     InflowTable tab = read_inflow_table(opt.file);
     const int ncol = tab.ncol;
@@ -183,25 +189,33 @@ InflowProfile::InflowProfile (const amrex::Vector<amrex::Real>& z, const amrex::
     // always has k, and its users (the initializer) do not read nu_t, so
     // they are not used.
     for (const auto& e : check_reference_profile(theta_ref)) { amrex::Abort("gust: InflowProfile: " + e); }
-    const amrex::Long n = z.size();
-    if (n < 2 || u.size() != n || v.size() != n || theta.size() != n || k.size() != n) {
-        amrex::Abort("gust: column guess: the table needs at least two rows of equal length");
-    }
-    if (z[0] != 0) { amrex::Abort("gust: column guess: the first height must be 0 (the ground)"); }
-    for (amrex::Long i = 0; i < n; ++i) {
-        for (const amrex::Real x : {z[i], u[i], v[i], theta[i], k[i]}) {
-            if (!std::isfinite(x)) { amrex::Abort("gust: column guess: the table holds a value that is not finite"); }
-        }
-        if (i > 0 && !(z[i] > z[i - 1])) { amrex::Abort("gust: column guess: heights must increase strictly"); }
-        if (!(theta[i] > 0)) { amrex::Abort("gust: column guess: theta must be > 0"); }
-        if (k[i] < 0) { amrex::Abort("gust: column guess: k must be >= 0"); }
-    }
     m_hrz = theta_ref.z;
     m_hrt = theta_ref.theta;
     m_rz.resize(theta_ref.z.size());
     m_rt.resize(theta_ref.theta.size());
     amrex::Gpu::copy(amrex::Gpu::hostToDevice, theta_ref.z.begin(), theta_ref.z.end(), m_rz.begin());
     amrex::Gpu::copy(amrex::Gpu::hostToDevice, theta_ref.theta.begin(), theta_ref.theta.end(), m_rt.begin());
+    set_table(z, u, v, theta, k, "column guess");
+}
+
+void InflowProfile::set_table (const amrex::Vector<amrex::Real>& z, const amrex::Vector<amrex::Real>& u,
+                               const amrex::Vector<amrex::Real>& v, const amrex::Vector<amrex::Real>& theta,
+                               const amrex::Vector<amrex::Real>& k, const std::string& where)
+{
+    const std::string pre = "gust: " + where + ": ";
+    const amrex::Long n = z.size();
+    if (n < 2 || u.size() != n || v.size() != n || theta.size() != n || k.size() != n) {
+        amrex::Abort(pre + "the table needs at least two rows of equal length");
+    }
+    if (z[0] != 0) { amrex::Abort(pre + "the first height must be 0 (the ground)"); }
+    for (amrex::Long i = 0; i < n; ++i) {
+        for (const amrex::Real x : {z[i], u[i], v[i], theta[i], k[i]}) {
+            if (!std::isfinite(x)) { amrex::Abort(pre + "the table holds a value that is not finite"); }
+        }
+        if (i > 0 && !(z[i] > z[i - 1])) { amrex::Abort(pre + "heights must increase strictly"); }
+        if (!(theta[i] > 0)) { amrex::Abort(pre + "theta must be > 0"); }
+        if (k[i] < 0) { amrex::Abort(pre + "k must be >= 0"); }
+    }
     m_has_k = true;
     m_hz = z; m_hu = u; m_hv = v; m_ht = theta; m_hk = k;
     for (auto* p : {&m_z, &m_u, &m_v, &m_t, &m_k}) { p->resize(n); }

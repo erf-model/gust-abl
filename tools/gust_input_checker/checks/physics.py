@@ -189,19 +189,20 @@ class InitChecker(Checker):
                        "Add the layer, or march the column (init.column_time).")
         if target:
             tkey = "init.column_target_u" if self.given("init.column_target_u") else "init.column_target_v"
+            own_column = c.inflow_profile == "column"
             if c.positive("bc.rayleigh_zdamp") and c.rayleigh_field("u"):
                 self.error("bc.rayleigh_fields", "GUST stops: init.column_target_u, init.column_target_v with a Rayleigh "
                                                  "layer on u and v: the layer relaxes towards the deck's inflow "
                                                  "profile, which the target does not change.",
                            "Leave u and v out of bc.rayleigh_fields.")
-            if c.positive("bc.sponge_width"):
+            if c.positive("bc.sponge_width") and not own_column:
                 self.error("bc.sponge_width", "GUST stops: init.column_target_u, init.column_target_v with a sponge "
-                                              "(bc.sponge_width).", "Remove the sponge.")
-            if c.inflow_faces:
+                                              "(bc.sponge_width).",
+                           "Remove the sponge, or set bc.inflow_profile = column.")
+            if c.inflow_faces and not own_column:
                 self.error(tkey, "GUST stops: init.column_target_u, init.column_target_v with an inflow face: the face "
                                  "keeps the deck's inflow profile.",
-                           "Run the column on a periodic deck and give its table (io.column_guess_file) as "
-                           "bc.inflow_file.")
+                           "Set bc.inflow_profile = column (the faces take the target column).")
             if evolve and not c.heat_flux_surface:
                 self.error(tkey, "GUST stops: init.column_target_u, init.column_target_v with a stratified column need "
                                  "bc.surface_stability = heat_flux in the 3-D run.",
@@ -470,8 +471,9 @@ class AblChecker(Checker):
         elif drive == "geostrophic_column":
             if c.first_guess != "column" and not c.restart:
                 need("init.first_guess", "needs init.first_guess = column or io.restart")
-            if c.inflow_faces and c.inflow_profile != "file":
-                need("bc.inflow_profile", "with an inflow face needs bc.inflow_profile = file (the column's table)")
+            if c.inflow_faces and c.inflow_profile not in ("file", "column"):
+                need("bc.inflow_profile", "with an inflow face needs bc.inflow_profile = file (the column's table) or "
+                                          "column")
 
     def _couette(self, need):
         c = self.ctx
@@ -532,8 +534,8 @@ class AblChecker(Checker):
             if self.known and self._uniform(air):
                 need("bc.theta_profile", "needs a stratified bc.theta_profile or bc.inflow_file table",
                      "With a uniform theta use abl.theta = neutral.")
-            if c.abl_drive == "geostrophic_column" and c.inflow_profile != "file":
-                need("bc.inflow_profile", "with abl.drive = geostrophic_column needs bc.inflow_profile = file")
+            if c.abl_drive == "geostrophic_column" and c.inflow_profile not in ("file", "column"):
+                need("bc.inflow_profile", "with abl.drive = geostrophic_column needs bc.inflow_profile = file or column")
         else:
             if not c.heat_flux_surface:
                 need("bc.surface_stability", "needs bc.zlo = surface_layer and bc.surface_stability = heat_flux")

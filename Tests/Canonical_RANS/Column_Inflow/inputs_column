@@ -1,0 +1,40 @@
+# The two-run way, first run: the single column on a doubly periodic 4 x 4 deck with the levels of
+# inputs_inflow_column. GUST finds the geostrophic wind that gives 8 m/s at 100 m from the south-west (45 degrees),
+# writes the converged column to io.column_guess_file and logs the wind ("forcing.ug = ..."). A second run would
+# take the table as bc.inflow_file and the wind as forcing.ug, forcing.vg. One 3-D iteration is run, and the run
+# ends "not steady after 1 iterations".
+mesh.n_cell        = 4 4 32
+mesh.prob_lo       = 0. 0. 0.
+mesh.prob_hi       = 400. 400. 1600.
+mesh.max_grid_size = 4
+mesh.is_periodic   = 1 1 0
+
+terrain.type = flat
+
+bc.zlo = surface_layer
+bc.zhi = slip_wall
+bc.surface_z0      = 0.05
+bc.theta_profile_z = 0.
+bc.theta_profile   = 300.
+
+abl.drive = geostrophic_column
+forcing.latitude = 45.
+forcing.ug       = 10.   # the first guess of the target search
+forcing.vg       = 0.
+forcing.gravity  = 0.
+
+init.first_guess = column
+init.column_target_u      = 5.6568542   # 8 m/s at 100 m from the south-west
+init.column_target_v      = 5.6568542
+init.column_target_height = 100.
+
+turb.max_geom_lscale = 100.
+
+steady.stage          = simplec
+steady.sweep          = zjacobi
+steady.max_iterations = 1
+
+io.column_guess_file = two_run_inflow.txt
+io.plot_file         = column_plt
+io.turb_plot_file    = column_turb
+io.write_checkpoint  = 0

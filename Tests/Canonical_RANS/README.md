@@ -44,6 +44,7 @@ set-up, expected results and the full list of its CTests.
 | `Building_Hill` | `building_hill_*` | One block on the windward flank of a 30 m ridge: the building's floor and roof follow the ground. |
 | `Cylinder_Laminar` | `rt_cylinder_re40`, `abort_laminar_*` | Laminar flow past a staircase cylinder (`turb.closure = none`): steady at Re 40 (CTest); the unsteady runs at Re 40 and 100 are comparison runs. |
 | `Column_Target` | `rt_column_target`, `rt_column_target_mol` | The column first guess's target wind carried into the 3-D run, neutral and stable. |
+| `Column_Inflow` | `rt_column_inflow_*`, `abort_column_inflow_*` | `bc.inflow_profile = column`: the column with a target wind and the inflow faces in one run, against the two runs it replaces; restart. |
 | `Column_Marching` | (comparison case) | The time-marching column against ERF's near-1-D columns; not a CTest (unit tests `ColumnMarching.*`). |
 | `Aspect_Ratio_Hill_2D` | `rt_aspect_ratio_hill` | A 2-D ridge with first cells of dx/dz1 = 10 to 5000: how thin first cells change the convergence. |
 | `Outflow_Steep_Terrain` | `rt_outflow_steep_terrain_*` | A steep slope cut by an outflow face: steady with the default outflow transport, not with the old one. |

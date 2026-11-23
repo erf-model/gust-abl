@@ -12,6 +12,8 @@
 //   file       S, direction, theta and (optionally) k tabulated in a file:
 //              "z u v theta [k]" per line, z strictly increasing from 0,
 //              linear in between, constant beyond the ends.
+//   column     the same table, from the run's own converged column (init.first_guess = column) in memory
+//              (InflowColumn.H): no file, and the table always has k.
 // theta(z) is the hydrostatic reference profile (ReferenceProfile) for the
 // analytic kinds.
 //
@@ -39,9 +41,17 @@
 
 namespace gust {
 
+//! A bc.inflow_file table: z u v theta, and k when the file has 5 columns.
+struct InflowTable
+{
+    amrex::Vector<amrex::Real> z, u, v, theta, k;   // k zero when ncol = 4
+    int ncol{0};
+};
+
 struct InflowProfileOptions
 {
-    enum class Kind { log_law, power_law, file };
+    //! column: the run's own converged column (init.first_guess = column, InflowColumn.H), handed over in table.
+    enum class Kind { log_law, power_law, file, column };
     Kind kind{Kind::log_law};
     //! log_law: friction velocity (m/s, > 0) and roughness (m, > 0).
     amrex::Real ustar{amrex::Real(0.4)};
@@ -54,6 +64,9 @@ struct InflowProfileOptions
     amrex::Real direction{0};
     //! file: the table's path.
     std::string file;
+    //! column: the converged column (z u v theta k, ncol = 5), set by the application after the column solve or
+    //! from the checkpoint on a restart; empty until then (an InflowProfile is not built from an empty table).
+    InflowTable table;
     //! For k and nu_t: Cmu0 and kappa (> 0; the closure's values).
     amrex::Real Cmu0{amrex::Real(0.5562)};
     amrex::Real kappa{amrex::Real(0.41)};
@@ -66,13 +79,6 @@ struct InflowProfileOptions
 
 //! Problems with the options, naming each (the file is not read here).
 std::vector<std::string> check_inflow_profile_options (const InflowProfileOptions& opt);
-
-//! A bc.inflow_file table: z u v theta, and k when the file has 5 columns.
-struct InflowTable
-{
-    amrex::Vector<amrex::Real> z, u, v, theta, k;   // k zero when ncol = 4
-    int ncol{0};
-};
 
 //! Parse the text of a bc.inflow_file (file names it in the messages). '#'
 //! starts a comment; blank lines are skipped; every other line holds 4 or 5
@@ -96,7 +102,9 @@ public:
     //! analytic kinds). A file is read on the I/O rank and broadcast
     //! (collective: construct on every rank), then parsed by
     //! parse_inflow_table. Aborts, naming bc.inflow_file, on a file that
-    //! cannot be read or that parse_inflow_table refuses.
+    //! cannot be read or that parse_inflow_table refuses. The column kind takes
+    //! opt.table (checked as the in-memory table below; aborts naming
+    //! bc.inflow_profile = column when it is empty or bad).
     InflowProfile (const InflowProfileOptions& opt, const ReferenceProfile& theta_ref);
     //! A tabulated profile given in memory (the converged
     //! column of ColumnGuess.H): the file kind with the table z u v theta k
@@ -109,7 +117,7 @@ public:
     //! A device-usable view.
     struct View
     {
-        int kind;                  //!< 0 log_law, 1 power_law, 2 file
+        int kind;                  //!< 0 log_law, 1 power_law, 2 a table (file or column)
         amrex::Real ustar, z0, speed_ref, z_ref, alpha, cosd, sind, Cmu0, kappa;
         amrex::Real inv_lmax;      //!< 1/l_max, or 0 for bc.inflow_tke_length = unbounded
         const amrex::Real* tz;     //!< file table: heights (n)
@@ -151,6 +159,10 @@ private:
     bool m_has_k{false};
     amrex::Gpu::DeviceVector<amrex::Real> m_z, m_u, m_v, m_t, m_k, m_rz, m_rt;
     amrex::Vector<amrex::Real> m_hz, m_hu, m_hv, m_ht, m_hk, m_hrz, m_hrt;   //!< host copies
+    //! Check a table given in memory (where names it in the messages) and copy it to the device.
+    void set_table (const amrex::Vector<amrex::Real>& z, const amrex::Vector<amrex::Real>& u,
+                    const amrex::Vector<amrex::Real>& v, const amrex::Vector<amrex::Real>& theta,
+                    const amrex::Vector<amrex::Real>& k, const std::string& where);
     View view_with (const amrex::Real* tz, const amrex::Real* tu, const amrex::Real* tv, const amrex::Real* tt,
                     const amrex::Real* tk, const amrex::Real* rz, const amrex::Real* rt) const;
 };

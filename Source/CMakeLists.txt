@@ -44,6 +44,7 @@ set(GUST_SOURCES
     CanopyHeat.cpp
     CanopyTke.cpp
     InflowProfile.cpp
+    InflowColumn.cpp
     BoundaryConditions.cpp
     BoundaryDamping.cpp
     BoundaryInputs.cpp

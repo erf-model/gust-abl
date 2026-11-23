@@ -191,9 +191,9 @@ After each converged column the geostrophic wind and the column's Rayleigh refer
 stress goes with the square of the speed), and the column is solved again, until :math:`|R - 1| < 10^{-4}`.
 :math:`U(z_t)` is MOST's profile below the first cell centre and linear in :math:`\ln(z + z_0)` above. The 3-D run
 then takes that forcing. It reaches the target only if nothing holds its wind to the deck's inflow profile, so a
-target is refused with a Rayleigh layer on :math:`u, v`, a sponge or an inflow face (for an inflow case, run the
-column on a periodic deck and give its ``io.column_guess_file`` table as ``bc.inflow_file``), and with a stratified column
-over a neutral 3-D surface.
+target is refused with a Rayleigh layer on :math:`u, v`, a sponge or an inflow face, and with a stratified column
+over a neutral 3-D surface. For an inflow case, set ``bc.inflow_profile = column`` (:ref:`the run's own column <inflow-column>`): the
+faces and the sponge then take the target column itself.
 
 .. _column-marching:
 

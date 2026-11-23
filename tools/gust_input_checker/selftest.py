@@ -242,6 +242,29 @@ CASES = [
     ("inflow_wind_along_faces", "inflow", "bc.inflow_direction = 90\n", ["W bc.xlo inflow"], []),
     ("inflow_wind_leaves", "inflow", "bc.inflow_direction = 180\n", ["W bc.xlo inflow", "W bc.xhi inflow"], []),
     ("inflow_wind_enters", "inflow", "bc.inflow_direction = 20\n", [], ["W bc.xlo", "W bc.xhi"]),
+    # bc.inflow_profile = column: the run's own column (target wind included) is the faces' profile.
+    ("inflow_column_ok", "inflow", "bc.inflow_profile = column\n" + COLUMN.replace("init.first_guess = column\n", "")
+     .replace("forcing.coriolis", "init.first_guess = column\nforcing.coriolis")
+     + "init.column_target_u = 7\ninit.column_target_height = 100\n", [],
+     ["E bc.inflow_profile", "E init.column_target_u", "E bc.inflow_file", "E bc.sponge_width"]),
+    ("inflow_column_target_face", "inflow", COLUMN + "init.column_target_u = 7\ninit.column_target_height = 100\n",
+     ["E init.column_target_u init"], []),
+    ("inflow_column_sponge", "inflow", "bc.inflow_profile = column\n" + COLUMN + "bc.sponge_width = 200\nbc.sponge_strength = 0.1\n"
+     "init.column_target_u = 7\ninit.column_target_height = 100\n", [], ["E bc.sponge_width"]),
+    ("inflow_column_no_guess", "inflow", "bc.inflow_profile = column\n", ["E bc.inflow_profile inflow"], []),
+    ("inflow_column_no_face", "solve", "bc.inflow_profile = column\n" + COLUMN, ["E bc.inflow_profile inflow"], []),
+    ("inflow_column_z0", "inflow", "bc.inflow_profile = column\nbc.inflow_z0 = 0.1\n" + COLUMN,
+     ["E bc.inflow_z0 inflow"], []),
+    ("inflow_column_direction", "inflow", "bc.inflow_profile = column\nbc.inflow_direction = 10\n" + COLUMN,
+     ["E bc.inflow_direction inflow"], []),
+    ("inflow_column_tke_length", "inflow", "bc.inflow_profile = column\nbc.inflow_tke_length = 10\n" + COLUMN,
+     ["E bc.inflow_tke_length inflow"], []),
+    ("inflow_column_rayleigh", "inflow", "bc.inflow_profile = column\nbc.rayleigh_zdamp = 200\n"
+     "bc.rayleigh_fields = w tke\n" + COLUMN, ["E bc.rayleigh_fields inflow"], []),
+    ("inflow_column_rayleigh_w", "inflow", "bc.inflow_profile = column\nbc.rayleigh_zdamp = 200\n"
+     "bc.rayleigh_fields = w\n" + COLUMN, [], ["E bc.rayleigh_fields"]),
+    ("inflow_column_geostrophic_column", "inflow", "bc.inflow_profile = column\nabl.drive = geostrophic_column\n"
+     + COLUMN, [], ["E bc.inflow_profile"]),
     # --- sounding ---------------------------------------------------------------------------------------
     ("sounding_lengths", "solve", "bc.theta_profile_z = 0 400 800\nbc.theta_profile = 300 302\n",
      ["E bc.theta_profile sounding"], []),

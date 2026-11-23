@@ -279,6 +279,11 @@ TEST (AblSetup, DriveAccepts)
     f.bc.face[kXhi] = FaceType::periodic;
     f.bc.inflow.kind = gust::InflowProfileOptions::Kind::log_law;
     EXPECT_TRUE(gust::check_abl_setup(options(Drive::geostrophic_column, Theta::neutral), f).empty());
+    // Inflow faces with the run's own column (bc.inflow_profile = column), with a target wind.
+    f = deck(Drive::geostrophic_column, Theta::neutral);
+    f.bc.inflow.kind = gust::InflowProfileOptions::Kind::column;
+    f.init.column_target_u = 8;
+    EXPECT_TRUE(gust::check_abl_setup(options(Drive::geostrophic_column, Theta::neutral), f).empty());
 }
 
 TEST (AblSetup, ThetaRefusals)
@@ -325,6 +330,9 @@ TEST (AblSetup, ThetaWithTheColumnDrive)
     f.bc.face[kXhi] = FaceType::periodic;
     f.bc.inflow.kind = gust::InflowProfileOptions::Kind::log_law;
     EXPECT_TRUE(mentions(gust::check_abl_setup(options(D::geostrophic_column, Theta::frozen), f), "(the theta to hold)"));
+    // The run's own column holds theta at the column's (the faces' profile).
+    f.bc.inflow.kind = gust::InflowProfileOptions::Kind::column;
+    EXPECT_FALSE(mentions(gust::check_abl_setup(options(D::geostrophic_column, Theta::frozen), f), "(the theta to hold)"));
     // Column_Marching's form: periodic, no Rayleigh layer, the column marches to a fixed time.
     f = deck(D::geostrophic_column, Theta::surface_flux);
     f.bc.face[kXlo] = FaceType::periodic;
