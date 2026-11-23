@@ -8,6 +8,9 @@ steady Reynolds-averaged Navier–Stokes (RANS) solver for the atmospheric bound
 [AMReX](https://github.com/AMReX-Codes/amrex), and one code base builds for CPUs and GPUs (CUDA, HIP, SYCL).
 The same code also runs unsteady RANS, for flows that have no steady state.
 
+Documentation of the GUST theory and implementation is available [here](https://erf-model.github.io/gust-abl/)
+(also as one [PDF](https://erf-model.github.io/gust-abl/gust.pdf)).
+
 ## What it does
 
 - **Two answers from one input file.** A mass-consistent wind in seconds (stop after the initializer), or the
