@@ -2930,6 +2930,32 @@ Current tests
        periodic square not wrapped, the slope rule off, the gap rule off, the relief doubled, a missing deck
        accepted. Dropping the final minimum with the terrain survives: the mean of the minima is never above the
        terrain, so that minimum only removes round-off (`Hybrid mesh`, :doc:`immersed_terrain`).
+   * - ``hrrr_regime_selftest``
+     - ``tools/hrrr_regime.py`` (:doc:`hrrr_regimes`) on made-up columns and crops: :math:`L` against its closed
+       form (−23.504 m for 100 W/m² and :math:`u_*` = 0.3 m/s), the latent heat in the virtual flux, the sign of
+       :math:`L`, :math:`\mathrm{Ri}_b`, :math:`N^2`, Fr and the thermal wind against closed forms, the thermal wind
+       as a vector mean (a gradient that turns round cancels), the jet with and without a nose and with a fall-off
+       too small, the grid-to-earth wind rotation (17.12° at 70° W; at 120° W against a Lambert conformal
+       projection), the gradient at constant height on sloping levels, a crop turned 15.6° and a longitude given
+       as 0–360, 5 box errors, each class C1–C9 from a column made for it, C5 under weak cooling and not under
+       heating, the weak-flux rule (C3 and C6 from :math:`\mathrm{Ri}_b`), a PBL height below the lowest level,
+       transitions both ways, inside ``flux_eps`` and without a sign change, the tendency, the modifiers,
+       neighbours an hour apart, 7 threshold errors (each names the threshold), 9 column errors, NaN written as
+       ``nan``, a catalogue with the same results on 1 and 4 processes, a repeated valid time refused (exit 2), an
+       arithmetic error in one hour refused alone, and the command line (a refused hour exits 1; ``--jobs 0``, an
+       unknown threshold, a missing file and ``--grad-half-km nan`` exit 2, the last before any folder is made).
+       Registered when Python has numpy. Label ``unit``. The 26 one-line mutants each fail it, among them: the
+       sign of :math:`L`, the latent term dropped, the jet fall-off from the ground, no constant-height
+       correction, the rotation sign, evening and morning swapped, the C5 gate (on small :math:`L`, on
+       ``flux_eps``, or with heating), transitions by a threshold crossing or without ``flux_eps``, no weak-flux
+       rule, C1 for any heating, the earlier crop-edge test, the longitude not wrapped, :math:`N^2` not started
+       at the lowest level, and the checks of ``fetch`` after its folder is made.
+   * - ``hrrr_regime_awaken``
+     - ``Tests/Infrastructure/HRRR_Regimes/check_classes.py``: a regression pin of the classes, modifiers and
+       diagnostics of 16 HRRR hours at the AWAKEN site with the default thresholds, and :math:`L` against its
+       closed form worked in the script from each column. Registered when Python has numpy. Label ``unit``. The
+       mutants with the sign of :math:`L`, the latent term dropped and the jet fall-off from the ground each fail
+       it.
    * - ``rt_bolund_files_converter``
      - ``Tests/Real_Terrain/Bolund_Terrain_Files/to_gust_xyz.py selftest`` on small made-up grids: a 3 × 2 grid of
        heights as an ESRI ASCII grid, a Surfer grid and a point file gives the same points (1e-9); a shift with

@@ -1,5 +1,5 @@
 [codespell]
 # ABL: atmospheric boundary layer; SER: switched evolution relaxation; MAPE: mean absolute percentage error;
-# NED: the USGS National Elevation Dataset; datas: PyInstaller's Analysis argument.
+# NED: the USGS National Elevation Dataset; datas: PyInstaller's Analysis argument; PRES: the GRIB name of pressure.
 skip = ./external,./.git,./build-*,./docs/_build,./Tests/*/Gold
-ignore-words-list = abl,ser,mape,ned,datas
+ignore-words-list = abl,ser,mape,ned,datas,pres
