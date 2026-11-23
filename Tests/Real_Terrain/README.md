@@ -17,6 +17,7 @@ Askervein hill run to steady on ERF's grid (`extern_erf/askervein.txt`). The fol
 | `Immersed_Terrain_Cases` | `rt_immersed_askervein_coarse` | Bolund, Askervein, the Ishihara-Zhou ridge and Big Southern Butte as pairs in the same settings: terrain-following mesh against the ground immersed in a flat mesh (comparison cases); the CTest runs a coarse Askervein pair. |
 | `IshiharaZhou` | (comparison case) | The steep 2-D ridge of Ishihara and Zhou (2025), smooth and rough, against the wind tunnel. |
 | `RUSHIL` | (comparison case) | The RUSHIL 2-D hills (a/H = 3, 5, 8) against the wind tunnel (ERCOFTAC AC5-05). |
+| `Sites_128m` | `rt_sites128_<flatirons, perdigao>_column`, `rt_sites128_<flatirons, perdigao>_table`, `rt_sites128_<case>` (nightly) | Big Southern Butte, Altamont Pass, Perdigão and the Flatirons on one 128 m terrain-following mesh with grid sequencing and the roughness map of each site, one inflow option each: log law, power law, a target wind (GUST's column finds the geostrophic wind) and a table. |
 | `URANS_Averages` | `rt_urans_mean_option` | The time mean of the unsteady run against the steady run of the same deck: RUSHIL Hill 5 and Askervein with ERF's setup (comparison cases); the CTest checks the `--mean` option of the readers. |
 
 `Askervein`, `Askervein_210` and `Askervein_CNBL` use `Supporting_Files/expect_abort.py --success "gust: steady after"` to require the verdict.

@@ -1,0 +1,46 @@
+# The inflow table of the Perdigao case (perdigao_inflow.txt): GUST's single column on flat ground, doubly
+# periodic, the 56 levels of the 3-D deck (given on the command line: mesh.zlevels_file=../zlevels_128m.txt),
+# z0 = 0.398 m (the geometric mean of the roughness map along the xlo and ylo faces), Coriolis at 39.713 N, truly
+# neutral. The geostrophic wind is not given: GUST finds the one that gives 10 m/s at 100 m from the south-west
+# (45 degrees, across the ridges) and reports it in the log ("the run takes geostrophic wind (15.3874, 6.43277)
+# m/s"); inputs_perdigao_target_wind uses that value. init.first_guess = column writes the converged column to
+# io.column_guess_file before the 3-D iterations, which are not needed: one is run, and the run ends
+# "not steady after 1 iterations".
+mesh.n_cell        = 4 4 56
+mesh.prob_lo       = 0. 0. 0.
+mesh.prob_hi       = 512. 512. 3063.490293
+mesh.max_grid_size = 4
+mesh.is_periodic   = 1 1 0
+
+terrain.type = flat
+
+bc.zlo = surface_layer
+bc.zhi = slip_wall
+bc.surface_z0      = 0.398
+bc.theta_profile_z = 0.
+bc.theta_profile   = 300.
+
+abl.drive = geostrophic_column
+
+forcing.latitude = 39.713
+forcing.ug       = 10.   # the first guess of the target search
+forcing.vg       = 0.
+forcing.gravity  = 0.
+
+init.first_guess = column
+init.column_target_u      = 7.0710678   # 10 m/s at 100 m from the south-west (velocity 45 deg from x)
+init.column_target_v      = 7.0710678
+init.column_target_height = 100.
+
+turb.tke_floor       = 1.e-6
+turb.max_geom_lscale = 100.
+
+steady.stage          = simplec
+steady.sweep          = zjacobi
+steady.max_iterations = 1
+
+io.column_guess_file = perdigao_inflow.txt
+io.plot_file         = column_plt
+io.turb_plot_file    = column_turb
+io.chk_file          = column_chk
+io.write_checkpoint  = 0
