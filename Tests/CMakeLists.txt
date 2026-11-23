@@ -3440,6 +3440,16 @@ if(_gust_numpy_hr EQUAL 0)
              COMMAND ${Python3_EXECUTABLE} check_classes.py
              WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/Tests/Infrastructure/HRRR_Regimes)
     set_tests_properties(hrrr_regime_awaken PROPERTIES LABELS unit ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
+    # HRRR as the outer level (tools/hrrr_outer.py, tools/hrrr_outer_case.py) on synthetic crops, checkpoints and
+    # plotfiles; the case reader also needs PyYAML.
+    execute_process(COMMAND ${Python3_EXECUTABLE} -c "import yaml"
+                    RESULT_VARIABLE _gust_yaml_ho OUTPUT_QUIET ERROR_QUIET)
+    if(_gust_yaml_ho EQUAL 0)
+        add_test(NAME hrrr_outer_selftest
+                 COMMAND ${Python3_EXECUTABLE} -m unittest -v test_hrrr_outer
+                 WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/tools)
+        set_tests_properties(hrrr_outer_selftest PROPERTIES LABELS unit ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
+    endif()
 else()
     message(STATUS "GUST: numpy not found for ${Python3_EXECUTABLE}; hrrr_regime tests are not registered")
 endif()
