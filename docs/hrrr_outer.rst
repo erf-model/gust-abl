@@ -253,8 +253,60 @@ the November number is over the whole nest.
      - 0.17
      - 247, steady
 
+The variant matrix
+~~~~~~~~~~~~~~~~~~
+
+``Tests/Real_Terrain_Python/HRRR_Outer/variants.py`` runs the chain of each hour and six variants of its nest on
+the chain's parent (2026-11-23, 4 ranks): **S** is the scheme as ``case`` writes it (:math:`\theta` solved,
+Coriolis on, neutral ground); A to F are the variants of the November 2026 study (A :math:`\theta` frozen and
+Coriolis off; B frozen; C B with HRRR's geostrophic wind; D S with it; E C with an 8-cell relaxation zone; F C with
+HRRR's surface heat flux). The low-level jet hour (2023-05-10 05 UTC) is refused as cloudy, so there are four
+hours. Every run that started was steady. Bias, rms and vector rms are in m/s; "< 500 m" is below 500 m above the
+ground.
+
+.. csv-table::
+   :header: "Hour", "Variant", "Bias", "Rms", "Bias < 500 m", "Vector rms < 500 m", "Direction < 500 m (°)", "w rms / max", "k ratio", "Iterations"
+
+   "day20", "**S**", "−0.03", "**0.48**", "−0.04", "**0.58**", "0.3", "0.085 / 0.79", "0.17", "247"
+   "day20", "A", "−0.24", "0.39", "−0.42", "0.64", "3.1", "0.043 / 0.43", "0.35", "164"
+   "day20", "B = C", "−0.21", "0.35", "−0.36", "0.48", "1.0", "0.040 / 0.43", "0.35", "178"
+   "day20", "E", "−0.21", "0.35", "−0.36", "0.48", "0.9", "0.041 / 0.43", "0.35", "160"
+   "day20", "F", "−0.25", "0.42", "−0.45", "0.58", "0.9", "0.039 / 0.40", "0.37", "164"
+   "eve01", "**S**", "−0.58", "**1.22**", "−0.94", "**1.77**", "4.6", "0.144 / 0.74", "0.79", "336"
+   "eve01", "A", "−0.23", "0.69", "−0.33", "1.05", "3.0", "0.118 / 0.87", "0.81", "198"
+   "eve01", "B = C", "−0.41", "0.90", "−0.65", "1.19", "2.0", "0.112 / 0.75", "0.78", "222"
+   "eve01", "E", "−0.41", "0.89", "−0.65", "1.19", "2.0", "0.113 / 0.75", "0.78", "220"
+   "eve01", "F", "−0.40", "0.89", "−0.63", "1.18", "2.0", "0.112 / 0.75", "0.77", "221"
+   "night09", "**S**", "−0.15", "**0.53**", "−0.29", "**0.92**", "0.3", "0.075 / 0.66", "1.80", "334"
+   "night09", "A", "−0.38", "0.82", "−0.74", "1.16", "0.9", "0.168 / 1.20", "0.76", "302"
+   "night09", "B = C", "−0.55", "1.04", "−1.02", "1.42", "0.5", "0.189 / 1.48", "0.68", "343"
+   "night09", "E", "−0.54", "1.03", "−1.01", "1.41", "0.5", "0.186 / 1.50", "0.69", "340"
+   "night09", "F", "stopped", "", "", "", "", "", "", ""
+   "dawn12", "**S**", "0.11", "**0.75**", "0.47", "**1.12**", "1.9", "0.097 / 0.62", "2.59", "355"
+   "dawn12", "A", "0.14", "1.42", "0.61", "3.04", "8.2", "0.544 / 3.26", "2.82", "1072"
+   "dawn12", "B = C", "0.09", "1.49", "0.62", "3.01", "7.3", "0.587 / 3.41", "2.98", "1065"
+   "dawn12", "E", "0.09", "1.46", "0.60", "2.95", "7.2", "0.571 / 3.29", "2.89", "1069"
+   "dawn12", "F", "stopped", "", "", "", "", "", "", ""
+
+- **C equals B and D equals S** in every hour (the iterations differ by up to 64). With all four lateral faces
+  given, a height-constant geostrophic force is the gradient of a linear pressure field, which the pressure solve
+  takes up whole; the velocity does not change. ``hrrr.geostrophic`` therefore has no effect on this chain; it is
+  kept for a nest with an open face. November's B and C scores were equal in the same way.
+- **E** (the relaxation zone) moves no speed score by more than 0.06 m/s from C.
+- **F stops at the start in the two stable hours**: with HRRR's downward heat flux (−0.009 and −0.004 K m/s),
+  GUST's surface layer finds no finite friction velocity in some low-wind columns and aborts. November's night F
+  run stopped the same way.
+- **S** has the lowest rms in the night and dawn hours and the highest in the day and evening hours. With :math:`\theta` frozen
+  the dawn hour needs about 1070 iterations and puts 3 m/s of vector rms below 500 m; with :math:`\theta` solved
+  it needs 355 and 1.12 m/s.
+
+November's nests of the day and night hours, scored by this tool against the same crops (the other hours' November
+plotfiles are not kept), differ from this matrix by up to 0.04 m/s in rms (day B 0.32 against 0.35, day F 0.38
+against 0.42, which also has the virtual heat flux, night D 0.51 against 0.53).
+
 Not yet supported
 -----------------
 
 - The same score against a lidar profile.
 - HRRR hours with cloud; levels above 3600 m.
+- HRRR's surface heat flux in a stable hour (variant F; see above).

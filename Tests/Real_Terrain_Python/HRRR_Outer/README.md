@@ -73,7 +73,18 @@ python3 score_variants.py matrix
   `check_day.py` exits with 0 (2026-11-22: rms 0.48 m/s, bias −0.03 m/s, below 500 m a speed bias of −0.04 m/s, a
   vector rms of 0.58 m/s and 0.3° of direction; w rms 0.085 m/s, largest |w| inside the margin 0.79 m/s; k / k_HRRR
   0.17; steady after 247 iterations).
-- The matrix: see `docs/hrrr_outer.rst` for the table of 2026-11-22.
+- The matrix (2026-11-23; full table in `docs/hrrr_outer.rst`): every run that starts is steady. Speed rms (m/s)
+  at all heights:
+
+  | Hour | S | A | B = C | D | E | F |
+  |---|---|---|---|---|---|---|
+  | day20 | **0.48** | 0.39 | 0.35 | 0.48 | 0.35 | 0.42 |
+  | eve01 | **1.22** | 0.69 | 0.90 | 1.22 | 0.89 | 0.89 |
+  | night09 | **0.53** | 0.82 | 1.04 | 0.53 | 1.03 | stops |
+  | dawn12 | **0.75** | 1.42 | 1.49 | 0.75 | 1.46 | stops |
+
+  C equals B and D equals S: with all four faces given, the geostrophic force is taken up by the pressure. F stops
+  in the two stable hours (no friction velocity for HRRR's downward heat flux in low-wind columns).
 
 ## CTest
 None: the case needs the downloads. `hrrr_outer_selftest` tests the tool on synthetic crops, checkpoints and
