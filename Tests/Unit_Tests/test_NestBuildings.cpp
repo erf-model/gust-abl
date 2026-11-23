@@ -1,15 +1,13 @@
-// Buildings inside a nested patch (NestBuildings.H), beyond the plan,
-// sub-phase 9.4 (tracker row PR-76; sub-phase 7.4 in the tracker's
-// numbering):
-//   UT-9.4.1 a building inside a patch has the solid fractions, the face
-//            fractions (the fixed rows) and the wall cells of a whole-domain
-//            run on the same cells, on sloping ground, in several boxes;
-//   UT-9.4.2 a building tile within the gap of a nest face is named, with the
-//            face; the gap is 2 cells + max(bc.nest_relax_width cells,
-//            terrain.nest_blend_width); a tile on the gap's edge is clear;
-//            faces that are not nest, tiles beside a non-periodic patch and tiles
-//            with no height are not counted; a periodic direction counts every
-//            tile along the face.
+// Buildings inside a nested patch (NestBuildings.H):
+//   a building inside a patch has the solid fractions, the face
+//     fractions (the fixed rows) and the wall cells of a whole-domain
+//     run on the same cells, on sloping ground, in several boxes;
+//   a building tile within the gap of a nest face is named, with the
+//     face; the gap is 2 cells + max(bc.nest_relax_width cells,
+//     terrain.nest_blend_width); a tile on the gap's edge is clear;
+//     faces that are not nest, tiles beside a non-periodic patch and tiles
+//     with no height are not counted; a periodic direction counts every
+//     tile along the face.
 #include "NestBuildings.H"
 #include "PoissonTestHelpers.H"
 
@@ -165,7 +163,7 @@ TEST (NestBuildings, MessagesAreCappedWithACount)
     EXPECT_NE(e.back().find("4 more pairs of a building tile and a nest face"), std::string::npos) << e.back();
 }
 
-// UT-9.4.1: the patch builds its buildings as the whole domain does on the same cells.
+// The patch builds its buildings as the whole domain does on the same cells.
 namespace {
 
 struct Plain

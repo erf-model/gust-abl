@@ -26,7 +26,6 @@ Python 3.6 or later; matplotlib is optional.
 """
 import argparse
 import csv
-import math
 import os
 import sys
 
@@ -187,7 +186,7 @@ def counts_text(rows):
 
 def readme_md(rows, fig_dir, docs_url, written):
     """The README section: the two seconds-per-iteration plots and a pointer to the docs."""
-    shas, nodes, _, _ = setup_text(rows)
+    shas, _, _, _ = setup_text(rows)
     lines = ["## Performance", "",
              "Seconds per iteration on %s and on %s, the 3-D hill on " % (NODES["cpu"], NODES["gpu"]) +
              "power-of-2 meshes (GUST %s). The analysis, the minimum cells per rank and per GPU and the full "

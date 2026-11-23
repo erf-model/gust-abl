@@ -1,5 +1,5 @@
-# A nested patch of the one-way nesting validation (sub-phase 9.3, beyond plan
-# rev. 6): a square of half-width d centred on the hill of inputs_hill_domain,
+# A nested patch of the one-way nesting validation:
+# a square of half-width d centred on the hill of inputs_hill_domain,
 # at refinement 2 2 1 of its parent, with four nest faces and the parent's
 # field as the first guess. nest_validation.py gives the patch's place and
 # cells (mesh.prob_lo, mesh.prob_hi, mesh.n_cell), its parent

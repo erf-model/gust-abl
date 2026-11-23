@@ -1,13 +1,12 @@
-// The pressure-consistent relaxation (NestRelax.H, nest.feedback = relax_consistent; tracker row N-114, item 12,
-// beyond the plan):
-//   UT-12.1: on a flat parent with uneven boxes and dx != dy, two overlapping footprints: the added term is
+// The pressure-consistent relaxation (NestRelax.H, nest.feedback = relax_consistent):
+//   on a flat parent with uneven boxes and dx != dy, two overlapping footprints: the added term is
 //     w(s) R* with w = min(1, s / 2) from the points' positions (the larger weight where the footprints overlap),
 //     0 on the footprints' faces and outside them whatever R* holds there; the rates are those of relax bit for bit.
-//   UT-12.2: on the hill of HillTestHelpers.H as the application sets it up, with q* a non-uniform state and R*
+//   on the hill of HillTestHelpers.H as the application sets it up, with q* a non-uniform state and R*
 //     the residual at q* without the source: the residual with the source at q = q* is 0 on the rows where w = 1
 //     that keep their residual (there |R*| is not small: the plain relaxation leaves R*), (1 - w) R* on the margin,
 //     R* (bit for bit) where c = 0 and on the rows that replace theirs; continuity has no source.
-//   UT-12.3: the implicit rows are those of relax, bit for bit (the added term is a constant). A guard: the
+//   the implicit rows are those of relax, bit for bit (the added term is a constant). A guard: the
 //     implicit rows have no relax_consistent path today, so no mutant of tools/nest_relax_mutants.py reaches it.
 #include "HillTestHelpers.H"
 #include "ImplicitOperator.H"
@@ -86,7 +85,7 @@ void each_valid2 (const amrex::MultiFab& a, const amrex::MultiFab& b,
     }
 }
 
-// --- UT-12.1: a flat parent -----------------------------------------------------------------------
+// --- A flat parent --------------------------------------------------------------------------------
 
 struct Parent
 {
@@ -133,7 +132,7 @@ double expect_weight (const Parent& p, const std::vector<gust::DefectRegion>& re
     return w;
 }
 
-// --- UT-12.2 and 12.3: the hill as the application sets it up ------------------------------------------
+// --- The hill as the application sets it up ------------------------------------------------------------
 
 using gust::hilltest::HillRun;
 
@@ -154,7 +153,7 @@ void perturb (HillRun& h, const gust::State& q0, gust::State& q, double s)
     q.define(h.c.ba, h.c.dm);
     auto t = q.fields();
     const amrex::MultiFab* f0[7] = {&q0.u, &q0.v, &q0.w, &q0.p, &q0.theta, &q0.tke, &q0.z_phys_nd};
-    for (std::size_t n = 0; n < t.size(); ++n) {
+    for (std::size_t n = 0; n < static_cast<std::size_t>(t.size()); ++n) {
         amrex::MultiFab::Copy(*t[n].mf, *f0[n], 0, 0, 1, t[n].mf->nGrowVect());
     }
     const double L = HillRun::Lx, H = HillRun::H, pi = HillRun::kPi;
@@ -197,7 +196,7 @@ long footprint_columns () { return 10 * 2; }
 
 } // namespace
 
-TEST(NestRelaxConsistent, AddedTermIsTheWeightedResidualOnUnevenBoxes)   // UT-12.1
+TEST(NestRelaxConsistent, AddedTermIsTheWeightedResidualOnUnevenBoxes)
 {
     ASSERT_EQ(gust::kDefectMargin, 2);
     Parent p;
@@ -260,7 +259,7 @@ TEST(NestRelaxConsistent, AddedTermIsTheWeightedResidualOnUnevenBoxes)   // UT-1
     }
 }
 
-TEST(NestRelaxConsistent, TargetIsAFixedPointWhereTheWeightIsOne)   // UT-12.2
+TEST(NestRelaxConsistent, TargetIsAFixedPointWhereTheWeightIsOne)
 {
     HillRun h = make_hill();
     gust::State qstar;
@@ -354,7 +353,7 @@ TEST(NestRelaxConsistent, TargetIsAFixedPointWhereTheWeightIsOne)   // UT-12.2
     EXPECT_EQ(gust::test::count_bit_differences(Ron.p, Rs.p, 0), 0);
 }
 
-TEST(NestRelaxConsistent, ImplicitRowsAreThoseOfRelax)   // UT-12.3
+TEST(NestRelaxConsistent, ImplicitRowsAreThoseOfRelax)
 {
     HillRun h = make_hill();
     gust::State qstar, q;

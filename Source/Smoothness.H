@@ -43,8 +43,9 @@
 // at the floor whose k has risen solved the frozen system there; the
 // verification pass corrects it.
 //
-// Checkpoint: the module's state (whether the Newton stage is active, the
-// scope) goes to the text file <checkpoint>/Smoothness and the frozen
+// Checkpoint: the module's state (whether the Newton stage is active, whether
+// the decisions are frozen, the scope and the canopy's length cap alpha of the
+// frozen decisions) goes to the text file <checkpoint>/Smoothness and the frozen
 // decisions to <checkpoint>/Level_0/closure_switches (an iMultiFab with its
 // ghost ring), so a restart inside the Newton stage evaluates the same
 // residual on any layout.
@@ -106,10 +107,12 @@ public:
     void write_checkpoint (const std::string& dir, const Closure* closure) const;
     //! Restores active and, when they were written, the frozen decisions
     //! into closure on ba, dm. Without <dir>/Smoothness (a checkpoint from
-    //! outside the Newton stage, or older than this module) the run is not
+    //! outside the Newton stage, or one without this record) the run is not
     //! in the Newton stage: inactive, closure thawed. Aborts, naming the
     //! file, on a corrupt file, on frozen decisions without a closure or
-    //! with turb.frozen_switch = 0, or when the decisions' file is missing.
+    //! with turb.frozen_switch = 0, when the decisions' file is missing, or
+    //! when every decision is frozen (scope all) and the canopy's length cap
+    //! alpha differs from the checkpoint's.
     void read_checkpoint (const std::string& dir, Closure* closure, const amrex::BoxArray& ba,
                           const amrex::DistributionMapping& dm, const amrex::Geometry& geom);
 

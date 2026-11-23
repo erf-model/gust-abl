@@ -33,7 +33,8 @@
 //
 // The checkpoint record (write_unsteady_record / read_unsteady_record):
 // <checkpoint>/Unsteady (text, hex floats: the time, the steps, the fixed
-// step or 0 with unsteady.cfl, unsteady.average_start and W) and the
+// step or 0 with unsteady.cfl, unsteady.average_start, W and the time anchor
+// (t_*, n_*), TimeDriver.H) and the
 // averages' mean and M2 as VisMF MultiFabs (Level_0/unsteady_mean,
 // Level_0/unsteady_m2). q^n is not written: at the end of a step it is the
 // state itself, and the next step stores it (TimeTerm::store).
@@ -65,7 +66,6 @@ public:
     void add (const State& q, double t0, double t1);
 
     [[nodiscard]] double weight () const { return m_weight; }
-    [[nodiscard]] amrex::Real average_start () const { return m_start; }
     [[nodiscard]] const amrex::MultiFab& mean () const { return m_mean; }
     [[nodiscard]] const amrex::MultiFab& m2 () const { return m_m2; }
 
@@ -153,7 +153,7 @@ struct UnsteadyRecord
     double average_start{0}; //!< unsteady.average_start [s]
     double weight{0};        //!< W, the averages' summed weight [s]
     double anchor_time{0};   //!< the fixed step's time anchor t_* [s] (TimeDriver.H)
-    std::int64_t anchor_steps{0}; //!< its total step n_a
+    std::int64_t anchor_steps{0}; //!< its total step n_*
 };
 
 //! <dir>/Unsteady, text with hex floats (I/O rank).

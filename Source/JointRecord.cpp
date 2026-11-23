@@ -30,7 +30,7 @@ std::string feedback_file (const std::string& dir, int n)
 
 std::string joint_file (const std::string& dir) { return dir + "/Joint"; }
 
-//! A finite hex float > 0 or exactly 0 (a floor not set), or false.
+//! A finite number (written as a hex float) > 0 or exactly 0 (a floor not set), or false.
 bool parse_floor (const std::string& s, amrex::Real& out)
 {
     char* end = nullptr;

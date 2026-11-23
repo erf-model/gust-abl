@@ -1,7 +1,7 @@
 # Rampart_2D
 
 ## Purpose
-How abrupt ground slows the steady iteration, on a 2-D analytic cliff. Beyond the plan. The mesh report prints the
+How abrupt ground slows the steady iteration, on a 2-D analytic cliff. The mesh report prints the
 largest step of the ground between two neighbouring columns in units of their thinner first layer
 ("max ground step / first layer thickness") and warns above 64, the largest value of the runs of this case that
 reached the steady verdict within a few thousand iterations. The case shows what that number does and does not predict.
@@ -20,7 +20,7 @@ setting for steep terrain (line LU-SGS, two sweeps, CFL cap 16, `simplec.w_vnn_c
 | `inputs_rampart` | The deck. `terrain.file`, `mesh.dz0`, `mesh.stretch_ratio` and `steady.max_iterations` on the command line. |
 | `check_rampart.py` | The CTest: three runs, the closed-form ground step and aspect ratio, the warning, the iteration counts. |
 
-## Data
+## Data and acknowledgements
 None: the terrain is analytic.
 
 ## How to run

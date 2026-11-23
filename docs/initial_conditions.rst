@@ -75,10 +75,10 @@ complex number :math:`u + iv`, and for :math:`k`:
    \frac{\partial k}{\partial t} = \frac{\partial}{\partial z}\Bigl(\gamma_k\,\frac{\partial k}{\partial z}\Bigr)
    + P_s + P_b - \varepsilon .
 
-- :math:`\theta` is held at the sounding.
+- In the neutral column :math:`\theta` is held at the sounding (the stratified column below solves for it).
 - :math:`\nu`, :math:`\gamma_k`, :math:`P_s`, :math:`P_b`, :math:`\varepsilon` come from the turbulence model of
   :doc:`turbulence_model`.
-- The ground uses the neutral log law; the top and the Rayleigh layer are those of the case.
+- The ground of the neutral column uses the neutral log law; the top and the Rayleigh layer are those of the case.
 
 **Forest canopy.** When the run has a canopy (:doc:`canopy`) the column carries it: the layer profile :math:`f_k`
 of the level's drag field (its mean over the domain's columns) enters the momentum equation as the drag
@@ -98,19 +98,21 @@ uniform canopy the column's balances are closed forms, :math:`|W| = \sqrt{F/f}` 
 ``ColumnCanopy.*`` pin.
 
 The column is marched to steady state with implicit (backward Euler) steps that grow from 10 s to :math:`10^5` s. It
-has converged when the largest change of :math:`u, v` and :math:`k` over a step, relative to their scale, is below
+has converged when the largest change of :math:`u, v` and :math:`k` (and :math:`\theta` in a stratified column) over a
+step, relative to their scale, is below
 ``init.column_tol``. This typically takes 100–200 steps and a few hundredths of a second. If it has not converged
 after ``init.column_max_iterations`` steps, the run stops.
 
 The converged :math:`u, v, k` are then placed on the mesh by height above the local ground, exactly as the inflow
-profile is; :math:`\theta` stays the sounding. The table is written to ``io.column_guess_file`` (default
-``column_guess.dat`` in the run directory), in full precision, so it reads back as a ``bc.inflow_file`` exactly.
+profile is; :math:`\theta` stays the sounding (the stratified column below can set it). The table is written to
+``io.column_guess_file`` (default ``column_guess.dat`` in the run directory), in full precision, so it reads back as a
+``bc.inflow_file`` exactly.
 An inflow face keeps the case's inflow profile; the solver reconciles the two.
 
 **Requirements.** The column option needs:
 
 - a horizontal forcing: ``forcing.geostrophic = 1`` or a non-zero ``forcing.pressure_gradient``;
-- the SIMPLEC stage (``steady.stage = simplec``);
+- the SIMPLEC stage (``steady.stage = simplec`` or ``simplec_newton``);
 - a ``surface_layer`` ground with the default wall :math:`k` (``bc.surface_zref`` is not supported), neutral
   unless ``init.column_stability = heat_flux`` (then ``bc.surface_stability = heat_flux``) or ``mol`` with a
   non-zero ``init.column_mol`` (``bc.surface_stability = heat_flux`` allowed: the run takes the column's flux);
@@ -254,7 +256,8 @@ On the Bolund case 4 deck with :math:`L` = 250 m and 7.58 m/s at 5 m, the column
 :math:`q` = −0.039 K m/s, is sustained by the Rayleigh layer and has no measured counterpart.
 
 The column's :math:`\theta` goes into the ``io.column_guess_file`` table (a ``bc.inflow_file`` for a run with the same
-stratification). The 3-D first guess keeps :math:`\theta` from the sounding.
+stratification). The 3-D first guess takes the column's :math:`\theta`, by height above the ground, when the 3-D run
+shares the column's surface (``bc.surface_stability = heat_flux``); otherwise :math:`\theta` is the sounding.
 
 **When to use it.** On the 2-D and 3-D hills the column start halves the iterations (:doc:`results`). On the flat
 ``Neutral_ABL_Flat`` case it does not converge: the column's :math:`k` at the sharp inversion base differs from the

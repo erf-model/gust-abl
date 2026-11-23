@@ -153,7 +153,7 @@ The run ends with the verdict:
    gust: wrote steady_column_turb02231
    gust: wrote steady_column_chk02231
 
-The mean friction velocity (the last monitor) is 0.3500 m/s, the exact value.
+The mean friction velocity (the last monitor of ``io.iteration_log = full``) is 0.3500 m/s, the exact value.
 
 The output
 ----------

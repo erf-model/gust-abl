@@ -1,5 +1,5 @@
-# The whole Askervein domain of the one-way nesting validation (sub-phase 9.3,
-# beyond plan rev. 6): Tests/Real_Terrain/Askervein_210/
+# The whole Askervein domain of the one-way nesting validation:
+# Tests/Real_Terrain/Askervein_210/
 # inputs_steady_askervein_210 (ERF's setup: 6 km x 6 km, 18 layers, a 20 m
 # first layer stretched by 1.08, the power-law inflow from 210 degrees through
 # xlo and ylo, outflow through xhi and yhi, Rayleigh damping of w from 499 m,

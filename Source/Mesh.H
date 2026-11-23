@@ -99,11 +99,12 @@ public:
     void build_from_ground (const Inputs& in, const amrex::Geometry& geom, amrex::MultiFab& z_phys_nd,
                             const LevelsEdit& levels_edit = nullptr);
 
-    //! After a restart: rebuild from the inputs, check the result is within
-    //! restart_height_tolerance of the checkpoint's z_phys_nd on every valid
-    //! node (abort, naming io.restart, if the mesh or terrain inputs changed;
-    //! say so in the log when the nodes differ within it), take the rebuilt
-    //! nodes, ghosts included, then compute the metrics.
+    //! After a restart: rebuild the nodes and the metrics from the inputs,
+    //! check the rebuilt nodes are within restart_height_tolerance of the
+    //! checkpoint's z_phys_nd on every valid node (abort, naming io.restart,
+    //! if the mesh or terrain inputs changed; say so in the log when the nodes
+    //! differ within it), and leave the rebuilt nodes, ghosts included, in
+    //! z_phys_nd.
     void check_restart (const Inputs& in, const amrex::Geometry& geom,
                         amrex::MultiFab& z_phys_nd, const GroundEdit& ground_edit = nullptr,
                         const LevelsEdit& levels_edit = nullptr);
@@ -129,7 +130,7 @@ public:
     //! kernels (CUDA does not allow them in private member functions).
     void make_quality (const amrex::Geometry& geom, const amrex::MultiFab& z_phys_nd);
 
-    //! Close the faces that buildings block (PR-39, docs/buildings.rst): from now on
+    //! Close the faces that buildings block (docs/buildings.rst): from now on
     //! the mass fluxes and the pressure correction use flux_area(d) = a_d (1 - beta_face[d])
     //! and fluid() masks the solid cells. The metric ax, ay, az stay as they are: the
     //! pressure gradient and the slopes read them. Call it after the wall distance
@@ -158,7 +159,6 @@ private:
     amrex::Vector<amrex::Real> m_zlevels;
     MeshQuality m_quality;
     amrex::Real m_min_detJ{0};
-    int m_smoothing{1};
     bool m_has_open{false};
     std::array<amrex::MultiFab, 3> m_open, m_flux_area;
     amrex::MultiFab m_fluid;

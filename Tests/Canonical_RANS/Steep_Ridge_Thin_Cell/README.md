@@ -18,6 +18,9 @@ cap on sloping ground just enough to keep the operator definite.
 |---|---|
 | `inputs_steep_ridge_thin_cell` | The ridge from the profile first guess (the cap, the margin and the iterations on the command line). |
 
+## Data and acknowledgements
+No external data.
+
 ## CTest
 - `rt_steep_ridge_w_vnn_cap`: V = 16 with the default margin (4) is steady within 3500 iterations.
 - `rt_steep_ridge_w_vnn_cap_margin_off`: V = 16 with the margin off (#32's cap) is not steady after 3500. The test

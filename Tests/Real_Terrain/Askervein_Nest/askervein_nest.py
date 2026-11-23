@@ -31,7 +31,7 @@ parent's. --below names patches with nest faces nearer the hill, whose RMS
 must not be smaller than this patch's (to 5 % of it). The exit code is the
 verdict.
 
-two_way: two-way nesting (nest.feedback = defect, PR-70) in the working
+two_way: two-way nesting (nest.feedback = defect) in the working
 directory: the 20 m reference (ref_*), and the 40 m outer domain with the
 nest ht (-1000, -1000) to (1000, 1000) m, one way (ow_*) and joint (jt_*),
 one after another, each with the recommended setting (TWO_WAY). Prints the
@@ -46,7 +46,7 @@ Tests/Real_Terrain/WindNinja2019/wagenbrenner2019_digitized.csv; speed-up
 relative to the inflow's 10 m speed). No verdict: the numbers are those of
 docs/boundary_conditions.rst. "relax", "inject" and "relax_consistent" add
 the joint runs with nest.feedback = relax (rx_*) at nest.feedback_factor = 1
-(the default before tracker N-114 item 13; now 0.5), inject (ij_*) and
+(the earlier default; now 0.5), inject (ij_*) and
 relax_consistent (rc_*) at their default nest.feedback_factor (0.5 and 1),
 compared with the others; "keep" skips a
 run whose plotfile is already in the working directory. With "paper"
@@ -282,7 +282,7 @@ def two_way(cmd, paper=False, extra=(), keep=False):
     runs = [("ref", [f"mesh.n_cell={n_ref} {n_ref} {nz}"]),
             ("ow", [f"mesh.n_cell={n_out} {n_out} {nz}"] + nest + ["nest.feedback=none"]),
             ("jt", [f"mesh.n_cell={n_out} {n_out} {nz}"] + nest + ["nest.feedback=defect"])]
-    # relax at factor 1, the default before tracker N-114 item 13 (now 0.5), so the README's table stays
+    # relax at factor 1, the earlier default (now 0.5), so the README's table stays
     # reproducible; inject and relax_consistent at their defaults (0.5 and 1).
     joint = {"rx": ("relax", ["nest.feedback_factor=1"]), "ij": ("inject", []), "rc": ("relax_consistent", [])}
     runs += [(k, [f"mesh.n_cell={n_out} {n_out} {nz}"] + nest + [f"nest.feedback={v}"] + fa)

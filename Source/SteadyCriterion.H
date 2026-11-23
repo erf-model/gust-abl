@@ -32,7 +32,7 @@ struct SteadyParams
     int monitor_window{50};
 };
 
-//! Range checks; one message per violation, naming the future input key.
+//! Range checks; one message per violation, naming the input key.
 std::vector<std::string> validate (const SteadyParams& p);
 
 //! A monitored quantity (hilltop speed-up, u*, domain-integrated k, ...).

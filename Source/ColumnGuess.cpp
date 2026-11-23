@@ -175,7 +175,7 @@ std::vector<std::string> check_column_guess (const InitOptions& iopt, const Stea
     std::vector<std::string> err;
     if (iopt.first_guess != InitOptions::FirstGuess::column) { return err; }
     if (sopt.stage == StageKind::none) {
-        err.emplace_back("init.first_guess = column needs steady.stage = simplec or simplec_newton (the column uses the stage's "
+        err.emplace_back("init.first_guess = column needs steady.stage = simplec, simplec_newton or unsteady (the column uses the stage's "
                          "closure and forcing)");
     }
     const bool driven = (fopt.coriolis.enabled && fopt.coriolis.geostrophic)
@@ -601,8 +601,8 @@ ColumnGuessResult run_column_guess (const Inputs& in, const InitOptions& iopt, c
         // theta: held at the sounding with the neutral surface (the first guess takes theta from it, and a
         // column with an inversion warms without end: the entrainment drift of docs/results.rst); otherwise
         // the surface flux q at the ground (or the implicit flux of the surface temperature), the deck's gradient
-        // bc.zhi_theta_grad at the top, and with surface_temperature the Rayleigh layer when it damps theta;
-        // the flux modes shift the profile (flux_mode, above).
+        // bc.zhi_theta_grad at the top, and the Rayleigh layer when it damps theta; the flux modes search
+        // theta_s (converge_flux, below).
         std::vector<double> th_new = th;
         if (evolve) {
             faces(gth, lo, up, da);

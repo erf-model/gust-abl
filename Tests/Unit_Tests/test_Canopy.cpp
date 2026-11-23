@@ -1,16 +1,15 @@
-// The canopy's drag field f = Cd a(z) (Canopy.H, Canopy_K.H), plan rev. 6
-// beyond the plan, sub-phase 8.1 (UT-8.1.x):
-//   the Lalic–Mihailovic profile integrates to one, its N pinned to quadrature
-//   (UT-8.1.2); a thin cell gives ERF's point value of the profile;
+// The canopy's drag field f = Cd a(z) (Canopy.H, Canopy_K.H):
+//   the Lalic–Mihailovic profile integrates to one, its N pinned to quadrature;
+//   a thin cell gives ERF's point value of the profile;
 //   every column's integral of f is Cd LAI, part-filled top cells included,
-//   on non-uniform maps, both profiles (UT-8.1.1);
-//   on a hill the canopy follows the local ground (UT-8.1.3);
+//   on non-uniform maps, both profiles;
+//   on a hill the canopy follows the local ground;
 //   patches give the same field on every box layout, and one across a
-//   periodic seam reaches the columns on the other side (UT-8.1.4);
+//   periodic seam reaches the columns on the other side;
 //   the coarse levels keep the integral of f over each layer, on a smoothed
-//   hierarchy, gathered or not (UT-8.1.5);
+//   hierarchy, gathered or not;
 //   over an immersed ground the heights are measured from the ground, whatever part of a cell it cuts;
-//   a restart with another canopy is refused (UT-8.1.7);
+//   a restart with another canopy is refused;
 //   the inputs and files are checked.
 #include "Canopy.H"
 #include "CanopyTke.H"
@@ -257,7 +256,7 @@ gust::CanopyOptions patch_options (const std::string& file)
 
 } // namespace
 
-// UT-8.1.2: N in closed form against quadrature (scipy.integrate.quad, 1e-12),
+// N in closed form against quadrature (scipy.integrate.quad, 1e-12),
 // the shape integrates to N, the cumulative fraction is continuous at
 // laimax, rises from 0 to 1 and its slope is P / N.
 TEST(Canopy, LalicMihailovicProfileIntegratesToOne)
@@ -323,7 +322,7 @@ TEST(Canopy, ThinCellGivesErfPointValue)
     EXPECT_EQ(gust::cell_drag(0, 1, h, 0, cd, uni), 0.0);
 }
 
-// UT-8.1.1: every column's sum of f detJ dzeta is Cd LAI, with the canopy
+// Every column's sum of f detJ dzeta is Cd LAI, with the canopy
 // top inside a stretched cell, a height and an LAI that vary over the
 // domain, both profiles, Cd constant and from a map; f is 0 exactly in the
 // cells above the canopy and > 0 below.
@@ -352,7 +351,7 @@ TEST(Canopy, ColumnIntegralIsCdLai)
     }
 }
 
-// UT-8.5.1 (the field's side): the canopy as one column (Canopy::column_profile, ColumnGuess.H column_canopy). A
+// The canopy as one column (Canopy::column_profile, ColumnGuess.H column_canopy). A
 // uniform map (20 m, LAI 3, Cd 0.15) gives, in every layer, the mean f = Cd LAI (F(z_t/h) - F(z_b/h)) / (z_t - z_b) of
 // the uniform profile from the flat mesh's levels (Cd LAI / h in the cells below the top, the covered share in the
 // cell the top cuts, 0 above) and a spread of 0; a map whose LAI is 3 on one half of the domain and 6 on the other
@@ -400,7 +399,7 @@ TEST(Canopy, ColumnProfileIsTheLayerMeanAndSpread)
     }
 }
 
-// UT-8.1.3: on a hill (50 m, BTF) a 20 m canopy sits on the local ground:
+// On a hill (50 m, BTF) a 20 m canopy sits on the local ground:
 // every column integrates to Cd LAI and the first cell (inside the canopy
 // everywhere) is cd LAI / h; heights from sea level would leave the hill bare.
 TEST(Canopy, FollowsLocalGroundOnHill)
@@ -571,7 +570,7 @@ TEST(Canopy, StandsOnTheImmersedGround)
               want);
 }
 
-// UT-8.1.4: three patches (two overlapping across box edges, one across the
+// Three patches (two overlapping across box edges, one across the
 // periodic seam x = 0, one Lalic–Mihailovic) give the same field on one box,
 // 16 boxes and uneven boxes; the seam patch reaches the last columns; the
 // overlap adds; the periodic ghost column is the image, the non-periodic one
@@ -586,11 +585,11 @@ TEST(Canopy, PatchesSameOnEveryLayoutAcrossSeam)
            << "1 5 100 12 60 0.25 3 0\n";
     });
     const int n = 32;
-    PCase one = make_case(n, 32, false, flat);
+    PCase one_box = make_case(n, 32, false, flat);
     PCase many = make_case(n, 8, false, flat);
     PCase uneven = make_case(n, 12, false, flat);
     gust::Canopy a, b, u;
-    a.build(patch_options(pf), one.geom, one.z, one.ba, one.dm);
+    a.build(patch_options(pf), one_box.geom, one_box.z, one_box.ba, one_box.dm);
     b.build(patch_options(pf), many.geom, many.z, many.ba, many.dm);
     u.build(patch_options(pf), uneven.geom, uneven.z, uneven.ba, uneven.dm);
     EXPECT_EQ(layout_difference(a.drag(), b.drag()), 0.0);
@@ -598,7 +597,7 @@ TEST(Canopy, PatchesSameOnEveryLayoutAcrossSeam)
 
     // The seam patch (centre x = 5, radius 30): column i = 31 (x = 393.75)
     // is 11.25 m from it through the seam; row j = 8 (y = 106.25).
-    const amrex::Vector<amrex::Real>& zl = one.mesh.zlevels();
+    const amrex::Vector<amrex::Real>& zl = one_box.mesh.zlevels();
     const double z0 = static_cast<double>(zl[0]), z1 = static_cast<double>(zl[1]);
     auto uni = [] (double a, double b) { return gust::uniform_fraction(a, b); };
     const double want_seam = gust::cell_drag(0, z1 - z0, 12, 3, 0.25, uni);
@@ -620,7 +619,7 @@ TEST(Canopy, PatchesSameOnEveryLayoutAcrossSeam)
     EXPECT_EQ(cell_value(b.drag(), 15, n, 0), cell_value(b.drag(), 15, n - 1, 0));
 }
 
-// UT-8.1.5: the coarse levels of a smoothed hierarchy (round hill, levels
+// The coarse levels of a smoothed hierarchy (round hill, levels
 // 1 and 2, gathered on one box or not) keep each layer's integral of f.
 TEST(Canopy, RestrictionKeepsLayerIntegrals)
 {
@@ -677,7 +676,7 @@ TEST(Canopy, RestrictionKeepsLayerIntegrals)
     }
 }
 
-// UT-8.1.7: the checkpoint's canopy hash: the same inputs restart; a changed
+// The checkpoint's canopy hash: the same inputs restart; a changed
 // file, a canopy where the checkpoint has none, and none where it has one,
 // are refused.
 TEST(Canopy, RestartRefusesAnotherCanopy)

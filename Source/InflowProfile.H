@@ -22,8 +22,8 @@
 // bc.inflow_tke_length = closure (the default) takes the closure's own
 // geometric length, kappa (z + z0) capped by turb.max_geom_lscale:
 //   1/l = 1/(kappa (z + z0)) + 1/l_max   (Closure_K.H geom_length);
-// unbounded takes l = kappa (z + z0), the wall-law length (the form before
-// it), for which the log law gives u*_l = u* and k = u*^2/Cmu0^2 at every
+// unbounded takes l = kappa (z + z0), the wall-law length, for
+// which the log law gives u*_l = u* and k = u*^2/Cmu0^2 at every
 // height. A file with a k column uses its k as given (bc.inflow_tke_length is
 // then refused: the fill, the damping and the first guess use k, not the
 // profile's nu_t, which eval reports for tests and tools).
@@ -113,7 +113,7 @@ public:
         amrex::Real ustar, z0, speed_ref, z_ref, alpha, cosd, sind, Cmu0, kappa;
         amrex::Real inv_lmax;      //!< 1/l_max, or 0 for bc.inflow_tke_length = unbounded
         const amrex::Real* tz;     //!< file table: heights (n)
-        const amrex::Real* tu;     //!< file table: u, v, theta, k, each n long (k: NaN if absent)
+        const amrex::Real* tu;     //!< file table: u, v, theta, k, each n long (k: 0 if absent)
         const amrex::Real* tv;
         const amrex::Real* tt;
         const amrex::Real* tk;
@@ -125,8 +125,8 @@ public:
 
         //! The cap's factor at height z, l / l_raw = 1 / (1 + l_raw / l_max)
         //! with l_raw = kappa (z + z0) (geom_length of Closure_K.H), written
-        //! without a select: exactly 1 for unbounded (inv_lmax = 0), so the
-        //! old expressions times this factor are the old values bit for bit.
+        //! without a select: exactly 1 for unbounded (inv_lmax = 0), so an
+        //! expression times this factor then keeps its value bit for bit.
         AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
         amrex::Real cap_factor (amrex::Real z) const noexcept
         {

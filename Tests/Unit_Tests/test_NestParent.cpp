@@ -1,23 +1,23 @@
-// The parent run of a nested patch (NestParent.H), plan rev. 6 sub-phase 9.1.
-//   UT-9.1.1  a field a + b x + c y + d x y on each zeta-level (coefficients
-//             that change with the level and the field) is reproduced to
-//             round-off at every staggered point of the patch, its two
-//             horizontal ghost layers included, on flat ground and on a hill
-//             with stretched layers; the z ghost rows hold the nearest row
-//   UT-9.1.2  each placement fault is refused with a message naming
-//             bc.nest_parent; a checkpoint of format version 1 and a missing
-//             checkpoint abort naming it
-//   UT-9.1.3  the patch values do not depend on the parent's or the patch's
-//             box layout or rank map (bit for bit), on 1, 2 and 4 ranks (the
-//             unit_np* tests)
-//   beyond the plan (bc.nest_ratio): UT-9.1.1 and the periodic seam at
-//             ratios 4, 8 and 16; the placement rules at ratio 4 and the
-//             refused ratios (6 among them); UT-9.1.3 at ratio 4; the nest
-//             faces' restart record changes with the ratio
-//   beyond the plan: across a periodic seam of the parent (a patch that
-//             touches the seam, and a periodic patch spanning the parent) the
-//             values are the bilinear interpolation of the parent's discrete
-//             values with the periodic neighbours, computed here on the host
+// The parent run of a nested patch (NestParent.H).
+//   a field a + b x + c y + d x y on each zeta-level (coefficients
+//     that change with the level and the field) is reproduced to
+//     round-off at every staggered point of the patch, its two
+//     horizontal ghost layers included, on flat ground and on a hill
+//     with stretched layers; the z ghost rows hold the nearest row
+//   each placement fault is refused with a message naming
+//     bc.nest_parent; a checkpoint of format version 1 and a missing
+//     checkpoint abort naming it
+//   the patch values do not depend on the parent's or the patch's
+//     box layout or rank map (bit for bit), on 1, 2 and 4 ranks (the
+//     unit_np* tests)
+//   bc.nest_ratio: the bilinear field and the periodic seam at
+//     ratios 4, 8 and 16; the placement rules at ratio 4 and the
+//     refused ratios (6 among them); the layout independence at ratio 4; the nest
+//     faces' restart record changes with the ratio
+//   across a periodic seam of the parent (a patch that
+//     touches the seam, and a periodic patch spanning the parent) the
+//     values are the bilinear interpolation of the parent's discrete
+//     values with the periodic neighbours, computed here on the host
 // The parent's ghost cells hold 1e30 in the checkpoint and the patch starts
 // at 1e30, so a value taken from a parent ghost or a point left unfilled
 // shows up.
@@ -114,7 +114,7 @@ gust::Inputs parent_inputs (bool hill, int mgs = 7)
     return in;
 }
 
-// The patch over parent cells 3 to 15 in x and 2 to 12 in y: 12r x 10r cells
+// The patch over parent cells 3 to 14 in x and 2 to 11 in y: 12r x 10r cells
 // of 100/r m (ratio r; 24 x 20 cells of 50 m at r = 2), the parent's
 // z-levels, boxes of at most 9 x 7 (uneven, not a multiple of r). Its own
 // hill (centred in the patch) when hill: the node heights are the patch's.
@@ -218,7 +218,7 @@ void nest (const std::string& dir, NestRun& patch, int r = 2)
     parent.interpolate(patch.q);
 }
 
-// UT-9.1.1 on the given ground at ratio r.
+// The bilinear field on the given ground at ratio r.
 void bilinear_is_reproduced (bool hill, const std::string& prefix, int r = 2)
 {
     NestRun p;
@@ -241,7 +241,7 @@ void bilinear_is_reproduced (bool hill, const std::string& prefix, int r = 2)
 
 TEST (NestParent, BilinearFieldIsReproducedOnFlatGround) { bilinear_is_reproduced(false, "ut_nest_flat"); }
 TEST (NestParent, BilinearFieldIsReproducedOnAHill) { bilinear_is_reproduced(true, "ut_nest_hill"); }
-// Beyond the plan (bc.nest_ratio): the same at ratios 4, 8 and 16.
+// The same at ratios 4, 8 and 16 (bc.nest_ratio).
 TEST (NestParent, BilinearFieldIsReproducedAtRatio4) {
     bilinear_is_reproduced(false, "ut_nest_flat_r4", 4);
     bilinear_is_reproduced(true, "ut_nest_hill_r4", 4);
@@ -270,7 +270,7 @@ std::vector<std::string> placement (const gust::CheckpointHeader& h, const gust:
     return gust::check_nest_placement(h, m, gust::make_zlevels(m, gust::make_geometry(m)), r, off);
 }
 
-// UT-9.1.2: one fault at a time; each is refused, every message names the key.
+// One fault at a time; each is refused, every message names the key.
 TEST (NestParent, EachPlacementFaultIsRefusedNamingTheKey)
 {
     const gust::Inputs pin = parent_inputs(false);
@@ -325,7 +325,7 @@ TEST (NestParent, EachPlacementFaultIsRefusedNamingTheKey)
     EXPECT_FALSE(placement(hp, edge).empty()) << "a periodic patch narrower than the parent";
 }
 
-// Beyond the plan: the placement rules at bc.nest_ratio = 4, and the ratios
+// The placement rules at bc.nest_ratio = 4, and the ratios
 // that are refused (each message names bc.nest_ratio).
 TEST (NestParent, PlacementFollowsTheRatio)
 {
@@ -393,7 +393,7 @@ std::string abort_message (const std::function<void()>& fn)
     return "";
 }
 
-// UT-9.1.2: a version-1 checkpoint and a missing one abort naming the key.
+// A version-1 checkpoint and a missing one abort naming the key.
 TEST (NestParent, OldOrMissingCheckpointAbortsNamingTheKey)
 {
     NestRun p;
@@ -481,9 +481,9 @@ double wavy (double x, double y, int k, int c)
     return 5.0 + c + 0.2 * k + std::sin(0.003 * x + 0.4 * c) * std::cos(0.002 * y - 0.1 * k) + 1.0e-3 * x;
 }
 
-// UT-9.1.3: the parent's and the patch's layouts and rank maps change; the
+// The parent's and the patch's layouts and rank maps change; the
 // patch values are the same bit for bit.
-// Beyond the plan: the same at bc.nest_ratio = 4.
+// The same at bc.nest_ratio = 4.
 void values_do_not_depend_on_layout (int r)
 {
     struct Layout { int parent_mgs; int patch_mgs; bool reverse; };
@@ -519,7 +519,7 @@ void values_do_not_depend_on_layout (int r)
 TEST (NestParent, ValuesDoNotDependOnLayoutOrRanks) { values_do_not_depend_on_layout(2); }
 TEST (NestParent, ValuesDoNotDependOnLayoutOrRanksAtRatio4) { values_do_not_depend_on_layout(4); }
 
-// Beyond the plan: the nest faces' restart record (NestFaces::hash_inputs)
+// The nest faces' restart record (NestFaces::hash_inputs)
 // of a ratio-4 patch differs from that of a ratio-2 patch over the same
 // parent cells (same parent, offset and settings); a ratio-2 parent's record
 // is unchanged by the bc.nest_ratio key (default 2 adds nothing).
@@ -560,7 +560,7 @@ TEST (NestParent, RestartRecordHoldsTheRatio)
     EXPECT_NE(h[0], h[1]);
 }
 
-// Beyond the plan: NestParent refuses a ratio that is not 2, 4, 8 or 16,
+// NestParent refuses a ratio that is not 2, 4, 8 or 16,
 // naming bc.nest_ratio.
 TEST (NestParent, InvalidRatioAbortsNamingTheKey)
 {
@@ -577,7 +577,7 @@ TEST (NestParent, InvalidRatioAbortsNamingTheKey)
     EXPECT_NE(m.find("bc.nest_ratio = 6: must be 2, 4, 8 or 16"), std::string::npos) << m;
 }
 
-// Beyond the plan: across a periodic seam of the parent in x. The expected
+// Across a periodic seam of the parent in x. The expected
 // value is the bilinear interpolation of the parent's discrete values,
 // wrapped, computed here from the parent's indices.
 TEST (NestParent, PeriodicSeamUsesThePeriodicNeighbours)
@@ -594,9 +594,9 @@ TEST (NestParent, PeriodicSeamUsesThePeriodicNeighbours)
     const ScopedDir dir{write_parent(p, "ut_nest_seam", [&] (const amrex::MultiFab&, int c, int i, int j, int k) {
         return g(wrap(i), j, k, c);
     })};
-    // Patch 1: parent cells 0 to 10 in x, not periodic (its ghosts cross the
+    // Patch 1: parent cells 0 to 9 in x, not periodic (its ghosts cross the
     // seam); patch 2: periodic, spanning the parent. At ratio r = 2, and
-    // beyond the plan at 4, 8 and 16 (bc.nest_ratio).
+    // at 4, 8 and 16 (bc.nest_ratio).
     for (const int r : {2, 4, 8, 16})
     for (int span = 0; span < 2; ++span) {
         NestRun f;

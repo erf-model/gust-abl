@@ -1043,7 +1043,7 @@ GUST runs the same setup (``Tests/Real_Terrain/Askervein_210``):
   same trend (second-order upwind gives lower lee speeds than a higher-order scheme) is reported for WindNinja by
   Wagenbrenner et al. (2019).
 - A tighter verdict (six orders instead of four, 270 iterations) changes no line speed by more than 1e-4 %.
-- Since audit A2 the wall model takes the ground cell's wind parallel to the ground (:doc:`boundary_conditions`),
+- Since #57 the wall model takes the ground cell's wind parallel to the ground (:doc:`boundary_conditions`),
   which makes the ghost fill a fixed point. The 10 m line speeds moved by at most 0.7 % (mean −0.13 %), most in the
   lee; the level-0 iterations did not change. Against the 40 measured masts the RMSE moved from 1.28 to 1.27 m/s.
 - The speeds are sampled 10 m above the ground, linear in :math:`\ln(z + z_0)` between the two cell centres

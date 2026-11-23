@@ -5,7 +5,7 @@ A courtyard open to the wind: a wall 30 m wide with two wings and a low annex be
 wind. Its inner corners and the annex's roof against the wall are cells with two walls, where one face of a velocity
 component lies on the other wall. The case pins the wall law's speed in those cells (`docs/buildings.rst`): from the
 faces that are not fixed rows (`buildings.wall_speed = open_faces`, the default), and from every face (`all_faces`,
-the form before). It is not a validation; PR-44 compares with measurements.
+the form before). It is not a validation; `Snyder_Lawson_Cube` and `Castro_Cube_Array` compare with measurements.
 
 ## Files
 | File | Role |

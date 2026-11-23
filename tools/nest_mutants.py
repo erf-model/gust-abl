@@ -41,8 +41,8 @@ M = [
  ("N10", "z ghost rows below the ground copy the second row (wrong k)", F,
   "a(i, j, k) = a(i, j, klo); });", "a(i, j, k) = a(i, j, klo + 1); });"),
  ("N11", "parent images filled without the periodic images", F,
-  "amrex::IntVect(kNestImageGhost, kNestImageGhost, 0), pgeom.periodicity());",
-  "amrex::IntVect(kNestImageGhost, kNestImageGhost, 0), amrex::Periodicity::NonPeriodic());"),
+  "it.mf->ParallelCopy(src, 0, 0, 1, amrex::IntVect(0), amrex::IntVect(kNestImageGhost, kNestImageGhost, 0), pgeom.periodicity());",
+  "it.mf->ParallelCopy(src, 0, 0, 1, amrex::IntVect(0), amrex::IntVect(kNestImageGhost, kNestImageGhost, 0), amrex::Periodicity::NonPeriodic());"),
  # placement
  ("N12", "margin of one parent cell", H,
   "kNestMargin = 2;", "kNestMargin = 1;"),
@@ -63,7 +63,7 @@ M = [
  ("N19", "a missing Header key names the token read, not the caller's key", S,
   "header_error(key, dir, std::string(\"corrupt Header: expected '\") + want + \"'\");",
   "header_error(tok, dir, std::string(\"corrupt Header: expected '\") + want + \"'\");"),
- # bc.nest_ratio (beyond the plan)
+ # bc.nest_ratio
  ("N21", "the axes built at ratio 2 whatever bc.nest_ratio", F,
   "    const int r = m_ratio;", "    const int r = kNestRatio;"),
  ("N22", "the parent images coarsened by 2 whatever bc.nest_ratio", F,

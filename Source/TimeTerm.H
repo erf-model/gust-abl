@@ -75,7 +75,6 @@ public:
 
     [[nodiscard]] amrex::Real dt () const { return m_opt.dt; }
     [[nodiscard]] amrex::Real inverse_dt () const { return m_inv_dt; }
-    [[nodiscard]] bool stored () const { return m_stored; }
     //! q^n of one field (Equation::u ... tke).
     [[nodiscard]] const amrex::MultiFab& previous (Equation eq) const;
 

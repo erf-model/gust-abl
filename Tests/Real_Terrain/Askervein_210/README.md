@@ -16,6 +16,19 @@ stretched by 1.08).
 | `Gold/erf_urans_lines_10m.csv` | ERF's 10 m speeds at the masts, averaged over 2400–4800 s. |
 | `Gold/askervein_210_level_history.json` | The grid-sequencing history of the line LU-SGS run (`rt_askervein_210_level_history`). |
 
+## Data and acknowledgements
+- The Askervein terrain and inflow of ERF's `Exec/CanonicalTests/Real_Terrain/Askervein` (`extern_erf/askervein.txt`,
+  `extern_erf/inflow_powerlaw.txt`, recorded in `extern_erf/EXTRACTED.md`; BSD 3-clause with the LBNL clause,
+  `extern_erf/LICENSE.md`). Thanks to the ERF developers.
+- The mast positions of lines A and AA (P. A. Taylor and H. W. Teunissen, "The Askervein Hill project: overview and
+  background data", Boundary-Layer Meteorology 39, 1987, doi:10.1007/BF00121863), as tabulated in N. Wagenbrenner's
+  windninja-tools (github.com/nwagenbrenner/windninja-tools, `data/askervein/askervein_obs.zip`), used with her
+  permission. The windninja-tools repository states no licence (`../WindNinja2019/README.md`); the licence of the
+  paper is not stated here. Thanks to Natalie Wagenbrenner and to the Askervein field teams.
+
+The files are redistributed in this repository; nothing has to be downloaded. The ERF archive behind
+`Gold/erf_urans_lines_10m.csv` is not in the repository (below).
+
 ## The ERF reference
 ERF at the pinned commit ran `inputs_anel` with the overrides of `tools/kestrel/erf_references.sh`
 (`stop_time=4800 erf.plot_per_1=100 erf.plot_int_1=-1 erf.plot2d_int_1=-1`) on 8 ranks of one workstation
@@ -25,8 +38,10 @@ repository (100 MB).
 
 ## CTest
 `rt_askervein_210_inflow_table` (`regression;smoke`); `rt_steady_askervein_210`, `rt_askervein_210_erf_lines`,
-`rt_askervein_210_level_history`, `rt_steady_askervein_210_zjacobi`, `rt_askervein_210_zjacobi_matches` (`nightly`,
-double precision only).
+`rt_askervein_210_level_history`, `rt_steady_askervein_210_zjacobi`, `rt_askervein_210_zjacobi_matches`, `rt_askervein_210_lines_gold` (the lines
+against their own gold to 1e-4), `rt_steady_askervein_210_unbounded` and `rt_askervein_210_unbounded_matches` (the
+line LU-SGS run with `bc.inflow_tke_length = unbounded` against its gold lines; 4 ranks) (`nightly`, double precision
+only).
 
 ## Expected Results
 - Line LU-SGS configuration (`lusgs` and its default cap 8, the default reference window, two levels): steady after 95
@@ -34,8 +49,8 @@ double precision only).
   (`zjacobi`, four sweeps, cap 2, a 100-iteration reference): 534 (565 with `unbounded`). The two agree on the lines to 1e-4 %.
 - Against ERF: within 4.31 % up to 300 m past the hilltop; the lee masts beyond are 6.9–9.8 % slower (second-order
   against ERF's fifth-order advection, and less inflow turbulence mixing into the wake than with the unbounded
-  inflow length, which gives 4.39 % and 5.1–8.2 %). Before audit A2 (the wall model's ground-cell wind parallel to
-  the ground) these were 4.00 % and 6.6–9.2 %; against the measured masts the change is within 0.03 m/s. See `docs/results.rst`, "Askervein on ERF's mesh".
+  inflow length, which gives 4.39 % and 5.1–8.2 %). Before the wall model took the ground-cell wind parallel to
+  the ground these were 4.00 % and 6.6–9.2 %; against the measured masts the change is within 0.03 m/s. See `docs/results.rst`, "Askervein on ERF's mesh".
 
 ## How to run
 ```bash

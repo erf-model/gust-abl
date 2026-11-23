@@ -46,8 +46,8 @@ void add_canopy_tke (const State& q, const amrex::MultiFab& f, amrex::Real beta_
 //! the soil and litter (0.01 to 0.1 m), not the forest's (about h/10).
 inline constexpr amrex::Real kForestSizedZ0 = amrex::Real(0.5);
 
-//! The columns (valid cells of every rank) whose first cell has canopy
-//! (f > 0) and whose ground roughness (rough: uniform or map) is z0_max or more.
+//! The columns (valid cells of every rank) with canopy (f > 0 in any
+//! cell) and whose ground roughness (rough: uniform or map) is z0_max or more.
 amrex::Long canopy_columns_on_rough_ground (const amrex::MultiFab& f, const Roughness& rough, amrex::Real z0_max);
 
 } // namespace gust

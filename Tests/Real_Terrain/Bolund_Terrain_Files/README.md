@@ -54,7 +54,8 @@ The deck was started for two iterations on one rank (no unused input, plotfiles 
 the steady verdict, and no result is pinned.
 
 ## CTest
-`rt_bolund_files_converter` (label `unit`): `to_gust_xyz.py selftest`. A 3 × 2 grid in the `.asc`, `.grd` and
+`rt_bolund_files_converter` (label `unit`, registered when the CMake Python has NumPy): `to_gust_xyz.py selftest`.
+A 3 × 2 grid in the `.asc`, `.grd` and
 point formats gives the same points; `--shift` and `--crop`; the water-level and class roughness modes; a code
 without a z0 and a zero z0 are refused. The GeoTIFF reader is `tools/tiff_to_xyz.py`'s. The deck has no CTest,
 as its two files are not in the repository.

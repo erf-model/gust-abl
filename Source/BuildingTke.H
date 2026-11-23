@@ -34,7 +34,8 @@
 //     d + z0 = min(d_ground + z0_ground, d_b + z0_b),  z0_b = buildings.z0
 //   (limit_wall_distance), d_b the distance to the nearest wall of a building:
 //     wall cell   d_b = max(min over its walls of d1, z0_b), d1 = (1 - beta) Delta_n / 2
-//                 the distance of its fluid centroid (form 7);
+//                 the distance of its fluid centroid (form 7); with an immersed ground
+//                 d_b = min d1, not floored at z0_b;
 //     elsewhere   the distance from the cell centre to the nearest wall, each wall a
 //                 rectangle on its plane, placed from the cell's solid fraction and its
 //                 faces' blocked fractions (BuildingTke.cpp: wall_depth, wall_rectangle; a
@@ -53,7 +54,8 @@
 //
 // Ghost cells: d_b has one layer, periodic images, else the nearest domain column's along x
 // and y (as the ground's distance) and a large value below and above the domain. The rows
-// read valid cells only.
+// read valid cells only, but for buildings.wall_k_bound = impinging, which reads k in the walls'
+// reference cells (one ghost layer of k).
 
 #include "BuildingForcing.H"
 #include "ImplicitOperator.H"
@@ -89,7 +91,7 @@ inline constexpr amrex::Real kBuildingFar = amrex::Real(1.0e30);
 
 //! How a wall cell's row meets the cell's own: blended in everywhere (replace), blended above
 //! the ground's first cells and added to the ground's relaxation row in them (ground_row), or
-//! added everywhere (source). BuildingTke.H's header has the rows.
+//! added everywhere (source). The header above has the rows.
 enum class BuildingKRow { replace, ground_row, source };
 
 //! The closure's terms of one level's buildings.
@@ -103,15 +105,16 @@ public:
                 const amrex::MultiFab& z_nd, amrex::Real tke_floor, amrex::Real Cmu0);
 
     //! d_b at the cells (one ghost layer); kBuildingFar in solid cells and where the nearest wall
-    //! is as far as the tallest column or farther (cutoff()), where the ground is nearer anyway.
+    //! is as far as the tallest column or farther (cutoff()), where the ground is nearer anyway. With a
+    //! ground built from a surface: the fluid's mean height above that surface.
     [[nodiscard]] const amrex::MultiFab& distance () const { return m_dist; }
     //! H_b at the cells (one ghost layer, as distance()): the height of the building whose wall is the
     //! nearest, the tallest solid column next to that wall's cell (m); 0 where no wall was found.
     [[nodiscard]] const amrex::MultiFab& building_height () const { return m_hb; }
-    //! buildings.limiter_zone > 0 where it acts (BuildingsOptions::limiter_zone_acts): the weight of the closure's lee options (Closure::set_cap_weight),
-    //! on the cells and their lateral ghost ring: 0 within half the zone of a building, 1 beyond it,
-    //! smooth between (make_limiter_zone).
+    //! buildings.limiter_zone acts (> 0 and BuildingsOptions::limiter_zone_acts).
     [[nodiscard]] bool zone_active () const { return m_zone_c > 0; }
+    //! The weight of the closure's lee options (Closure::set_cap_weight), on the cells and their lateral
+    //! ghost ring: 0 within half the zone of a building, 1 beyond it, smooth between (make_limiter_zone).
     [[nodiscard]] const amrex::MultiFab& limiter_zone () const { return m_zone; }
     //! The valid cells with a weight below 1 and at 0 (all ranks).
     [[nodiscard]] amrex::Long zone_cells () const { return m_zone_cells; }
@@ -120,8 +123,6 @@ public:
     void make_limiter_zone ();
     //! The passes the distance took, the last one, which changed nothing, included.
     [[nodiscard]] int distance_passes () const { return m_passes; }
-    //! The tallest column of the mesh (m): walls at this distance or more are not looked for.
-    [[nodiscard]] amrex::Real cutoff () const { return m_cutoff; }
     //! The closure's length reads d + z0 with the ground's z0 (Closure.H). Where a building's
     //! wall is the nearer one by that measure the sum must be d_b + z0_b, so
     //!   dist = min(dist, d_b + z0_b - z0)
@@ -151,7 +152,7 @@ private:
     amrex::MultiFab m_dist, m_hb, m_zone;
     amrex::Real m_zone_c{0};
     amrex::Long m_zone_cells{0}, m_zone_off{0};
-    amrex::Real m_floor{0}, m_cmu0{amrex::Real(0.5562)}, m_cutoff{0}, m_z0b{0};
+    amrex::Real m_floor{0}, m_cmu0{amrex::Real(0.5562)}, m_z0b{0};
     bool m_immersed_ground{false};   //!< the wall is the ground (limit_wall_distance: no roughness shift)
     int m_passes{0};
     bool m_impinging{false};   //!< buildings.wall_k_bound = impinging

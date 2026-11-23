@@ -54,7 +54,7 @@
 //
 // Inputs (turb.*, read by read_closure_options; the application and the
 // regression tool read them):
-//   Cmu0 0.5562 (> 0)   Cb 0.35 (> 0)   Rt_crit -1 (<= 0)   Rt_min -3 (< Rt_crit, > -3.6)
+//   Cmu0 0.5562 (> 0)   Cb 0.35 (> 0)   Rt_crit -1 (<= 0)   Rt_min -3 (< Rt_crit, > -3.598)
 //   max_geom_lscale 100 m (> 0)  tke_floor 0 (0: machine epsilon; else >= machine epsilon)
 //   sigma_k 1 (> 0)   nu_molecular 0 (>= 0, m^2/s)   alpha_molecular 0 (>= 0, m^2/s)
 //   kappa 0.41 (> 0)   nut_relax 1 ((0, 1])   frozen_switch 1 (0 | 1: freeze the floor during the Newton stage, Smoothness.H)
@@ -62,12 +62,13 @@
 //     level's SIMPLEC stage ends the relaxation, end_relaxation())
 //   ri_gate 0 (0: off, or in [1e-6, 1]: the stratification gate below)
 //   face_mean arithmetic | logarithmic (Diffusion_K.H)   wall_distance terrain_height | tucker
+//   shear_stencil central | log_law (LogShear.H)   realizability 0 (0: off, or in [0.01, 10]: the cap of ClosureWake.H)
 //   closure kl | none (kl). none is a laminar run: nu = nu_molecular, gamma_theta =
 //   alpha_molecular, gamma_tke = nu_molecular, nu_t = 0 and no k sources (Closure::evaluate
 //   sets the fields, no kernel of the k–L closure runs). k is then a passive scalar: it is
 //   transported with nu_molecular and acts on nothing. none needs nu_molecular > 0, and
-//   refuses the keys of the k–L closure (each has no effect); tke_floor, nu_molecular,
-//   alpha_molecular and face_mean stay.
+//   refuses the keys of the k–L closure (each has no effect); tke_floor, nu_molecular
+//   and alpha_molecular stay.
 
 #include "Closure_K.H"
 #include "Diffusion_K.H"
@@ -124,7 +125,7 @@ struct ClosureOptions
     FaceMean face_mean{FaceMean::arithmetic};
     WallDistanceKind wall_distance{WallDistanceKind::terrain_height};
     ShearStencil shear_stencil{ShearStencil::central};
-    //! turb.realizability = C_r (0: off, or finite and > 0): nu_t <= C_r k / S
+    //! turb.realizability = C_r (0: off, or in [0.01, 10]): nu_t <= C_r k / S
     //! (ClosureWake.H), applied to the new nu_t before the nu_t relaxation.
     amrex::Real realizability{0};
     //! turb.closure (kl): none is a laminar run (the molecular diffusivities, nu_t = 0, no k sources).
@@ -223,7 +224,7 @@ public:
     //! The stored history to and from a checkpoint directory
     //! (<dir>/Level_0/closure_nut, with its ghost ring); read defines it on
     //! the given layout. Nothing is written or read when there is no history.
-    //! The frozen switches are transient (one Jacobian) and are not written.
+    //! The frozen switches are written by NewtonSmoothness (Smoothness.H), not here.
     void write_checkpoint (const std::string& dir) const;
     void read_checkpoint (const std::string& dir, const amrex::BoxArray& ba, const amrex::DistributionMapping& dm,
                           const amrex::Geometry& geom);
@@ -253,7 +254,7 @@ public:
     void restore_switches (const amrex::iMultiFab& src, FreezeScope scope, const amrex::BoxArray& ba,
                            const amrex::DistributionMapping& dm, const amrex::Geometry& geom);
 
-    //! The forest canopy's terms of the closure (docs/canopy.rst; PR-60): drag the
+    //! The forest canopy's terms of the closure (docs/canopy.rst): drag the
     //! level's drag field f = Cd a (Canopy.H, one ghost column in x and y, on the
     //! level's cells; null: none). The length cap L <= alpha / f (a switch, frozen
     //! with the others) and the k sources beta_p f |U|^3 - beta_d f |U| k. The
@@ -270,7 +271,6 @@ public:
     //! it bit for bit and w = 0 lifts it. The buildings' zone (BuildingTke::limiter_zone) is one. The
     //! field must outlive the closure's use of it.
     void set_cap_weight (const amrex::MultiFab* w) { m_cap_weight = w; }
-    [[nodiscard]] const amrex::MultiFab* cap_weight () const { return m_cap_weight; }
 
     //! The strain correction (null: none). It must outlive the closure's use of it.
     void set_strain_correction (const StrainCorrection* c) { m_strain_fix = c; }

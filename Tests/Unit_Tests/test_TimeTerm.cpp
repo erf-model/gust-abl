@@ -1,17 +1,17 @@
-// The physical time term of dual time stepping (TimeTerm.H), plan rev. 6
-// beyond the plan, sub-phase 6.1 (UT-6.1.x), on the 2-D hill of
+// The physical time term of dual time stepping (TimeTerm.H),
+// on the 2-D hill of
 // HillTestHelpers.H as the application sets it up (the k–L closure, the wall
 // law with the Dirichlet wall-k rows, the slip top, Rayleigh damping of w and
 // theta, the ground and top w faces as Dirichlet rows):
 //   the residual gains exactly (q - q^n)/dt on every row of u, v, w, theta and
 //   k that keeps its own residual, against the closed form on a non-uniform
 //   field, nothing on p, and nothing on the rows that replace theirs (the
-//   ground and top w faces, the first cells' wall-k rows) (UT-6.1.1);
+//   ground and top w faces, the first cells' wall-k rows);
 //   implicit_rows gains 1/dt on the diagonal of exactly those rows, no other
 //   coefficient changes, and the change of the residual along a direction v
-//   is that diagonal times v, by finite differences (UT-6.1.2);
+//   is that diagonal times v, by finite differences;
 //   at q = q^n the residual is unchanged and without a time term nothing
-//   reads it (UT-6.1.3; the steady path's bits are the regression golds);
+//   reads it (the steady path's bits are the regression golds);
 //   the option checks name unsteady.dt.
 #include "Closure.H"
 #include "HillTestHelpers.H"
@@ -64,7 +64,7 @@ void perturb (HillRun& h, const gust::State& q0, gust::State& q, double s)
     auto t = q.fields();
     // State::fields() is non-const; copy through a mutable alias of q0's fields.
     const amrex::MultiFab* f0[7] = {&q0.u, &q0.v, &q0.w, &q0.p, &q0.theta, &q0.tke, &q0.z_phys_nd};
-    for (std::size_t n = 0; n < t.size(); ++n) {
+    for (std::size_t n = 0; n < static_cast<std::size_t>(t.size()); ++n) {
         amrex::MultiFab::Copy(*t[n].mf, *f0[n], 0, 0, 1, t[n].mf->nGrowVect());
     }
     const double L = HillRun::Lx, H = HillRun::H;
@@ -149,7 +149,7 @@ long columns (const HillRun& h)
 
 } // namespace
 
-TEST(TimeTerm, ResidualGainsTheClosedFormOnItsOwnRows)   // UT-6.1.1
+TEST(TimeTerm, ResidualGainsTheClosedFormOnItsOwnRows)
 {
     HillRun h = make_hill();
     ASSERT_EQ(h.ls->res_in.surface->wall_k, gust::SurfaceLayerOptions::WallK::dirichlet);
@@ -178,7 +178,7 @@ TEST(TimeTerm, ResidualGainsTheClosedFormOnItsOwnRows)   // UT-6.1.1
     EXPECT_EQ(gust::test::count_bit_differences(Ron.p, Roff.p, 0), 0);
 }
 
-TEST(TimeTerm, DiagonalIsTheDerivativeOfTheTimeTerm)   // UT-6.1.2
+TEST(TimeTerm, DiagonalIsTheDerivativeOfTheTimeTerm)
 {
     HillRun h = make_hill();
     gust::TimeTerm tt(gust::TimeTermOptions{amrex::Real(kDt)}, h.c.ba, h.c.dm);
@@ -257,7 +257,7 @@ TEST(TimeTerm, DiagonalIsTheDerivativeOfTheTimeTerm)   // UT-6.1.2
     }
 }
 
-TEST(TimeTerm, NoChangeAtTheStoredState)   // UT-6.1.3
+TEST(TimeTerm, NoChangeAtTheStoredState)
 {
     HillRun h = make_hill();
     gust::TimeTerm tt(gust::TimeTermOptions{amrex::Real(kDt)}, h.c.ba, h.c.dm);
@@ -272,7 +272,7 @@ TEST(TimeTerm, NoChangeAtTheStoredState)   // UT-6.1.3
     // stored state; that the steady path (time == nullptr) is bit-identical is shown by the regression golds.
     const auto a = Ron.fields();
     const auto b = Roff.fields();
-    for (std::size_t n = 0; n < a.size(); ++n) {
+    for (std::size_t n = 0; n < static_cast<std::size_t>(a.size()); ++n) {
         amrex::MultiFab d(a[n].mf->boxArray(), a[n].mf->DistributionMap(), 1, 0);
         amrex::MultiFab::Copy(d, *a[n].mf, 0, 0, 1, 0);
         amrex::MultiFab::Subtract(d, *b[n].mf, 0, 0, 1, 0);

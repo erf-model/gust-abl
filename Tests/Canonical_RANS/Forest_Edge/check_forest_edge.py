@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""A forest-clearing-forest pattern against the published adjustment length (RT-8.6.2):
+"""A forest-clearing-forest pattern against the published adjustment length:
 
     check_forest_edge.py -- LAUNCHER... GUST [ARGS ...]
 

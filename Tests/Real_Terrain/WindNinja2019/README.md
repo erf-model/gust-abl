@@ -96,7 +96,7 @@ With the recommended setting, on 8 ranks of an Apple M2 Pro laptop (not idle; in
 | Bolund case 4 | 815 | 6.0 min | 1.01 / 1.23 |
 | Big Southern Butte (`inputs_bsb_srtm`) | 863 | 14 min | 3.74 / 2.89 |
 
-Re-measured after audit A2 (the wall model's ground-cell wind parallel to the ground, October 2026): Bolund case 1
+Re-measured after the wall model took the ground-cell wind parallel to the ground (October 2026): Bolund case 1
 needs 448 iterations (365 before) with the same RMSE (1.25 m/s, lee bias +2.11 m/s); its time is from before. The
 other rows predate that change. The mass-consistent runs take 2–5 s. Known differences: the Bolund case 4 lee mast is slower than measured with the
 cap (bias −2.4 m/s); on the Butte two lee-flank masts (R20, R21) are 0.6–0.8 lower in speed-up than measured.

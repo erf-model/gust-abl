@@ -1,5 +1,5 @@
 // The restriction and the defect source of the joint two-level run
-// (NestDefect.H; plan rev. 6 tracker, PR-70, nest.feedback = defect).
+// (NestDefect.H; nest.feedback = defect).
 //   restrict_patch, on a hill parent with an uneven patch layout:
 //     - flux conservation: on every footprint cell the parent's J div after
 //       the restriction is the mean of J div over its 2 x 2 nest cells, for
@@ -11,7 +11,7 @@
 //     - k constant on the hill: unchanged by the detJ weights;
 //     - p: the detJ-weighted mean of the nest cells shifted by one constant, so that
 //       its footprint mean is the parent's footprint mean before;
-//     - outside the footprint every field keeps its values bit for bit;
+//     - outside the footprint u and p keep their values bit for bit;
 //     - a footprint on a periodic seam sets both copies of the seam face;
 //     - u, v, theta, k do not depend on the nest's box layout or rank map
 //       (bit for bit), on 1, 2 and 4 ranks (the unit_np* tests);
@@ -58,11 +58,11 @@ constexpr double kTol = kDouble ? 1.0e-11 : 2.0e-4;
 struct DefectCase
 {
     gust::Inputs in;
-    amrex::Geometry geom;
-    amrex::BoxArray ba;
-    amrex::DistributionMapping dm;
-    gust::Mesh mesh;
-    gust::State q;
+    amrex::Geometry geom{};
+    amrex::BoxArray ba{};
+    amrex::DistributionMapping dm{};
+    gust::Mesh mesh{};
+    gust::State q{};
 
     void make (bool reverse = false)
     {
@@ -231,7 +231,9 @@ TEST(NestDefect, RestrictionConservesTheFluxesOnAHill)
         return field(pos(n.geom, m, i, 0), pos(n.geom, m, j, 1), k, c);
     });
     const amrex::Box dom_c = p.geom.Domain();
-    const std::vector<double> before_u = gather(p.q.u, dom_c), before_p = gather(p.q.p, dom_c);
+    const amrex::MultiFab* const all[6] = {&p.q.u, &p.q.v, &p.q.w, &p.q.p, &p.q.theta, &p.q.tke};
+    std::vector<double> before[6];
+    for (int f = 0; f < 6; ++f) { before[f] = gather(*all[f], dom_c); }
     gust::restrict_patch(n.q, n.mesh, n.geom, kR, kOffset, p.mesh, p.geom, ghosts(p.geom), p.q);
 
     const std::vector<double> dc = gather(jdiv(p), dom_c);
@@ -254,22 +256,19 @@ TEST(NestDefect, RestrictionConservesTheFluxesOnAHill)
     EXPECT_GT(scale, 1.0e-4) << "the nest field is not divergent enough to test the fluxes";
     EXPECT_LT(err, kTol * std::max(1.0, scale)) << "the parent's J div differs from the nest's mean on the footprint";
 
-    // Outside the footprint u and p keep their values bit for bit.
-    const std::vector<double> after_u = gather(p.q.u, dom_c), after_p = gather(p.q.p, dom_c);
-    const amrex::Box box_u = amrex::convert(dom_c, p.q.u.ixType());
-    const amrex::Box fpu = amrex::convert(fp, p.q.u.ixType());
-    amrex::Long changed = 0;
-    for (amrex::BoxIterator it(box_u); it.ok(); ++it) {
-        if (fpu.contains(it())) { continue; }
-        const auto m = static_cast<std::size_t>(box_u.index(it()));
-        if (after_u[m] != before_u[m]) { ++changed; }
+    // Outside the footprint's valid points every field keeps its values bit for bit.
+    for (int f = 0; f < 6; ++f) {
+        const std::vector<double> after = gather(*all[f], dom_c);
+        const amrex::Box box_f = amrex::convert(dom_c, all[f]->ixType());
+        const amrex::Box fp_f = amrex::convert(fp, all[f]->ixType());
+        amrex::Long changed = 0;
+        for (amrex::BoxIterator it(box_f); it.ok(); ++it) {
+            if (fp_f.contains(it())) { continue; }
+            const auto m = static_cast<std::size_t>(box_f.index(it()));
+            if (after[m] != before[f][m]) { ++changed; }
+        }
+        EXPECT_EQ(changed, 0) << "points outside the footprint changed, field " << f;
     }
-    for (amrex::BoxIterator it(dom_c); it.ok(); ++it) {
-        if (fp.contains(it())) { continue; }
-        const auto m = static_cast<std::size_t>(dom_c.index(it()));
-        if (after_p[m] != before_p[m]) { ++changed; }
-    }
-    EXPECT_EQ(changed, 0) << "points outside the footprint changed";
 }
 
 // A parent periodic in x and a nest whose footprint starts at its face 0: face 20 is the same face, and the
@@ -390,8 +389,8 @@ TEST(NestDefect, TouchingNestsKeepTheRestrictedOmegaOnBothFootprints)
 //   z-faces (w), nest faces (2 (I - 3) + a, 2 (J - 2) + b) with w_f = 1 + a + 2 b + 0.1 k:
 //     I + J odd:  beta_f = 0, 0.5, 1, 0 (a + 2 b = 0..3); beta_c = 0.375: (6 + 0.25 k) / 4 / 0.625 = 2.4 + 0.1 k
 //     I + J even: beta_f = 1 (all four); beta_c = 1: 0
-// With the full areas (the restriction before N-114 item 7) these are 3 + 0.1 k, 3 + 0.1 k, 3 + 0.1 k, 3 + 0.1 k and
-// 2.5 + 0.1 k.
+// With the full areas (a restriction that ignores the open fractions) these are 3 + 0.1 k, 3 + 0.1 k,
+// 3 + 0.1 k, 3 + 0.1 k and 2.5 + 0.1 k.
 TEST(NestDefect, RestrictionWeightsTheOpenFaceAreas)
 {
     DefectCase p{parent_inputs(false)};
@@ -701,7 +700,7 @@ TEST(NestDefect, RegionAndSource)
 
 // The change of S between two sets: the second R differs from the first by a field that is largest (7.5) at one
 // point of the inner box and larger still (100) outside it, where S is not set: the change is 7.5 per field, the
-// size the largest |R_2| on the inner box. Beyond the plan (tracker row N-114, item 6).
+// size the largest |R_2| on the inner box.
 TEST(NestDefect, ChangeOfTheSourceBetweenTwoSets)
 {
     const amrex::Box dom(amrex::IntVect(0, 0, 0), amrex::IntVect(19, 15, 7));

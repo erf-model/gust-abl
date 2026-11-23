@@ -9,7 +9,7 @@
 
 namespace gust {
 
-//! Where a reference run ran, and its allocation-unit (AU) rate per node-hour
+//! Where a reference run ran, and its allocation-unit (AU) rate per node-hour:
 //! Kestrel CPU nodes 10, Kestrel GPU nodes 100, local 0.
 enum class Machine { KestrelCpu, KestrelGpu, Local };
 

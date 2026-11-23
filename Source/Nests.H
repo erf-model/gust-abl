@@ -1,8 +1,8 @@
 #ifndef GUST_NESTS_H_
 #define GUST_NESTS_H_
 
-// Nests run in the same process as the outer domain (plan rev. 6 tracker,
-// PR-69). The inputs give each nest's name and horizontal extent only:
+// Nests run in the same process as the outer domain. The inputs give each
+// nest's name and horizontal extent only:
 //
 //   nest.names     = nest1 nest2      names of the nests (identifiers)
 //   nest.nest1.lo  = x y              the nest's low corner (m)
@@ -58,8 +58,8 @@
 // nest.feedback = relax (NestRelax.H): the same joint run with the relaxation
 // of the outer domain towards the restricted nests over their footprints in
 // place of the defect source; nest.feedback_factor (default 0.5,
-// kRelaxFactorDefault; finite and > 0) scales its rate. The default was 1
-// before tracker N-114, item 13; nest.feedback_factor = 1 keeps that answer.
+// kRelaxFactorDefault; finite and > 0) scales its rate;
+// nest.feedback_factor = 1 gives the plain rate U/dx.
 //
 // nest.feedback = relax_consistent (NestRelax.H): the relaxation with the
 // residual of its target, weighted by the relaxation's weight, taken from the
@@ -115,11 +115,11 @@ enum class NestDamping { w_theta, outer };
 //! The value of nest.feedback as the deck gives it.
 const char* nest_feedback_name (NestFeedback f);
 
-//! nest.feedback_factor's default with nest.feedback = relax (tracker N-114, item 13: the sweep of
-//! Tests/Canonical_RANS/Nests_Two_Way/relax_factor_sweep.py; 1 before it).
+//! nest.feedback_factor's default with nest.feedback = relax (from the sweep of
+//! Tests/Canonical_RANS/Nests_Two_Way/relax_factor_sweep.py).
 constexpr amrex::Real kRelaxFactorDefault = amrex::Real(0.5);
-//! nest.feedback_factor's default with nest.feedback = relax_consistent (tracker N-114, item 12; the sweep of item
-//! 13 covered relax only, so it keeps 1).
+//! nest.feedback_factor's default with nest.feedback = relax_consistent (the factor sweep covered relax only,
+//! so it keeps 1).
 constexpr amrex::Real kRelaxConsistentFactorDefault = amrex::Real(1);
 
 struct NestOptions
@@ -173,8 +173,8 @@ void apply_nest_inputs (const NestSpec& nest, Inputs& in);
 //! profile, not the parent), or with outer_damping (nest.damping = outer)
 //! the outer deck's layer on every field it names (rayleigh_from_outer: the
 //! parent is damped the same way, towards the same bc.inflow_* profile, over
-//! the footprint); the relaxation zone off; the "given" record cleared (the
-//! outer domain's checks cover the deck).
+//! the footprint); the relaxation zone off; the ratio kNestRatio; the "given"
+//! record cleared (the outer domain's checks cover the deck).
 void apply_nest_boundary_inputs (const std::string& parent_chk, const amrex::Array<int, 3>& periodic, bool outer_damping,
                                  BoundaryInputs& bin);
 

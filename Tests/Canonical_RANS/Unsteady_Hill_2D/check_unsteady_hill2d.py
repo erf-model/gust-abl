@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""RT-6.2.1 and RT-6.3.1: the 2-D hill as unsteady RANS on 1, 2 and 4 ranks,
+"""The 2-D hill as unsteady RANS on 1, 2 and 4 ranks,
 its outputs and a restart.
 
     check_unsteady_hill2d.py -- LAUNCHER... GUST [ARGS ...]
@@ -25,7 +25,7 @@ checks:
   - the 2-rank plotfile's header carries the physical time, 600 s;
   - the flow has moved: u at the hill top 50 m above the ground differs from
     the short run's (nearly the first guess) by more than 0.1 m/s;
-  - RT-6.3.1 (sub-phase 6.3, beyond the plan), the outputs: the probe file has
+  - the outputs: the probe file has
     a row at t = 0 and one per step; the plotfiles of step 5 (t = 300 s) and
     step 10 carry u_mean ... tke_mean and u_var ... tke_var, which at every
     probe's cell equal the weighted mean and variance of that probe's rows
@@ -211,7 +211,7 @@ def main(argv):
     du = abs(a["u"][ii][0][k] - c["u"][ii][0][k])
     check(du > 0.1, "u at the hill top 50 m above the ground moved by %.3f m/s (> 0.1) over 600 s" % du)
 
-    # RT-6.3.1: the averages against the probes' rows.
+    # The averages against the probes' rows.
     cells, rows = read_probes(os.path.join("np2", "unsteady_hill2d_plt_probes.csv"))
     check(len(rows) == 11 and abs(rows[0][0]) == 0 and abs(rows[-1][0] - 600) < 1e-9,
           "the probe file has 11 rows, t = 0 to 600 s (got %d)" % len(rows))
@@ -237,7 +237,7 @@ def main(argv):
               "%s: the averages at the probes are the rows' weighted mean (%.1e of the scale) and variance (%.2f of "
               "its round-off bound) over %g s" % (plt, worst_m, worst_v, total))
 
-    # RT-6.3.1: the restart from the checkpoint of step 5.
+    # The restart from the checkpoint of step 5.
     chks = checkpoints(two)
     check(len(chks) == 2, "two checkpoints, steps 5 and 10 (got %d)" % len(chks))
     shutil.rmtree("restart", ignore_errors=True)

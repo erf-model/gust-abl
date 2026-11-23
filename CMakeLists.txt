@@ -37,7 +37,7 @@ option(GUST_USE_INTERNAL_AMREX "Use the AMReX git submodule"                    
 option(GUST_ENABLE_TESTS       "Build the unit tests and register all tests"      ON)
 
 # GUST runs flat MPI (and GPUs), never OpenMP threads: its own loops have no
-# OpenMP regions. GUST_OMP was removed (audit A11); it set AMReX_OMP, which
+# OpenMP regions. GUST_OMP was removed; it set AMReX_OMP, which
 # threaded only AMReX's internal loops. An OFF left in an existing build
 # directory's cache is dropped; ON stops, after dropping it from the cache so
 # the next configure without it goes through.

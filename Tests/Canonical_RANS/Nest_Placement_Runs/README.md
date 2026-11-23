@@ -2,7 +2,7 @@
 
 ## Purpose
 Joint runs (`nest.feedback = defect`) that test the step rule of `tools/nest_placement.py` and its verdicts for an
-oblique wind (tracker N-114, item 11; beyond the plan). The tool's angle and misfit rules were fitted on a channel
+oblique wind. The tool's angle and misfit rules were fitted on a channel
 site with the wind normal to the faces (`docs/boundary_conditions.rst`, Where to put a joint nest). The step rule
 (escarpments, plateau edges, steep valley sides) and winds at an angle to the faces had no run behind them. Here
 one escarpment, two nests and three winds give six pairs of a tool verdict and a joint run. Each joint run is also
@@ -30,7 +30,7 @@ The winds are given as `nest_placement.py` reads them (degrees from north, the d
 - 180°: `= 90`, slip walls on the x faces;
 - 225°: `= 45`, inflow on the west and south faces, outflow on the east and north faces.
 
-## Data
+## Data and acknowledgements
 None. The case is analytic.
 
 ## How to run

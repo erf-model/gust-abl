@@ -102,7 +102,7 @@ A faster start: the single-column initial field
 The log-law initial profile has no wind turning with height, so the solver spends many iterations on the slow
 inertial adjustment. ``init.first_guess = column`` first solves the flat-ground column (as in tutorial 2, but in one
 dimension, in a fraction of a second) and uses its Ekman spiral as the initial profile (:doc:`initial_conditions`).
-The input file ``inputs_steady_hill2d_column`` differs only in this line:
+The input file ``inputs_steady_hill2d_column`` differs in this line and in its output file names:
 
 .. code-block:: text
 

@@ -68,10 +68,11 @@ TerrainGrid read_erf_terrain_grid (const std::string& file);
 double erf_bilinear (const TerrainGrid& g, double x, double y);
 
 //! Write the ground height into the k = 0 slab of z_phys_nd, ghost nodes in
-//! x and y included (their columns take the nearest domain node's height, as
-//! in ERF). For file terrain a periodic direction wraps: node n is node 0 and
-//! ghosts are periodic images, so the seam is one height. The Witch of Agnesi
-//! is centred and symmetric, so its seam nodes agree already. flat: 0; agnesi: ERF's WoA hill with hmax = terrain.hill_height,
+//! x and y included. A ghost node takes the height of the node it stands for:
+//! its periodic image in a periodic direction, the nearest domain node
+//! otherwise (as in ERF). For file terrain a periodic direction wraps: node n
+//! is node 0, so the seam is one height. flat: 0; agnesi: ERF's WoA hill
+//! (terrain.hill_shape: ridge_x, ridge_y or round) with hmax = terrain.hill_height,
 //! L = terrain.hill_half_width, centred in the domain (a nested patch: in its
 //! parent's domain, TerrainInputs::hill_centre); xyz: IDW; erf_grid:
 //! ERF's bilinear interpolation, at x + 1e-3 m and y + 1e-3 m as ERF queries.

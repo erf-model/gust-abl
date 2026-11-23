@@ -176,7 +176,7 @@ TEST (IO, CheckpointRestartIsBitIdenticalOnANewLayout)
 // The checkpoint's solution fields hold every ghost image as the
 // neighbouring box's (or the periodic image's) valid value, even when the
 // state's own ghosts are stale (fill_state sets them to 1e30); the state is
-// not touched (audit A5, from Pressel's A3 review: theta and k images were
+// not touched (before, theta and k images were
 // written stale). On 3 x 2 uneven boxes, x periodic.
 TEST (IO, CheckpointGhostImagesAreTheNeighboursValues)
 {
@@ -307,7 +307,7 @@ TEST (IO, CheckpointHeaderKeepsTheZLevels)
     EXPECT_EQ(h.step, 7);
     EXPECT_EQ(h.n_cell, mesh.n_cell);
     ASSERT_EQ(h.zlevels.size(), zl.size());
-    for (std::size_t k = 0; k < zl.size(); ++k) {
+    for (std::size_t k = 0; k < static_cast<std::size_t>(zl.size()); ++k) {
         EXPECT_EQ(std::memcmp(&h.zlevels[k], &zl[k], sizeof(amrex::Real)), 0) << "z-level " << k;
     }
     EXPECT_EQ(h.ba, ba);
@@ -399,8 +399,8 @@ TEST (IO, CheckpointRestartRestoresNodalGhostsOnTheSameLayout)
 } // namespace
 
 // The checkpoint-overwrite guard asks the file system whether two paths name
-// one directory (audit A10, P3): "./", trailing and doubled separators, an
-// absolute path and a symbolic link all name the restart directory; another
+// one directory: "./", trailing and doubled separators, an
+// absolute path and (where the file system makes one) a symbolic link all name the restart directory; another
 // directory, or one that does not exist, does not. Before, the guard compared
 // the strings after stripping trailing '/' only.
 TEST (IO, SameDirectoryAsksTheFileSystem)
@@ -422,7 +422,11 @@ TEST (IO, SameDirectoryAsksTheFileSystem)
     EXPECT_TRUE(gust::same_directory(chk, base + "//chk00040//"));
     EXPECT_TRUE(gust::same_directory(chk, fs::absolute(chk).string()));
     EXPECT_TRUE(gust::same_directory(chk, base + "/../" + base + "/chk00040"));
-    if (fs::is_symlink(base + "/link00040")) { EXPECT_TRUE(gust::same_directory(chk, base + "/link00040")); }
+    if (fs::is_symlink(base + "/link00040")) {
+        EXPECT_TRUE(gust::same_directory(chk, base + "/link00040"));
+    } else {
+        amrex::Print() << "IO.SameDirectoryAsksTheFileSystem: no symbolic link could be made here; the link case is not checked\n";
+    }
     EXPECT_FALSE(gust::same_directory(chk, base + "/chk00041"));
     EXPECT_FALSE(gust::same_directory(base + "/chk00042", chk));   // the target does not exist yet
     EXPECT_FALSE(gust::same_directory(chk, base + "/missing"));

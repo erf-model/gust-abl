@@ -1,7 +1,7 @@
 # Nests_Two_Way
 
 ## Purpose
-Two-way nesting (PR-70, `nest.feedback = defect`; PR-71, `nest.feedback = relax`; `nest.feedback = relax_consistent` and `nest.feedback = inject`, below). The outer domain and its nest first run one way, as in
+Two-way nesting (`nest.feedback = defect`; `nest.feedback = relax`; `nest.feedback = relax_consistent` and `nest.feedback = inject`, below). The outer domain and its nest first run one way, as in
 `Nests_One_Process` except that the nest's levels already follow the joint rule (they bend to the outer domain's
 surfaces aloft), so "one way" in the tables below is that first pass. Then they run jointly: every iteration the nest's faces are refreshed from the outer domain, and
 the outer domain carries the defect source of the nest over the nest's footprint
@@ -83,7 +83,7 @@ flow changes most, takes the 50 m solution there as its boundary values, and the
 away from the fine run. The two-nest layout therefore ends the crest nest 1.33 half-widths behind the crest.
 
 ## Feedback by relaxation (`--relax`)
-`check_nests_two_way.py --relax` (CTest `rt_nests_relax`, PR-71) runs the reference, the defect run with the nest
+`check_nests_two_way.py --relax` (CTest `rt_nests_relax`) runs the reference, the defect run with the nest
 `hill`, and the joint runs with `nest.feedback = relax` at `nest.feedback_factor` = 1, 4 and 16 (`relax1/`,
 `relax4/`, `relax16/`; `docs/boundary_conditions.rst`, Two-way nests by relaxation). It requires:
 1. every run exits 0 (the two-nest `joint2/` run is skipped), and each relax log's start line names its factor;
@@ -91,7 +91,7 @@ away from the fine run. The two-nest layout therefore ends the crest nest 1.33 h
    to 4 to 16, and at 16 is at most 0.35 of its value at 1;
 3. at factor 1, against the 25 m run, the RMS of u over the nest at most 0.5 of one way and over the outer cells
    outside the footprint at most 0.6;
-4. old against new default (tracker N-114 item 13): a relax run without `nest.feedback_factor` (`relax_default/`)
+4. old against new default: a relax run without `nest.feedback_factor` (`relax_default/`)
    names 0.5 on its start line, and its RMS of u over the nest is at most 0.8 of the factor-1 run's (measured 0.694:
    2.35e-3 against 3.38e-3, 158 exchanges) and over the outer cells outside the footprint at most 1.05 (1.00).
 
@@ -108,8 +108,8 @@ Measured on 2 ranks (RMS of u, m/s; "outer - nest" where the relaxation acts):
 | relax, f = 4 | 177 | 3.49e-3 | 9.94e-3 | 9.54e-3 |
 | relax, f = 16 | 508 | 1.50e-3 | 3.27e-2 | 2.94e-2 |
 
-(0.25 and 2 are not in the test and come from PR-71, #116; the other rows are from this branch, where f = 1, 4 and
-16 reproduce PR-71 and f = 0.5 is the `relax_default/` run.) The difference between the two domains falls with the factor, but above
+(0.25 and 2 are not in the test and come from #116; the other rows are from the test's runs, where f = 1, 4 and
+16 reproduce #116 and f = 0.5 is the `relax_default/` run.) The difference between the two domains falls with the factor, but above
 f = 1 both move away from the fine run: the relaxation's target carries no nest pressure gradient, so as it tightens
 the outer velocity under the nest stops responding to the outer pressure, and the nest, which takes its faces from
 it, follows. The exchanges grow with f for the same reason: the flow rate through the footprint is set by a loop
@@ -117,7 +117,7 @@ it, follows. The exchanges grow with f for the same reason: the flow rate throug
 errors therefore apply at f = 1 only.
 
 ## Pressure-consistent relaxation (`--relax-consistent`)
-`check_nests_two_way.py --relax-consistent` (CTest `rt_nests_relax_consistent`, tracker N-114 item 12) runs the
+`check_nests_two_way.py --relax-consistent` (CTest `rt_nests_relax_consistent`) runs the
 reference, the defect run with the nest `hill`, `nest.feedback = relax` at factor 1 (`relax1/`) and
 `nest.feedback = relax_consistent` at factors 1 and 4 (`rc1/`, `rc4/`; `docs/boundary_conditions.rst`,
 Pressure-consistent relaxation). It requires:
@@ -142,7 +142,7 @@ domains are slightly further from the fine run than with relax at f = 1, and fur
 described above is unchanged. The bounds on the errors apply at f = 1 only.
 
 ## Choice of the relaxation factor (`relax_factor_sweep.py`)
-Tracker row N-114, item 13. In PR-71 (#116) the hill alone suggested a factor below 1. `relax_factor_sweep.py`
+In #116 the hill alone suggested a factor below 1. `relax_factor_sweep.py`
 runs `nest.feedback = relax` at `nest.feedback_factor` = 0.1, 0.25, 0.5, 0.75, 1 and 2 on four nests, each beside
 its one-way run (`nest.feedback = none`), its defect run and its uniform fine run:
 
@@ -226,7 +226,7 @@ exchanges and errors of their case READMEs.
 On these four cases the table supports 0.5 over 1 as the default of `nest.feedback_factor` with relax, and 0.5 is
 the default since this item; `nest.feedback_factor = 1` keeps the old answer, and `rt_nests_relax` runs both
 (Feedback by relaxation, above). The relaxation's target has no nest pressure gradient (above); a target that
-carries one (tracker N-114 item 12) removes the cause of the errors above f = 1 and could move the best factor up,
+carries one (`nest.feedback = relax_consistent`, above) removes the cause of the errors above f = 1 and could move the best factor up,
 so that change should re-run this sweep.
 
 Limits of the sweep:
@@ -239,7 +239,7 @@ Limits of the sweep:
   Coriolis decks.
 
 ## Conservative faces (`--feedback-flux`)
-`check_nests_two_way.py --feedback-flux` (CTest `rt_nests_feedback_flux`, tracker N-114 item 1) runs the reference
+`check_nests_two_way.py --feedback-flux` (CTest `rt_nests_feedback_flux`) runs the reference
 and three joint runs with `nest.feedback = defect`: the nest `crest` ending at x = 900 m, on the lee slope, with
 `nest.feedback_flux = outer` (`flux_outer/`, the defect source alone) and `= nest` (`flux_nest/`), and the nest
 `hill` with `= nest` (`flux_hill/`; `docs/boundary_conditions.rst`, Conservative faces). It requires:
@@ -267,7 +267,7 @@ below it outside; w and k stay 1.7 to 1.8 times worse. On the hill, whose faces 
 3 % worse and w 17 % better. The other layouts of `docs/boundary_conditions.rst` are not in the test.
 
 ## Feedback by injection (`--inject`)
-`check_nests_two_way.py --inject` (CTest `rt_nests_inject`, tracker row N-114, item 2) runs the reference, the
+`check_nests_two_way.py --inject` (CTest `rt_nests_inject`) runs the reference, the
 defect run with the nest `hill`, and the joint run with `nest.feedback = inject` at the default
 `nest.feedback_factor` of 0.5 (`inject/`; `docs/boundary_conditions.rst`, Two-way nests by injection). Every
 exchange the outer state, from 2 outer cells inside the nest's faces, moves that fraction of the way to the
@@ -325,7 +325,7 @@ M must be above the one-way runs' iterations (`steady.max_iterations` caps them 
 
 ## CTest
 `rt_nests_two_way` (2 ranks, labels `regression;smoke`). `rt_nests_joint_restart` (3 ranks, labels
-`regression;smoke`) `rt_nests_joint_restart_relax` and `rt_nests_joint_restart_inject` (2 ranks, label `regression`) run `check_joint_restart.py`
+`regression;smoke`), `rt_nests_joint_restart_relax`, `rt_nests_joint_restart_relax_consistent` and `rt_nests_joint_restart_inject` (2 ranks, label `regression`) run `check_joint_restart.py`
 (above). The abort tests `abort_nests_joint_restart_names`, `_iterations`, `_version` and `_missing` check that a
 joint record naming other nests, a `steady.max_iterations` at or below its exchanges, a record of another version,
 and a record naming a nest checkpoint that is not there stop the run and name `io.restart`. The abort tests `abort_nests_feedback_value`,
@@ -346,3 +346,8 @@ and k stop the run and name the key.
 `rt_nests_inject` (2 ranks, label `regression`; above): about 30 s on an Apple M-series laptop.
 `abort_nests_inject_factor` checks that `nest.feedback_factor = 2` with `nest.feedback = inject` stops the run and
 names the key; `abort_nests_feedback_factor_unused` covers a factor with `defect` for both relax and inject.
+
+`rt_nests_relax_consistent` (2 ranks, label `regression`; above) and `rt_nests_inject` (above). `abort_nests_inject_mlmg`,
+`abort_nests_inject_periodic` and `abort_nests_inject_feedback_flux` (labels `regression;smoke`, one rank) check that
+`nest.feedback = inject` with `solver.poisson_backend = mlmg`, with a nest that spans the periodic outer direction,
+and with `nest.feedback_flux` stop the run and name the key.

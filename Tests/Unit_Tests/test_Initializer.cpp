@@ -535,11 +535,11 @@ TEST(Initializer, FirstGuessByHeightAboveGround)
         gust::omega_from_w(q.u, q.v, q.w, q.z_phys_nd, c.mesh, c.geom, om, 0);
         double w_above = 0, om_ground = 0, w_ground = 0;
         for (amrex::MFIter mfi(om, false); mfi.isValid(); ++mfi) {
-            const auto o = host_copy(om, mfi), w = host_copy(q.w, mfi);
+            const auto oh = host_copy(om, mfi), w = host_copy(q.w, mfi);
             amrex::LoopOnCpu(mfi.validbox(), [&] (int i, int j, int k) {
                 const amrex::IntVect f(i, j, k);
                 if (k == 0) {
-                    om_ground = std::max(om_ground, std::abs(double(o(f))));
+                    om_ground = std::max(om_ground, std::abs(double(oh(f))));
                     w_ground = std::max(w_ground, std::abs(double(w(f))));
                 } else {
                     w_above = std::max(w_above, std::abs(double(w(f))));

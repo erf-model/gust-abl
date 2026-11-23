@@ -1,18 +1,17 @@
 // The forest canopy's terms of the k–L closure (CanopyTke.H, the length cap
-// in Closure_K.H), plan rev. 6 beyond the plan, sub-phase 8.3 (UT-8.3.x):
+// in Closure_K.H):
 //   the wake production and short-circuit sink have their closed forms and
 //   balance at beta_p |U|^2 / beta_d; the sink is on the Patankar and exact
-//   diagonals (UT-8.3.1);
-//   the length cap acts only where f > 0 and alpha < L f, and eps, nu_t and
-//   Rt follow the capped length (UT-8.3.2);
+//   diagonals;
+//   the length cap acts only where f > 0 and alpha < L f; eps follows the capped
+//   length and nu_t keeps its bits outside the canopy;
 //   the exact derivative of S_k with the canopy terms matches central
 //   differences with the switches frozen, in stably stratified cells with and
-//   without canopy (UT-8.3.3; it found the missing d(cmu'/cmu)/dk of P_b);
+//   without canopy (it found the missing d(cmu'/cmu)/dk of P_b);
 //   a canopy whose drag is zero everywhere, or no canopy, gives every closure
-//   field bit for bit, and the residual of k gains D_c - P_c exactly
-//   (UT-8.3.4);
+//   field bit for bit, and the residual of k gains D_c - P_c exactly;
 //   the cap is a switch: frozen, it holds where the state has moved past it,
-//   and changed_switches counts those cells (UT-8.3.5);
+//   and changed_switches counts those cells;
 //   the ground-roughness warning counts the canopy columns.
 #include "BoundaryConditions.H"
 #include "Canopy.H"
@@ -107,7 +106,7 @@ void fill_state (gust::State& q, const PCase& c, double k0, double dtheta)
 {
     q.define(c.ba, c.dm);
     amrex::MultiFab::Copy(q.z_phys_nd, c.z, 0, 0, 1, c.z.nGrow());
-    fill_component(q.u, 0, [] (double X, double Y, double Z) { return 2 + 0.3 * Z + 0.5 * std::sin(kw * Y); });
+    fill_component(q.u, 0, [] (double, double Y, double Z) { return 2 + 0.3 * Z + 0.5 * std::sin(kw * Y); });
     fill_component(q.v, 1, [] (double X, double, double Z) { return 0.4 * std::cos(kw * X) + 0.05 * Z; });
     fill_component(q.w, 2, [] (double X, double Y, double) { return 0.05 * std::sin(kw * (X + Y)); });
     q.p.setVal(0.0);
@@ -142,7 +141,7 @@ const gust::Roughness kZ0{amrex::Real(0.05)};
 
 } // namespace
 
-// UT-8.3.1: with a uniform wind of 5 m/s, P_c = beta_p f |U|^3 and
+// With a uniform wind of 5 m/s, P_c = beta_p f |U|^3 and
 // D_c = beta_d f |U| k on every cell (f the drag field), and where
 // k = beta_p |U|^2 / beta_d they balance; the Patankar diagonal gains
 // beta_d f |U| and the exact one loses it (no cap: alpha = 0, so the rest of
@@ -194,7 +193,7 @@ TEST(CanopyTke, SourcesHaveTheirClosedForms)
     EXPECT_GT(balanced, 40L);
 }
 
-// UT-8.3.1, with the cap: where the canopy terms and the capped dissipation
+// With the cap: where the canopy terms and the capped dissipation
 // alone act (a uniform wind: no shear production; neutral), P_c = D_c + eps at
 // k = kappa_c |U|^2 with beta_d kappa_c + Cmu0^3 kappa_c^1.5 / alpha = beta_p,
 // kappa_c = 0.1728 for ERF's defaults (docs/canopy.rst), in every capped cell.
@@ -235,10 +234,10 @@ TEST(CanopyTke, CappedBalanceIsKappaU2)
     EXPECT_GT(capped, 100L);
 }
 
-// UT-8.3.2: L = min(L_free, alpha / f) where f > 0 (L_free the run without
-// a canopy), the same bits where f = 0 or with alpha = 0; eps and nu_t follow
-// the capped L. Neutral: L_free = l_g, so the first cells (l_g < alpha / f)
-// keep it and the cells above are capped.
+// L = min(L_free, alpha / f) where f > 0 (L_free the run without
+// a canopy), the same bits where f = 0 or with alpha = 0; eps follows the capped L
+// and nu_t keeps its bits where f = 0. Neutral: L_free = l_g, so the first cells (l_g < alpha / f)
+// keep it and the cells above are capped; Rt = 0 and nu_t = Cmu0 sqrt(k) L with the capped L.
 TEST(CanopyTke, LengthCapActsOnlyInTheCanopy)
 {
     TkeSetup s(0.5);
@@ -252,12 +251,12 @@ TEST(CanopyTke, LengthCapActsOnlyInTheCanopy)
     uncapped.evaluate(s.q, s.dist, kZ0, gust::BuoyancyOptions{}, s.c.mesh, s.c.geom, f2);
     const gust::ClosureConstants cst = plain.constants();
     const double t = kDouble ? 1e-13 : 1e-5;
-    double worst = 0;
-    amrex::Long changed_outside = 0, uncapped_diff = 0, n_capped = 0, n_kept = 0;
+    double worst = 0, worst_nut = 0;
+    amrex::Long changed_outside = 0, uncapped_diff = 0, n_capped = 0, n_kept = 0, rt_nonzero = 0;
     for (amrex::MFIter mfi(f0.length, false); mfi.isValid(); ++mfi) {
         const auto L0 = host(f0.length, mfi), L1 = host(f1.length, mfi), L2 = host(f2.length, mfi),
                    e1 = host(f1.eps, mfi), n1 = host(f1.nut, mfi), n0 = host(f0.nut, mfi), fd = host(s.canopy.drag(), mfi),
-                   kk = host(s.q.tke, mfi);
+                   kk = host(s.q.tke, mfi), r1 = host(f1.Rt, mfi);
         amrex::LoopOnCpu(mfi.validbox(), [&] (int i, int j, int k) {
             const amrex::IntVect iv(i, j, k);
             const double f = fd(iv);
@@ -270,19 +269,27 @@ TEST(CanopyTke, LengthCapActsOnlyInTheCanopy)
             worst = std::max(worst, std::abs(L1(iv) - want) / want);
             const double kv = kk(iv);
             worst = std::max(worst, std::abs(e1(iv) - cst.Cmu0_pow3 * std::pow(kv, 1.5) / want) / e1(iv));
+            const double nut_want = static_cast<double>(cst.Cmu0) * std::sqrt(kv) * want;
+            worst_nut = std::max(worst_nut, std::abs(n1(iv) - nut_want) / nut_want);
+            if (r1(iv) != 0) { ++rt_nonzero; }
             if (want < L0(iv)) { ++n_capped; } else { ++n_kept; }
         });
     }
     amrex::ParallelDescriptor::ReduceRealMax(worst);
-    for (amrex::Long* n : {&changed_outside, &uncapped_diff, &n_capped, &n_kept}) { amrex::ParallelDescriptor::ReduceLongSum(*n); }
+    amrex::ParallelDescriptor::ReduceRealMax(worst_nut);
+    for (amrex::Long* n : {&changed_outside, &uncapped_diff, &n_capped, &n_kept, &rt_nonzero}) {
+        amrex::ParallelDescriptor::ReduceLongSum(*n);
+    }
     EXPECT_LE(worst, t);
+    EXPECT_LE(worst_nut, t);
+    EXPECT_EQ(rt_nonzero, 0L);
     EXPECT_EQ(changed_outside, 0L);
     EXPECT_EQ(uncapped_diff, 0L);
     EXPECT_GT(n_capped, 50L);
     EXPECT_GT(n_kept, 20L);
 }
 
-// UT-8.3.3: with the switches frozen, dS_k/dk of the closure with the canopy
+// With the switches frozen, dS_k/dk of the closure with the canopy
 // (P_s + P_b - eps + P_c - D_c) by central differences equals dSdk_exact;
 // stably stratified, so the stable length depends on k, and capped cells
 // (whose L does not) are among them.
@@ -339,16 +346,16 @@ TEST(CanopyTke, ExactDerivativeMatchesDifferences)
     EXPECT_GT(n_capped_cells, 20L);
 }
 
-// UT-8.3.4: a canopy whose drag field is zero everywhere leaves every closure
+// A canopy whose drag field is zero everywhere leaves every closure
 // field bit for bit, with P_c = D_c = 0; and with a canopy and no cap the k
 // residual gains exactly D_c - P_c.
 TEST(CanopyTke, ZeroCanopyIsBitIdenticalAndResidualCarriesTheTerms)
 {
     TkeSetup s(0.5, 0.2);
-    amrex::MultiFab zero(s.c.ba, s.c.dm, 1, amrex::IntVect(1, 1, 0));
-    zero.setVal(0.0);
+    amrex::MultiFab zero_mf(s.c.ba, s.c.dm, 1, amrex::IntVect(1, 1, 0));
+    zero_mf.setVal(0.0);
     gust::Closure plain(gust::ClosureOptions{}), empty(gust::ClosureOptions{});
-    empty.set_canopy(&zero, 1, 4, amrex::Real(0.04));
+    empty.set_canopy(&zero_mf, 1, 4, amrex::Real(0.04));
     gust::ClosureFields f0, f1;
     plain.evaluate(s.q, s.dist, kZ0, gust::BuoyancyOptions{}, s.c.mesh, s.c.geom, f0);
     empty.evaluate(s.q, s.dist, kZ0, gust::BuoyancyOptions{}, s.c.mesh, s.c.geom, f1);
@@ -385,7 +392,7 @@ TEST(CanopyTke, ZeroCanopyIsBitIdenticalAndResidualCarriesTheTerms)
     EXPECT_LE(static_cast<double>(R1.tke.norm0()), (kDouble ? 1e-12 : 1e-4) * static_cast<double>(want.norm0()) + 1e-300);
 }
 
-// UT-8.3.5: the cap is a switch. At the point level, a capped decision held
+// The cap is a switch. At the point level, a capped decision held
 // for a smaller k keeps L = alpha / f while the live decision does not cap;
 // on the field, the cells whose live decision moved are counted, and the
 // frozen evaluation keeps their capped length.

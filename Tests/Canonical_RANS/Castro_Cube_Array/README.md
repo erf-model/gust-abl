@@ -7,7 +7,7 @@ immersed body force: profiles of the mean streamwise velocity u above a cube (P0
 beside it (P2) and one h behind and beside it (P3), and of the momentum flux -<u'w'> at P1 and P3. The set-up
 follows Muñoz-Esparza et al.: one 4h x 4h tile of the array, periodic in x and y, 10h deep, driven by a constant
 pressure gradient. GUST solves the steady RANS equations; the paper time-averages LES. This is the array validation
-of tracker row PR-44 (`docs/buildings.rst`, Validation).
+of the building terms (`docs/buildings.rst`, Validation).
 
 ## Files
 | File | Role |

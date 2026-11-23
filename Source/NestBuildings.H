@@ -26,8 +26,9 @@
 // the rank count; the map is the same on every rank (read_building_map).
 //
 // A tile edge on the strip's inner edge is clear, to the larger of 1e-9 of a
-// cell and 64 Real round-offs of the coordinates (the allowance of
-// Buildings::build; in single precision the geometry's own round-off).
+// cell and 64 Real round-offs of the coordinates (the form of the allowance of
+// Buildings::build_from_map, which takes the domain's length; in single precision the geometry's own
+// round-off).
 
 #include "BoundaryConditions.H"
 #include "Buildings.H"

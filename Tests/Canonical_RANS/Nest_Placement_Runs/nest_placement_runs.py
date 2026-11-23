@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The step rule and oblique wind of tools/nest_placement.py against joint runs (tracker N-114, item 11).
+"""The step rule and oblique wind of tools/nest_placement.py against joint runs.
 
     nest_placement_runs.py [--only WIND ...] -- COMMAND [ARGS ...]
 

@@ -45,7 +45,7 @@ AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE amrex::Real derivative (Dual x) noexcep
 
 namespace dual {
 
-//! sqrt, x^1.5, |x| and max/min for both scalar types (the Real overloads
+//! sqrt, x^1.5, |x| and max for both scalar types (the Real overloads
 //! forward to std; a kernel calls these unqualified names).
 AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE amrex::Real sqrt (amrex::Real x) noexcept { return std::sqrt(x); }
 AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE Dual sqrt (Dual x) noexcept

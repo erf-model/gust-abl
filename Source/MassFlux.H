@@ -56,8 +56,9 @@ void w_from_omega (const amrex::MultiFab& u, const amrex::MultiFab& v, const amr
                    const amrex::MultiFab& z_nd, const Mesh& mesh, const amrex::Geometry& geom, amrex::MultiFab& w);
 
 //! The transport fluxes the convection operator takes (Convection.H):
-//! F_x = a_x u, F_y = a_y v, F_z = Omega, on the valid faces and one ghost
-//! face (defined here if not defined). u, v, w need two ghost cells filled.
+//! F_x = a_x u, F_y = a_y v, F_z = Omega (times the open fraction of the z-face
+//! with buildings), on the valid faces and one ghost face (defined here if not
+//! defined). u, v need two ghost cells filled, w one.
 //! a_x, a_y are the mesh's areas; below the ground (not filled by ERF's
 //! make_areas) they are 0, which reaches only the ground row of w.
 void transport_fluxes (const amrex::MultiFab& u, const amrex::MultiFab& v, const amrex::MultiFab& w,

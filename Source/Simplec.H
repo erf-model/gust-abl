@@ -25,7 +25,7 @@
 //      solver left: at the fixed point of the iteration it is divergence-free
 //      to the tolerance, and the continuity residual reported is div(q) at
 //      the start of the iteration;
-//   5. theta and k: one z-line Jacobi step each, (1/dtau + A1) dq = -R_q with
+//   5. theta and k: one line-sweep step each (steady.sweep), (1/dtau + A1) dq = -R_q with
 //      A1 from implicit_rows (the wall-k rows and the point-implicit k sink
 //      dSdk on the diagonal), the x/y neighbours lagged; k is then clipped
 //      at turb.tke_floor (the line system is an M-matrix with a non-negative
@@ -51,7 +51,9 @@
 //
 // Inputs (simplec.*): pressure_reltol (1e-3), alpha_p (1), rotation_relax
 // (0.3: the rotation's step in inertial times, Predictor.H), w_vnn_cap (0,
-// off: the cap on the w rows' vertical VNN number, Predictor.H); the sweeps are
+// off: the cap on the w rows' vertical VNN number, Predictor.H),
+// w_vnn_cap_slope_margin (4: the cap's safety factor on sloping ground,
+// Predictor.H) and theta (solve, or frozen: SimplecOptions); the sweeps are
 // steady.zline_sweeps. The residual norms the stage reports are RMS values
 // per unit volume scaled by U^2/H (momentum), U/H (continuity), U theta_s/H
 // and U k_s/H (theta, k) with U, theta_s, k_s the jvp scales of the residual
@@ -79,7 +81,7 @@ namespace gust {
 
 struct SimplecOptions
 {
-    amrex::Real pressure_reltol{amrex::Real(1.0e-3)};   //!< simplec.pressure_reltol, in (0, 1): the correction's Poisson reltol
+    amrex::Real pressure_reltol{amrex::Real(1.0e-3)};   //!< simplec.pressure_reltol, >= 10 machine epsilon and < 1: the Poisson reltol
     amrex::Real alpha_p{1};                          //!< simplec.alpha_p, in (0, 1]
     amrex::Real rotation_relax{amrex::Real(0.3)};    //!< simplec.rotation_relax, in (0, 1]: the rotation's step in inertial times (Predictor.H)
     amrex::Real w_vnn_cap{0};                        //!< simplec.w_vnn_cap, 0 (off) or >= 16: the w rows' VNN cap (Predictor.H)
@@ -160,7 +162,7 @@ struct ScalarSweepResult
     amrex::Long clipped{0};              //!< cells raised to the floor (k only)
 };
 
-//! One z-line Jacobi step of the cell equation eq (theta or tke) in delta
+//! One line-sweep step (steady.sweep) of the cell equation eq (theta or tke) in delta
 //! form: field += dq with (1/dtau + A1) dq = -R_eq, A1 = implicit_rows(F, ...)
 //! with the surface state and the closure's fields at the state (both as for
 //! implicit_rows), dtau the cell-centred step, sweeps >= 1. For tke the
@@ -237,8 +239,6 @@ public:
     //! fresh start), or in.nu.
     [[nodiscard]] const amrex::MultiFab& nu () const { return m_in.closure != nullptr ? m_cf.nu : *m_in.nu; }
     [[nodiscard]] const SimplecIterationInfo& last () const { return m_info; }
-    [[nodiscard]] const ClosureFields& closure_fields () const { return m_cf; }
-    [[nodiscard]] const SurfaceState& surface_state () const { return m_ss; }
     [[nodiscard]] const ResidualFields& residual_fields () const { return m_R; }
     [[nodiscard]] const SimplecOptions& options () const { return m_opt; }
     //! The height H of the residual scales (stage_norms).

@@ -12,6 +12,11 @@ cap 4. It takes minutes on four ranks, so it carries the `nightly` label and is 
 Check script: `Supporting_Files/check_steady_hill.py --erf-check check_hill3d.py --orders 2` (shared with
 `Neutral_Hill_2D`), which runs ERF's `check_hill3d.py --physics` (`extern_erf/`).
 
+## Data and acknowledgements
+No measured data. The case is ERF's Neutral_Hill_3D and its check script is ERF's `check_hill3d.py`
+(`extern_erf/`, recorded in `extern_erf/EXTRACTED.md`; BSD 3-clause with the LBNL clause,
+`extern_erf/LICENSE.md`). Thanks to the ERF developers. Nothing has to be downloaded.
+
 ## CTest
 `rt_steady_hill3d` (label `nightly`, four ranks, double precision only). `rt_steady_hill3d_sequencing`
 runs the same deck with `mesh.hierarchy_levels=3 steady.sequencing=1` and the same checks; the two-order drop is

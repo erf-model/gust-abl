@@ -23,7 +23,7 @@ Optional extensions (all off in the baseline requested):
   wscheme: residual scheme for the w equation different from the u equation
 """
 import numpy as np
-import itertools, sys
+import sys
 
 def adv_symbol(scheme, th):
     """symbol of  (U/dx) * delta_x  for scalar advection, U>0"""

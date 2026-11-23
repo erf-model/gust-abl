@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Nightly GPU job on NLR Kestrel (H100): build main for CUDA and run every
 # smoke test on the GPUs. The smoke tests include the 2-D hill restart chain
-# (rt_steady_hill2d_restart_*, audit A1) and the Coriolis case run twice
-# (rt_coriolis_repeat_*, audit A4). Every smoke run of gust carries
+# (rt_steady_hill2d_restart_*) and the Coriolis case run twice
+# (rt_coriolis_repeat_*). Every smoke run of gust carries
 # amrex.the_arena_init_size=0 amrex.init_snan=1 amrex.fpe_trap_invalid=1
 # (GUST_TEST_AMREX_FLAGS in Tests/CMakeLists.txt); the job checks that before
 # it runs them.
@@ -16,7 +16,7 @@
 #   GUST_NIGHTLY_WORK   work directory (default /scratch/$USER/gust-nightly)
 #   GUST_NIGHTLY_REPO   repository to test (default https://github.com/erf-model/gust-abl.git)
 #   GUST_NIGHTLY_REF    branch or commit (default main)
-#   GUST_NIGHTLY_GPUS   GPUs to request, 3 or 4 (default 4; the smoke tests use up to 3 ranks)
+#   GUST_NIGHTLY_GPUS   GPUs to request, 3 or 4 (default 4; the smoke tests use up to 3 ranks, two use 4)
 #   GUST_NIGHTLY_MAIL   mail address for a failed job (submit only; optional)
 #   GUST_NIGHTLY_KEEP   number of run logs kept, failed runs included (default 30)
 #   GUST_BUILD_JOBS     parallel build jobs (default SLURM_CPUS_ON_NODE, else 16)
@@ -56,7 +56,7 @@ usage () { sed -n '2,44p' "$0" >&2; exit 2; }
 
 case "$gpus" in ''|*[!0-9]*|0) echo "GUST_NIGHTLY_GPUS must be a positive integer (got $gpus)" >&2; exit 2 ;; esac
 if [ "$gpus" -lt 3 ] || [ "$gpus" -gt 4 ]; then
-    echo "GUST_NIGHTLY_GPUS must be 3 or 4: the smoke tests use up to 3 ranks, one H100 node has 4 (got $gpus)" >&2
+    echo "GUST_NIGHTLY_GPUS must be 3 or 4: the smoke tests use up to 3 ranks (two use 4), one H100 node has 4 (got $gpus)" >&2
     exit 2
 fi
 case "$keep" in ''|*[!0-9]*|0) echo "GUST_NIGHTLY_KEEP must be a positive integer (got $keep)" >&2; exit 2 ;; esac

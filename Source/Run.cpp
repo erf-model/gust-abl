@@ -17,6 +17,7 @@
 #include <AMReX_Utility.H>
 
 #include <array>
+#include <cstdio>
 #include <functional>
 #include <limits>
 #include <string>

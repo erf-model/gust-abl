@@ -24,7 +24,8 @@ S, R, P, Q, A = "Source/Simplec.cpp", "Source/Residual.cpp", "Source/Predictor.c
 B = "Source/BoundaryConditions.cpp"
 UNIT = [
  ("F1", "the buoyancy left in the momentum residual", R,
-  "if (in.buoyancy_in_momentum) { subtract_buoyancy", "if (true) { subtract_buoyancy"),
+  "if (in.buoyancy_in_momentum) { subtract_buoyancy(q.theta, theta_ref, in.buoyancy, mesh, R.w); }",
+  "if (true) { subtract_buoyancy(q.theta, theta_ref, in.buoyancy, mesh, R.w); }"),
  ("F2", "the predictor's point-implicit buoyancy left in the w rows", P,
   "in.buoyancy.gravity > 0 && in.buoyancy_in_momentum)", "in.buoyancy.gravity > 0)"),
  ("F3", "theta's residual not zeroed", S,
@@ -77,7 +78,8 @@ APP = [
  ("F20", "theta frozen at the sounding, not at the stratified column", Q,
   "return frozen_column ? *column : ls.bc.profile();", "return ls.bc.profile();"),
  ("F21", "the turbulence plotfile's R_theta not zeroed", A,
-  "if (simplec.theta_frozen) { R.theta.setVal(0); }", ""),
+  "if (simplec.theta_frozen) { R.theta.setVal(0); }   // theta is data, not an unknown",
+  "// theta is data, not an unknown"),
  ("F22", "the frozen theta read at the floored height (init.z_agl_min)", Q,
   "    topt.z_agl_min = 0;\n", ""),
  ("F23", "the levels do not extend theta below the ground", Q,

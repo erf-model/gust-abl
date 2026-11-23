@@ -8,7 +8,8 @@ Requirements
   ``icpx`` for SYCL).
 - MPI (Open MPI, MPICH or Cray MPICH), unless ``GUST_MPI=OFF``.
 - An FFT library for AMReX's FFT module: FFTW on the CPU, cuFFT (CUDA), rocFFT (HIP) or oneMKL (SYCL).
-- Python 3, for the test scripts.
+- Python 3, for the test scripts. Some tests also need numpy, PyYAML or scipy; they are not registered when the
+  module is missing (the configure step lists them).
 
 AMReX and GoogleTest are git submodules. AMReX is pinned to a fixed commit.
 
@@ -138,7 +139,7 @@ Warnings are errors (``-W`` in ``docs/Makefile``), so the local build and the CI
 are written to ``docs/_build/html``.
 
 The same pages as one PDF need a TeX distribution with XeLaTeX and ``latexmk`` (on Ubuntu: ``texlive-xetex``,
-``texlive-latex-extra``, ``latexmk`` and ``fonts-freefont-otf``):
+``texlive-latex-extra``, ``texlive-fonts-recommended``, ``latexmk`` and ``fonts-freefont-otf``):
 
 .. code-block:: bash
 

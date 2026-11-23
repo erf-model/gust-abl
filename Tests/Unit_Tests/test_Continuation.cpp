@@ -1,8 +1,10 @@
 // Pseudo-transient continuation around the Newton step: the line search
 // rejects an overshoot, the dtau ramp follows SER, and also a skipped step,
 // the Armijo test on a known quadratic, the readers and range checks of the
-// new keys, the hill on any rank count, the restart and the true linear
-// residual.
+// new keys, the hill on any rank count, the restart, the true linear
+// residual, the GMRES iteration limit, the caller's |R_0|, the CFL cap on
+// restore and the tke_floor check, the growth bound at finite dtau, and a
+// disabled parameter sweep.
 #include "BoundaryConditions.H"
 #include "Continuation.H"
 #include "Inputs.H"
@@ -49,7 +51,6 @@ using gust::ptest::PCase;
 using gust::trtest::tol;
 
 constexpr double kPi = 3.14159265358979323846;
-constexpr bool kDouble = std::is_same_v<amrex::Real, double>;
 constexpr Loc kLoc[6] = {Loc::xface, Loc::yface, Loc::zface, Loc::cell, Loc::cell, Loc::cell};
 
 amrex::MultiFab& field (gust::State& q, int f)
@@ -158,7 +159,9 @@ void copy_state (gust::State& to, gust::State& from)
 {
     auto t = to.fields();
     const auto f = from.fields();
-    for (std::size_t n = 0; n < t.size(); ++n) { amrex::MultiFab::Copy(*t[n].mf, *f[n].mf, 0, 0, 1, t[n].mf->nGrowVect()); }
+    for (std::size_t n = 0; n < static_cast<std::size_t>(t.size()); ++n) {
+        amrex::MultiFab::Copy(*t[n].mf, *f[n].mf, 0, 0, 1, t[n].mf->nGrowVect());
+    }
 }
 
 // max |a - b| over the six fields' valid points of two states on the same
@@ -201,7 +204,7 @@ public:
 
 // ---------------------------------------------------------------------------
 // The line search rejects an overshoot. The 30 m hill of #25 (one
-// box) with u three times larger, |R_0| = 99.5, under plain Newton (infinite
+// box) with u three times larger, |R_0| = 100.9, under plain Newton (infinite
 // dtau throughout: cfl0 = cfl_max and the state restored at the cap), with
 // GMRES(30) stopped at 200 iterations. Those solves end at the iteration
 // limit (status 1): the directions are inexact, and their digits depend on
@@ -271,7 +274,7 @@ TEST(Continuation, LineSearchRejectsOvershoot)
         amrex::Print() << "  " << r.step << "  " << r.residual << "  " << r.lambda << "  " << r.residual_new / r.residual << "\n";
     }
     ASSERT_EQ(rec.size(), static_cast<std::size_t>(nsteps));
-    // 99.496 before the wall model took the ground cell's wind parallel to the ground (audit A2); 100.935 with the
+    // 99.496 before the wall model took the ground cell's wind parallel to the ground; 100.943 with the
     // outflow ghost transport of v1.0.0 (bc.outflow_transport = from_velocity).
     EXPECT_NEAR(static_cast<double>(rec[0].residual), 100.943, 1e-3);
     int first_backtrack = -1;
@@ -427,8 +430,9 @@ TEST(Continuation, DtauRampFollowsSer)
         for (int n = 0; n < 3; ++n) { f = gust::continuation_after_failure(x, f); }
         EXPECT_EQ(f.cfl, std::numeric_limits<amrex::Real>::min());
     }
-    // ser_cfl is the driver's law: a vanished residual gives the cap without
-    // the power (no overflow), p = 0 gives cfl0.
+    // ser_cfl is the driver's law: a vanished residual gives min(cfl_max,
+    // growth x CFL) without the power (no overflow; here the growth limit, 8),
+    // p = 0 gives cfl0.
     EXPECT_EQ(gust::ser_cfl(4, 0, 1, 10, 3, 2), amrex::Real(8));
     EXPECT_EQ(gust::ser_cfl(4, amrex::Real(0.5), 1, 10, 0, 2), amrex::Real(1));
 }
@@ -484,8 +488,8 @@ TEST(Continuation, SkippedStepCutsCflAndKeepsState)
         for (amrex::MFIter mfi(hc.q.theta, false); mfi.isValid(); ++mfi) {
             if (mfi.index() != 0) { continue; }
             const amrex::Box vb = mfi.validbox();
-            const amrex::Box one(vb.smallEnd(), vb.smallEnd());
-            hc.q.theta[mfi].setVal<amrex::RunOn::Device>(std::numeric_limits<amrex::Real>::quiet_NaN(), one);
+            const amrex::Box one_cell(vb.smallEnd(), vb.smallEnd());
+            hc.q.theta[mfi].setVal<amrex::RunOn::Device>(std::numeric_limits<amrex::Real>::quiet_NaN(), one_cell);
         }
         amrex::Gpu::streamSynchronize();
         Continuation pt(o, no, hc.in, hc.c.mesh, hc.c.geom, &hc.nu, 0, hc.c.ba, hc.c.dm, 0);
@@ -679,6 +683,7 @@ TEST(Continuation, InputReadersAndRangeChecks)
         {"steady.cfl_max", [] (ContinuationOptions& x) { x.cfl_max = amrex::Real(0.5); }},
         {"steady.ser_exponent", [] (ContinuationOptions& x) { x.ser_exponent = -1; }},
         {"steady.ser_max_growth", [] (ContinuationOptions& x) { x.ser_max_growth = amrex::Real(0.9); }},
+        {"steady.dtau_floor", [] (ContinuationOptions& x) { x.dtau_floor = -1; }},
     };
     for (const Bad& b : bads) {
         ContinuationOptions x = default_options();
@@ -776,7 +781,7 @@ TEST(Continuation, GmresIterationLimit)
 
 // ---------------------------------------------------------------------------
 // The continuation on the 30 m hill of #25 (inflow / outflow, the wall law,
-// six uneven boxes: 4 + 4 + 1 by 4 + 2 cells): the defaults (cfl0 1, cfl_max
+// six boxes: 3 + 3 + 3 by 4 + 2 cells, uneven in y): the defaults (cfl0 1, cfl_max
 // 10, p 1, growth 2, infinite dtau at the cap) with GMRES(200) take |R| from
 // 11.3 to below 1e-8 |R_0| in 8 steps, every one accepted at lambda =
 // 1. The CFL of each step follows ser_cfl from the recorded |R|. The same
@@ -810,7 +815,7 @@ TEST(Continuation, HillSameOnAnyRankCount)
             hist[L].push_back(r.residual);
             hist[L].push_back(r.residual_new);
         }
-        // 11.328 before the wall model took the ground cell's wind parallel to the ground (audit A2); 11.343 with
+        // 11.328 before the wall model took the ground cell's wind parallel to the ground; 11.344 with
         // the outflow ghost transport of v1.0.0 (bc.outflow_transport = from_velocity).
         EXPECT_NEAR(static_cast<double>(pt.records().front().residual), 11.344, 1e-3);
         EXPECT_LE(pt.state().r_last, amrex::Real(1e-8) * pt.state().r0);
@@ -915,11 +920,6 @@ TEST(Continuation, RestartIsBitIdentical)
 }
 
 // ---------------------------------------------------------------------------
-// Coverage asked for by #25: the true linear residual |b - A x| of a GMRES
-// solve (A applied once more to the answer) against GMRES's own estimate, on
-// the hill with a uniform dtau of 20 s. They agree to 1e-6 of |b| (the
-// forward difference's error in the extra product), and both meet rtol.
-// ---------------------------------------------------------------------------
 // The caller's |R_0| (set_reference_residual, for the handover from the
 // SIMPLEC stage): with |R_0| ten times the first step's |R|, that |R_0| stays,
 // the first CFL is the SER law with that |R_0| (not the one of the step's own
@@ -992,6 +992,11 @@ TEST(Continuation, RestoreCapsTheCflAndTheFloorIsChecked)
     }
 }
 
+// ---------------------------------------------------------------------------
+// Coverage asked for by #25: the true linear residual |b - A x| of a GMRES
+// solve (A applied once more to the answer) against GMRES's own estimate, on
+// the hill with a uniform dtau of 20 s. They agree to 1e-6 of |b| (the
+// forward difference's error in the extra product), and the estimate meets rtol.
 TEST(Newton, TrueLinearResidualMatchesEstimate)
 {
     for (const int max_grid : {64, 4}) {
@@ -1033,9 +1038,10 @@ TEST(Newton, TrueLinearResidualMatchesEstimate)
 
 // ---------------------------------------------------------------------------
 // Run on request (--gtest_also_run_disabled_tests): the
-// sweep of docs/results.rst. One input at a time away from the defaults
-// (newton_armijo_c, newton_backtrack, ser_exponent, cfl_max, the infinite-dtau
-// switch, and newton_lambda_min = 0.99, which leaves only lambda = 1) on the
+// sweep of docs/results.rst (DISABLED_ParameterSweep, at the end of this file).
+// Disabled: it prints a table and asserts nothing. One input at a time away from the defaults
+// (newton_armijo_c, newton_backtrack, ser_exponent, cfl_max, cfl0, ptc_growth, the infinite-dtau
+// switch, and newton_lambda_min = 0.99, which leaves only lambda = 1), and two pairs with ptc_growth, on the
 // hill (u x 1 and u x 3) and the Ekman column of test_Newton.cpp, GMRES(200):
 // accepted steps, attempts, GMRES iterations and the |R| reached, up to 60
 // steps or |R| <= 1e-8 |R_0|; then GMRES(30) with the defaults. Plain Newton steps (NewtonKrylov::step, no
@@ -1198,6 +1204,12 @@ TEST(Continuation, GrowthBoundAtFiniteDtau)
     }
 }
 
+// A diagnostic printer, not a test: it prints the table described above its helpers and asserts
+// nothing, so it stays disabled. The body runs, on the hill (u x 1 and u x 3) and the column: the
+// defaults; newton_lambda_min 0.99 (no line search); dtau_inf_at_cap 0; armijo_c 0.1 and 0.4;
+// backtrack 0.3 and 0.8; ser_exponent 0.5 and 2; cfl_max 100 and 1000; cfl0 10; ptc_growth 1.5 and
+// 3; the pairs (no line search, ptc_growth 1.5) and (ser_exponent 0.5, ptc_growth 1.5); GMRES(30)
+// with dtau_inf_at_cap 1 and 0 (hill u x 1 and column); and plain Newton steps on the three cases.
 TEST(Continuation, DISABLED_ParameterSweep)
 {
     struct Var { const char* label; void (*set) (ContinuationOptions&); };

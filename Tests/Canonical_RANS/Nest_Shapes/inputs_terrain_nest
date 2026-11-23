@@ -1,5 +1,5 @@
-# A patch around a terrain shape of inputs_terrain_domain (tracker row PR-76,
-# beyond plan rev. 6): nest faces at xlo and xhi, the parent's field as the
+# A patch around a terrain shape of inputs_terrain_domain:
+# nest faces at xlo and xhi, the parent's field as the
 # first guess, the same layers and closure setting. nest_shapes.py gives the
 # shape, the place and cells (mesh.prob_lo, mesh.prob_hi, mesh.n_cell), the y
 # faces (nest, or periodic where the patch spans a periodic parent), the parent

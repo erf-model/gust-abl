@@ -1,6 +1,6 @@
 // The column's surface (init.column_stability, ColumnGuess.H). The force-driven column of
 // 64 x 1 m layers over flat ground (z0 = 0.1 m, the first centre at 0.5 m), buoyancy on (g = 9.81, theta0 = 300 K),
-// a neutral sounding of 300 K, a Rayleigh layer on u, v, w and theta above 48 m. Each surface mode is checked
+// a neutral sounding of 300 K, a Rayleigh layer on u, v, w, theta and k above 48 m. Each surface mode is checked
 // against MOST's closed forms at the first cell, with the column's own u*, theta_1 and speed.
 
 #include "BoundaryConditions.H"
@@ -243,7 +243,7 @@ TEST(ColumnStability, TooStableStops)
 TEST(ColumnStability, TargetWindSetsTheForcing)
 {
     auto wind_at = [] (const gust::ColumnGuessResult& r, double z) {
-        for (std::size_t k = 1; k + 1 < r.z.size(); ++k) {
+        for (std::size_t k = 1; k + 1 < static_cast<std::size_t>(r.z.size()); ++k) {
             if (z <= static_cast<double>(r.z[k + 1])) {
                 const double la = std::log(static_cast<double>(r.z[k]) + z0);
                 const double t = (std::log(z + z0) - la) / (std::log(static_cast<double>(r.z[k + 1]) + z0) - la);
@@ -400,7 +400,7 @@ TEST(ColumnStability, InputChecks)
     EXPECT_TRUE(gust::check_column_guess(w.io, w.so, w.fopt, w.bin, w.surf, true).empty());
 }
 
-// The surface solve (Pressel's cases; ERF's bounded bulk Richardson number). With Businger-Dyer's stable
+// The surface solve (ERF's bounded bulk Richardson number). With Businger-Dyer's stable
 // psi = -5 zeta it has a closed form: with Rb = z1 g (theta_1 - theta_s) / (U1^2 theta0), zeta = Rb ln / (1 - 5 Rb),
 // ln = ln((z1 + z0)/z0), a root only for Rb < 0.2. On z1 = 7.8 m, z0 = 0.1 m at 3 m/s:
 //  * Rb = 0.15: zeta = 2.62, u* = kappa U1 / (ln + 5 zeta), q = -u* kappa dtheta / (ln + 5 zeta);
@@ -475,7 +475,7 @@ TEST(ColumnStability, RibBoundInputs)
     EXPECT_TRUE(gust::check_column_guess(c.io, c.so, c.fopt, c.bin, c.surf, true).empty());
 }
 
-// io.column_guess_file (audit A10, P2): the table reads back as a
+// io.column_guess_file: the table reads back as a
 // bc.inflow_file to the last bit (%.17g; before, z and theta had 6 decimals,
 // so the table did not give back the column). A table that cannot be written
 // leaves the run going, with a warning.
@@ -504,7 +504,7 @@ TEST(ColumnStability, TableReadsBackExactly)
     const gust::InflowTable t = text.empty() ? gust::InflowTable{} : gust::parse_inflow_table(text, fname);
     EXPECT_EQ(t.ncol, 5);
     EXPECT_EQ(t.z.size(), r.z.size());
-    for (std::size_t i = 0; i < r.z.size() && i < t.z.size(); ++i) {
+    for (std::size_t i = 0; i < static_cast<std::size_t>(r.z.size()) && i < static_cast<std::size_t>(t.z.size()); ++i) {
         EXPECT_EQ(t.z[i], r.z[i]) << i;
         EXPECT_EQ(t.u[i], r.u[i]) << i;
         EXPECT_EQ(t.v[i], r.v[i]) << i;

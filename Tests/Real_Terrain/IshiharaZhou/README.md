@@ -45,7 +45,7 @@ With the recommended setting (8 ranks, Apple M2 Pro):
 | smooth (line at 5 m) | 42 to 170 m behind the crest | 150–200 m | 45–180 m | 0.30 m/s | 596, 40 s |
 | rough (line at 7 m) | 47 to 173 m | 250–300 m | 37–239 m | 0.58 m/s | 417, 31 s |
 
-The smooth row was re-measured after audit A2 (the wall model's ground-cell wind parallel to the ground, October
+The smooth row was re-measured after the wall model took the ground-cell wind parallel to the ground (October
 2026): 596 iterations (600 before), the same reversed-flow extent and U rms 0.302 m/s; its time is from before. The
 rough row predates that change.
 

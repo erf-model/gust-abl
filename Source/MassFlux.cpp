@@ -10,7 +10,6 @@ namespace gust {
 namespace {
 
 using stencil::CC;
-using stencil::NODE;
 using stencil::XF;
 using stencil::YF;
 using stencil::ZF;

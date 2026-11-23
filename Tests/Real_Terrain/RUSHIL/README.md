@@ -21,7 +21,8 @@ Downloaded by the user (not in the repository): the files of ERCOFTAC Classic Co
 Challenge AC5-05, "Flow over 2D hills (RUSHIL)" (`AC5-05_Flatrefcase.dat`, `AC5-05_h3??s.dat`, `AC5-05_h5??s.dat`,
 `AC5-05_h8??s.dat`), from the ERCOFTAC Knowledge Base. The measurements are those of Khurshudyan, L.H., Snyder,
 W.H., Nekrasov, I.V. (1981), "Flow and dispersion of pollutants over two-dimensional hills", EPA-600/4-81-067, made
-in the RUSHIL tunnel of the US EPA Fluid Modeling Facility.
+in the RUSHIL tunnel of the US EPA Fluid Modeling Facility. The files carry no licence statement
+(`../URANS_Averages/README.md`). The address of the download page is not recorded in this repository.
 
 Not distributed: the Meteodyn WT and WAsP curves of Manning, J., Hancock, P., Whiting, P. (2010), "Wind flow over
 two-dimensional hills: a comparison of Meteodyn WT and WAsP with wind tunnel data", *Wind Engineering* 34, 477.

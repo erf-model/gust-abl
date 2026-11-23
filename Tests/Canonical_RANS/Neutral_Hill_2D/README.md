@@ -12,10 +12,17 @@ with different solver settings and first guesses.
 | `inputs_steady_hill2d_lusgs` | Line LU-SGS sweeps (two symmetric sweeps, CFL cap 16). |
 | `inputs_steady_hill2d_column` | The LU-SGS deck started from the converged column (`init.first_guess = column`). |
 | `inputs_steady_hill2d_restart` | The Jacobi deck for the restart chain (iterations and first guess on the command line). |
+| `inputs_steady_hill2d_newton` | The hill coarsened to 32 x 1 x 16 and driven by a pressure gradient, with `steady.stage = simplec_newton` (`rt_steady_hill2d_newton`). |
+| `check_steady_probes.py` | `steady.probes_file` on the restart deck: ten iterations straight, and five then a restart to ten (`rt_steady_hill2d_probes`). |
 | `check_column_guess.py` | Compares the Driver histories of the LU-SGS profile run and the column run. |
 
 The three runs use `Supporting_Files/check_steady_hill.py --erf-check check_hill.py --orders 2` (shared with
 `Neutral_Hill_3D`): the verdict, a two-order drop of the u residual, then ERF's `check_hill.py --physics`.
+
+## Data and acknowledgements
+No measured data. The case is ERF's Neutral_Hill_2D and its check script is ERF's `check_hill.py`
+(`extern_erf/`, recorded in `extern_erf/EXTRACTED.md`; BSD 3-clause with the LBNL clause,
+`extern_erf/LICENSE.md`). Thanks to the ERF developers. Nothing has to be downloaded.
 
 ## CTest
 `rt_steady_hill2d`, `rt_steady_hill2d_lusgs`, `rt_steady_hill2d_column`, `rt_column_guess_spinup` (label
@@ -28,6 +35,12 @@ step, 1.5e-12 with a fill that is not a fixed point). `rt_coriolis_repeat_first`
 `inputs_steady_hill2d_restart` (Coriolis on) for 40 iterations, twice on the same two ranks, the plotfiles and turbulence plotfiles identical at zero
 tolerance. It guards the fixed-order Coriolis level mean (#60) on GPUs, where it runs in the nightly H100 job: with
 the pre-#60 atomic sum, 5 of 5 pairs differed on the H100s.
+
+`rt_steady_hill2d_newton` (labels `regression;smoke`, 2 ranks): `inputs_steady_hill2d_newton` switches to the Newton
+stage once and ends steady there. `rt_steady_hill2d_probes` (labels `regression;smoke`, 2 ranks, double precision
+only) runs `check_steady_probes.py`. Refusals on `inputs_steady_hill2d_restart` (labels `regression;smoke`):
+`abort_steady_probes_missing`, `abort_steady_probes_empty` and `abort_unsteady_key_without_stage`.
+`abort_simplec_theta_newton` also runs a deck of this folder.
 
 ## Expected Results
 - ERF's checks: the wall distance against the exact distance to the ridge, finite fields, k >= 0, the length-scale

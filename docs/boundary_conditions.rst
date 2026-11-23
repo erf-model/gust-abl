@@ -131,8 +131,8 @@ similarity theory (MOST). In each column,
   :math:`u_c, v_c`, which is exact for a flow along a uniform slope; the cell's :math:`w` faces are not read. The ghost
   fill writes the ground :math:`w` face and the :math:`u, v` ghosts after the wall model, so the wall model reads no
   value the fill writes, and a second fill changes nothing. Over flat ground the vertical part is projected out
-  either way. (Before audit A2 the vertical part was the mean of the ground and top :math:`w` faces; the ground face
-  is written by the fill from the wall law's ghosts, so the fill was not a fixed point.) A reference height between
+  either way. (With the mean of the ground and top :math:`w` faces as the vertical part the fill would not be a
+  fixed point: the ground face is written by the fill from the wall law's ghosts.) A reference height between
   the last two cell centres reads the top :math:`w` face, which the fill writes too; over a top that is not flat the
   fill is then a fixed point only to that face's change.
 - :math:`d = h/|A|`: distance from the ground along its normal, with :math:`|A| = \sqrt{1 + z_x^2 + z_y^2}`.
@@ -304,7 +304,7 @@ Nest faces
 
 A *patch* is a finer run inside a finished, coarser *parent* run (:doc:`initial_conditions`). A lateral face of the
 patch with ``bc.<face> = nest`` takes its values from the parent's checkpoint (``bc.nest_parent``). The nesting is one
-way: the parent is not changed (for two-way nests, ``nest.feedback = defect`` or ``relax``, see :ref:`two-way-nests`
+way: the parent is not changed (for two-way nests, ``nest.feedback`` other than ``none``, see :ref:`two-way-nests`
 and :ref:`two-way-relax`). The code is in ``Source/NestFaces``.
 
 On a nest face:
@@ -342,8 +342,8 @@ every build. The log reports the net as a fraction of the flux entering, and :ma
 
 The correction changes the parent's flow on the faces by :math:`\delta`. The log prints a warning when the net is
 above 1e-3 of the flux entering. The usual cause is a patch ground that differs from the parent's on the nest faces:
-with the hill 100 m off the parent's (a patch then placed an Agnesi hill at its own centre; it is now at the
-parent's) the net was 2.4e-2 of the flux entering (:math:`\delta` = 5.7e-2 m/s), and 3.0e-5 with
+with the hill 100 m off the parent's (measured with the Agnesi hill at the patch's own centre; the code places it
+at the parent's) the net was 2.4e-2 of the flux entering (:math:`\delta` = 5.7e-2 m/s), and 3.0e-5 with
 ``terrain.nest_blend_width = 250``. The centre is the parent's domain centre, so a patch of a patch places the hill
 at the centre of its own parent, which is itself a patch: in such a chain keep every patch centred on the outermost
 domain, or use ``terrain.type = xyz``.
@@ -423,7 +423,7 @@ zone, the blend moves the patch towards the parent (table above); use it when th
 ground can still differ from the parent's at the face, because the smoothing sees each mesh's own ground; BTF and
 Sullivan set each node from its own ground.
 
-**Buildings in a patch** (``buildings.type``, sub-phase 9.4). The patch builds its buildings from ``buildings.file`` on
+**Buildings in a patch** (``buildings.type``). The patch builds its buildings from ``buildings.file`` on
 its own cells, as a run of the whole domain on the same cells would: the same solid fractions, fixed faces and wall
 cells (unit test ``NestBuildings.PatchHasTheWholeDomainsFractionsAndWalls``). The parent's values on the nest faces
 know nothing of the buildings, so every building tile (a point of the height map with a height above 0 and the
@@ -456,7 +456,7 @@ restart with another ratio stops earlier: the patch's cells fit only one ratio, 
 ``bc.nest_parent``. The parent's path is not
 part of the record: the parent may be moved.
 
-**Where to put the nest faces** (measured; sub-phase 9.3, beyond the plan). A patch was compared with a uniform run of
+**Where to put the nest faces** (measured). A patch was compared with a uniform run of
 the whole domain on the patch's cells, on a 150 m round Agnesi hill of half-width :math:`a` = 250 m
 (``Tests/Canonical_RANS/Nest_Validation``) and on Askervein (``Tests/Real_Terrain/Askervein_Nest``). :math:`D` is the
 half-width of a square patch centred on the hill. On the hill the difference is the RMS of the velocity-vector
@@ -552,7 +552,7 @@ lines A and AA lie within 870 m of the hilltop in x and in y) the 10 m speeds at
 blend, where the patch's ground differs from the reference's by up to 0.05 m; without it the RMS is 0.077 %. All
 numbers are from macOS arm64, double precision, four ranks.
 
-Around five canonical shapes (``Tests/Canonical_RANS/Nest_Shapes``; sub-phase 9.4, beyond the plan) a patch at 2 2 1
+Around five canonical shapes (``Tests/Canonical_RANS/Nest_Shapes``) a patch at 2 2 1
 was compared with the uniform fine run at three distances :math:`D` from the shape's centre to the nest faces
 (velocity RMS over the shape, % of the shape's speed scale; the parent in brackets):
 
@@ -621,7 +621,7 @@ closer to the reference, at the cost of one more run and 54 % more cells (8 640 
 wider gap between its faces and the cube was not run. The ratio-4 patch on 1, 2 and 4 ranks gives the same field to
 :math:`10^{-8}` of the speed scale (CTests ``rt_nest_shapes_cube_ratio4*`` and ``rt_nest_shapes_cube_chain2``).
 
-**Solar farm (tracker row PR-68).** Six rows of flat panels, 4 m long in x, 0.1 m thick and 1.5 m above the ground,
+**Solar farm.** Six rows of flat panels, 4 m long in x, 0.1 m thick and 1.5 m above the ground,
 10 m apart and spanning the periodic width, on a 160 m × 2 m domain with 0.02 m layers up to 3.2 m. The 1 m parent
 is refined to 0.25 m in two ways: a chain (a 0.5 m middle patch of half-width 64 m, then 0.25 m patches of it) and
 ratio 4 straight from the parent, each at :math:`D` = 32, 40 and 48 m from the array's centre (the outer panel edges
@@ -709,7 +709,7 @@ Each exchange:
 
 With :math:`n` nests, step 1 restricts the cell fields, :math:`u` and :math:`v` of every nest first, then fills the
 outer ghost cells, then forms :math:`w` of every nest, then fills them again (``restrict_patches``): two outer ghost
-fills per exchange for any number of nests, against :math:`2n + 1` when each nest was restricted in full before the
+fills per exchange for any number of nests, against :math:`2n + 1` if each nest were restricted in full before the
 next. :math:`w` reads the outer :math:`u` and :math:`v`, so on a face that two touching footprints share it sees the
 face's final flux, and the outer :math:`\Omega` on every footprint is the restricted nest :math:`\Omega` (unit test
 ``TouchingNestsKeepTheRestrictedOmegaOnBothFootprints``). The outer node heights are copied into :math:`q^*` once, as
@@ -719,7 +719,7 @@ Such a shared face is a lateral face of both nests. Each nest's face takes the o
 nest's own net-flux shift (``Source/NestFaces``), so the two restrictions of the face differ slightly. The face keeps
 the restriction of the nest listed later in ``nest.names``, and the outer cells next to it on the other nest's side
 keep a continuity mismatch of :math:`a_x \Delta u` (no order can make both sides divergence-free). With each nest
-restricted in full before the next, the earlier nest's column next to the face also had :math:`\Omega` off by about
+restricted in full before the next, the earlier nest's column next to the face would also have :math:`\Omega` off by about
 :math:`z_x \Delta u / 2`. On the two-way hill deck with two touching nests (``crest`` and ``lee``) the defect run is
 the same bit for bit in both orders: the changed column is outside the stencil of the source's region there. With
 ``nest.feedback = relax`` (factor 4) or with ``turb.realizability = 0.309`` it reads that column, and the steady
@@ -898,7 +898,7 @@ iterations. The log says ``joint run: restarted after exchange N``.
 **Damping.** By default a nest damps only :math:`w` and :math:`\theta` (above). Over each footprint the joint run
 carries the nests' equations, so an outer Rayleigh term on :math:`u, v` or :math:`k` would act outside the footprints
 and not inside them: a jump in the forcing at each footprint's edge above ``bc.rayleigh_zdamp``.
-``nest.feedback = defect`` (and ``relax``) therefore needs ``bc.rayleigh_fields = w`` or ``w theta``, and stops with an
+The joint run (``nest.feedback`` other than ``none``) therefore needs ``bc.rayleigh_fields = w`` or ``w theta``, and stops with an
 error otherwise, unless ``nest.damping = outer``: the nests then keep the outer deck's ``bc.rayleigh_fields`` and damp
 :math:`u, v` and :math:`k` towards the same ``bc.inflow_*`` profile as the outer domain, so the forcing is the same on
 both sides of each footprint's edge. On a flat, horizontally uniform ABL with an inversion
@@ -911,7 +911,7 @@ each nest's ``bc.nest_relax_width`` is 0 (``Source/Nests.cpp``), and ``bc.nest_r
 ``terrain.nest_blend_width`` in the outer deck stops the run, since the outer domain has no ``nest`` face. A joint
 nest's ground is its own up to the faces, and its coordinate surfaces follow the outer domain's aloft (above).
 
-**Flat ABL.** ``Tests/Canonical_RANS/Nests_Flat_ABL`` (beyond the plan) checks the nests where the answer is known: on
+**Flat ABL.** ``Tests/Canonical_RANS/Nests_Flat_ABL`` checks the nests where the answer is known: on
 a doubly periodic flat outer domain that starts from its steady column, the steady state is the column, the same at
 every :math:`(x, y)`, and a nest at 2 2 1 must return the outer domain's level means. Three decks: neutral (case S
 of Moeng and Sullivan 1994, as rerun by Churchfield et al. 2010), buoyant (case B) and stable (the set-up of GABLS1,
@@ -968,7 +968,7 @@ nest's own blend weight next to the face is the ring's :math:`w`. The joint log 
 correction (``ring max |C| u ...``), so a correction that grows or oscillates shows. :math:`S` on the ring is formed
 at every exchange, with :math:`S` on :math:`\chi_s`, from the outer residual at :math:`q^*` and one more residual of
 each nest (the cost: one nest residual per exchange). Only the lateral faces of :math:`\chi_s`, in the directions a
-nest has faces; the ratio must be even (2 for named nests). With ``nest.feedback = relax`` or ``none`` the key is
+nest has faces; the ratio must be even (2 for named nests). With any other ``nest.feedback`` the key is
 refused. Results (RMS of :math:`u` against the uniform 25 m run, joint over one way,
 ``Tests/Canonical_RANS/Nests_Two_Way``, 2 ranks; the deck as it is, and the recommended setting in brackets):
 
@@ -1063,7 +1063,7 @@ runs support so far:
 - A nest 4 outer cells from the outer inflow face did not converge in a joint run on the Columbia Gorge; the
   search keeps 10 outer cells from the outer faces by default, and a nest closer than that gets a note.
 - The step rule was tested on an escarpment 60 m high, with 50 m outer cells (misfit at most 1.8 m) and two nests
-  whose faces cut the step at 35° and 55° (``Tests/Canonical_RANS/Nest_Placement_Runs``; N-114 item 11). For winds
+  whose faces cut the step at 35° and 55° (``Tests/Canonical_RANS/Nest_Placement_Runs``). For winds
   along an axis the verdicts match the runs: the two flagged nests make the joint run worse than one way (up to
   1.35 times in the nest and 1.75 outside it at 55°), and the two clear ones do not (within 1.02).
   ``nest.feedback_flux = nest`` brings the flagged nests back to within 1.02 (nest) and 1.08 (outside) of one way.
@@ -1108,7 +1108,7 @@ nest :math:`w` improves (2.87e-3 to 1.48e-3) and :math:`v` and :math:`k` get wor
 differs by 0.04 % RMS, the joint nest's by 0.11 %; the outer domain's moves from 1.18 % to 1.05 %. No nest cell in
 the lowest 200 m differs from the 20 m run by more than 0.25 m/s in either run (largest 0.23 and 0.14 m/s).
 
-Why the nest's :math:`u` does not move (N-114 item 9): the joint run changes two things, the nest's levels (they
+Why the nest's :math:`u` does not move: the joint run changes two things, the nest's levels (they
 follow the outer domain's surfaces aloft) and the feedback. The first pass of the joint run (one way, with the joint
 levels) separates them. The levels move by 0.10 m RMS (at most 1.3 m, largest at 130 m above the ground), and alone
 raise the nest's RMS error in :math:`u` from 3.37e-3 to 3.92e-3, in :math:`v` from 5.68e-3 to 6.72e-3 and in :math:`k`
@@ -1183,7 +1183,7 @@ the outer domain's own momentum balance: the target has no nest pressure gradien
 grows the outer velocity under the nest is held at :math:`I q_f` whatever the outer pressure is (the pressure
 correction's coefficient falls too, above), while the nest still takes its faces from the outer velocity. The flow
 rate through the footprint is then set by a loop: the nest returns the flow rate it is given, and the relaxation
-imposes it on the outer domain. A two-dimensional linear model of the coupling (Pressel review) gives this loop a
+imposes it on the outer domain. A two-dimensional linear model of the coupling gives this loop a
 gain of about :math:`cA/(cA + D)`, with :math:`A` the footprint's area and :math:`D` the outer domain's friction,
 which tends to 1 as :math:`f` grows; the exchanges grow as :math:`1/(1 - \text{gain})`. On the canonical hill this lets both domains drift: the nest and the
 outer domain under it grow faster than the fine run, more so at larger :math:`f` (Results).
@@ -1241,7 +1241,7 @@ and the outer domain outside the footprint against the uniform 25 m run:
      - 3.27e-2
      - 2.94e-2
 
-The rows at :math:`f` = 0.25 and 2 are from PR-71 (#116); the others are from the code of tracker N-114 item 13.
+The rows at :math:`f` = 0.25 and 2 are from #116; the others are from the code of #130.
 
 The difference between the two domains under the nest falls with :math:`f`, from about :math:`f^{-0.3}` at small
 :math:`f` to :math:`f^{-0.6}` at :math:`f \ge 1`, rather than :math:`1/f`: the nest it is measured against changes
@@ -1302,7 +1302,7 @@ way (0.128 against 0.125). The footprint :math:`w` is 0.045 at :math:`f = 0.5` (
 At :math:`f = 4` every region moves away from the fine run and the exchanges grow, as on the hill.
 
 **The default.** :math:`f = 1` is the rate argument above: the relaxation as strong as the outer cell's own
-advection, and was the default until tracker N-114 item 13. A sweep of :math:`f` = 0.1, 0.25, 0.5, 0.75, 1 and 2
+advection, and was the default until #130. A sweep of :math:`f` = 0.1, 0.25, 0.5, 0.75, 1 and 2
 on four nests (the hill, the lee-face nest, the Columbia Gorge and Askervein, with the recommended setting;
 ``Tests/Canonical_RANS/Nests_Two_Way/README.md``, Choice of the relaxation factor) had every run steady. At
 :math:`f = 0.5` the nest's :math:`u` was as close to the fine run as at 1 or closer on all four (0.35 against 0.51 of
@@ -1327,7 +1327,7 @@ factor.
 - The pressure under a nest is the outer domain's own (above).
 - Two nests that touch each have :math:`w = 0` on their shared face, so a strip about :math:`2M` outer cells wide
   between them is relaxed weakly, although the nests cover it (the defect source's region has the same gap).
-- The limits of ``defect`` that concern the joint run (no restart, no probe rows after the one-way run,
+- The limits of ``defect`` that concern the joint run (no probe rows after the one-way run,
   ``simplec_newton`` refused, :math:`\nu_t` relaxation) hold for ``relax`` too.
 
 .. _two-way-relax-consistent:
@@ -1353,8 +1353,8 @@ Its ``nest.feedback_factor`` defaults to 1, not to ``relax``'s 0.5: the sweep be
 Pointwise, the restricted nests then satisfy the outer momentum, :math:`\theta` and :math:`k` rows there at every
 factor, pressure gradient included; with ``relax`` the fixed point is :math:`q_c - q^* = -R_c(q_c)/c` instead. On the
 margin (:math:`0 < w < 1`) a fraction :math:`(1 - w)` of :math:`R_c(q^*)` remains, so :math:`q_c` differs from
-:math:`q^*` on the margin and, much less, on the rows with :math:`w = 1` that read it. In a 1-D linear model (Pressel
-review) the largest :math:`|q_c - q^*|` where :math:`w = 1` is :math:`5\times10^{-6}` at :math:`f = 1`, against
+:math:`q^*` on the margin and, much less, on the rows with :math:`w = 1` that read it. In a 1-D linear model
+the largest :math:`|q_c - q^*|` where :math:`w = 1` is :math:`5\times10^{-6}` at :math:`f = 1`, against
 :math:`1.4\times10^{-2}` with ``relax`` and :math:`1.7\times10^{-4}` with ``defect``. The outer pressure under a nest
 mostly follows the nest's: in a 2-D Stokes model the range of :math:`p - p^*` over the inner box is 0.03 to 0.04 (model units),
 against 0.18 with ``relax`` and 0.20 with no feedback. The rest is set at the margin and does
@@ -1423,7 +1423,7 @@ given) is not changed by the term, and holding the outer domain to the nest more
 On the Columbia Gorge (``Tests/Real_Terrain/Columbia_Gorge``, 4 ranks) and Askervein
 (``Tests/Real_Terrain/Askervein_Nest``, the ``two_way`` layout, 4 ranks), both with the recommended setting, RMS of
 :math:`u` (m/s) against each case's uniform fine run (the nest's cells everywhere; the Gorge's reference, one-way
-and ``defect`` runs are those of tracker N-114, item 13):
+and ``defect`` runs are those of #130):
 
 .. list-table::
    :header-rows: 1
@@ -1683,11 +1683,11 @@ run's by at most 0.004. Counts of cells in the lowest 200 m more than 1 m/s from
   Askervein 1.9, Gorge 4.9; not profiled), and the joint runs took 2.2 (hill), 20 (Askervein) and 5.9
   (Gorge) times as long. The runs shared the machine with other work; the ratios are indicative.
 
-**A change for buildings on terrain.** The masked Poisson solve used by buildings' solid cells (#86) shifted
-:math:`\phi` by its mean after the solve. On terrain the open faces beside masked cells read those cells'
-:math:`\phi` in their cross terms, so a constant is not a null vector of the masked operator, and the shift left a
-residual next to the masked cells. The solve now keeps GMRES's :math:`\phi` when cells are masked (test
-``MaskedPoisson.EnclosedBlockOnABumpSolvesItsSystem``). On level ground the shift is kept, as before. The shift
+**Buildings on terrain.** The masked Poisson solve used by buildings' solid cells (#86) shifts
+:math:`\phi` by its mean after the solve on level ground only. On terrain the open faces beside masked cells read those cells'
+:math:`\phi` in their cross terms, so a constant is not a null vector of the masked operator, and the shift would leave a
+residual next to the masked cells. There the solve keeps GMRES's :math:`\phi` when cells are masked (test
+``MaskedPoisson.EnclosedBlockOnABumpSolvesItsSystem``). The shift
 applies only when the system is singular (no pressure boundary); every building deck in ``Tests`` has an outflow
 face, and ``building_hill``, the one on terrain, gives the same plotfiles with and without the change.
 
@@ -1721,11 +1721,11 @@ values :math:`g_1, g_2` along the face normal:
      - the centred difference at :math:`c_0` equals :math:`G`
 
 The directions are filled in the order x, y, z, so corner ghosts get values too. Each direction fills every field
-at both faces on all boxes of a rank in one launch (audit A9); on a domain no wider than the two ghost layers it is two
+at both faces on all boxes of a rank in one launch; on a domain no wider than the two ghost layers it is two
 launches, the low face first. The values are those of one launch per field, face, box and layer.
 Every copy of a ghost cell then holds one value. In its outermost lateral ghost layer a box lacks some of what the
 rules read (the node heights have one lateral ghost layer, the wall law's gradient two), so after the fill each cell
 outside the domain takes the value of the box whose column it is in, and the ghost images of cells inside the domain
-are refreshed from the neighbouring boxes (audit A3). No valid cell changes. The results then do not depend on the box
-layout. Before, they did where an inflow face crosses terrain at a box seam and ``turb.realizability`` is on: the
-cap's strain in the first lateral ghost layer read inflow face points computed from the clamped heights.
+are refreshed from the neighbouring boxes. No valid cell changes. The results then do not depend on the box
+layout. Without the refresh they would where an inflow face crosses terrain at a box seam and ``turb.realizability`` is on: the
+cap's strain in the first lateral ghost layer would read inflow face points computed from the clamped heights.

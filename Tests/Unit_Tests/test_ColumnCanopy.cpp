@@ -1,5 +1,5 @@
-// The column first guess with a forest canopy (ColumnGuess.H, ColumnCanopy), plan rev. 6 beyond the plan,
-// sub-phase 8.5b (UT-8.5.1's 1-D part): the force-driven neutral column of 64 x 1 m layers (z0 = 0.1 m, a pressure
+// The column first guess with a forest canopy (ColumnGuess.H, ColumnCanopy):
+// the force-driven neutral column of 64 x 1 m layers (z0 = 0.1 m, a pressure
 // gradient F = 2.5e-3 m/s^2, no rotation, a Rayleigh layer on u, v and k above 48 m) under a dense uniform canopy,
 // f = 0.5 1/m (Cd LAI = 20) over the lowest 40 layers. Deep inside such a canopy the shear and the diffusion vanish, so
 // the steady balances are closed forms:
@@ -110,7 +110,7 @@ TEST(ColumnCanopy, DeepCanopyBalancesAreClosedForms)
     ASSERT_GT(kdeep, static_cast<double>(cc.tke_floor));
     // The table's row i is the cell i - 1 (row 0 is the ground): the layers at 10 to 30 m.
     int checked = 0;
-    for (std::size_t i = 1; i < r.z.size(); ++i) {
+    for (std::size_t i = 1; i < static_cast<std::size_t>(r.z.size()); ++i) {
         const double z = static_cast<double>(r.z[i]);
         if (z < 10 || z > 30) { continue; }
         const double speed = std::abs(std::complex<double>(static_cast<double>(r.u[i]), static_cast<double>(r.v[i])));
@@ -136,7 +136,7 @@ TEST(ColumnCanopy, KTermsOffKeepsTheDragOnly)
     ASSERT_TRUE(ron.steady);
     const double U = std::sqrt(F / FDRAG);
     int checked = 0;
-    for (std::size_t i = 1; i < r.z.size(); ++i) {
+    for (std::size_t i = 1; i < static_cast<std::size_t>(r.z.size()); ++i) {
         const double z = static_cast<double>(r.z[i]);
         if (z < 10 || z > 20) { continue; }
         // The larger k makes a larger nu_t, so the diffusion from above adds to the forcing: the speed is above
@@ -154,12 +154,12 @@ TEST(ColumnCanopy, NoCanopyAndZeroCanopyAgreeBitForBit)
 {
     Column bare;
     const auto a = bare.run();
-    Column zero;
-    zero.forest(0.0);
-    const auto b = zero.run();
+    Column zero_lad;
+    zero_lad.forest(0.0);
+    const auto b = zero_lad.run();
     ASSERT_TRUE(a.steady && b.steady);
     ASSERT_EQ(a.u.size(), b.u.size());
-    for (std::size_t i = 0; i < a.u.size(); ++i) {
+    for (std::size_t i = 0; i < static_cast<std::size_t>(a.u.size()); ++i) {
         EXPECT_EQ(a.u[i], b.u[i]) << i;
         EXPECT_EQ(a.v[i], b.v[i]) << i;
         EXPECT_EQ(a.tke[i], b.tke[i]) << i;

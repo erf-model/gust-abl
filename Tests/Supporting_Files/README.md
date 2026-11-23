@@ -10,6 +10,7 @@ Files shared by more than one case folder, and the test-only drivers.
 | `check_mesh.py` | `Discretization/Terrain_Mesh`, `Discretization/Grid_Hierarchy`: runs the application, then compares field statistics of `z` and `detJ` and the quality report of every level with a JSON gold. |
 | `check_init.py` | `Initialization/Mass_Consistent_Askervein` (mode `askervein`), `Initialization/Bump_Speedup_Trend` (mode `trend`). |
 | `check_steady_hill.py` | `Canonical_RANS/Neutral_Hill_2D`, `Canonical_RANS/Neutral_Hill_3D`: the verdict, the residual drop, then ERF's `check_hill.py` or `check_hill3d.py` from `extern_erf/`. |
+| `check_sequencing_log.py` | `Real_Terrain/Askervein_210` (`rt_askervein_210_level_history`): the stage switches and the grid-sequencing level history of a run log against a JSON gold. |
 | `Tools/poisson_projection.cpp` | `Discretization/Poisson_Askervein` |
 | `Tools/boundary_fluxes.cpp` | `Discretization/Boundary_Fluxes` |
 | `Tools/closure_column.cpp` | `Discretization/Closure_Column` |

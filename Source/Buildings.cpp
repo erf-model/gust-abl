@@ -13,7 +13,6 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <cstdio>
 #include <cstdlib>
 #include <fstream>
 #include <limits>
@@ -182,11 +181,10 @@ std::string parse_xyz (const std::string& file, std::vector<double>& x, std::vec
 }
 
 // The node mean (two or four nodes) of each kind of face, the columns' ground
-// being the same mean in the lowest layer k0.
+// being the same mean in the lowest layer.
 struct NodeMeans
 {
     amrex::Array4<amrex::Real const> z;
-    int k0;
     AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
     double h4 (int i, int j, int k) const noexcept
     {
@@ -442,6 +440,7 @@ void Buildings::build_from_map (const BuildingsOptions& opt, const BuildingHeigh
     m_active = true;
     m_hash.clear();
     m_surface.clear();
+    m_hybrid_mesh = false;   // a map has no sloping levels (build_from_surface sets it)
     const double lx = geom.isPeriodic(0) ? static_cast<double>(geom.ProbLength(0)) : 0.0;
     const double ly = geom.isPeriodic(1) ? static_cast<double>(geom.ProbLength(1)) : 0.0;
     for (int n = 0; n < cell_ba.size(); ++n) {
@@ -486,7 +485,7 @@ void Buildings::build_from_map (const BuildingsOptions& opt, const BuildingHeigh
     m_beta.setVal(0);
     for (amrex::MFIter mfi(m_beta, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
         const auto b = m_beta.array(mfi);
-        const NodeMeans z{z_nd.const_array(mfi), k0};
+        const NodeMeans z{z_nd.const_array(mfi)};
         amrex::ParallelFor(mfi.tilebox(), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
         {
             const double g = z.h4(i, j, k0);
@@ -538,7 +537,7 @@ void Buildings::build_from_map (const BuildingsOptions& opt, const BuildingHeigh
             const amrex::Box bx = mfi.tilebox();
             const auto a = bf.array(mfi);
             const auto b = m_beta.const_array(mfi);
-            const NodeMeans z{z_nd.const_array(mfi), k0};
+            const NodeMeans z{z_nd.const_array(mfi)};
             const double eps = std::max(1e-9 * (d == 0 ? dxd : dyd), 64 * static_cast<double>(std::numeric_limits<amrex::Real>::epsilon())
                                                                    * static_cast<double>(geom.ProbLength(d == 0 ? 0 : 1)));
             auto finish = [=] AMREX_GPU_DEVICE (int i, int j, int k, double m) noexcept
@@ -591,7 +590,7 @@ void Buildings::build_from_map (const BuildingsOptions& opt, const BuildingHeigh
         const auto fx = m_beta_face[0].const_array(mfi);
         const auto fy = m_beta_face[1].const_array(mfi);
         const auto fz = m_beta_face[2].const_array(mfi);
-        const NodeMeans z{z_nd.const_array(mfi), k0};
+        const NodeMeans z{z_nd.const_array(mfi)};
         amrex::ParallelFor(mfi.tilebox(), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
         {
             const double own = static_cast<double>(br(i, j, k));

@@ -1,4 +1,4 @@
-# The deck for the CTest abort_laminar_other_options (PR-49): the cylinder with
+# The deck for the CTest abort_laminar_other_options: the cylinder with
 # turb.closure = none and the other options that need the k-L closure (a canopy,
 # the column first guess, the Newton correction). Each must be refused by name.
 mesh.prob_lo       = -6. 0. 0.

@@ -243,50 +243,51 @@ TEST (FrozenTheta, ThetaHeldAndNoBuoyancyInMomentum)
 
 // ---------------------------------------------------------------------------
 // The closure keeps the buoyancy: with the k-L closure and theta frozen at a
-// stable 10 K/km, one iteration gives a lower nu_t everywhere it is above
-// the floor than with gravity off (the stability functions and P_b see N^2),
-// on 1, 2 or 4 boxes alike.
+// stable 10 K/km, one iteration gives a sum of nu_t below 0.9 of the one
+// with gravity off (the stability functions and P_b see N^2), with 4- and 8-cell boxes.
 TEST (FrozenTheta, ClosureKeepsTheBuoyancy)
 {
-    PCase c = flat_case(8, 8, 8, 800, 800, 400, 4);
-    gust::ClosureOptions copt;
-    gust::Closure closure(copt);
-    amrex::MultiFab dist;
-    gust::height_above_ground(c.z, dist);
-    gust::BoundaryInputs bin;
-    bin.face = {FaceType::periodic, FaceType::periodic, FaceType::slip_wall, FaceType::periodic, FaceType::periodic,
-                FaceType::slip_wall};
-    gust::PoissonOptions popt;
-    gust::SimplecOptions opt;
-    opt.theta_frozen = true;
-    auto nu_sum = [&] (double gravity) {
-        gust::ResidualInputs in;
-        in.closure = &closure;
-        in.wall_distance = &dist;
-        in.theta_ref.z = {-1000, 5000};
-        in.theta_ref.theta = {300, 300};
-        in.buoyancy.gravity = static_cast<amrex::Real>(gravity);
-        in.buoyancy_in_momentum = false;
-        const gust::BoundaryConditions bc(bin, c.geom, c.mesh, in.coriolis);
-        in.bc = &bc;
-        gust::State q;
-        define_state(q, c);
-        q.u.setVal(6.0);
-        q.v.setVal(0.0);
-        q.w.setVal(0.0);
-        q.p.setVal(0.0);
-        fill_stable(q.theta, 0.01, c);
-        q.tke.setVal(0.5);
-        gust::SimplecStage stage(opt, 2, in, &closure, popt, c.mesh, c.geom, c.z, amrex::Real(1e-6), c.ba, c.dm);
-        stage.init(q);
-        amrex::MultiFab dtau;
-        bc.fill_ghosts(q, nullptr, in.buoyancy);
-        gust::local_dtau(q, &stage.nu(), c.mesh, c.geom, amrex::Real(1), dtau);
-        stage.iterate(q, dtau);
-        return static_cast<double>(stage.nu().sum(0));
-    };
-    const double with = nu_sum(9.81), without = nu_sum(0.0);
-    EXPECT_LT(with, 0.9 * without) << with << " " << without;
+    for (const int max_grid : {4, 8}) {
+        PCase c = flat_case(8, 8, 8, 800, 800, 400, max_grid);
+        gust::ClosureOptions copt;
+        gust::Closure closure(copt);
+        amrex::MultiFab dist;
+        gust::height_above_ground(c.z, dist);
+        gust::BoundaryInputs bin;
+        bin.face = {FaceType::periodic, FaceType::periodic, FaceType::slip_wall, FaceType::periodic, FaceType::periodic,
+                    FaceType::slip_wall};
+        gust::PoissonOptions popt;
+        gust::SimplecOptions opt;
+        opt.theta_frozen = true;
+        auto nu_sum = [&] (double gravity) {
+            gust::ResidualInputs in;
+            in.closure = &closure;
+            in.wall_distance = &dist;
+            in.theta_ref.z = {-1000, 5000};
+            in.theta_ref.theta = {300, 300};
+            in.buoyancy.gravity = static_cast<amrex::Real>(gravity);
+            in.buoyancy_in_momentum = false;
+            const gust::BoundaryConditions bc(bin, c.geom, c.mesh, in.coriolis);
+            in.bc = &bc;
+            gust::State q;
+            define_state(q, c);
+            q.u.setVal(6.0);
+            q.v.setVal(0.0);
+            q.w.setVal(0.0);
+            q.p.setVal(0.0);
+            fill_stable(q.theta, 0.01, c);
+            q.tke.setVal(0.5);
+            gust::SimplecStage stage(opt, 2, in, &closure, popt, c.mesh, c.geom, c.z, amrex::Real(1e-6), c.ba, c.dm);
+            stage.init(q);
+            amrex::MultiFab dtau;
+            bc.fill_ghosts(q, nullptr, in.buoyancy);
+            gust::local_dtau(q, &stage.nu(), c.mesh, c.geom, amrex::Real(1), dtau);
+            stage.iterate(q, dtau);
+            return static_cast<double>(stage.nu().sum(0));
+        };
+        const double with = nu_sum(9.81), without = nu_sum(0.0);
+        EXPECT_LT(with, 0.9 * without) << with << " " << without << ", boxes of " << max_grid;
+    }
 }
 
 // ---------------------------------------------------------------------------

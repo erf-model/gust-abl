@@ -15,14 +15,14 @@
 //        |R(q + lambda dq)| <= (1 - c lambda) |R(q)|,
 //
 //      lambda = 1, beta, beta^2, ... down to lambda_min;
+//   3b. with steady.newton_ptc_growth > 1, at finite dtau (where the
+//      direction need not reduce |R|), a full step that no lambda's Armijo
+//      test accepts is accepted when |R| grows by at most that factor;
 //   4. accepted: q is the trial point, and the SER law (ser_cfl,
 //      PseudoTime.H) gives CFL_{n+1} = min(cfl_max, g CFL_n, cfl0 (|R_n| /
 //      |R_0|)^-p), with |R_0| the residual of the first step. With
 //      steady.newton_dtau_inf_at_cap = 1, a CFL that reaches cfl_max
 //      switches to infinite dtau;
-//   3b. with steady.newton_ptc_growth > 1, at finite dtau (where the
-//      direction need not reduce |R|), a full step that no lambda's Armijo
-//      test accepts is accepted when |R| grows by at most that factor;
 //   5. a skipped Newton update (newton_update_usable false: a non-finite or
 //      growing Krylov residual, Newton.H) or a line search that accepts no
 //      lambda leaves q as it is (every attempt works on a copy), cuts the CFL by
@@ -33,7 +33,7 @@
 //      back to SIMPLEC on it, NewtonStage.H).
 //
 // The SER inputs are the driver's (steady.cfl0, cfl_max, ser_exponent,
-// ser_max_growth: SteadyOptions, Driver.H). The new inputs (steady.*, read by
+// ser_max_growth: SteadyOptions, Driver.H). The inputs of this file (steady.*, read by
 // read_continuation_options): newton_armijo_c, newton_backtrack,
 // newton_lambda_min, newton_cfl_cut, newton_max_retries,
 // newton_dtau_inf_at_cap, newton_ptc_growth. Like the steady.newton_* keys of Newton.H, the
@@ -73,7 +73,7 @@ struct ContinuationOptions
     amrex::Real ser_exponent{1};              //!< steady.ser_exponent
     amrex::Real ser_max_growth{2};            //!< steady.ser_max_growth
     amrex::Real dtau_floor{amrex::Real(0.1)};   //!< steady.dtau_floor (PseudoTime.H)
-    // The new keys.
+    // The keys of read_continuation_options.
     amrex::Real armijo_c{amrex::Real(1.0e-4)};  //!< steady.newton_armijo_c (> 0, < 0.5)
     amrex::Real backtrack{amrex::Real(0.5)};    //!< steady.newton_backtrack (> 0, < 1): lambda <- backtrack lambda
     amrex::Real lambda_min{amrex::Real(1.0e-2)};//!< steady.newton_lambda_min (> 0, < 1): the smallest lambda tried
@@ -81,7 +81,7 @@ struct ContinuationOptions
     int max_retries{4};                         //!< steady.newton_max_retries (>= 1): retries after a failed attempt
     int dtau_inf_at_cap{1};                     //!< steady.newton_dtau_inf_at_cap (0 | 1): infinite dtau once the CFL reaches cfl_max
     amrex::Real ptc_growth{1};                  //!< steady.newton_ptc_growth (>= 1; 1: off): at finite dtau, the full step is accepted when |R| grows by at most this factor
-    std::vector<std::string> given;             //!< the new keys given
+    std::vector<std::string> given;             //!< the keys of read_continuation_options given
 };
 
 //! The SER fields of opt from the driver's options.
@@ -185,7 +185,8 @@ public:
     //! starts from a filled copy of q.
     ContinuationStatus step (State& q, NewtonPreconditioner* pc = nullptr);
     //! Steps until |R| <= rel_tol |R_0| (checked before each step), a failed
-    //! step, or max_steps steps of this call.
+    //! step, or max_steps steps of this call. Used by the unit tests; the
+    //! application steps through NewtonStage (NewtonStage.H).
     ContinuationRunResult run (State& q, int max_steps, amrex::Real rel_tol, NewtonPreconditioner* pc = nullptr);
 
     [[nodiscard]] const ContinuationState& state () const { return m_st; }

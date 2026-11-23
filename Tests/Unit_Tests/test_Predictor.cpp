@@ -1,7 +1,9 @@
 // The SIMPLEC momentum predictor: a_P = 1/dtau + diag(A1), the z-line solve
 // against a dense solve, alpha_u relaxation = pseudo-time with the matching
 // dtau, z-line Jacobi converges to the direct solution, a converged state is a
-// fixed point, and face_dtau, the refusals and the rank independence.
+// fixed point, face_dtau and the refusals, the Dirichlet rows, the w rows' VNN
+// cap and its slope margin, box-layout independence, the Coriolis mean on any
+// rank map, and the line LU-SGS sweeps.
 #include "BoundaryConditions.H"
 #include "ImplicitOperator.H"
 #include "MassFlux.H"
@@ -436,14 +438,21 @@ TEST (Predictor, ZLineJacobiConvergesToTheDenseSolution)
         const amrex::Real change = gust::zline_jacobi(Loc::xface, pr.A, ap, rhs, cs.sweeps_exact, c.mesh, c.geom, delta);
         EXPECT_LT(max_diff_gathered(delta, exact) / scale, tol(cs.tol_exact, 1e-4)) << cs.nx;
         EXPECT_LT(change / scale, tol(cs.tol_exact, 1e-4));
-        // the ghosts outside the domain stay 0 (the top and ground rows)
+        // the ghost rows below the ground and above the top stay 0 (counted over the ranks)
+        int not_zero = 0;
         for (amrex::MFIter mfi(delta, false); mfi.isValid(); ++mfi) {
             const auto d = host_copy(delta, mfi);
             const amrex::Box vb = mfi.validbox();
-            amrex::Box below = vb;
-            below.setRange(2, vb.smallEnd(2) - 1, 1);
-            amrex::LoopOnCpu(below, [&] (int i, int j, int k) { EXPECT_EQ(d(amrex::IntVect(i, j, k)), 0); });
+            for (const int kg : {vb.smallEnd(2) - 1, vb.bigEnd(2) + 1}) {
+                amrex::Box row = vb;
+                row.setRange(2, kg, 1);
+                amrex::LoopOnCpu(row, [&] (int i, int j, int k) {
+                    if (!(d(amrex::IntVect(i, j, k)) == 0)) { ++not_zero; }
+                });
+            }
         }
+        amrex::ParallelDescriptor::ReduceIntSum(not_zero);
+        EXPECT_EQ(not_zero, 0) << cs.nx;
     }
 }
 
@@ -588,8 +597,11 @@ TEST (Predictor, AConvergedStateIsAFixedPoint)
 // ---------------------------------------------------------------------------
 // face_dtau is the mean of the two cells (one cell on a
 // non-periodic face, the ground and the top; the periodic image across the
-// seam); the predictor's result is identical on every rank; sweeps < 1 and
-// wrong layouts are refused; one sweep's change equals the correction.
+// seam); with two sweeps on a hill the last sweep's change is positive and
+// below the whole correction; sweeps < 1 and wrong layouts are refused; one
+// sweep's change equals the correction. Rank independence: the same cell
+// steps on two boxes (on two ranks, one box each, in reverse order) give the
+// same face steps bit for bit.
 TEST (Predictor, FaceStepRefusalsAndRankIndependence)
 {
     PCase c = make_mesh(8, 4, 6, 60, true, false);   // y is not periodic
@@ -620,7 +632,21 @@ TEST (Predictor, FaceStepRefusalsAndRankIndependence)
     }
     amrex::ParallelDescriptor::ReduceIntSum(seen);
     EXPECT_EQ(seen, 8 * 4 * 6);
-    // the predictor on a hill: identical on every rank (max over ranks of the result equals the min)
+    {
+        // The same cell steps on two boxes of four in x, the boxes on the ranks in reverse order: the faces
+        // (the box face and the periodic seam included) equal the one-box faces bit for bit.
+        PCase c2 = make_mesh(8, 4, 6, 60, true, false, 4, true);
+        ASSERT_EQ(c.ba.size(), 1);
+        ASSERT_EQ(c2.ba.size(), 2);
+        amrex::MultiFab dtau2(c2.ba, c2.dm, 1, 0);
+        dtau2.ParallelCopy(dtau, 0, 0, 1);
+        amrex::Array<amrex::MultiFab, 3> df2;
+        gust::face_dtau(dtau2, c2.mesh, c2.geom, df2);
+        EXPECT_EQ(max_diff_gathered(df2[0], gx), 0);
+        EXPECT_EQ(max_diff_gathered(df2[1], gy), 0);
+        EXPECT_EQ(max_diff_gathered(df2[2], gz), 0);
+    }
+    // the predictor on a hill, two sweeps: the last sweep's change is positive and below the whole correction
     gust::State q;
     define_state(q, c);
     fill_state(q, c, 23);
@@ -713,7 +739,6 @@ TEST (Predictor, DirichletRowsAreSetExactly)
     EXPECT_EQ(mu.sum(0), 4.0 * 6);
     gust::State q1;
     define_state(q1, c);
-    for (auto* f : {&q1.u, &q1.v, &q1.w}) { (void)f; }
     amrex::MultiFab::Copy(q1.u, q.u, 0, 0, 1, 2);
     amrex::MultiFab::Copy(q1.v, q.v, 0, 0, 1, 2);
     amrex::MultiFab::Copy(q1.w, q.w, 0, 0, 1, 2);
@@ -913,7 +938,7 @@ TEST (Predictor, WVnnCapAddsToTheWDiagonalAndD)
 // a margin below 1, NaN or infinite is refused.
 TEST (Predictor, WVnnCapSlopeMarginKeepsThePressureOperatorDefinite)
 {
-    PCase c = make_mesh(8, 4, 6, 150, false, true, 4);   // 2 x 1 boxes; slopes up to about 0.9
+    PCase c = make_mesh(8, 4, 6, 150, false, true, 4);   // 2 x 1 boxes; ground slopes |h_x| <= 0.47, |h_y| <= 0.59
     gust::State q;
     define_state(q, c);
     fill_state(q, c, 61);
@@ -1102,7 +1127,7 @@ TEST (Predictor, WVnnCapSlopeMarginIsBitIdenticalOnFlatGround)
 
 // ---------------------------------------------------------------------------
 // The predictor's result does not depend on the box layout:
-// the same state and inputs on one box and on 2 x 2 boxes (the lagged
+// the same state and inputs on one box and on 2 x 1 boxes (the lagged
 // neighbours then cross box seams through the ghost exchange) give the same
 // correction to round-off.
 TEST (Predictor, IndependentOfTheBoxLayout)
@@ -1190,8 +1215,8 @@ TEST (Predictor, IndependentOfTheBoxLayout)
 }
 
 // ---------------------------------------------------------------------------
-// The Coriolis coupling's horizontal mean of the other residual (audit A4,
-// U2): the same boxes on their ranks and in reverse give the same predictor
+// The Coriolis coupling's horizontal mean of the other residual:
+// the same boxes on their ranks and in reverse give the same predictor
 // update bit for bit (on 2 and 4 ranks the two maps group the boxes
 // differently). The mean is a sum in a fixed order (deterministic_level_sums);
 // before, every face added atomically into one address per level, an order
@@ -1461,10 +1486,13 @@ TEST (Predictor, LusgsSweepMatchesTheDenseReference)
 
 // The symmetric sweeps on two boxes (mesh.max_grid_size 3 in x): the couplings
 // across the box face are the previous pass's, so one sweep differs from the
-// one-box sweep, but 40 sweeps still reach the dense solution of the full
+// one-box sweep (not checked here: LineSweeps.OverlapsReachTheSameState shows
+// the box face), but 40 sweeps still reach the dense solution of the full
 // system to 1e-11, the shared x face is single-valued after the solve
-// (OverrideSync), and the result on two ranks equals the one on one rank (the
-// same BoxArray; the block Jacobi across boxes is rank-independent).
+// (OverrideSync), and the cell result on two ranks equals the one on one rank (the
+// same BoxArray; the block Jacobi across boxes is rank-independent). The
+// replay of the two-box sweep is for the cells only: the x faces have no
+// rank-parity assertion here.
 TEST (Predictor, LusgsOnTwoBoxesConvergesAndIsRankIndependent)
 {
     PCase c = make_mesh(6, 3, 4, 40, false, false, 3);
@@ -1487,17 +1515,17 @@ TEST (Predictor, LusgsOnTwoBoxesConvergesAndIsRankIndependent)
             amrex::MultiFab::Subtract(copy, d2, 0, 0, 1, 0);
             EXPECT_EQ(copy.norm0(), 0);
         }
-        // rank parity (cells; a shared face's two copies are solved by both
-        // boxes and the replay below keeps one): gather the one-sweep result
+        // rank parity (cells only; a shared face's two copies are solved by both
+        // boxes and a replay with one value per face cannot hold both): gather the one-sweep result
         // and compare with a serial replay of the two-box sweep on rank 0
         // every rank gathers (collective); rank 0 then replays the sweep on
         // the gathered one-box system with the two-box traversal: the first
         // box's columns, then the second's
+        if (loc != Loc::cell) { continue; }
         const amrex::MultiFab g = gather(d2), gA = gather(A), gp = gather(ap), gr = gather(rhs);
         double worst = 0;
         int seen = 0;
         for (amrex::MFIter mfi(g, false); mfi.isValid(); ++mfi) {   // rank 0 only
-            if (loc != Loc::cell) { ++seen; break; }
             const auto a = host_copy(gA, mfi), p = host_copy(gp, mfi), r = host_copy(gr, mfi), x = host_copy(g, mfi);
             const amrex::Box b = mfi.validbox();
             const int klo = b.smallEnd(2), khi = b.bigEnd(2);
@@ -1520,13 +1548,13 @@ TEST (Predictor, LusgsOnTwoBoxesConvergesAndIsRankIndependent)
                 dl(amrex::IntVect(i, j, khi)) = ee(amrex::IntVect(i, j, khi));
                 for (int k = khi - 1; k >= klo; --k) { dl(amrex::IntVect(i, j, k)) = ee(amrex::IntVect(i, j, k)) - cc(amrex::IntVect(i, j, k)) * dl(amrex::IntVect(i, j, k + 1)); }
             };
-            // the two boxes: x in [0, 2] and [3, 5] (cells; faces [0, 3] and [3, 6])
+            // the two boxes: x in [0, 2] and [3, 5]
             const int split = 3;
             for (const bool forward : {true, false}) {
                 amrex::FArrayBox lag(amrex::grow(b, 1), 1, amrex::The_Pinned_Arena());   // the previous pass's values at the box face
                 lag.copy<amrex::RunOn::Host>(dl);
                 for (const int box : {0, 1}) {
-                    const int ilo = (box == 0) ? b.smallEnd(0) : split, ihi = (box == 0) ? ((loc == Loc::xface) ? split : split - 1) : b.bigEnd(0);
+                    const int ilo = (box == 0) ? b.smallEnd(0) : split, ihi = (box == 0) ? split - 1 : b.bigEnd(0);
                     // a box reads its own updated columns and the other box's previous-pass values
                     amrex::FArrayBox src(amrex::grow(b, 1), 1, amrex::The_Pinned_Arena());
                     src.copy<amrex::RunOn::Host>(lag);
@@ -1548,9 +1576,7 @@ TEST (Predictor, LusgsOnTwoBoxesConvergesAndIsRankIndependent)
                     else { for (int j = b.bigEnd(1); j >= b.smallEnd(1); --j) { for (int i = ihi; i >= ilo; --i) { step(i, j); } } }
                 }
             }
-            // compare away from the shared face (whose owner OverrideSync picks)
             amrex::LoopOnCpu(b, [&] (int i, int j, int k) {
-                if (loc == Loc::xface && i == split) { return; }
                 worst = std::max(worst, std::abs(double(x(amrex::IntVect(i, j, k))) - dl(amrex::IntVect(i, j, k))));
                 ++seen;
             });
@@ -1558,7 +1584,7 @@ TEST (Predictor, LusgsOnTwoBoxesConvergesAndIsRankIndependent)
         amrex::ParallelDescriptor::ReduceRealMax(worst);
         amrex::ParallelDescriptor::ReduceIntSum(seen);
         EXPECT_GT(seen, 0);
-        EXPECT_LT(worst, tol(1e-12, 1e-5) * max_abs_vec(exact)) << (loc == Loc::cell ? "cell" : "xface");
+        EXPECT_LT(worst, tol(1e-12, 1e-5) * max_abs_vec(exact));
     }
 }
 

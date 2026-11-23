@@ -1,12 +1,11 @@
-// The building geometry (Buildings.H, Buildings_K.H), beyond the plan,
-// sub-phase 5.1 (UT-5.1.x):
+// The building geometry (Buildings.H, Buildings_K.H):
 //   a box on flat ground: cell and face fractions are the exact overlap, part-filled
-//   cells included (UT-5.1.1); on a slope, each column's solid volume is the
-//   map's mean, from the local ground (UT-5.1.2); masks, d1 and d2 of roof, side,
-//   edge and corner cells equal hand values (UT-5.1.3); the same bits on every
-//   box layout, with a building across a periodic seam (UT-5.1.4); bare columns
-//   hold nothing, the ground included (UT-5.1.5); ERF's own cube file: a core and
-//   the rim's volume as ERF's interpolated heights (UT-5.1.6, closed form);
+//   cells included; on a slope, each column's solid volume is the
+//   map's mean, from the local ground; masks, d1 and d2 of roof, side,
+//   edge and corner cells equal hand values; the same bits on every
+//   box layout, with a building across a periodic seam; bare columns
+//   hold nothing, the ground included; ERF's own cube file: a core and
+//   the rim's volume as ERF's interpolated heights (closed form);
 //   the two file formats agree; inputs and files are checked.
 #include "Buildings.H"
 #include "PoissonTestHelpers.H"

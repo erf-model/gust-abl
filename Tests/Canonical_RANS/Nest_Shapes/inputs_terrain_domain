@@ -1,5 +1,5 @@
-# The whole domain of the one-way patches around terrain shapes (tracker row
-# PR-76, beyond plan rev. 6): 3200 m long, 800 m high, first layer 10 m (16
+# The whole domain of the one-way patches around terrain shapes:
+# 3200 m long, 800 m high, first layer 10 m (16
 # layers), a log-law inflow (u* = 0.4 m/s, z0 = 0.1 m) along x at xlo, outflow
 # at xhi, the surface layer below and a slip top, the SIMPLEC stage to the
 # steady verdict, with the recommended closure setting of

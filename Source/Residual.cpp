@@ -22,7 +22,6 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
-#include <limits>
 #include <string>
 
 namespace gust {
@@ -491,7 +490,7 @@ void implicit_rows (const amrex::Array<const amrex::MultiFab*, AMREX_SPACEDIM>& 
         }
         amrex::MultiFab::Add(A, canopy->theta, 0, coef_P, 1, 0);
     }
-    // Last: the Dirichlet rows become identity rows.
+    // The Dirichlet rows become identity rows.
     if (in.bc != nullptr) { in.bc->apply_to_implicit(eq, loc, z_nd, A); }
     if (in.buildings != nullptr && momentum) {
         in.buildings->add_to_implicit((eq == Equation::u) ? 0 : (eq == Equation::v) ? 1 : 2,

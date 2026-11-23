@@ -2,7 +2,8 @@ name: CI
 
 # Runs on every pull request, so a change that breaks a build, a unit test or
 # a smoke run shows up on the PR rather than after it merges. Kestrel runs
-# the --physics and performance tests nightly; they are not part of this file.
+# the smoke tests on GPUs (tools/kestrel/nightly_gpu.sh, docs/ci.rst); that is
+# not part of this file.
 on:
   push:
     branches: [main]

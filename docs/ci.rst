@@ -21,8 +21,10 @@ Every pull request runs ``ci.yml`` and ``docs.yml``.
    * - CUDA sm_90
      - Compiles only, for the H100. Hosted runners have no GPU.
    * - Windows MSVC Release
-     - Builds with MSVC, no MPI and FFTW from vcpkg, and runs ``ctest -L "unit|smoke"``. MSVC does not trap
-       floating-point exceptions; that check stays with Linux GCC.
+     - Builds with MSVC, no MPI and FFTW from vcpkg, and runs ``ctest -L "unit|smoke"``. The job installs numpy
+       but not PyYAML or scipy, so the tests that need those are not registered there; the tests that run a bash
+       script are not registered on Windows either. MSVC does not trap floating-point exceptions; that check
+       stays with the Linux jobs.
    * - Windows CUDA sm_90
      - Compiles only, with ``cl`` and ``nvcc`` (CUDA 12.6, Windows SDK 10.0.22621.0).
    * - HIP gfx90a
@@ -38,8 +40,9 @@ Every pull request runs ``ci.yml`` and ``docs.yml``.
 ``.github/workflows/debug-nightly.yml``
 ---------------------------------------
 
-GCC Debug with ``AMReX_TESTING`` runs the same tests. It takes about five hours, so it runs nightly on ``main`` or
-by hand (``workflow_dispatch``), not on pull requests.
+GCC Debug with ``AMReX_TESTING`` runs ``ctest -L "unit|smoke"``. The job does not install numpy, PyYAML or scipy,
+so the tests that need them are not registered there (:doc:`testing`). It takes about five hours, so it runs
+nightly on ``main`` or by hand (``workflow_dispatch``), not on pull requests.
 
 ``.github/workflows/docs.yml``
 ------------------------------

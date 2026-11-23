@@ -28,7 +28,7 @@
 // (bc.theta_profile), each cell's theta against its own height's (the reference cell's too),
 // so a state at that profile exchanges no heat; with fixed,
 // buildings.theta_surface, the same on every wall. buildings.theta_mode = none leaves theta
-// as it was before these terms. Not here: a given heat flux, stability functions on the
+// without these terms. Not here: a given heat flux, stability functions on the
 // walls, a temperature that differs from wall to wall, the heating of a building in time.
 //
 // Ghost cells: the rows read theta one cell out of a partly solid wall cell (its reference

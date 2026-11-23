@@ -8,7 +8,8 @@
 
 namespace gust {
 
-//! SHA-256 (FIPS 180-4), for the checksums of reference archives. Host only.
+//! SHA-256 (FIPS 180-4), for the checksums of reference archives and of the
+//! checkpoint records. Host only.
 class Sha256
 {
 public:

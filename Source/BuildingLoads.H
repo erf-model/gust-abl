@@ -50,11 +50,11 @@ public:
     //! Start the file (the I/O rank writes; collective). keep_until >= 0 (a restart): keep the
     //! rows with t <= keep_until of an existing file; < 0: replace any file. Returns true when it
     //! kept an existing file, false when it started a new one (the caller then writes the first
-    //! row). Aborts (FileOpenFailed) when the file cannot be written.
+    //! row). Aborts (FileOpenFailed) when the file cannot be written, and on a kept file with another header.
     bool open (double keep_until) const;
     //! The force at state q, whose ghost cells the caller has filled: the residual with the
     //! buildings' rows left out (in.building_rows = false, in.time = null: the time term is 0 on
-    //! a fixed face). Collective.
+    //! a fixed face) and without the nests' sources (in.defect, in.relax, in.inject = null). Collective.
     std::array<amrex::Real, 3> evaluate (const State& q, ResidualInputs in, const Mesh& mesh, const amrex::Geometry& geom,
                                          const Buildings& b);
     //! Append "t,Fx,Fy,Fz" (I/O rank).

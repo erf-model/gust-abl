@@ -22,7 +22,7 @@ y, z0 = 0.1 m, slip top. The immersed mesh puts its bottom 2 m below the terrain
 | `make_levels.py` | Writes the layer file: dz up to 224 m, then stretched by about 1.1 per layer to the top (1002 m immersed, 1000 m TF). |
 | `compare_dx.py` | Reads the runs of one or more dx and prints the crest speed-up, the lee minimum, k, the immersed minus TF gap per height with the observed order in dx, and the immersed / TF far-field and crest speeds; `--plot` draws dS along x. |
 
-## Data
+## Data and acknowledgements
 None: the case is analytic.
 
 ## How to run

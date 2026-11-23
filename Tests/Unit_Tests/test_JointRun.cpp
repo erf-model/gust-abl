@@ -1,4 +1,4 @@
-// The joint run's log (JointRun.H; tracker row N-114, item 14, beyond the plan): a domain name up to
+// The joint run's log (JointRun.H): a domain name up to
 // kJointLogNameWidth characters is printed as it is; a longer one keeps its first 12 and last 9 characters around
 // "...", so the fixed-size lines keep their numbers and two names that differ in a suffix of up to 9 characters stay apart.
 #include "JointRun.H"

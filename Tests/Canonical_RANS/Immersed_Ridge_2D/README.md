@@ -23,7 +23,7 @@ Every deck uses the recommended turbulence setting (docs/turbulence_model.rst: `
 The immersed decks set `solver.poisson_backend = gmres_fft` (the multigrid backend is refused with an immersed
 ground). The stop rule is four orders of residual drop.
 
-The plan's test was a tilted flat channel. A uniform slope cannot be periodic, and open faces were not
+A tilted flat channel was considered first. A uniform slope cannot be periodic, and open faces were not
 supported with an immersed ground when these decks were written (they are now: `../Immersed_Open_Faces`), so the
 wind along a ridge takes its place: the ground slopes across the wind,
 and there is no flow over it.
@@ -37,7 +37,7 @@ and there is no flow over it.
 | `inputs_hybrid_ground`, `inputs_hybrid_restart` | The hybrid mesh on the ridge with the default `terrain.flat_height` and `terrain.hybrid_half_width`: two steps that write a checkpoint, then a restart from it on another box layout. |
 | `check_immersed_ridge.py` | Runs an immersed deck, runs (or reads) its body-fitted reference, and compares the two. |
 
-## Data
+## Data and acknowledgements
 None: the cases are analytic.
 
 ## How to run

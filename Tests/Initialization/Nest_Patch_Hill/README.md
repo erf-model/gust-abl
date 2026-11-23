@@ -1,7 +1,7 @@
 # Nest_Patch_Hill
 
 ## Purpose
-The first guess of a nested patch from its parent run (`init.first_guess = nest`, plan rev. 6, sub-phase 9.1).
+The first guess of a nested patch from its parent run (`init.first_guess = nest`).
 The parent is the mass-consistent initial field over a 60 m round Witch of Agnesi hill on 50 m cells; the patch
 covers the hill on 25 m cells (refinement 2 2 1) and starts from the parent's checkpoint interpolated per
 zeta-level, then the mass-consistent adjustment. The interpolated field is checked against an interpolation of the
@@ -14,6 +14,9 @@ parent's plotfile computed independently in Python.
 | `inputs_patch` | The patch: 32 x 24 x 16 cells from (400, 300) m to (1200, 900) m, i.e. parent cells 8 to 23 in x and 6 to 17 in y, with `bc.nest_parent = nest_parent_chk00000`. |
 | `inputs_patch_misplaced` | The patch shifted 10 m in x and with 20 cells in y: it must stop, naming `bc.nest_parent`. |
 | `check_nest.py` | Runs the patch twice and checks it (below). |
+
+## Data and acknowledgements
+No external data.
 
 ## CTest
 Double precision only.

@@ -74,7 +74,7 @@ std::string check_immersed_ground_extent (const amrex::MultiFab& z_nd, double fi
 BuildingsOptions immersed_terrain_options (const TerrainInputs& t, double z0, bool z0_map = false);
 
 //! The ground as a height map in memory: one tile of height t.flat_height whose edges are the
-//! domain's x and y faces (with a terrain file: the terrain's heights).
+//! domain's x and y faces. Used by the unit tests; the application does not call it.
 BuildingHeightMap immersed_terrain_map (const TerrainInputs& t, const amrex::Geometry& geom);
 
 //! The SHA-256 of what fixes the immersed ground: flat_height, small_volfrac, hybrid_half_width (with a hybrid

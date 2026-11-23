@@ -48,7 +48,8 @@ M = [
  ("N14", "the Newton cap not used (the SIMPLEC cap, plain Newton after one step)", N,
   "    o.cfl0 = sopt.newton_cfl_max;\n    o.cfl_max = sopt.newton_cfl_max;", "    o.cfl0 = sopt.cfl_max;\n    o.cfl_max = sopt.cfl_max;"),
  ("N15", "the preconditioner of an infinite dtau at the SIMPLEC cap", N,
-  "z_nd, sopt.newton_cfl_max, ba, dm, line_sweep_options(sopt));", "z_nd, sopt.cfl_max, ba, dm, line_sweep_options(sopt));"),
+  "z_nd, sopt.newton_cfl_max, ba, dm, line_sweep_options(sopt), sopt.dtau_floor);",
+  "z_nd, sopt.cfl_max, ba, dm, line_sweep_options(sopt), sopt.dtau_floor);"),
 ]
 
 if __name__ == "__main__":

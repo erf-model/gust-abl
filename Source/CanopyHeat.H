@@ -100,7 +100,8 @@ private:
 //! faces (no ghosts read). Aborts on another layout.
 void add_canopy_heat (const CanopyHeat& heat, const State& q, amrex::MultiFab& R_theta);
 
-//! rows.theta = lambda at (u, v, w) on the cells (defined here if empty): the
+//! rows.theta = lambda at (u, v, w) on the cells (defined here if empty or on
+//! another layout): the
 //! theta rows' diagonal at the solver's linearisation state.
 void canopy_heat_rows (const CanopyHeat& heat, const amrex::MultiFab& u, const amrex::MultiFab& v,
                        const amrex::MultiFab& w, CanopyRows& rows);

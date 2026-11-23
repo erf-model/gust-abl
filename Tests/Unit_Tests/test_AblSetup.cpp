@@ -350,7 +350,7 @@ TEST (AblSetup, ThetaWithTheColumnDrive)
     f = deck(D::geostrophic_column, Theta::capped);
     f.init.column_stability = gust::InitOptions::ColumnStability::surface_temperature;
     EXPECT_TRUE(mentions(gust::check_abl_setup(options(D::geostrophic_column, Theta::capped), f), "stratified column"));
-    // A Rayleigh layer on theta is the heat sink of a periodic deck.
+    // A Rayleigh layer on theta is the heat sink of a deck without an outflow face.
     f = deck(D::inflow_only, Theta::surface_flux);
     f.bc.face[kXhi] = FaceType::slip_wall;
     f.bc.rayleigh_zdamp = 800;

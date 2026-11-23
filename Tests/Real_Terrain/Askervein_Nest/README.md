@@ -1,8 +1,8 @@
 # Askervein_Nest
 
 ## Purpose
-The one-way nesting validation of `Tests/Canonical_RANS/Nest_Validation` on measured terrain (sub-phase 9.3, beyond
-plan rev. 6). The whole 6 km Askervein domain of `Askervein_210` runs on 40 m cells (the parent) and on 20 m cells
+The one-way nesting validation of `Tests/Canonical_RANS/Nest_Validation` on measured terrain.
+The whole 6 km Askervein domain of `Askervein_210` runs on 40 m cells (the parent) and on 20 m cells
 (the reference). A 20 m patch of half-width D centred on the hilltop HT refines the parent at 2 2 1 with four `nest`
 faces. The measure is the wind speed 10 m above the ground at the 30 masts of lines A and AA: the patch against the
 reference, as a function of D, beside the parent against the reference.
@@ -43,16 +43,16 @@ python3 askervein_nest.py run ref20 300 -- mpiexec -n 4 <build>/gust inputs_aske
 python3 askervein_nest.py nest nest_d1400 par40 1400 -- mpiexec -n 4 <build>/gust inputs_askervein_patch
 python3 askervein_nest.py compare nest_d1400 ref20 par40 --ratio 0.5
 ```
-Two-way nesting (PR-70, `nest.feedback = defect`): the 20 m reference, and the 40 m outer domain with a 20 m nest of
+Two-way nesting (`nest.feedback = defect`): the 20 m reference, and the 40 m outer domain with a 20 m nest of
 half-width 1000 m, one way and joint, one after another, with the recommended setting; prints the table of
 `docs/boundary_conditions.rst` (Two-way nests, Results):
 ```bash
 python3 askervein_nest.py two_way -- mpiexec -n 4 <build>/gust inputs_askervein_domain
 ```
-`two_way relax inject` adds the joint runs with `nest.feedback = relax` (factor 1, given explicitly: the default
-before tracker N-114 item 13, now 0.5; `Tests/Canonical_RANS/Nests_Two_Way/README.md`, Choice of the relaxation
+`two_way relax inject` adds the joint runs with `nest.feedback = relax` (factor 1, given explicitly: the earlier
+default, now 0.5; `Tests/Canonical_RANS/Nests_Two_Way/README.md`, Choice of the relaxation
 factor, has this case at 0.5) and `nest.feedback = inject` (factor 0.5), `relax_consistent` the run with
-`nest.feedback = relax_consistent` (factor 1; tracker N-114 item 12, `docs/boundary_conditions.rst`,
+`nest.feedback = relax_consistent` (factor 1; `docs/boundary_conditions.rst`,
 Pressure-consistent relaxation), and `keep` skips runs whose plotfiles are already there:
 ```bash
 python3 askervein_nest.py two_way relax inject -- mpiexec -n 4 <build>/gust inputs_askervein_domain
@@ -115,7 +115,7 @@ steady after 156 exchanges.
 "Joint levels" is the first pass of the joint run: one way, but with the nest levels of the joint run (they follow
 the outer domain's surfaces aloft; they move by 0.10 m RMS, at most 1.3 m). The levels alone raise the nest's u, v
 and k errors; the feedback then lowers all four fields, so the nest's u ends where the one-way run left it
-(tracker N-114 item 9; `docs/boundary_conditions.rst`, Two-way nests, Results). The feedback lowers the errors within
+(`docs/boundary_conditions.rst`, Two-way nests, Results). The feedback lowers the errors within
 4 nest cells of the faces (u by 31 %, v by 32 %, w by 62 %) and raises u and v by up to 14 % 8 to 40 cells in. Every
 nest error here is at most 0.2 % of the field's RMS (u 8.8 m/s, v 15.2 m/s, k 1.66 m²/s²).
 

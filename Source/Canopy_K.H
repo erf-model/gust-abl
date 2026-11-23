@@ -98,7 +98,7 @@ double uniform_fraction (double a, double b) noexcept
 }
 
 //! F(eta) of the Lalic–Mihailovic profile: 0 at and below the ground, 1 at
-//! and above the top.
+//! and above the top (for the tests).
 AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
 double lm_cdf (double eta, const LmProfile& p) noexcept
 {

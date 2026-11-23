@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""A canopy on a train of cosine hills against the published lower-canopy balance (RT-8.6.3):
+"""A canopy on a train of cosine hills against the published lower-canopy balance:
 
     check_forested_hill.py --flume DECK --deep DECK -- LAUNCHER... GUST [FLAGS ...]
 

@@ -1,6 +1,6 @@
-// The patches' feedback by injection (NestInject.H; plan rev. 6 tracker, row
-// N-114 item 2, nest.feedback = inject, beyond the plan):
-//   UT-I.1: on a hill parent with uneven boxes, the nest restricted into a
+// The patches' feedback by injection (NestInject.H;
+// nest.feedback = inject):
+//   on a hill parent with uneven boxes, the nest restricted into a
 //     copy q* (restrict_patch): inject sets u, v, w, p, theta and k to q*'s
 //     values bit for bit on the inner box's points (cells; faces from L to
 //     H + 1 along their normal), with the point counts written out here, and
@@ -9,26 +9,26 @@
 //     nest's J div over each cell's 2 x 2 nest cells (flux conservation); of
 //     the cells outside, only the ring cells that share a face with the inner
 //     box change their divergence.
-//   UT-I.2: on a flat parent with uneven boxes and dx != dy (two footprints,
+//   on a flat parent with uneven boxes and dx != dy (two footprints,
 //     one spanning a periodic direction): zero_rows sets R to 0 on the inner
 //     points of u, v, w, p, theta and k and leaves every other point bit for
 //     bit; differences() is the max and RMS of |q - q*| over the inner
 //     points (each point once), computed here from a gathered field; the same
 //     values bit for bit on reversed ranks and to round-off on one box (and
 //     on 1, 2 and 4 ranks, the unit_np* tests). Inactive: nothing.
-//   UT-I.3: on the hill of HillTestHelpers.H as the application sets it up
+//   on the hill of HillTestHelpers.H as the application sets it up
 //     (wall law, wall-k rows, Dirichlet ground and top w faces): an inactive
 //     injection leaves the residual and the implicit rows bit for bit; an
 //     active one zeroes the inner rows of u, v, w, p, theta and k, including
 //     the rows the wall law and the boundaries replace, keeps the other rows
 //     bit for bit, and leaves the implicit rows bit for bit.
-//   UT-I.4 (the stop test): the hill's SIMPLEC driver with a target that is
+//   the stop test: the hill's SIMPLEC driver with a target that is
 //     not the parent's solution (the converged state with its velocity times
 //     1.1 on the inner box), injected before every iteration: the residual
-//     falls by six orders from its first value (to 2e-4 of it in single
-//     precision, whose round-off floor is 1e-4), and the state outside the
+//     falls by six orders from its first value (in single precision each
+//     field has its own bound, SingleStop), and the state outside the
 //     inner box moves away from the converged one (the injection acts on it).
-//   UT-I.7: the target's change that the joint run's stop window reads:
+//   the target's change that the joint run's stop window reads:
 //     omega (q* - q) on the first inject, omega (1 - omega) (q* - q) on the
 //     second, and the sizes, from gathered fields on uneven boxes.
 #include "HillTestHelpers.H"
@@ -71,11 +71,11 @@ constexpr double kTol = kDouble ? 1.0e-11 : 2.0e-4;
 struct Case
 {
     gust::Inputs in;
-    amrex::Geometry geom;
-    amrex::BoxArray ba;
-    amrex::DistributionMapping dm;
-    gust::Mesh mesh;
-    gust::State q;
+    amrex::Geometry geom{};
+    amrex::BoxArray ba{};
+    amrex::DistributionMapping dm{};
+    gust::Mesh mesh{};
+    gust::State q{};
 
     void make (bool reverse = false)
     {
@@ -242,7 +242,7 @@ amrex::MultiFab jdiv (const gust::State& q, Case& r)
 
 } // namespace
 
-TEST(NestInject, InjectsTheRestrictedNestOnTheInnerBoxOnAHill)   // UT-I.1
+TEST(NestInject, InjectsTheRestrictedNestOnTheInnerBoxOnAHill)
 {
     ASSERT_EQ(gust::kDefectMargin, 2);
     Case p{parent_inputs(true)};
@@ -358,8 +358,8 @@ TEST(NestInject, InjectsTheRestrictedNestOnTheInnerBoxOnAHill)   // UT-I.1
             }
             s /= kR * kR;
             // The ground cells: their ground w face is the boundary condition's (on the terrain it follows u, set
-            // by the application's ghost fill, not by this test's), so their J div is not compared here; UT-I.4
-            // checks the column fluxes with the application's fill.
+            // by the application's ghost fill, not by this test's), so their J div is not compared here;
+            // InjectedRunReachesSteady checks the column fluxes with the application's fill.
             if (c[2] == dom.smallEnd(2)) { ++ground_cells; continue; }
             err_star = std::max(err_star, std::abs(dq[m] - ds[m]));
             err_nest = std::max(err_nest, std::abs(dq[m] - s));
@@ -387,7 +387,7 @@ TEST(NestInject, InjectsTheRestrictedNestOnTheInnerBoxOnAHill)   // UT-I.1
     EXPECT_EQ(ring_changed, 224) << "the ring cells beside the inner box";
 }
 
-TEST(NestInject, ZeroRowsAndDifferencesOnUnevenBoxes)   // UT-I.2
+TEST(NestInject, ZeroRowsAndDifferencesOnUnevenBoxes)
 {
     std::vector<std::vector<amrex::Real>> diffs;
     for (int layout = 0; layout < 3; ++layout) {
@@ -412,19 +412,19 @@ TEST(NestInject, ZeroRowsAndDifferencesOnUnevenBoxes)   // UT-I.2
         R0.define(p.ba, p.dm);
         const auto rf = R.fields();
         const auto r0 = R0.fields();
-        for (std::size_t c = 0; c < rf.size(); ++c) {
+        for (std::size_t c = 0; c < static_cast<std::size_t>(rf.size()); ++c) {
             const amrex::IndexType t = rf[c].mf->ixType();
             fill_all(*rf[c].mf, [&] (int i, int j, int k) { return 3.0 + field(pos(p.geom, t, i, 0), pos(p.geom, t, j, 1), k, int(c), 0); });
             amrex::MultiFab::Copy(*r0[c].mf, *rf[c].mf, 0, 0, 1, 0);
         }
         I.zero_rows(R);   // inactive
-        for (std::size_t c = 0; c < rf.size(); ++c) {
+        for (std::size_t c = 0; c < static_cast<std::size_t>(rf.size()); ++c) {
             EXPECT_EQ(gust::test::count_bit_differences(*rf[c].mf, *r0[c].mf, 0), 0) << rf[c].name << ": inactive";
         }
         for (const amrex::Real d : I.differences(p.q, qstar)) { EXPECT_EQ(d, 0); }
         I.set(regions);
         I.zero_rows(R);
-        for (std::size_t c = 0; c < rf.size(); ++c) {
+        for (std::size_t c = 0; c < static_cast<std::size_t>(rf.size()); ++c) {
             const amrex::Box bx = amrex::convert(dom, rf[c].mf->ixType());
             const std::vector<double> got = gather(*rf[c].mf, dom), was = gather(*r0[c].mf, dom);
             long on = 0, wrong = 0, kept_on = 0;
@@ -509,7 +509,7 @@ gust::DefectRegion hill_region ()
 
 } // namespace
 
-TEST(NestInject, ResidualRowsOnTheHill)   // UT-I.3
+TEST(NestInject, ResidualRowsOnTheHill)
 {
     HillRun h(0.003, 16, 12, 4);
     gust::NestInject I(h.c.ba, h.c.dm, h.c.geom);
@@ -524,7 +524,7 @@ TEST(NestInject, ResidualRowsOnTheHill)   // UT-I.3
     {
         const auto a = Ron.fields();
         const auto b = Roff.fields();
-        for (std::size_t n = 0; n < a.size(); ++n) {
+        for (std::size_t n = 0; n < static_cast<std::size_t>(a.size()); ++n) {
             EXPECT_EQ(gust::test::count_bit_differences(*a[n].mf, *b[n].mf, 0), 0) << a[n].name << ": inactive";
         }
     }
@@ -555,7 +555,8 @@ TEST(NestInject, ResidualRowsOnTheHill)   // UT-I.3
         }
         EXPECT_EQ(wrong, 0) << names[n] << ": R is not 0 on the inner points and unchanged elsewhere";
         EXPECT_GT(on_pts, 0) << names[n];
-        // v is 0 on this 2-D hill (its rows are UT-I.2's); the others must have a residual to zero. The
+        // v is 0 on this 2-D hill (its rows are checked in ZeroRowsAndDifferencesOnUnevenBoxes); the others must
+        // have a residual to zero. The
         // continuity residual of this field is round-off, and how many of its cells are exactly 0 depends on
         // the compiler (60 of 144 nonzero under clang with -ffp-exception-behavior=maytrap), so p needs one.
         if (n == 3) {
@@ -605,7 +606,7 @@ struct SingleStop
 
 } // namespace
 
-TEST(NestInject, InjectedRunReachesSteady)   // UT-I.4, the stop test
+TEST(NestInject, InjectedRunReachesSteady)   // the stop test
 {
     // The hill's state near steady.
     const double lapse = 0.003;
@@ -712,7 +713,7 @@ TEST(NestInject, InjectedRunReachesSteady)   // UT-I.4, the stop test
                    << worst << "\n";
 }
 
-//! UT-I.5: nest.feedback_factor with inject lies in (0, 1]; the message names the key and the feedback.
+//! nest.feedback_factor with inject lies in (0, 1]; the message names the key and the feedback.
 TEST(NestInject, FactorCheckNamesTheKey)
 {
     EXPECT_TRUE(gust::check_inject_factor(amrex::Real(1)).empty());
@@ -728,7 +729,7 @@ TEST(NestInject, FactorCheckNamesTheKey)
     }
 }
 
-//! UT-I.6: the Poisson solve with NestInject's masks (FaceCoeffs::held_fluid, held_open). The held cells are rows
+//! The Poisson solve with NestInject's masks (FaceCoeffs::held_fluid, held_open). The held cells are rows
 //! phi = 0, no flux crosses a held face, the fluid cells satisfy A phi = rhs minus its mean over the fluid cells
 //! alone, and the mean removed is that mean. On a bump, 4 boxes the held box crosses, both GMRES back ends.
 TEST(NestInject, PoissonHeldCellsAreData)
@@ -815,12 +816,12 @@ TEST(NestInject, PoissonHeldCellsAreData)
     }
 }
 
-//! UT-I.7: the change of the target that the joint run's stop window reads (change(), FeedbackChange). With the
+//! The change of the target that the joint run's stop window reads (change(), FeedbackChange). With the
 //! state q and the restricted nest q* fixed, the first inject moves the target omega (q* - q) from q and the
 //! second omega (1 - omega) (q* - q) from the first: max over the inner data points, computed here from gathered
 //! fields. The size is the largest velocity component of the new target for u, v and w, 0 for theta and the
 //! largest k. Never the first exchange (a restart measures it the same way). Uneven boxes, reversed ranks.
-TEST(NestInject, TargetChangeIsTheWindowMeasure)   // UT-I.7
+TEST(NestInject, TargetChangeIsTheWindowMeasure)
 {
     constexpr double kOmega = 0.4;
     for (int layout = 0; layout < 2; ++layout) {

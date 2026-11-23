@@ -36,7 +36,7 @@ Poisson solve returns a pressure that differs between columns by round-off. v an
 the stop rule needs them below 1e-14 here (they start at zero, so their reference is the floor `steady.residual_tol`).
 The mesh of an immersed ground is always flat, so the FFT-preconditioned solve applies. With it v stays exactly zero.
 
-## Data
+## Data and acknowledgements
 None: the case is analytic.
 
 ## How to run

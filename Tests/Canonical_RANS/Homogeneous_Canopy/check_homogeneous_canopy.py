@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""A horizontally uniform canopy against the canopy-flow relations (RT-8.6.1, RT-8.6.5):
+"""A horizontally uniform canopy against the canopy-flow relations:
 
     check_homogeneous_canopy.py -- LAUNCHER... GUST [ARGS ...]
 

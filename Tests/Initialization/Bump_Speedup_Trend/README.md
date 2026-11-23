@@ -15,6 +15,13 @@ the same hill and profile. One CTest runs all five cases on two ranks.
 
 Check script: `Supporting_Files/check_init.py trend` (shared with `Mass_Consistent_Askervein`).
 
+## Data and acknowledgements
+The hill (`terrain_bump_fwt.txt`) and the FastWindTerrain section of the gold come from FastWindTerrain
+(github.com/hgopalan/FastWindTerrain) at commit 648f8f1 (`external/VERSIONS`): its
+`regtests/phase6_solve_correction/terrain_hill.csv` and its own runs of that case. Thanks to the FastWindTerrain
+developers. Both are redistributed in this repository; nothing has to be downloaded. The licence of FastWindTerrain
+is not stated in this repository.
+
 ## CTest
 `rt_init_bump_trend` (double precision only).
 

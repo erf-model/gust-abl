@@ -258,9 +258,9 @@ AblSetupOptions read_abl_setup_options ()
         }
     };
     if (opt.drive == Drive::geostrophic_column || opt.drive == Drive::geostrophic_inflow) {
-        const std::string name = std::string("abl.drive = ") + abl_drive_name(opt.drive);
-        refuse("forcing", "coriolis", "0", name);
-        refuse("forcing", "geostrophic", "0", name);
+        const std::string drive = std::string("abl.drive = ") + abl_drive_name(opt.drive);
+        refuse("forcing", "coriolis", "0", drive);
+        refuse("forcing", "geostrophic", "0", drive);
     }
     if (opt.theta == Theta::frozen) { refuse("simplec", "theta", "solve", "abl.theta = frozen"); }
     if (opt.theta == Theta::surface_flux) { refuse("bc", "surface_stability", "neutral", "abl.theta = surface_flux"); }
@@ -298,8 +298,8 @@ std::vector<std::string> check_abl_setup (const AblSetupOptions& opt, const AblS
     std::vector<std::string> err;
     if (!opt.active()) { return err; }
     if (!facts.solve) {
-        if (opt.drive != Drive::unset) { err.emplace_back("abl.drive has no effect without steady.stage = simplec"); }
-        if (opt.theta != Theta::unset) { err.emplace_back("abl.theta has no effect without steady.stage = simplec"); }
+        if (opt.drive != Drive::unset) { err.emplace_back("abl.drive has no effect without steady.stage = simplec, simplec_newton or unsteady"); }
+        if (opt.theta != Theta::unset) { err.emplace_back("abl.theta has no effect without steady.stage = simplec, simplec_newton or unsteady"); }
         return err;
     }
     if (opt.drive != Drive::unset) { check_drive(opt.drive, facts, err); }

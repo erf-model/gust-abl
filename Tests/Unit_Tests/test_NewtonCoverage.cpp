@@ -1,11 +1,13 @@
 // Tests of the Newton–Krylov core added after #19. The
-// operator on terrain under the wall law (where one ghost fill is not a fixed
-// point) against a central difference of q -> R(fill(q)), and Newton steps
+// operator on terrain under the wall law (where the ghost gradient depends on
+// q) against a central difference of q -> R(fill(q)), and Newton steps
 // there; the rule that skips an update whose Krylov residual is above |b| or
 // whose |b| is not finite, alone and inside a step; the memory budget per rank
 // on several boxes; the inner product with every box on rank 0; the step's
 // diagnostics; and a non-uniform dtau on the faces. test_Newton.cpp holds the
-// core's own tests.
+// core's own tests. Also the ghost fill on terrain: a fixed point, ghost copies
+// agree across boxes, and the residual with the closure is layout-free at
+// inflow seams.
 #include "BoundaryConditions.H"
 #include "Closure.H"
 #include "Inputs.H"
@@ -264,9 +266,9 @@ TEST(BoundaryConditions, TerrainFillIsAFixedPoint)
         for (const int max_grid : {64, 4}) {
             HillCase hc(max_grid, FaceType::surface_layer, perx, 30);
             gust::State q2;
-            gust::State zero;
-            zero.define(hc.c.ba, hc.c.dm);
-            combine_fill(q2, hc.q, zero, 0, hc);
+            gust::State zero_state;
+            zero_state.define(hc.c.ba, hc.c.dm);
+            combine_fill(q2, hc.q, zero_state, 0, hc);
             for (int f = 0; f < 6; ++f) {
                 const amrex::MultiFab& a = field(hc.q, f);
                 const amrex::MultiFab& b = field(q2, f);
@@ -349,11 +351,11 @@ TEST(Newton, TerrainWallLawStepsReduceResidual)
 TEST(Newton, UpdateSkippedAboveRhsNorm)
 {
     using gust::newton_update_usable;
-    const amrex::Real one = 1;
+    const amrex::Real unity = 1;
     EXPECT_TRUE(newton_update_usable(0));
     EXPECT_TRUE(newton_update_usable(amrex::Real(1e-2)));
-    EXPECT_TRUE(newton_update_usable(one));
-    EXPECT_FALSE(newton_update_usable(std::nextafter(one, amrex::Real(2))));
+    EXPECT_TRUE(newton_update_usable(unity));
+    EXPECT_FALSE(newton_update_usable(std::nextafter(unity, amrex::Real(2))));
     EXPECT_FALSE(newton_update_usable(amrex::Real(1.9e30)));
     EXPECT_FALSE(newton_update_usable(std::numeric_limits<amrex::Real>::infinity()));
     EXPECT_FALSE(newton_update_usable(std::numeric_limits<amrex::Real>::quiet_NaN()));
@@ -375,8 +377,8 @@ TEST(Newton, UpdateSkippedAboveRhsNorm)
 // ---------------------------------------------------------------------------
 // NewtonKrylov::step skips the update: (a) a hook that returns NaN makes the
 // Krylov residual NaN, and (b) a NaN in the state makes |R| NaN; in both the
-// step reports applied = false, prints a line saying so (at verbose 0) and
-// the valid points of q are unchanged (a
+// step reports applied = false, the valid points of q are unchanged and the
+// line it prints (at verbose 0) is checked (a
 // flat case with a slip ground, whose ghost fill is idempotent: exactly the
 // same bits). The invalid trap is off around both: NaN is the input here.
 namespace {
@@ -448,14 +450,19 @@ TEST(Newton, StepSkipsUnusableUpdate)
         for (amrex::MFIter mfi(hc.q.theta, false); mfi.isValid(); ++mfi) {
             if (mfi.index() != 0) { continue; }
             const amrex::Box vb = mfi.validbox();
-            const amrex::Box one(vb.smallEnd(), vb.smallEnd());
-            hc.q.theta[mfi].setVal<amrex::RunOn::Device>(std::numeric_limits<amrex::Real>::quiet_NaN(), one);
+            const amrex::Box one_cell(vb.smallEnd(), vb.smallEnd());
+            hc.q.theta[mfi].setVal<amrex::RunOn::Device>(std::numeric_limits<amrex::Real>::quiet_NaN(), one_cell);
         }
         amrex::Gpu::streamSynchronize();
         gust::State before;
         copy_state(before, hc.q, hc);
         NewtonKrylov nk(opt, hc.in, hc.c.mesh, hc.c.geom, hc.c.ba, hc.c.dm, 0);
+        testing::internal::CaptureStdout();
         const auto info = nk.step(hc.q, nullptr);
+        const std::string out = testing::internal::GetCapturedStdout();
+        if (amrex::ParallelDescriptor::IOProcessor()) {
+            EXPECT_NE(out.find("the update is not applied"), std::string::npos) << out;
+        }
         EXPECT_FALSE(std::isfinite(static_cast<double>(info.residual_norm)));
         EXPECT_FALSE(info.applied);
         EXPECT_EQ(valid_diff(hc.q, before), 0);
@@ -655,8 +662,8 @@ TEST(Newton, NonUniformDtauOnFaces)
 }
 
 // ---------------------------------------------------------------------------
-// The fixed point in more configurations (from the implementation review of
-// audit A2): a hill varying in x and y, inflow / outflow in x and y (corners
+// The fixed point in more configurations:
+// a hill varying in x and y, inflow / outflow in x and y (corners
 // outside two non-periodic faces), the faces reversed, heat flux of both signs
 // (the Newton solve for u*), bc.surface_zref above the first centre (the k > 0
 // interval, and periodic with some columns in each), a geostrophic top; one box,
@@ -767,7 +774,7 @@ TEST(BoundaryConditions, TerrainFillIsAFixedPointInMoreConfigurations)
 }
 
 // ---------------------------------------------------------------------------
-// Every copy of a ghost cell holds the same value (audit G3). After the fill
+// Every copy of a ghost cell holds the same value. After the fill
 // on 3 x 2 boxes, split evenly (3 cells) and unevenly (4 + 2 in y), each ghost
 // cell equals the value one box over the whole domain gives the same cell:
 // its own column inside the domain (the periodic image in a periodic
@@ -819,12 +826,12 @@ TEST(BoundaryConditions, GhostCopiesAgreeAcrossBoxes)
         {"all_periodic_zref60", true, true, false, 0, 60, false, false},
     };
     for (const auto& cf : cfgs) {
-        HillXY one(64, cf);
+        HillXY one_box(64, cf);
         for (const int mg : {4, 3}) {
             HillXY hc(mg, cf);
             for (int f = 0; f < 6; ++f) {
-                const double dq = max_ghost_copy_diff(hc.q, one.q, f, hc.c.geom);
-                const double dv = max_ghost_copy_diff(hc.v, one.v, f, hc.c.geom);
+                const double dq = max_ghost_copy_diff(hc.q, one_box.q, f, hc.c.geom);
+                const double dv = max_ghost_copy_diff(hc.v, one_box.v, f, hc.c.geom);
                 EXPECT_EQ(dq, 0) << cf.name << " " << mg << " " << f;
                 EXPECT_EQ(dv, 0) << cf.name << " " << mg << " " << f;
             }
@@ -835,7 +842,7 @@ TEST(BoundaryConditions, GhostCopiesAgreeAcrossBoxes)
 
 // ---------------------------------------------------------------------------
 // The residual does not depend on the box layout where an inflow face crosses
-// terrain (audit A3, from Pressel's review). The hill sits on the inflow face
+// terrain. The hill sits on the inflow face
 // (and on the inflow / outflow y faces), nu_t comes from the closure with the
 // realizability cap C_r k / S (turb.realizability = 0.309), and R on 3 x 2
 // boxes, split evenly and unevenly, equals R on one box to 1e-12 of its norm
@@ -866,10 +873,10 @@ TEST(BoundaryConditions, ResidualWithClosureAtInflowSeamsIsLayoutFree)
         gust::residual(h.q, h.in, h.c.mesh, h.c.geom, R);
     };
     for (const auto& cf : cfgs) {
-        HillXY one(64, cf);
+        HillXY one_box(64, cf);
         gust::ResidualFields R1;
         amrex::MultiFab d1;
-        run(one, R1, d1);
+        run(one_box, R1, d1);
         for (const int mg : {4, 3}) {
             HillXY hc(mg, cf);
             gust::ResidualFields R;

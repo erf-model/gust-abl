@@ -39,9 +39,9 @@ iterations:
 - ``steady.max_iterations`` counts the iterations of the whole run, restarts included.
 - The run stops if it would overwrite the checkpoint it read. Change ``io.chk_file`` if needed.
 - A restarted run reproduces the uninterrupted run bit for bit on the same ranks and box layout, over flat ground and
-  over terrain. A checkpoint written before audit A2 (October 2026) restarts too; over terrain the continued run then
+  over terrain. A checkpoint written before #57 (October 2026) restarts too; over terrain the continued run then
   follows the current wall model (:doc:`boundary_conditions`), so it is not the run the checkpoint came from. The
-  same holds for a checkpoint written before audit A4 (#60): its residual reference counts box-seam and periodic
+  same holds for a checkpoint written before #60: its residual reference counts box-seam and periodic
   faces twice. A driver history of format 1 to 3 does not record its norm (main wrote format 3 both before and
   after #60), and the restart says so in the log; format 4 records it.
 
@@ -293,7 +293,7 @@ or when the time history is wanted. Take the steady deck and change the stage:
 - **Not supported.** Grid sequencing (``steady.sequencing = 1``), the near-ground upwind blend
   (``convection.hybrid_sigma_max`` > 0), a relaxation of :math:`\nu_t` that ends with the residual
   (``turb.nut_relax_end`` > 0), nests (``nest.names``) and an immersed ground
-  (``terrain.representation = immersed_forcing``). The run stops with a message that names the key.
+  (``terrain.representation = immersed_forcing`` or ``hybrid``). The run stops with a message that names the key.
 - **Start from the steady run.** Give the checkpoint of a ``steady.stage = simplec`` run as ``io.restart`` (and
   remove the ``init.*`` keys). The time starts at 0 from that state, which shortens the transient. A
   ``simplec_newton`` checkpoint cannot be used. A deck that sets the upwind blend or

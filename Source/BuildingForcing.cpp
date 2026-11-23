@@ -472,7 +472,9 @@ void BuildingForcing::close_viscous_fluxes (const amrex::Array<const amrex::Mult
 
 void BuildingForcing::make_centroid_spacing ()
 {
-    // s = (cell-centre spacing) / (d2 - d1) on a roof cell with a reference cell above, else 1:
+    // s = (cell-centre spacing) / (d2 - d1) on a roof cell with a reference cell above, else 1. d1 and d2
+    // are the build's (from a surface: the mean heights of the two cells' fluid, BuildingsSurface.cpp). Where
+    // the ground is level across the cell,
     //   d2 - d1 = (1 - beta) Delta_n / 2 + Delta_ref / 2,  spacing = Delta_n / 2 + Delta_ref / 2,
     // so s >= 1, and s = 1 where beta = 0. On the cells and their ghost layer (wall() has one: periodic
     // images, else the nearest domain column; below and above the domain no bits, so s = 1).
@@ -597,17 +599,18 @@ amrex::Long count_sealed_fluid_cells (const Buildings& b, const amrex::Geometry&
     // Each fluid cell takes the largest label among those it reaches through an open
     // face, until nothing changes: one label per connected region.
     const amrex::MultiFab& beta = b.beta();
-    amrex::iMultiFab label(beta.boxArray(), beta.DistributionMap(), 1, 1);
+    // amrex::Long labels: the cell count of a domain can pass the range of int.
+    amrex::FabArray<amrex::BaseFab<amrex::Long>> label(beta.boxArray(), beta.DistributionMap(), 1, 1);
     const amrex::Box& dom = geom.Domain();
     const auto lo = amrex::lbound(dom);
     const auto len = amrex::length(dom);
-    label.setVal(-1);
+    label.setVal(amrex::Long(-1));
     for (amrex::MFIter mfi(label, false); mfi.isValid(); ++mfi) {
         const auto l = label.array(mfi);
         const auto bc = beta.const_array(mfi);
         amrex::ParallelFor(mfi.validbox(), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
         {
-            l(i, j, k) = bc(i, j, k) < amrex::Real(1) ? (i - lo.x) + len.x * ((j - lo.y) + len.y * (k - lo.z)) : -1;
+            l(i, j, k) = bc(i, j, k) < amrex::Real(1) ? sealed_cell_label(i, j, k, lo, len) : amrex::Long(-1);
         });
     }
     for (;;) {
@@ -623,7 +626,7 @@ amrex::Long count_sealed_fluid_cells (const Buildings& b, const amrex::Geometry&
             op.eval(mfi.validbox(), data, [=] AMREX_GPU_DEVICE (int i, int j, int k) -> amrex::GpuTuple<amrex::Long>
             {
                 if (l(i, j, k) < 0) { return {amrex::Long(0)}; }
-                int m = l(i, j, k);
+                amrex::Long m = l(i, j, k);
                 if (bx(i, j, k) < one) { m = amrex::max(m, l(i - 1, j, k)); }
                 if (bx(i + 1, j, k) < one) { m = amrex::max(m, l(i + 1, j, k)); }
                 if (by(i, j, k) < one) { m = amrex::max(m, l(i, j - 1, k)); }
@@ -639,7 +642,20 @@ amrex::Long count_sealed_fluid_cells (const Buildings& b, const amrex::Geometry&
         amrex::ParallelDescriptor::ReduceLongSum(changed);
         if (changed == 0) { break; }
     }
-    const int top = label.max(0);
+    amrex::Long top = -1;
+    {
+        amrex::ReduceOps<amrex::ReduceOpMax> opm;
+        amrex::ReduceData<amrex::Long> datam(opm);
+        for (amrex::MFIter mfi(label, false); mfi.isValid(); ++mfi) {
+            const auto l = label.const_array(mfi);
+            opm.eval(mfi.validbox(), datam, [=] AMREX_GPU_DEVICE (int i, int j, int k) -> amrex::GpuTuple<amrex::Long>
+            {
+                return {l(i, j, k)};
+            });
+        }
+        top = amrex::get<0>(datam.value(opm));
+        amrex::ParallelDescriptor::ReduceLongMax(top);
+    }
     amrex::ReduceOps<amrex::ReduceOpSum> op;
     amrex::ReduceData<amrex::Long> data(op);
     for (amrex::MFIter mfi(label, false); mfi.isValid(); ++mfi) {

@@ -4,9 +4,9 @@
 // The lateral faces of a nested patch that take their values from the parent
 // run (bc.xlo, bc.xhi, bc.ylo, bc.yhi = nest; NestParent.H reads the parent).
 // One way: the parent is finished and frozen, so everything here is computed
-// once, at set-up.
+// once, at set-up (and again by refresh() in a joint run).
 //
-// A nest face (plan sub-phase 9.2):
+// A nest face:
 //  * the normal velocity on the face is the parent's (a Dirichlet row,
 //    R = q - V, identity on the implicit side);
 //  * the two ghost layers outside it hold the parent's u, v, w, theta and k,
@@ -53,7 +53,7 @@
 //
 // Ground blend (terrain.nest_blend_width = W > 0 m): blend_nest_ground.
 //
-// A joint run's nest (nest.feedback = defect): follow_parent_levels.
+// A joint run's nest (nest.feedback other than none): follow_parent_levels.
 
 #include "BoundaryConditions.H"
 #include "ImplicitOperator.H"
@@ -76,20 +76,12 @@ namespace gust {
 //! the key: bc.nest_parent given exactly when it is read; a nest face needs
 //! the parent's field as the first guess (or a restart); no grid sequencing;
 //! terrain.nest_blend_width finite, >= 0, below half the patch's width across
-//! its nest faces, and only with a nest face.
+//! its nest faces, and only with a nest face; bc.nest_ratio 2, 4, 8 or 16, and
+//! given only with bc.nest_parent.
 std::vector<std::string> check_nest_run (const BoundaryInputs& bin, const Inputs& in, bool first_guess_nest,
                                          bool sequencing);
 
-//! terrain.nest_blend_width = W: the patch's ground h (the k = 0 slab of
-//! z_phys_nd, ghost nodes included, as fill_terrain_surface leaves it)
-//! becomes (1 - s) h_parent + s h, s = t^2 (3 - 2 t), t = min(d / W, 1), d the
-//! distance to the nearest nest face and h_parent the parent's ground at the
-//! node (NestParent::interpolate_ground): the parent's ground on the face
-//! (s = 0 exactly), the patch's own from W inwards (s = 1 exactly), with a
-//! continuous slope between. Ghost nodes outside a non-periodic face take the
-//! nearest domain node's value. Prints one line with the largest change of
-//! the ground (m). Nothing with W = 0.
-//! A joint run's nest (nest.feedback = defect): the coordinate surfaces
+//! A joint run's nest (nest.feedback other than none): the coordinate surfaces
 //! follow the parent's, with the nest's own ground detail decaying with
 //! height (SLEVE-like; Schaer et al. 2002):
 //!
@@ -119,13 +111,23 @@ std::vector<std::string> check_nest_run (const BoundaryInputs& bin, const Inputs
 //! vertical motion. Where the ground is the parent's (h = h_p, on blended
 //! faces) the surfaces are the parent's: the terrain-fitted coordinates
 //! (BTF, Sullivan) are linear in the ground. Ghost nodes outside a
-//! non-periodic face use the nearest domain node's parent surfaces. Valid
-//! nodes from k = 0 to the top; the caller refills the ghost nodes. Prints
+//! non-periodic face use the nearest domain node's parent surfaces. Every
+//! node the parent's surfaces are interpolated to, ghost nodes included, from k = 0 to the top; the caller
+//! refills the ghost nodes. Prints
 //! one line with s and the largest change of a node (m).
 void follow_parent_levels (const NestParent& parent, const amrex::Geometry& geom,
                            const amrex::Vector<amrex::Real>& zlevels, amrex::MultiFab& z_phys_nd,
                            const std::string& name);
 
+//! terrain.nest_blend_width = W: the patch's ground h (the k = 0 slab of
+//! z_phys_nd, ghost nodes included, as fill_terrain_surface leaves it)
+//! becomes (1 - s) h_parent + s h, s = t^2 (3 - 2 t), t = min(d / W, 1), d the
+//! distance to the nearest nest face and h_parent the parent's ground at the
+//! node (NestParent::interpolate_ground): the parent's ground on the face
+//! (s = 0 exactly), the patch's own from W inwards (s = 1 exactly), with a
+//! continuous slope between. Ghost nodes outside a non-periodic face take the
+//! nearest domain node's value. Prints one line with the largest change of
+//! the ground (m). Nothing with W = 0.
 void blend_nest_ground (const NestParent& parent, const BoundaryInputs& bin, amrex::Real width,
                         const amrex::Geometry& geom, amrex::MultiFab& z_phys_nd);
 
@@ -149,7 +151,7 @@ public:
     //! and the relaxation rates. Aborts if no lateral face of bin is nest.
     NestFaces (const NestParent& parent, const BoundaryInputs& bin, const amrex::Geometry& geom, const Mesh& mesh);
 
-    //! The joint run (nest.feedback = defect): the parent's fields on the patch,
+    //! The joint run (nest.feedback other than none): the parent's fields on the patch,
     //! the flux correction and the relaxation rates again, from parent as it
     //! is now (NestParent::refresh first). Returns the largest change of the
     //! normal velocities u and v on the patch, ghost layers included (m/s).
@@ -171,7 +173,7 @@ public:
     [[nodiscard]] bool relax_on () const { return m_relax_width > 0; }
     //! The zone's source c (q - q_parent) added to R (nothing when off).
     void add_relaxation (const State& q, ResidualFields& R) const;
-    //! Its diagonal c added to A (nothing when off).
+    //! Its diagonal c added to A (nothing when off). The rate depends on loc only; eq is not used.
     void add_relaxation_to_implicit (Equation eq, Loc loc, amrex::MultiFab& A) const;
     //! The rate c (1/s) at the points of loc (xface, yface, zface, cell); empty when off.
     [[nodiscard]] const amrex::MultiFab& rate (Loc loc) const;
@@ -184,7 +186,8 @@ public:
 
     //! The record a restart checks: the four lateral faces' types, the
     //! parent's step, cells and content (NestParent::content_digest), the
-    //! patch's place in it, the zone's settings and terrain.nest_blend_width.
+    //! patch's place in it, the zone's settings, terrain.nest_blend_width and
+    //! bc.nest_ratio when it is not 2.
     //! joint: a nest of the joint run (JointRun.H), whose parent is the outer
     //! domain in memory, not one checkpoint: the parent's step and content are
     //! left out (a joint restart reads the nest with a later parent checkpoint).

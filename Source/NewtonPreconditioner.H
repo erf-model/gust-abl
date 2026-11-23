@@ -30,7 +30,7 @@
 //   3. theta: the coupling to the velocity, conv(theta, F(u + du)) -
 //      conv(theta, F(u)) (the second half of the point-implicit buoyancy
 //      pair, Predictor.H), added to -r_theta; then one z-line step,
-//      (1/dtau + A1) dtheta = r_theta + that term. stage: with du itself and
+//      (1/dtau + A1) dtheta = r_theta - that term. stage: with du itself and
 //      A1 from the corrected transport F(u + du), the stage's iteration.
 //      diagonal: the directional derivative [conv(theta, F(u + sigma du)) -
 //      conv(theta, F(u))] / sigma, sigma = sqrt(eps) max(1, max|u|) /
@@ -95,8 +95,8 @@
 // theta's convection at q. dtau null (plain Newton, or the continuation's
 // infinite dtau, Continuation.H): the predictor and the sweeps need a finite
 // step, so setup takes local_dtau (PseudoTime.H) at inf_cfl (the caller's
-// steady.cfl_max), with the diffusivity of the closure's fields at q or of
-// the residual inputs.
+// steady.newton_cfl_max), with the diffusivity of the closure's fields at q
+// or of the residual inputs.
 //
 // Memory: about 25 state-size fields (three States with ghost cells, the
 // residual's fields, the closure's, the transport and the workspaces), on
@@ -127,7 +127,7 @@ public:
     //! stage's), popt (whose reltol the correction replaces by
     //! opt.pressure_reltol), z_nd (the mesh's node heights), sweep
     //! (steady.sweep and steady.line_*); inf_cfl (finite and > 0, the
-    //! caller's steady.cfl_max): the CFL of the step used when setup gets
+    //! caller's steady.newton_cfl_max): the CFL of the step used when setup gets
     //! none, with the step floor dtau_floor (steady.dtau_floor, PseudoTime.H;
     //! 0: none). mesh, geom, z_nd and in's pointees are referenced: they must
     //! outlive the object. The fields are allocated on ba, dm (the state's
@@ -170,7 +170,6 @@ private:
     PoissonOptions m_popt;
     PoissonBC m_pbc;
     PoissonSolver m_solver;
-    bool m_singular{false};
 
     State m_q0;                 //!< the linearization point, ghosts filled (the stage's fill)
     State m_d;                  //!< the increment the pieces work on

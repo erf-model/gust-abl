@@ -58,7 +58,9 @@ void copy_state (gust::State& to, gust::State& from)
 {
     auto t = to.fields();
     const auto f = from.fields();
-    for (std::size_t n = 0; n < t.size(); ++n) { amrex::MultiFab::Copy(*t[n].mf, *f[n].mf, 0, 0, 1, t[n].mf->nGrowVect()); }
+    for (std::size_t n = 0; n < static_cast<std::size_t>(t.size()); ++n) {
+        amrex::MultiFab::Copy(*t[n].mf, *f[n].mf, 0, 0, 1, t[n].mf->nGrowVect());
+    }
 }
 
 // max |a - b| over the valid points of field f (same layout).
@@ -312,10 +314,10 @@ TEST(Smoothness, RiGateClosedFormAndLimits)
         EXPECT_GT(f2.nut.min(0), f0.nut.min(0));
         EXPECT_GT(mf_diff(f0.nut, f2.nut, b.c.geom), 1e-3 * static_cast<double>(f0.nut.norm0()));
         // P_b keeps the ungated N^2: P_b = -nu_t' N^2 = -gamma_theta N^2 (no molecular part here).
-        amrex::MultiFab N2, S2, pb(b.c.ba, b.c.dm, 1, 0);
-        gust::stratification_and_strain(b.q, b.buoy, b.c.geom, N2, S2);
+        amrex::MultiFab N2b, S2b, pb(b.c.ba, b.c.dm, 1, 0);
+        gust::stratification_and_strain(b.q, b.buoy, b.c.geom, N2b, S2b);
         amrex::MultiFab::Copy(pb, f2.gamma_theta, 0, 0, 1, 0);
-        amrex::MultiFab::Multiply(pb, N2, 0, 0, 1, 0);
+        amrex::MultiFab::Multiply(pb, N2b, 0, 0, 1, 0);
         pb.mult(-1);
         EXPECT_LE(mf_diff(pb, f2.Pb, b.c.geom), gust::trtest::tol(1e-15, 1e-7) * static_cast<double>(f2.Pb.norm0()));
     }
@@ -391,7 +393,7 @@ TEST(Smoothness, ModuleInputsAbortsAndCheckpoint)
     EXPECT_THROW(sm.enter(b.q, &cl, run_in, b.c.mesh, b.c.geom), std::runtime_error);
     const gust::ClosureFields frozen_eval = b.eval(cl);
 
-    // The checkpoint, read on another layout (one box instead of four).
+    // The checkpoint, read on another layout (one box instead of two).
     const std::string dir = "ut_smoothness_chk";
     if (amrex::ParallelDescriptor::IOProcessor()) { amrex::UtilCreateCleanDirectory(dir + "/Level_0", false); }
     amrex::ParallelDescriptor::Barrier();
@@ -445,7 +447,8 @@ TEST(Smoothness, ModuleInputsAbortsAndCheckpoint)
     gust::NewtonSmoothness s3{gust::SmoothnessOptions{}};
     s3.enter(b.q, nullptr, fixed, b.c.mesh, b.c.geom);
     EXPECT_EQ(s3.leave(b.q, nullptr, fixed, b.c.mesh, b.c.geom), 0);
-    // An unfrozen checkpoint thaws a closure on read; missing and corrupt files abort.
+    // An unfrozen checkpoint thaws a closure on read; a missing file leaves it inactive and thawed; a corrupt
+    // file aborts.
     s3.write_checkpoint(dir, nullptr);
     {
         gust::Closure c2(gust::ClosureOptions{});
@@ -559,6 +562,12 @@ TEST(Smoothness, NewtonCycleReturnsTheSimplecSolution)
 // frozen (FreezeScope::all); absolute |R| after 4 and 8 steps
 // and at the end, GMRES iterations, cells whose branch moved, the distance
 // of the Newton solution from SIMPLEC's, and the verification pass.
+// A diagnostic printer, not a test: it prints these measurements and asserts
+// nothing, so it stays disabled. The body runs seven cases (van Leer: neutral,
+// and the inversion with ri_gate 0, 0.01 and 0.1; van Albada: neutral, and the
+// inversion with ri_gate 0 and 0.01), each with up to three Newton variants
+// (the run's limiter; the smooth limiter, van Leer runs only; every decision
+// frozen, ri_gate 0 only).
 TEST(Smoothness, DISABLED_Sweep)
 {
     struct Case { double lapse, gate; Limiter lim; };

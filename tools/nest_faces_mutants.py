@@ -28,7 +28,7 @@ M = [
  ("F5", "the correction not applied", F,
   "if (is_nest(d, lo)) { shift_face(*vn[d], d, lo, geom, m_flux.delta); }", "if (false) { shift_face(*vn[d], d, lo, geom, m_flux.delta); }"),
  ("F6", "the correction applied with an outflow face", F,
-  "m_flux.applied = !outflow;", "m_flux.applied = true;"),
+  "m_flux.applied = !m_outflow;", "m_flux.applied = true;"),
  ("F7", "the correction on the valid points only (the ghost points keep the old value)", F,
   "        amrex::Box fb = mfi.fabbox();\n        if (fb.smallEnd(d) > face || fb.bigEnd(d) < face) { continue; }\n        if (lo) {",
   "        amrex::Box fb = mfi.validbox();\n        if (fb.smallEnd(d) > face || fb.bigEnd(d) < face) { continue; }\n        if (lo) {"),
@@ -118,7 +118,8 @@ M = [
   "if (t == FaceType::slip_wall || t == FaceType::no_slip_wall) {\n                    err.emplace_back(std::string(\"bc.\") + kFaceKeys[o] + \" = \" + face_type_name(t) + \" is not supported with a nest \"",
   "if (t == FaceType::slip_wall) {\n                    err.emplace_back(std::string(\"bc.\") + kFaceKeys[o] + \" = \" + face_type_name(t) + \" is not supported with a nest \""),
  ("F47", "a Rayleigh layer on k towards the inflow profile accepted on a patch", I,
-  "if (in.rayleigh_zdamp > 0 && (rf[0] || rf[1] || rf[4])) {", "if (in.rayleigh_zdamp > 0 && (rf[0] || rf[1])) {"),
+  "if (in.rayleigh_zdamp > 0 && (rf[0] || rf[1] || rf[4]) && !in.rayleigh_from_outer) {",
+  "if (in.rayleigh_zdamp > 0 && (rf[0] || rf[1]) && !in.rayleigh_from_outer) {"),
  ("F48", "a sponge towards the inflow profile accepted on a patch", I,
   "if (in.sponge_width > 0) {\n                err.emplace_back(\"bc.sponge_width > 0 is not supported", "if (false) {\n                err.emplace_back(\"bc.sponge_width > 0 is not supported"),
  ("F49", "no warning for a large net flux", F,
@@ -129,7 +130,7 @@ M = [
   "if (m_flux.applied && m_flux.inflow > 0 && large) {", "if (m_flux.inflow > 0 && large) {"),
  ("F52", "the content digest from the Header alone (not the fields' files)", "Source/NestParent.cpp",
   'for (const char* f : {"u", "v", "w", "theta", "tke", "z_phys_nd"}) {', "for (const char* f : std::vector<const char*>{}) {"),
- # bc.nest_ratio (beyond the plan)
+ # bc.nest_ratio
  ("F53", "bc.nest_ratio not range-checked in the run's checks", F,
   "    if (!valid_nest_ratio(bin.nest_ratio)) {", "    if (false) {"),
  ("F54", "bc.nest_ratio without a parent accepted", F,

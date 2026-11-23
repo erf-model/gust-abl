@@ -20,7 +20,7 @@ reader (little-endian, one band, strips with no compression or LZW, integer or f
 pixel-is-point); with it, any GeoTIFF that rasterio reads. Latitude and longitude go to UTM through a built-in
 conversion (Karney's series, below 1 mm within a zone); pyproj is not needed. The deck checker needs only the
 standard library.
-The terrain download (``tools/fetch_terrain.py``) needs numpy and an internet connection. The case set-up window
+The terrain download (``tools/fetch_terrain.py``) needs PyYAML, numpy and an internet connection. The case set-up window
 (``tools/gust_gui.py``) also needs PySide6 and pyqtgraph (``pip install PySide6 pyqtgraph numpy pyyaml``).
 
 A first case
@@ -56,9 +56,9 @@ A first case
    surface:
      roughness: 0.01
 
-The folder ``Tests/Infrastructure/Case_Setup`` holds five more examples, each run and checked by CTest: a sweep of
-directions, a nested patch, a geostrophic wind from the column (along a diagonal, and along x and y) and a hill from
-an ESRI ASCII grid.
+The folder ``Tests/Infrastructure/Case_Setup`` holds six more examples, each run and checked by CTest: a sweep of
+directions, a nested patch, a geostrophic wind from the column (along a diagonal, and along x and y), a hill from
+an ESRI ASCII grid and an upstream roughness from a regional map.
 
 What the tool does
 ------------------
@@ -111,9 +111,9 @@ What the tool does
   Climate Change Initiative Land Cover maps; thanks to ESA and the Land Cover CCI team for making them public.
   The inflow profile takes ``wind.upstream_roughness`` (default ``surface.roughness``), or with ``auto`` a value per
   direction from a regional map (`Upstream roughness of each direction`_).
-- **Closure.** ``model.lee_setting = recommended`` writes the recommended lee setting of :doc:`howto`
-  (``turb.realizability = 0.309``, ``turb.nut_relax = 0.5`` and the convection blend below
-  ``model.blend_height``).
+- **Closure.** ``model.lee_setting = recommended`` writes the recommended lee setting of
+  :doc:`turbulence_model` (section Recommended setting): ``turb.realizability = 0.309``, ``turb.nut_relax = 0.5``
+  and the convection blend below ``model.blend_height``.
 - **Nests.** Each ``nests`` entry becomes a folder ``nest_<name>`` with a patch deck at half the parent's cell size
   (refinement 2 2 1), its faces moved to the parent's nearest cell faces and at least two parent cells inside the
   parent's faces. ``run.sh`` runs the parent, then each patch with ``bc.nest_parent`` set to the parent's last

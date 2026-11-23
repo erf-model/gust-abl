@@ -15,6 +15,9 @@ unit tests (`Reference.TrapezoidWeights`, `Reference.AverageIsTheTrapezoidTimeAv
 
 The archived inputs files are `Infrastructure/Smoke_Restart/inputs_smoke` and `inputs_restart`.
 
+## Data and acknowledgements
+No external data: the snapshots are copies of the smoke plotfile.
+
 ## CTest
 `refavg_snapshots`, `refavg_build`, `refavg_verify`, `refavg_matches`, `refavg_damage`, `abort_refavg_damaged`,
 `abort_refavg_inputs`, `abort_refavg_verify_keys`. They run in `<build>/Tests/run/smoke` and need `smoke_run`.

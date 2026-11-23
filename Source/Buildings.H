@@ -27,7 +27,7 @@
 //   beta   each cell's, over its footprint and its heights above the ground of
 //          its column (four-corner means, as in detJ);
 //   x, y   a vertical face's, along it, its heights from its two-node means; on
-//          a tile edge the taller tile counts;
+//          a tile edge the tile with the larger solid part counts;
 //   z      a horizontal face's, the part under a building or at its roof.
 // A face touching a solid cell then has fraction 1, and one between two fluid
 // cells 0, so faces and cells agree on a slope, where the means differ.
@@ -94,7 +94,7 @@ enum class BuildingWallKSpeed { law, cell_mean };
 enum class BuildingThetaMode { none, ambient, fixed };
 
 //! buildings.wall_speed where it is not given: the open faces with the law on every wall, every
-//! face with the forms from before that choice.
+//! face with the other forms.
 constexpr BuildingWallSpeed default_wall_speed (BuildingWallForm form)
 {
     return form == BuildingWallForm::fraction_stress ? BuildingWallSpeed::open_faces : BuildingWallSpeed::all_faces;
@@ -118,7 +118,7 @@ struct BuildingsOptions
     std::string wall_form_name{"fraction_stress"};   //!< buildings.wall_form as given
     BuildingWallForm wall_form{BuildingWallForm::fraction_stress};
     //! buildings.wall_speed as given (empty: not given) and its value: open_faces by default with
-    //! fraction_stress, all_faces with roof_stress (the form it had).
+    //! fraction_stress, all_faces with roof_stress.
     //! Options built by hand (tests) take default_wall_speed(wall_form) as the reader does: the
     //! member's own default is the one of fraction_stress.
     std::string wall_speed_name;
@@ -177,7 +177,7 @@ struct BuildingHeightMap
 
 //! The map of a file in format erf or xyz, read on the I/O rank and broadcast.
 //! Aborts, naming buildings.file, on a value that is not a number, nx or ny
-//! below 2, coordinates not strictly increasing, a height not finite and >= 0;
+//! not an integer, below 2 or above 1e6, coordinates not strictly increasing, a height not finite and >= 0;
 //! erf: a number of values other than 2 + nx + ny + nx ny; xyz: a line not of 3
 //! or 4 numbers, a zstart < 0 or not below its height (where height > 0), or points
 //! that are not each point of a rectangular grid exactly once.

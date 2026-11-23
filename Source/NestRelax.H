@@ -2,7 +2,7 @@
 #define GUST_NEST_RELAX_H_
 
 // The patches' feedback on the parent by relaxation over their footprints
-// (nest.feedback = relax; plan rev. 6 tracker, PR-70's fallback PR-71). The
+// (nest.feedback = relax, the fallback of the defect source, NestDefect.H). The
 // joint run (JointRun.H) is the same as with nest.feedback = defect, with this
 // source in place of the defect source (NestDefect.H). Each exchange:
 //
@@ -59,8 +59,7 @@
 // (Residual.cpp), and its diagonal after the time term's (implicit_rows),
 // before them.
 //
-// nest.feedback = relax_consistent (tracker row N-114, item 12; proposed in
-// Pressel's review of PR-71): the same relaxation with the weighted residual
+// nest.feedback = relax_consistent: the same relaxation with the weighted residual
 // of its target taken from the source as well,
 //
 //     R_c(q_c) + c (q_c - q*) - w(s) R_c(q*) = 0,
@@ -71,8 +70,8 @@
 // rows where w = 1 (the defect source's region chi_s: the inner box's points
 // are those with w = 1), at any factor. The coupled fixed point is not q*
 // exactly: the margin rows keep (1 - w) R_c(q*), so q_c differs from q* on
-// the margin and, much less, on the w = 1 rows that read it (Pressel review:
-// 5e-6 against relax's 1.4e-2 in a 1-D model at f = 1). R_c(q*) carries the
+// the margin and, much less, on the w = 1 rows that read it (a 1-D model of the coupling gives
+// 5e-6 against relax's 1.4e-2 at f = 1). R_c(q*) carries the
 // nests' pressure, so the parent's pressure under the patch mostly follows
 // the nests' (the rest is set at the margin and does not decay inward), the
 // term the plain relaxation lacks (No pressure target above). On the margin
@@ -83,13 +82,13 @@
 // are those of relax; the exchange loop's gain is not (it is somewhat higher
 // at small f and tends to relax's as f grows). That loop is stable with the
 // domains stepped in turn (JointRun.cpp); stepped together from the same old
-// states it can diverge at low cell Peclet numbers (Pressel review). With overlapping footprints w is the
+// states it can diverge at low cell Peclet numbers (a linear model of the coupling). With overlapping footprints w is the
 // larger weight. The stop window measures the change of q* only, as with
 // relax (the added term is a function of q* and of the parent's state next
 // to the footprint, which the parent's own verdict covers); a joint restart
 // rebuilds it from q* at its first exchange.
 //
-// The kernels have the form of PR-66's relaxation zone (NestFaces.H: R +=
+// The kernels have the form of the relaxation zone of NestFaces.H (R +=
 // c (q - q_parent), A_P += c); they are kept here, not shared, so the two
 // features do not share code paths.
 

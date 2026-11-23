@@ -1,6 +1,5 @@
 // The damping layers of the boundary conditions: the Rayleigh layer under the
-// top and the lateral sponge, in the residual and on the implicit diagonal
-// (split from BoundaryConditions.cpp, audit A11).
+// top and the lateral sponge, in the residual and on the implicit diagonal.
 #include "BoundaryConditions.H"
 #include "BoundaryConditions_K.H"
 #include "NestFaces.H"
@@ -54,13 +53,6 @@ struct DampingCoef
             }
         }
         return c;
-    }
-    //! Both parts; with_rayleigh false leaves the Rayleigh part out (a
-    //! field bc.rayleigh_fields does not name).
-    AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
-    amrex::Real operator() (amrex::Real x, amrex::Real y, amrex::Real z, bool with_rayleigh = true) const noexcept
-    {
-        return (with_rayleigh ? rayleigh_part(z) : amrex::Real(0)) + sponge_part(x, y);
     }
 };
 
@@ -135,7 +127,9 @@ void BoundaryConditions::add_damping (const State& q, ResidualFields& R) const
                 // The Rayleigh layer relaxes towards the free atmosphere:
                 // theta towards the sounding at the point's absolute height
                 // (the terrain-following profile height would impose a warm
-                // anomaly over a crest), u and v towards the profile, w to 0.
+                // anomaly over a crest; the height above the ground with
+                // bc.rayleigh_height = above_ground), u and v towards the
+                // profile, w to 0.
                 // The sponge relaxes towards the inflow profile (the height
                 // above the ground, as the inflow itself).
                 const amrex::Real zr = above_ground ? h : zc - coef.zorg;   // the layer's height coordinate

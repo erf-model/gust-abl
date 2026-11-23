@@ -12,6 +12,11 @@ The boundary conditions on ERF's Neutral_ABL_Flat mesh (8 x 8 x 64, 1000 m) with
 | `check_bc.py` | Runs the driver and checks the fluxes and the residual against their closed forms. |
 | `Gold/bc_neutral_flat_plt00000/` | The driver's plotfile. |
 
+## Data and acknowledgements
+No measured data. The mesh and sounding are those of ERF's Neutral_ABL_Flat case, and the check script reads the
+plotfile with ERF's reader (`extern_erf/erf_plotfile.py`, recorded in `extern_erf/EXTRACTED.md`; BSD 3-clause with
+the LBNL clause, `extern_erf/LICENSE.md`). Thanks to the ERF developers. Nothing has to be downloaded.
+
 ## CTest
 `rt_bc_neutral_flat`, `rt_bc_neutral_flat_matches` (double precision only).
 

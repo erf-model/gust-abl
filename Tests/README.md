@@ -3,15 +3,15 @@
 ## Overview
 The GUST tests. Each case has its own folder with a `README.md`, its input decks, its check script and its
 gold files (`Gold/`). The layout follows ERF's `Exec/CanonicalTests/<group>/<case>/`. `CMakeLists.txt` in this
-folder registers every case with CTest; each test runs in its own directory under `<build>/Tests/run/<name>`, so
-nothing is written into the source tree.
+folder registers every case with CTest; each test runs in a directory under `<build>/Tests/run/` (its own by default; the
+tests of a chain share one), so nothing is written into the source tree.
 
 ## Groups
 | Folder | Cases | Character |
 |---|---|---|
-| `Infrastructure` | Smoke run and restart, input validation, the canopy drag field, the building field, reference archives, the Kestrel scripts. | unit / regression / smoke |
+| `Infrastructure` | Smoke run and restart, input validation, the named set-ups (`Abl_Setup`), the canopy drag field, the building field, reference archives, YAML case set-up (`Case_Setup`), the wind library (`Library_Hill`, `Library_Ensemble`), the Kestrel scripts. | unit / regression / smoke |
 | `Discretization` | The terrain mesh and its grid hierarchy, boundary fluxes, the k-L closure, the Poisson layer and the wall distance, each on a fixed state. | regression |
-| `Initialization` | The mass-consistent initial field: Askervein, and the hilltop speed-up trend against FastWindTerrain. | regression |
+| `Initialization` | The mass-consistent initial field: Askervein, the hilltop speed-up trend against FastWindTerrain, and the first guess of a nested patch (`Nest_Patch_Hill`). | regression |
 | `Canonical_RANS` | The SIMPLEC stage to steady on ERF's canonical RANS cases: the neutral column (also with the ground immersed, `Immersed_Column`; a ridge and a round hill immersed, `Immersed_Ridge_2D`; flat immersed ground between an inflow and an outflow face, `Immersed_Open_Faces`), Neutral_ABL_Flat, Neutral_Hill_2D, Neutral_Hill_3D and its truly neutral variant, and the smooth plateau comparison case. Also the thin-cell aspect-ratio sweep (`Aspect_Ratio_Hill_2D`) steep terrain at an outflow face (`Outflow_Steep_Terrain`), the forest canopy's drag and k terms (`Canopy_Drag`) a dense canopy on steep terrain with an inflow face (`Forested_Escarpment`), the canopy validation (`Homogeneous_Canopy`, `Forest_Edge`, `Forested_Hill`) and the same decks over an immersed ground and on a hybrid mesh (`Immersed_Canopy`), one block with the building terms on flat ground and on a ridge (`Building_Cube`, `Building_Hill`), a courtyard (`Building_Courtyard`), and the wind-tunnel cube of Snyder and Lawson (1994) against its measurements (`Snyder_Lawson_Cube`). | regression / nightly |
 | `Real_Terrain` | Askervein to steady, with a log-law inflow and in a conventionally neutral boundary layer. | regression |
 | `Real_Terrain_Python` | Real-terrain cases set up from a YAML file with `tools/fetch_terrain.py` and `tools/make_gust_case.py`: the AWAKEN area and the Columbia River Gorge. | examples (no CTest) |
@@ -23,7 +23,8 @@ nothing is written into the source tree.
 ```bash
 ctest --test-dir <build> -L "unit|smoke"
 ```
-`-L regression` adds the longer runs; `-L nightly` runs the 3-D hills. `-R <name>` runs one test; each case
+`-L regression` adds the longer runs; `-L nightly` runs the long cases (the 3-D hills, Askervein on ERF's mesh, the
+nesting studies, the long immersed pairs). `-R <name>` runs one test; each case
 README lists its CTest names.
 
 ## Notes

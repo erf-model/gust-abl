@@ -1,7 +1,7 @@
 # Nests_One_Process
 
 ## Purpose
-Nests run in the same process as the outer domain (PR-69). The inputs give only each nest's name and corners:
+Nests run in the same process as the outer domain. The inputs give only each nest's name and corners:
 ```
 nest.names   = hill edge
 nest.hill.lo = 400 300
@@ -37,7 +37,7 @@ The two nests: `hill`, outer cells 8 to 24 in x and 6 to 18 in y (32 x 24 x 16 c
 cells 24 to 30 in x and 6 to 12 in y (12 x 12 x 16 cells). They touch along x = 1200 m; `edge` is 2 outer cells
 from the outflow face, the smallest margin allowed.
 
-## Data
+## Data and acknowledgements
 None. The case is analytic.
 
 ## How to run

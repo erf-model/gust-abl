@@ -1,7 +1,10 @@
 // The SIMPLEC stage: one correction removes the divergence, Poiseuille to
 // machine precision, the lid-driven cavity at Re 100 against Ghia et al., the
 // correction tends to the projection as dtau grows, k stays above the floor, a
-// converged state is a fixed point, and also the input readers of the stage,
+// converged state is a fixed point, the residual scales take the depth of the
+// layers, the upwind blend reads the ground distance, the point-implicit
+// buoyancy and rotation rows, the wall-k rows folded into the implicit rows,
+// and also the input readers of the stage,
 // the forcing and the convection, the moving lid and lateral walls of the
 // boundary conditions, and the refusals.
 #include "BoundaryConditions.H"
@@ -304,7 +307,8 @@ TEST (Simplec, ResidualScalesUseTheDepthOfTheLayers)
 // closed form u_k = (F / 2 nu) (z_k (H - z_k) + dz^2 / 4) at the cell-centre
 // heights z_k, reached to machine precision by the stage (every iteration
 // with implicit vertical diffusion is close to a Newton step for this linear
-// problem). w, v and p' stay zero; theta and k are untouched.
+// problem). w, v and p' stay zero; theta and k keep their uniform values
+// bit for bit.
 TEST (Simplec, PoiseuilleToMachinePrecision)
 {
     const double H = 500, F = 1e-4, nu = 10;
@@ -347,6 +351,7 @@ TEST (Simplec, PoiseuilleToMachinePrecision)
     EXPECT_EQ(q.theta.min(0), amrex::Real(300));
     EXPECT_EQ(q.theta.max(0), amrex::Real(300));
     EXPECT_EQ(q.tke.min(0), amrex::Real(0.5));
+    EXPECT_EQ(q.tke.max(0), amrex::Real(0.5));
     // The converged state is a fixed point of one more iteration.
     gust::State q0;
     define_state(q0, c);
@@ -939,7 +944,9 @@ TEST (Simplec, PointImplicitCouplingsArePinned)
 // (apply_wall_k_to_implicit, which replaced the tridiagonal-only
 // apply_wall_k_line): with a surface layer, the first cells' k rows are
 // (dirichlet) the diagonal a = max(u*, u*_min)/d0 alone, every neighbour
-// zero, or (source) the plain row plus a on the diagonal.
+// zero, or (source) the ground neighbour zero, the other neighbours those of
+// the plain row, and the diagonal the plain one less the ground neighbour's
+// weight, plus a.
 TEST (Simplec, WallKRowsAreFolded)
 {
     PCase c = flat_case(8, 4, 8, 1000, 800, 400, true, true);
@@ -1005,6 +1012,9 @@ TEST (Simplec, WallKRowsAreFolded)
                         EXPECT_EQ(a(iv, n), a0(iv, n)) << n;
                     }
                     EXPECT_GT(a(iv, gust::coef_P), aw);
+                    // the diagonal: the plain one less the ground neighbour's weight, plus a
+                    const double diag = double(a0(iv, gust::coef_P)) - double(a0(iv, gust::coef_ZM)) + aw;
+                    EXPECT_NEAR(a(iv, gust::coef_P), diag, tol(1e-14, 1e-5) * diag);
                 }
                 ++seen;
             });

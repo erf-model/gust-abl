@@ -7,7 +7,7 @@ streamwise velocity on the horizontal plane z = 0.02 m (0.1 H) and on the vertic
 beside and behind the cube. The set-up follows Wise et al.: a 3.2 m x 1.2 m x 1.2 m domain (16 H x 6 H x 6 H), the
 cube's upwind face 1.0 m from the inlet and the cube centred across it, inflow and outflow along x, slip walls on
 the sides and the top, and the log law with z0 = 1 mm on the floor. GUST solves the steady RANS equations; the paper
-time-averages LES. This is the cube validation of tracker row PR-44 (`docs/buildings.rst`, Validation).
+time-averages LES. This is the cube validation of the building terms (`docs/buildings.rst`, Validation).
 
 The case also compares the closure's lee options (`turb.realizability`, the upwind blend) with and without their
 zone around buildings (`buildings.limiter_zone`): a building's sharp edges fix where its flow separates, so the

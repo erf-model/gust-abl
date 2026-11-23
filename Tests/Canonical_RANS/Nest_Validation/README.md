@@ -2,7 +2,7 @@
 
 ## Purpose
 How close a one-way nested patch comes to a uniform fine run of the whole domain, as a function of the distance from
-the hill to the patch's `nest` faces (sub-phase 9.3, beyond plan rev. 6). The reference is the whole domain on the
+the hill to the patch's `nest` faces. The reference is the whole domain on the
 patch's cells; the patch is a square of half-width D centred on the hill, at refinement 2 2 1 of its parent
 (`init.first_guess = nest`, four `nest` faces; `Tests/Canonical_RANS/Nest_Faces` tests the faces themselves). Three
 questions: one nest from a 50 m parent; a chain of three nests from a 100 m run (ratio 8); hard nest faces against the
@@ -15,7 +15,7 @@ relaxation zone (`bc.nest_relax_width`). The same study on measured terrain is `
 | `inputs_hill_nest` | A patch: four `nest` faces, first guess from the parent. Place, cells, parent and zone come from the script. |
 | `nest_validation.py` | Runs a whole domain (`run`) or a patch (`nest`), compares a patch with the reference (`compare`), or does the whole study (`study`). Pure Python. |
 
-## Data
+## Data and acknowledgements
 None. The case is analytic.
 
 ## How to run

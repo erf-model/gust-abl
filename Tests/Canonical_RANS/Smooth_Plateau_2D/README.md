@@ -13,6 +13,9 @@ same ground from the same file with its Neutral_Hill_2D deck minus the `prob.*` 
 
 The terrain file is written by `tools/make_ramp_terrain.py`.
 
+## Data and acknowledgements
+No external data.
+
 ## How to run
 ```bash
 python3 tools/make_ramp_terrain.py ramp2d.txt
@@ -20,3 +23,9 @@ python3 tools/make_ramp_terrain.py ramp2d.txt
 ```bash
 mpirun -n 2 <build>/gust Tests/Canonical_RANS/Smooth_Plateau_2D/inputs_steady_ramp2d terrain.file=ramp2d.txt
 ```
+
+## Expected Results
+The comparison with ERF is in `docs/results.rst`; no result is pinned here.
+
+## CTest
+None. The case is run by hand.

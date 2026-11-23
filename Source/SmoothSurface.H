@@ -14,9 +14,10 @@ namespace gust {
 //!
 //! Periodic directions wrap; across a non-periodic domain face the
 //! neighbour is the edge node itself (ERF clamps the index the same way),
-//! so the stencil there sees zero gradient. Ghost nodes are refilled after
-//! every pass: periodic and interior ghosts by FillBoundary, ghosts outside a
-//! non-periodic face with the height of the nearest domain node. A constant surface is unchanged, and a Fourier mode
+//! so the stencil there sees zero gradient. Periodic and interior ghost nodes
+//! are refilled before every pass (FillBoundary); after the last pass they are
+//! refilled again and the ghosts outside a non-periodic face take the height of
+//! the nearest domain node. A constant surface is unchanged, and a Fourier mode
 //! cos(kx x) cos(ky y) on a periodic domain is multiplied by
 //! 1 - beta (4 - 2 cos(kx dx) - 2 cos(ky dy)) per pass.
 //!

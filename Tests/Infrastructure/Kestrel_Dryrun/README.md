@@ -10,6 +10,9 @@ The Kestrel scripts (`tools/kestrel/`) cannot run here. This case checks that th
 | `kestrel_dryrun.sh` | `kestrel_dryrun.sh SRC REFAVG PLOTFILE WORK`: builds a fake ERF tree and finished run in `WORK`, then submits and archives it. |
 | `nightly_gpu_dryrun.sh` | `nightly_gpu_dryrun.sh SRC WORK`: runs `tools/kestrel/nightly_gpu.sh` with stub `git`, `module`, `sbatch`, `srun`, `cmake` and `ctest`. |
 
+## Data and acknowledgements
+No external data: the ERF tree and the finished run are stand-ins written by the scripts.
+
 ## CTest
 `kestrel_parse_*` (one per script, `bash -n`), `kestrel_dryrun` (needs `smoke_run` for its plotfile),
 `kestrel_nightly_dryrun` (label `unit`, no build products).

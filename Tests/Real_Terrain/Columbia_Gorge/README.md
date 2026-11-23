@@ -1,7 +1,7 @@
 # Columbia_Gorge
 
 ## Purpose
-Two-way nesting (PR-70, `nest.feedback = defect`) on steep real terrain, beyond the plan. The domain is the Columbia
+Two-way nesting (`nest.feedback = defect`) on steep real terrain. The domain is the Columbia
 River Gorge around the WFIP2 site near Wasco, Oregon (Shaw et al. 2019): the river at about 50 m above sea level, the
 Columbia Hills to the north rising about 850 m above it, and the plateau to the south at about 300 m. The nest covers
 the river bend and the south face of the hills. Its north face cuts across the ridge and its east face crosses the
@@ -18,11 +18,11 @@ part of the recommended setting: on the Ishihara and Zhou rough ridge it stops a
 2. one way: the outer domain on 200 m cells, then the nest on 100 m cells (`nest.feedback = none`);
 3. joint: the same, then the joint run (`nest.feedback = defect`).
 
-With `--relax F ...`, `run` then makes one joint run per factor with feedback by relaxation (PR-71,
-`nest.feedback = relax`, `nest.feedback_factor = F`; `docs/boundary_conditions.rst`, Two-way nests by relaxation),
-and `compare` adds them to its tables. `--inject F ...` does the same with `nest.feedback = inject` (tracker row
-N-114, item 2; `docs/boundary_conditions.rst`, Two-way nests by injection), and `--relax-consistent F ...` with
-`nest.feedback = relax_consistent` (tracker row N-114, item 12; `docs/boundary_conditions.rst`, Pressure-consistent
+With `--relax F ...`, `run` then makes one joint run per factor with feedback by relaxation
+(`nest.feedback = relax`, `nest.feedback_factor = F`; `docs/boundary_conditions.rst`, Two-way nests by relaxation),
+and `compare` adds them to its tables. `--inject F ...` does the same with `nest.feedback = inject`
+(`docs/boundary_conditions.rst`, Two-way nests by injection), and `--relax-consistent F ...` with
+`nest.feedback = relax_consistent` (`docs/boundary_conditions.rst`, Pressure-consistent
 relaxation); the options can be given together.
 
 `compare` gives the RMS difference of each run from the reference: over the nest, over the outer cells outside the
@@ -106,7 +106,7 @@ The joint run lowers every RMS difference except w over the footprint (0.043 to 
 slower fade (a decay height of 1 km, or a linear fade as ERF's `amr_terrain_refinement = transform`) lowers the
 nest's and downstream speed differences a little further but raises the footprint w RMS to 0.12-0.15; keeping the
 parent's interpolated ground in the nest (as ERF's `interpolate`) did not converge. These runs were made while
-choosing the rule (PR-70, on a 903 m terrain mosaic) and are not options of the code. The largest outer differences
+choosing the rule (on a 903 m terrain mosaic) and are not options of the code. The largest outer differences
 (2.3 m/s) sit where 200 m cells cannot follow the terrain; nesting does not change them.
 
 ### Feedback by relaxation (`--relax 0.5 1 4`)
@@ -127,7 +127,7 @@ slightly further from the reference than one way. The footprint w is 0.045 at f 
 0.068). At f = 4 every region moves away from the reference (`docs/boundary_conditions.rst`, Two-way nests by
 relaxation).
 
-These numbers use the terrain of the PR-70 runs (relief 903 m) without `turb.nut_relax_end`; they are not yet
+These numbers use the terrain of the first two-way runs (relief 903 m) without `turb.nut_relax_end`; they are not yet
 regenerated on the terrain and decks the current `prepare` writes (relief 906 m, `turb.nut_relax_end = 0.01`), on
 which the tables above are measured.
 

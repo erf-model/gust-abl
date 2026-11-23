@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""RT-6.4b.1: steady.probes_file on the steady 2-D hill, with a restart.
+"""steady.probes_file on the steady 2-D hill, with a restart.
 
     check_steady_probes.py -- LAUNCHER... GUST DECK [FLAGS ...]
 

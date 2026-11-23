@@ -27,7 +27,6 @@
 // Rayleigh layer on u, v over uniform theta, one over a stratified theta.
 
 #include "BoundaryConditions.H"
-#include "Closure.H"
 #include "Forcing.H"
 #include "Initializer.H"
 #include "Simplec.H"

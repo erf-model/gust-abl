@@ -19,7 +19,7 @@ namespace {
 
 //! The mesh's levels (node means over a cell's footprint or a face's edge) and the ground's height
 //! at the nodes of a column, in double. A flat mesh (terrain.representation = immersed_forcing): each
-//! level is one height, and the ground is measured from it as it stands (gk, above).
+//! level is one height, and the ground is measured from it as it stands (gk, below).
 struct SurfaceNodes
 {
     amrex::Array4<amrex::Real const> z;

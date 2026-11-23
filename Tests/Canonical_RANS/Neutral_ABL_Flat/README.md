@@ -12,8 +12,15 @@ four sweeps, CFL cap 2, the log law with u* = 0.35 m/s as the first guess.
 | `check_default_cap.py` | The default of `turb.max_geom_lscale`: three runs of 40 iterations on the deck without its cap line (no key, 100 m, 30 m). |
 | `check_steady_neutral.py` | Requires the steady verdict, then runs ERF's `check_neutral.py --physics` (`extern_erf/`) on the turbulence plotfile. |
 
+## Data and acknowledgements
+No measured data. The case is ERF's Neutral_ABL_Flat and its check script is ERF's `check_neutral.py`
+(`extern_erf/`, recorded in `extern_erf/EXTRACTED.md`; BSD 3-clause with the LBNL clause,
+`extern_erf/LICENSE.md`). Thanks to the ERF developers. Nothing has to be downloaded.
+
 ## CTest
 `rt_steady_neutral_flat`, `rt_default_geom_lscale` (label `regression`, double precision only).
+`rt_iteration_table_columns` (label `regression`, 2 ranks) runs the deck with `steady.dtau_floor=0` and pins the
+first two rows of the iteration table.
 
 ## Expected Results
 - Every field finite, k >= 0, the capped kappa (z + z0) length (1e-3), the AL01 stability functions (1e-6),

@@ -10,7 +10,6 @@
 #include "NestInject.H"
 #include "Reductions.H"
 
-#include <AMReX_MultiFabUtil.H>
 #include <AMReX_ParallelDescriptor.H>
 #include <AMReX_ParmParse.H>
 #include <AMReX_Reduce.H>
@@ -486,8 +485,9 @@ bool SimplecStage::confidence (const std::vector<amrex::Real>& threshold, amrex:
     for (amrex::MFIter mfi(m_R.p, false); mfi.isValid(); ++mfi) {
         const amrex::Box bx = mfi.validbox();
         const auto ru = m_R.u.const_array(mfi), rv = m_R.v.const_array(mfi), rw = m_R.w.const_array(mfi);
-        // The solid building cells' rows of k are left out, as in the norm (compute_norms filled m_Rk_fluid).
         const auto rp = m_R.p.const_array(mfi);
+        // The solid building cells' rows of theta and k are left out, as in the norm (compute_norms filled
+        // m_Rt_fluid and m_Rk_fluid).
         const auto rt = (m_Rt_fluid.empty() ? m_R.theta : m_Rt_fluid).const_array(mfi);
         const auto rk = (m_Rk_fluid.empty() ? m_R.tke : m_Rk_fluid).const_array(mfi);
         const auto d = dist.const_array(mfi);

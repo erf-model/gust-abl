@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Time-averaged unsteady RANS against the steady answer (sub-phase 6.4a, beyond the plan).
+"""Time-averaged unsteady RANS against the steady answer.
 
     urans_averages.py deck STEADY_DECK OUT
     urans_averages.py cost LOG [LOG ...]

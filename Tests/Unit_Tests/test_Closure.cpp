@@ -48,7 +48,7 @@ using gust::ptest::PCase;
 using gust::trtest::tol;
 namespace cl = gust::closure;
 
-constexpr double kKappa = 0.41, kCmu0 = 0.5562, kCb = 0.35;
+constexpr double kKappa = 0.41;
 
 // (nx, ny, nz) cells over a cosine hill of height H0 (0: flat), periodic sides.
 PCase make_mesh (int nx, int ny, int nz, double H0, bool stretched = true)
@@ -461,16 +461,6 @@ TEST(Closure, InputsAreReadAndChecked)
     }
 }
 
-// ---------------------------------------------------------------------------
-// The assembled fields against closed forms on a flat
-// periodic mesh: u = a z + b sin(2 pi y/Ly), v = c sin(2 pi x/Lx), w = 0,
-// theta = 300 + gamma z, k uniform, sigma_k = 1.3 and molecular parts: N^2 =
-// g gamma/300 exactly, S^2 = a^2 + (D_y u + D_x v)^2 with D the centred
-// difference of the sampled sine (an identity: 2 cos sin(h)), and every
-// field (nu, gamma_theta, gamma_tke, nut, L, Rt, Ps, Pb, eps, dSdk) from
-// ERF's composition of the copied relations (erf_point) at those N^2 and S^2,
-// for a stable and an unstable gamma; the lateral ghost ring equals the
-// periodic image's value.
 namespace {
 
 // Writes v into the ghost cell (0, 0, -1) below the ground, in the box that
@@ -489,8 +479,8 @@ void set_ghost_below_origin (amrex::MultiFab& mf, amrex::Real v)
 } // namespace
 
 // The wall distance plus z0 is checked once per level where it is made
-// (Sequencing), the ghost cells included, not at every evaluation (audit
-// A7, I3); evaluate() repeats the check in debug builds only.
+// (Sequencing), the ghost cells included, not at every evaluation;
+// evaluate() repeats the check in debug builds only.
 TEST(Closure, WallDistanceIsCheckedOnce)
 {
     PCase c = make_mesh(8, 8, 8, 0, false);
@@ -515,6 +505,16 @@ TEST(Closure, WallDistanceIsCheckedOnce)
 #endif
 }
 
+// ---------------------------------------------------------------------------
+// The assembled fields against closed forms on a flat
+// periodic mesh: u = a z + b sin(2 pi y/Ly), v = c sin(2 pi x/Lx), w = 0,
+// theta = 300 + gamma z, k uniform, sigma_k = 1.3 and molecular parts: N^2 =
+// g gamma/300 exactly, S^2 = a^2 + (D_y u + D_x v)^2 with D the centred
+// difference of the sampled sine (an identity: 2 cos sin(h)), and every
+// field (nu, gamma_theta, gamma_tke, nut, L, Rt, Ps, Pb, eps, dSdk) from
+// ERF's composition of the copied relations (erf_point) at those N^2 and S^2,
+// for a stable and an unstable gamma; the lateral ghost ring equals the
+// periodic image's value.
 TEST(Closure, FieldsMatchClosedForms)
 {
     // Uniform layers: the centred difference of a linear theta is exact.
@@ -557,7 +557,7 @@ TEST(Closure, FieldsMatchClosedForms)
                        dh = host_copy(dist, mfi);
             amrex::LoopOnCpu(mfi.validbox(), [&] (int i, int j, int k) {
                 const amrex::IntVect iv(i, j, k);
-                // the layers are stretched: the cell height from the wall distance itself
+                // the height above the ground from the wall distance itself
                 const double x = (i + 0.5) * dx[0], y = (j + 0.5) * dx[1], d = dh(iv);
                 const double uy = b * std::cos(2 * M_PI * y / Ly) * std::sin(2 * M_PI * dx[1] / Ly) / dx[1];
                 const double vx = cc_ * std::cos(2 * M_PI * x / Lx) * std::sin(2 * M_PI * dx[0] / Lx) / dx[0];
@@ -603,7 +603,7 @@ TEST(Closure, FieldsMatchClosedForms)
 // ---------------------------------------------------------------------------
 // The turbulence plotfile's cmu and cmu_prime are ERF's AL01 stability
 // functions of its own Rt, to 4 ulp, in a stable and an unstable layer
-// (audit A11, I6: the plotfile and the kernel share stability_functions).
+// (the plotfile and the kernel share stability_functions).
 TEST(Closure, TurbulencePlotfileStabilityFunctionsAreErfs)
 {
     PCase c = make_mesh(8, 8, 8, 0, false);
@@ -686,11 +686,11 @@ TEST(Closure, FaceMeanIsLogarithmicAcrossVerticalPairsOnly)
 }
 
 // ---------------------------------------------------------------------------
-// The logarithmic mean: (a - b)/ln(a/b) to 1e-14 for random
+// The logarithmic mean: (a - b)/ln(a/b) to 1e-13 for random
 // pairs, a for equal values, continuous through the series range; and the
 // face flux of the log law with nu = kappa u* (z + z0): logarithmic face mean
 // gives the wall flux u*^2 at every interior face to 1e-12, arithmetic misses
-// it by 2 to 10 % near the ground.
+// it by 2 to 12 % at the first face above the ground.
 TEST(Closure, LogarithmicFaceMeanReproducesTheLogLawFlux)
 {
     std::mt19937 gen(7);
@@ -1115,12 +1115,12 @@ TEST(Closure, RelaxationCheckpointAndFrozenSwitches)
         gust::ClosureFields r1, r2;
         cl1.evaluate(qn, dn, amrex::Real(0.1), buoy, cn.mesh, cn.geom, r1);
         cl2.evaluate(qn2, dn2, amrex::Real(0.1), buoy, cn2.mesh, cn2.geom, r2);
-        amrex::MultiFab back(cn.ba, cn.dm, 1, 1);
-        back.setVal(0.0);
-        back.ParallelCopy(r2.nut, 0, 0, 1, 1, 1, cn.geom.periodicity());
-        back.ParallelCopy(r2.nut, 0, 0, 1, 0, 0, cn.geom.periodicity());
-        amrex::MultiFab::Subtract(back, r1.nut, 0, 0, 1, 1);
-        EXPECT_EQ(back.norm0(0, 1), 0);   // valid cells and the ghost ring
+        amrex::MultiFab back2(cn.ba, cn.dm, 1, 1);
+        back2.setVal(0.0);
+        back2.ParallelCopy(r2.nut, 0, 0, 1, 1, 1, cn.geom.periodicity());
+        back2.ParallelCopy(r2.nut, 0, 0, 1, 0, 0, cn.geom.periodicity());
+        amrex::MultiFab::Subtract(back2, r1.nut, 0, 0, 1, 1);
+        EXPECT_EQ(back2.norm0(0, 1), 0);   // valid cells and the ghost ring
         amrex::ParallelDescriptor::Barrier();
         if (amrex::ParallelDescriptor::IOProcessor()) { amrex::FileSystem::RemoveAll(dir2); }
     }
@@ -1189,7 +1189,7 @@ TEST(Closure, EndedRelaxationGivesTheUnrelaxedNut)
     }
 }
 
-// PR-49, UT-6.4.1 (beyond the plan): turb.closure = none is a laminar run. The fields are the molecular
+// turb.closure = none is a laminar run. The fields are the molecular
 // diffusivities at every point (ghost cells included), nu_t and every source 0, on a sheared, stratified
 // state where the k-L closure gives nu_t > 0; the checks require nu_molecular > 0 and refuse the keys of
 // the k-L closure.

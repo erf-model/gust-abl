@@ -130,30 +130,35 @@ double node_mean (const amrex::FArrayBox& z, int t, int i, int j, int k)
 }
 
 // ---------------------------------------------------------------------------
-// The Poisson boundary types equal ERF's get_fft_bc for every face
-// type on every face it may take, periodic directions included: periodic
+// The Poisson boundary types equal ERF's get_fft_bc for the lateral types
+// (nest included: an even face, like inflow) on xlo and yhi with outflow
+// opposite, and again on xhi and ylo, with every ground and top type,
+// periodic directions included: periodic
 // where the geometry is, odd (Dirichlet) for outflow, even (Neumann)
 // otherwise. get_fft_bc is the copied ERF function, called with ERF's names.
 TEST(BoundaryTypes, PoissonTypesMatchErfGetFftBc)
 {
-    const FaceType lateral[] = {FaceType::inflow, FaceType::outflow, FaceType::slip_wall, FaceType::no_slip_wall};
+    const FaceType lateral[] = {FaceType::inflow, FaceType::outflow, FaceType::slip_wall, FaceType::no_slip_wall, FaceType::nest};
     const FaceType grounds[] = {FaceType::surface_layer, FaceType::slip_wall, FaceType::no_slip_wall};
     const FaceType tops[] = {FaceType::slip_wall, FaceType::no_slip_wall, FaceType::geostrophic};
     int cases = 0;
     for (int perx = 0; perx < 2; ++perx) {
         for (int pery = 0; pery < 2; ++pery) {
-            for (FaceType xlo : lateral) {
-                for (FaceType yhi : lateral) {
+            for (FaceType xt : lateral) {
+                for (FaceType yt : lateral) {
                     for (FaceType zlo : grounds) {
                         for (FaceType zhi : tops) {
+                          for (const bool swapped : {false, true}) {   // the varied types on xhi and ylo
                             gust::MeshInputs m;
                             m.n_cell = amrex::IntVect(8, 8, 8);
                             m.prob_hi = {100, 100, 100};
                             m.is_periodic = {perx, pery, 0};
                             const amrex::Geometry geom = gust::make_geometry(m);
                             BoundaryInputs in;
-                            in.face = {perx ? FaceType::periodic : xlo, pery ? FaceType::periodic : FaceType::outflow, zlo,
-                                       perx ? FaceType::periodic : FaceType::outflow, pery ? FaceType::periodic : yhi, zhi};
+                            const FaceType xlo = swapped ? FaceType::outflow : xt, xhi = swapped ? xt : FaceType::outflow;
+                            const FaceType ylo = swapped ? yt : FaceType::outflow, yhi = swapped ? FaceType::outflow : yt;
+                            in.face = {perx ? FaceType::periodic : xlo, pery ? FaceType::periodic : ylo, zlo,
+                                       perx ? FaceType::periodic : xhi, pery ? FaceType::periodic : yhi, zhi};
                             const auto bc = gust::poisson_bc_from_faces(in, geom);
                             amrex::Array<std::string, 6> names;
                             for (int o = 0; o < 6; ++o) { names[o] = gust::erf_bc_name(in.face[o]); }
@@ -169,13 +174,14 @@ TEST(BoundaryTypes, PoissonTypesMatchErfGetFftBc)
                             }
                             EXPECT_TRUE(gust::check_poisson_bc(bc, geom).empty());
                             ++cases;
+                          }
                         }
                     }
                 }
             }
         }
     }
-    EXPECT_EQ(cases, 4 * 4 * 4 * 3 * 3);
+    EXPECT_EQ(cases, 4 * 5 * 5 * 3 * 3 * 2);
 }
 
 // ---------------------------------------------------------------------------
@@ -262,8 +268,8 @@ TEST(InflowProfile, TakesTheClosureConstants)
 
 // bc.inflow_tke_length = closure (the default): the equilibrium k and nu_t take
 // the closure's geometric length, kappa (z + z0) capped harmonically by
-// turb.max_geom_lscale (Closure_K.H geom_length), for every kind; a table's own
-// k is kept and the length sets nu_t only. Closed forms at heights below, near
+// turb.max_geom_lscale (Closure_K.H geom_length), for the log law and the power
+// law here (a file table: FileTableWithAndWithoutK). Closed forms at heights below, near
 // and far above the cap (l_max = 30 m). Before, the length was kappa (z + z0)
 // at every height: k grew with height on a power law (about 9 m^2/s^2 at 316 m
 // on ERF's Askervein inflow, where ERF has 0.31).
@@ -311,7 +317,7 @@ TEST(InflowProfile, ClosureLengthCapsTheEquilibrium)
             EXPECT_NEAR(k, ul * ul / (cmu * cmu), tol(1e-12, 1e-5) * k) << z;
             EXPECT_NEAR(nut, lcap(z) * ul, tol(1e-12, 1e-5) * nut) << z;
         }
-        // With the unbounded length, the same profile's k at 316 m is (l_raw/l)^2 = 11.7 times larger.
+        // With the unbounded length, the same profile's k at 316 m is (l_raw/l)^2 = 28.3 times larger.
         InflowProfileOptions ub = opt;
         ub.length = InflowProfileOptions::Length::unbounded;
         gust::InflowProfile pu(ub, tref);
@@ -409,7 +415,7 @@ TEST(InflowProfile, FileTableWithAndWithoutK)
         EXPECT_NEAR(nut, l * ulc, tol(1e-12, 1e-5) * nut);
     }
 
-    // Refused tables: heights not increasing, a first height not 0, 3 columns.
+    // Refused tables: heights not increasing, a first height not 0, 3 columns, a single row.
     for (const char* bad : {"0 0 0 300\n0 1 0 300\n", "10 0 0 300\n20 1 0 300\n", "0 0 300\n1 1 300\n", "0 0 0 300\n"}) {
         amrex::ParallelDescriptor::Barrier();   // every rank is done with the previous file
         if (amrex::ParallelDescriptor::IOProcessor()) {
@@ -423,7 +429,7 @@ TEST(InflowProfile, FileTableWithAndWithoutK)
     if (amrex::ParallelDescriptor::IOProcessor()) { std::remove(fname.c_str()); }
 }
 
-// bc.inflow_file is parsed token by token (audit A10, P4): '#' comments, tabs
+// bc.inflow_file is parsed token by token: '#' comments, tabs
 // and Windows line ends are accepted; a token that is not a whole number is
 // refused with the file and the line, where the stream parser before stopped
 // at it and kept the numbers read so far ("300.0K" read as 300, a fifth token
@@ -671,8 +677,9 @@ TEST(BoundaryFill, OutflowGhostCellsMirrorTheEdgeCells)
 // ---------------------------------------------------------------------------
 // Ghost rules per face type, on the flat mesh with x and y non-periodic:
 // outflow (even; p odd), slip wall (normal 0, tangential even), no-slip wall
-// (normal 0, tangential odd), geostrophic top (u, v held at u_g, v_g),
-// slip top with a theta gradient, two layers each, and every ghost finite.
+// (normal 0, tangential odd), geostrophic top (u, v held at u_g, v_g; theta
+// with bc.zhi_theta_grad), slip-wall ground (w = 0, u and theta even), one or
+// two layers, and every ghost finite.
 TEST(BoundaryFill, RulesPerFaceType)
 {
     PCase c = mesh_over(0, 0, flat);
@@ -701,7 +708,7 @@ TEST(BoundaryFill, RulesPerFaceType)
     cor.vg = -3;
     BoundaryConditions bc(in, c.geom, c.mesh, cor);
     bc.fill_ghosts(q, nullptr, kBuoy);
-    const int nx = 16, ny = 12, nz = 8;
+    const int nx = 16, nz = 8;
     for (amrex::MFIter mfi(q.p, false); mfi.isValid(); ++mfi) {
         const amrex::Box vb = mfi.validbox();
         const auto z = host_copy(q.z_phys_nd, mfi);
@@ -745,9 +752,6 @@ TEST(BoundaryFill, RulesPerFaceType)
                 EXPECT_NEAR(u(amrex::IntVect(i, j, nz)), 2 * 9 - u(amrex::IntVect(i, j, nz - 1)), tol(1e-13, 1e-5));
                 EXPECT_NEAR(v(amrex::IntVect(i, j, nz + 1)), 2 * (-3) - v(amrex::IntVect(i, j, nz - 2)), tol(1e-13, 1e-5));
                 const double z1 = node_mean(z, 0, i, j, nz - 2), zg = node_mean(z, 0, i, j, nz);
-                // z above the stored nodes: the node-mean of the extrapolated layer
-                const double zn1 = z(amrex::IntVect(i, j, nz + 1));
-                (void)zn1;
                 const double grad = (t(amrex::IntVect(i, j, nz)) - t(amrex::IntVect(i, j, nz - 2))) / (zg - z1);
                 EXPECT_NEAR(grad, 0.01, tol(1e-10, 1e-4));
             }
@@ -824,8 +828,9 @@ TEST(BoundaryFill, NarrowDomainFillsTheLowFaceFirst)
 // difference of u and v across the first cell centre equals the wall law's
 // gradient u*/(kappa (d0 + z0)) along the tangential wind, and theta's equals
 // -q/(kappa u* (d0 + z0)); k is even. Both stable sides: Businger-Dyer and
-// QNSE (bc.surface_stable_functions). The homogeneous fill
-// gives zero ghosts for the gradient and value rules and keeps even and odd ones.
+// QNSE (bc.surface_stable_functions). The homogeneous fill gives a zero
+// gradient (the ghost equals the mirrored interior point), no-flux w of the
+// perturbation on the ground, and keeps k even.
 TEST(BoundaryFill, GroundGradientIsTheWallLaw)
 {
     PCase c = mesh_over(1, 1, [] (double x, double y) { return 120 * 0.25 * (1 - std::cos(2 * M_PI * x / 1000)) * (1 - std::cos(2 * M_PI * y / 800)); });
@@ -1021,7 +1026,7 @@ TEST(BoundaryImplicit, FoldsMatchTheHomogeneousFill)
             amrex::LoopOnCpu(vb, [&] (int i, int j, int k) {
                 const amrex::IntVect iv(i, j, k);
                 // Dirichlet face points: u on the inflow face (xlo; xhi is outflow,
-                // an even mirror), v on both walls.
+                // an even mirror), v on both walls, w on the ground and the top.
                 const bool dir_pt = (n == 0 && i == 0) || (n == 1 && (j == 0 || j == 12)) || (n == 2 && (k == 0 || k == 8));
                 if (dir_pt) {
                     EXPECT_EQ(af(iv, gust::coef_P), 1);
@@ -1114,7 +1119,8 @@ TEST(BoundaryResidual, DirichletRowsAndIdentityLines)
 // Damping: with q = q_ref + delta (the inflow profile plus a constant) the
 // residual's damping term is c delta, c the Rayleigh coefficient
 // coef sin^2(pi/2 (z - z_d)/(z_top - z_d)) above z_d and the sponge
-// strength (1 - s/w)^2 within w of the inflow face; zero elsewhere.
+// strength (1 - s/w)^2 within w of the inflow and of the outflow face; zero
+// elsewhere.
 TEST(BoundaryDamping, RayleighAndSpongeHaveTheirShapes)
 {
     PCase c = mesh_over(0, 1, flat, 16);

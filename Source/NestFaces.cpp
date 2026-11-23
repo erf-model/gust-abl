@@ -6,7 +6,6 @@
 #include "Stencil_K.H"
 
 #include <AMReX_ParallelDescriptor.H>
-#include <AMReX_ParmParse.H>
 
 #include <algorithm>
 #include <cmath>
@@ -726,7 +725,7 @@ std::string NestFaces::hash_inputs (const NestParent& parent, const BoundaryInpu
     for (int d = 0; d < 3; ++d) { s += " " + std::to_string(parent.parent_cells()[d]); }
     if (!joint) { s += "\nparent content " + parent.content_digest(); }
     s += "\noffset " + std::to_string(parent.offset()[0]) + " " + std::to_string(parent.offset()[1]);
-    // The default ratio adds nothing: checkpoints written before bc.nest_ratio keep their hash.
+    // The line is added only for a ratio other than the default, so the hash of a default-ratio run does not depend on the key.
     if (parent.ratio() != kNestRatio) { s += "\nratio " + std::to_string(parent.ratio()); }
     s += "\nblend " + hexfloat_canonical(static_cast<double>(blend_width));
     s += "\nrelax " + std::to_string(bin.nest_relax_width) + " " + hexfloat_canonical(static_cast<double>(bin.nest_relax_factor)) + "\n";

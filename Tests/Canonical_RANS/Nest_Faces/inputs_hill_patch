@@ -2,8 +2,8 @@
 # the restart chain). The hill is centred in both domains.
 # Parent cells 8 to 23 in x and 6 to 17 in y at refinement 2 2 1: 32 x 24
 # cells of 25 m from (400, 300) m to (1200, 900) m, with the parent's 16
-# layers, on uneven boxes. The four lateral faces are nest faces (plan
-# sub-phase 9.2): the parent's normal velocity on the face, the parent's u, v,
+# layers, on uneven boxes. The four lateral faces are nest faces:
+# the parent's normal velocity on the face, the parent's u, v,
 # w, theta and k in the ghost cells, zero-gradient p'. With the wind from 20
 # degrees, xlo and ylo are inflow faces and xhi and yhi outflow faces; the
 # deck does not say which. The first guess is the parent's field

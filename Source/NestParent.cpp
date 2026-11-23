@@ -296,7 +296,7 @@ void catmull_rom (amrex::Real t, amrex::Real* w) noexcept
     // Horner form: each sum takes at most one product, so a compiler that fuses
     // multiply-adds (gcc) has one way to do it, and a vectorised loop and its
     // scalar remainder agree (two products into one sum can be fused either
-    // way; tracker N-114).
+    // way).
     const amrex::Real t2 = t * t, h(0.5);
     w[0] = h * (((amrex::Real(2) - t) * t - amrex::Real(1)) * t);
     w[1] = h * ((amrex::Real(3) * t - amrex::Real(5)) * t2 + amrex::Real(2));

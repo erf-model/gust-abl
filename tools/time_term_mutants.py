@@ -29,7 +29,15 @@ M = [
   "    if (in.time != nullptr) { in.time->add_to_implicit(eq, A); }\n", "\n"),
  ("DT8", "the time term added after the dirichlet wall-k rows", R,
   "    if (in.time != nullptr) { in.time->add_to_residual(q, R); }\n"
+  "    // The nests' defect source (NestDefect.H), also before the rows that replace their residual.\n"
+  "    if (in.defect != nullptr) { in.defect->add_to_residual(R); }\n"
+  "    // The nests' relaxation (NestRelax.H), also before the rows that replace their residual.\n"
+  "    if (in.relax != nullptr) { in.relax->add_to_residual(q, R); }\n"
   "    if (in.surface != nullptr) { apply_wall_k(*ssp, *in.surface, q.tke, R.tke); }\n",
+  "    // The nests' defect source (NestDefect.H), also before the rows that replace their residual.\n"
+  "    if (in.defect != nullptr) { in.defect->add_to_residual(R); }\n"
+  "    // The nests' relaxation (NestRelax.H), also before the rows that replace their residual.\n"
+  "    if (in.relax != nullptr) { in.relax->add_to_residual(q, R); }\n"
   "    if (in.surface != nullptr) { apply_wall_k(*ssp, *in.surface, q.tke, R.tke); }\n"
   "    if (in.time != nullptr) { in.time->add_to_residual(q, R); }\n"),
  ("DT9", "a denormal unsteady.dt (infinite 1/dt) accepted", T,

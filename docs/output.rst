@@ -29,7 +29,7 @@ adds the step's outcome after ``r`` (the residual before and after, the line-sea
 GMRES iterations, ``FAILED`` for a failed step). With ``steady.confidence`` a SIMPLEC row adds after ``r`` the
 share of the cells that meet the residual criterion and the height of the highest one that does not.
 
-``io.iteration_log = full`` prints the log of earlier versions: one ``gust: it`` line per row with the CFL, ``r``, the
+``io.iteration_log = full`` prints one ``gust: it`` line per row with the CFL, ``r``, the
 residuals in the order :math:`u, v, w, p, \theta, k`, the monitors, the Poisson iterations, the divergence before
 and after the correction, the clipped :math:`k` cells and, with ``steady.confidence``, the confidence share and height.
 
@@ -140,8 +140,8 @@ hold that box's valid values, refreshed as the file is written; the running stat
 checkpoints with one ghost layer restart unchanged, since only valid values are read back.)
 
 The ``Header`` starts with ``gust-checkpoint`` and lists the format version, the bytes per real (8 or 4), the step, the mesh (``n_cell``, and
-``prob_lo`` and ``prob_hi`` in hexadecimal floating point so they read back exactly), ``is_periodic`` and the
-BoxArray. The fields are ``u v w`` (faces), ``p theta tke`` (cell centres) and ``z_phys_nd`` (nodes).
+``prob_lo`` and ``prob_hi`` in hexadecimal floating point so they read back exactly), ``is_periodic``, the reference
+z-levels (format version 2; hexadecimal floating point) and the BoxArray. The fields are ``u v w`` (faces), ``p theta tke`` (cell centres) and ``z_phys_nd`` (nodes).
 
 A restart restores every valid value exactly. The node heights are rebuilt from the mesh and terrain inputs and
 compared with the checkpoint's: a difference beyond 64 ulp of the top level's height stops the run, naming

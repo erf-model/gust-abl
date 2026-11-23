@@ -1,5 +1,5 @@
-# A nested patch of the Askervein one-way nesting validation (sub-phase 9.3,
-# beyond plan rev. 6): a square of half-width D centred on the hilltop HT
+# A nested patch of the Askervein one-way nesting validation:
+# a square of half-width D centred on the hilltop HT
 # (0, 0), at refinement 2 2 1 of the 40 m run of inputs_askervein_domain (20 m
 # cells, the same 18 layers), with four nest faces and the parent's field as
 # the first guess. askervein_nest.py gives the patch's place and cells

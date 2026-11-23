@@ -1,5 +1,5 @@
-# The whole domain of the one-way patches around a cube and a raised plate
-# (tracker row PR-76, beyond plan rev. 6): flat ground, a log-law inflow along x
+# The whole domain of the one-way patches around a cube and a raised plate:
+# flat ground, a log-law inflow along x
 # at xlo (u* = 0.4 m/s), outflow at xhi, periodic in y, the surface layer below
 # and a slip top; the building from buildings.file with the form 7 wall law
 # (Tests/Canonical_RANS/Building_Cube); SIMPLEC with z-line sweeps (buildings

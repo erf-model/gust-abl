@@ -1,19 +1,18 @@
-// The buildings' momentum terms and masked pressure correction (BuildingForcing.H, Poisson.H),
-// beyond the plan, sub-phase 5.2 (UT-5.2.x):
-//   an exact log law gives the exact u* at beta 0, 0.5 and 0.9 (UT-5.2.1); the blend, its
-//   10 z0 floor and no reference cell (UT-5.2.2); the sink, its a_P and the closed wall face,
-//   the fixed rows on blocked faces (UT-5.2.3, UT-5.2.5); the masked Poisson on a slab equals
+// The buildings' momentum terms and masked pressure correction (BuildingForcing.H, Poisson.H):
+//   an exact log law gives the exact u* at beta 0, 0.5 and 0.9; the blend, its
+//   10 z0 floor and no reference cell; the sink, its a_P and the closed wall face,
+//   the fixed rows on blocked faces; the masked Poisson on a slab equals
 //   the discrete cosine of the fluid channel, on both GMRES back ends, and an enclosed
-//   block has phi = 0 and no flux through it (UT-5.2.6); GMRES iterations for 0, 1 and 9
-//   buildings (UT-5.2.7); a pocket under a lifted building is counted as sealed.
-// Sub-phase 5.3 (UT-5.3.x), the sides of buildings:
+//   block has phi = 0 and no flux through it; GMRES iterations for 0, 1 and 9
+//   buildings; a pocket under a lifted building is counted as sealed.
+// The sides of buildings:
 //   an exact log law beside a side gives its stress on both components parallel to it, for
-//   sides facing each way, and half of it where half the face is blocked (UT-5.3.1); an edge
+//   sides facing each way, and half of it where half the face is blocked; an edge
 //   cell (roof and side) and a corner cell (two sides) take the sum of their walls on each
-//   component (UT-5.3.2); a partial side cell blends its reference cell; the viscous fluxes and
+//   component; a partial side cell blends its reference cell; the viscous fluxes and
 //   the implicit couplings through a side are closed, and roof_stress leaves the sides as they
-//   were (UT-5.3.3); the same values on every box layout, with a side on a box edge and a
-//   building across a periodic seam (UT-5.3.4).
+//   were; the same values on every box layout, with a side on a box edge and a
+//   building across a periodic seam.
 // After #87: the speed of a cell with two walls from its faces that are not fixed rows
 // (buildings.wall_speed), in the cell and in its reference cell, with the ground's w and partly blocked
 // faces counted; the count of wall cells below the law's 10 z0 floor.
@@ -222,7 +221,7 @@ PCase slab_case (int nx, int nz, int mgs)
     return c;
 }
 
-// UT-5.2.1: the log law through d1 and d2 gives its own u*.
+// The log law through d1 and d2 gives its own u*.
 TEST (BuildingLaw, ExactLogLawGivesItsUstar)
 {
     const double ustar = 0.37, z0 = 0.02;
@@ -235,7 +234,7 @@ TEST (BuildingLaw, ExactLogLawGivesItsUstar)
     }
 }
 
-// UT-5.2.2: the blend by hand; the floor; no reference cell.
+// The blend by hand; the floor; no reference cell.
 TEST (BuildingLaw, BlendFloorAndNoReference)
 {
     const double z0 = 0.1, uo = 3, ur = 5, d1 = 2.5, d2 = 10, beta = 0.5;
@@ -253,7 +252,7 @@ TEST (BuildingLaw, BlendFloorAndNoReference)
     EXPECT_NEAR(law(beta, d1, 0, z0), so * so, 10 * rtol);
 }
 
-// UT-5.2.3, UT-5.2.5: on a partial roof cell (beta 0.5, k = 2).
+// On a partial roof cell (beta 0.5, k = 2).
 TEST (BuildingForcing, SinkDiagonalAndClosedFace)
 {
     for (const int mgs : {8, 4, 3}) {
@@ -323,7 +322,7 @@ TEST (BuildingForcing, SinkDiagonalAndClosedFace)
     }
 }
 
-// UT-5.2.3: a roof or underside over half a cell's footprint, and partial faces in the mass fluxes.
+// A roof or underside over half a cell's footprint, and partial faces in the mass fluxes.
 TEST (BuildingForcing, PartCoveredWallsAndOpenFluxes)
 {
     PCase c = roof_case(4);
@@ -411,7 +410,7 @@ TEST (BuildingForcing, DragFormHasFixedRowsOnly)
     EXPECT_EQ(value_at(A, 4, 3, 1, gust::coef_ZP), 0.0) << "the fixed row stays";
 }
 
-// UT-5.2.6: the top half of the domain solid. In the fluid the cosine is an eigenvector of the
+// The top half of the domain solid. In the fluid the cosine is an eigenvector of the
 // discrete Laplacian with zero flux at the slab.
 TEST (MaskedPoisson, SlabEqualsTheChannelsDiscreteCosine)
 {
@@ -444,7 +443,7 @@ TEST (MaskedPoisson, SlabEqualsTheChannelsDiscreteCosine)
     }
 }
 
-// UT-5.2.6: an enclosed block.
+// An enclosed block.
 TEST (MaskedPoisson, EnclosedBlockHasNoFluxThroughIt)
 {
     for (const char* backend : {"gmres_fft", "gmres_mlmg"}) {
@@ -487,7 +486,7 @@ TEST (MaskedPoisson, EnclosedBlockHasNoFluxThroughIt)
     }
 }
 
-// UT-5.2.6b: the enclosed block on a bump. The open z-faces beside the block read its cells (phi = 0) in their
+// The enclosed block on a bump. The open z-faces beside the block read its cells (phi = 0) in their
 // terrain cross terms, so a constant is not a null vector of the masked operator: GMRES's phi is the solution, not
 // shifted by its mean (the shift left a residual of 2 % beside the block).
 TEST (MaskedPoisson, EnclosedBlockOnABumpSolvesItsSystem)
@@ -523,7 +522,7 @@ TEST (MaskedPoisson, EnclosedBlockOnABumpSolvesItsSystem)
     }
 }
 
-// UT-5.2.7: the preconditioner without the mask; the iterations are reported and bounded.
+// The preconditioner without the mask; the iterations are reported and bounded.
 TEST (MaskedPoisson, IterationsForZeroOneAndNineBuildings)
 {
     for (const char* backend : {"gmres_fft", "gmres_mlmg"}) {
@@ -545,13 +544,13 @@ TEST (MaskedPoisson, IterationsForZeroOneAndNineBuildings)
             phi.setVal(0);
             gust::FaceCoeffs fc;
             const gust::PoissonResult res = s.solve(rhs, phi, fc, periodic_xy_bc());
-            amrex::Print() << "UT-5.2.7: " << backend << ", " << count << " buildings: " << res.iterations << " GMRES iterations\n";
+            amrex::Print() << "Poisson without the mask: " << backend << ", " << count << " buildings: " << res.iterations << " GMRES iterations\n";
             EXPECT_LE(res.iterations, 60);
         }
     }
 }
 
-// UT-5.3.1, UT-5.3.4: a block on the cells 3, 4 in x and y, 45 m high (four layers, and half of the
+// A block on the cells 3, 4 in x and y, 45 m high (four layers, and half of the
 // fifth). The speed parallel to a side follows a log law in the distance from it, at 37 degrees to
 // the horizontal: the sink on each parallel component is the stress's component over the cell's width.
 TEST (BuildingSides, LogLawGivesItsStressOnBothParallelComponents)
@@ -617,7 +616,7 @@ TEST (BuildingSides, LogLawGivesItsStressOnBothParallelComponents)
     }
 }
 
-// UT-5.3.2: an L of three 45 m tiles has an inner corner at the cell (2, 2); a 20 m tile beside the
+// An L of three 45 m tiles has an inner corner at the cell (2, 2); a 20 m tile beside the
 // L makes a step, whose roof cell (5, 3, 2) lies against the taller tile's side.
 TEST (BuildingSides, EdgeAndCornerCellsSumTheirWalls)
 {
@@ -970,7 +969,7 @@ TEST (BuildingSides, PartialSideCellsBlendTheirOwnReference)
     }
 }
 
-// UT-5.3.3: no viscous flux of a parallel component through a side, in the residual's fluxes and in the rows.
+// No viscous flux of a parallel component through a side, in the residual's fluxes and in the rows.
 TEST (BuildingSides, ViscousFluxesAndCouplingsThroughASideAreClosed)
 {
     for (const int mgs : {8, 5, 3}) {
@@ -1066,7 +1065,7 @@ TEST (BuildingSides, ViscousFluxesAndCouplingsThroughASideAreClosed)
     }
 }
 
-// UT-5.3.4: a block across the periodic seam in x (the tile -10..10 m: cells 7 and 0).
+// A block across the periodic seam in x (the tile -10..10 m: cells 7 and 0).
 TEST (BuildingSides, BlockAcrossAPeriodicSeam)
 {
     const double a = 3, bb = 2, cc = 1, z0 = 0.1, dn = 10;
@@ -1242,6 +1241,19 @@ TEST (BuildingForcing, PocketUnderALiftedBuildingIsSealed)
         b.build(o, c.geom, c.z, c.ba, c.dm);
         EXPECT_EQ(gust::count_sealed_fluid_cells(b, c.geom), 0) << "the gap opens it to the side";
     }
+}
+
+// The cell labels of count_sealed_fluid_cells in a domain of more than 2^31 cells: the index of the last cell
+// of 2048^3 is 2^33 - 1, and the labels of two cells stay distinct and ordered.
+TEST (BuildingForcing, SealedCellLabelsPassTheRangeOfInt)
+{
+    const amrex::Dim3 lo{-4, 2, 0}, len{2048, 2048, 2048};
+    EXPECT_EQ(gust::sealed_cell_label(lo.x, lo.y, lo.z, lo, len), amrex::Long(0));
+    EXPECT_EQ(gust::sealed_cell_label(lo.x + 5, lo.y + 3, lo.z + 2, lo, len), amrex::Long(5) + 2048 * (amrex::Long(3) + 2048 * amrex::Long(2)));
+    const amrex::Long last = gust::sealed_cell_label(lo.x + 2047, lo.y + 2047, lo.z + 2047, lo, len);
+    EXPECT_EQ(last, amrex::Long(8589934591));
+    EXPECT_LT(gust::sealed_cell_label(lo.x, lo.y, lo.z + 512, lo, len), gust::sealed_cell_label(lo.x, lo.y, lo.z + 513, lo, len));
+    EXPECT_GT(gust::sealed_cell_label(lo.x, lo.y, lo.z + 512, lo, len), amrex::Long(2147483647));
 }
 
 } // namespace

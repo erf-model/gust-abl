@@ -88,7 +88,9 @@ constexpr double kappa = 0.41, g = 9.81, theta0 = 300;
 double heat_content (const gust::ColumnGuessResult& r)
 {
     double h = 0;
-    for (std::size_t i = 1; i < r.theta.size(); ++i) { h += static_cast<double>(r.theta[i]) - 300.0; }
+    for (std::size_t i = 1; i < static_cast<std::size_t>(r.theta.size()); ++i) {
+        h += static_cast<double>(r.theta[i]) - 300.0;
+    }
     return h;
 }
 
@@ -181,7 +183,7 @@ TEST(ColumnMarching, NeutralReachesTheSteadyColumn)
     const auto rm = m.run();
     EXPECT_FALSE(rm.steady);
     ASSERT_EQ(rm.u.size(), rs.u.size());
-    for (std::size_t i = 0; i < rs.u.size(); ++i) {
+    for (std::size_t i = 0; i < static_cast<std::size_t>(rs.u.size()); ++i) {
         EXPECT_NEAR(static_cast<double>(rm.u[i]), static_cast<double>(rs.u[i]), tol(1e-6, 1e-3)) << i;
         EXPECT_NEAR(static_cast<double>(rm.tke[i]), static_cast<double>(rs.tke[i]), tol(1e-7, 1e-4)) << i;
         EXPECT_EQ(rm.theta[i], amrex::Real(300));
@@ -270,7 +272,7 @@ TEST(ColumnMarching, FluxSurfaceMatchesTheClosedForm)
         EXPECT_NEAR(q2, q, tol(1e-7, 1e-4) * std::abs(q)) << q;
     }
     double us = 0, ts = 0, il = 0;
-    // a seed above the upper stable root (zeta = 20 at 3 m/s, q = -0.004 K m/s, Pressel's case) still finds the root
+    // a seed above the upper stable root (zeta = 20 at 3 m/s, q = -0.004 K m/s) still finds the root
     il = 20 / z1;
     EXPECT_TRUE(gust::column_surface_most_flux(kappa, z0, z1, U1, -0.004, g, theta0, 0, false, {}, us, ts, il));
     EXPECT_LT(z1 * il, 1);

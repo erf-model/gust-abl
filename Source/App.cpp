@@ -45,25 +45,12 @@
 #include <AMReX_Utility.H>
 
 #include <algorithm>
-#include <filesystem>
-#include <functional>
 #include <cstdio>
 #include <memory>
 #include <limits>
 #include <string>
 
 namespace gust {
-
-namespace {
-
-std::string fmt (double x)
-{
-    char b[32];
-    std::snprintf(b, sizeof(b), "%.3e", x);
-    return b;
-}
-
-} // namespace
 
 std::string run_domain (const DomainRole& role)
 {
@@ -256,7 +243,7 @@ std::string run_domain (const DomainRole& role)
     // the stage writes the drag field with its plotfile.
     const CanopyOptions canopy_opt = read_canopy_options(in.terrain.idw_neighbors, static_cast<double>(in.terrain.idw_power));
     for (auto& e : check_canopy_options(canopy_opt)) { err.push_back(std::move(e)); }
-    // The buildings (Buildings.H, BuildingForcing.H). PR-39: one level and SIMPLEC with z-line sweeps (PR-43 the rest).
+    // The buildings (Buildings.H, BuildingForcing.H): one level and SIMPLEC with z-line sweeps.
     BuildingsOptions buildings_opt = read_buildings_options();
     // The lee options' zone acts with the closure's cap (and the upwind blend, which needs the cap).
     buildings_opt.limiter_zone_acts = buildings_opt.active() && buildings_opt.wall_tke && buildings_opt.limiter_zone > 0
@@ -366,7 +353,8 @@ std::string run_domain (const DomainRole& role)
                          "blend (the parent run's theta may already carry the leaves' heat, and the patch would blend it again; "
                          "use canopy.heat_frozen = skip)");
     }
-    // Frozen theta met the unsteady stage nowhere before (it needed grid sequencing, which that stage refuses).
+    // Frozen theta meets the unsteady stage only in a patch (elsewhere it needs grid sequencing, which that stage
+    // refuses); it is refused there too.
     if (solve && nest == nullptr && nest_guess && simplec.theta_frozen && unsteady) {
         err.emplace_back("simplec.theta = frozen is not supported with steady.stage = unsteady and init.first_guess = nest "
                          "(a held theta in an unsteady patch is not tested)");
@@ -437,13 +425,13 @@ std::string run_domain (const DomainRole& role)
             // The restriction coarsens each nest's boxes by 2 2 1 (restrict_patch). A nest has an even number of
             // cells; AMReX's maxSize keeps the boxes even when mesh.max_grid_size is even, not when it is odd.
             if (check_nests(*role.nests, in.mesh).empty()) {
-                for (const auto& nest : role.nests->nests) {
+                for (const auto& member : role.nests->nests) {
                     // The source keeps kDefectMargin outer cells from each face (defect_region, NestDefect.cpp):
                     // checked here so a narrow nest stops before the one-way runs, not after them.
-                    const MeshInputs nm = nest_mesh(nest, in.mesh);
+                    const MeshInputs nm = nest_mesh(member, in.mesh);
                     for (int d = 0; d < 2; ++d) {
                         if (nm.is_periodic[d] == 0 && nm.n_cell[d] / 2 < 2 * kDefectMargin + 1) {
-                            err.push_back(fbk + ": nest." + nest.name + " spans "
+                            err.push_back(fbk + ": nest." + member.name + " spans "
                                           + std::to_string(nm.n_cell[d] / 2) + " outer cells in "
                                           + (d == 0 ? "x" : "y") + "; it needs at least "
                                           + std::to_string(2 * kDefectMargin + 1) + " (the feedback keeps "
@@ -454,12 +442,12 @@ std::string run_domain (const DomainRole& role)
                     // with its own pressure level; the masked pressure correction removes one mean only.
                     for (int d = 0; d < 2; ++d) {
                         if (inject && nm.is_periodic[d] != 0) {
-                            err.push_back(fbk + ": nest." + nest.name + " spans the periodic outer direction "
+                            err.push_back(fbk + ": nest." + member.name + " spans the periodic outer direction "
                                           + (d == 0 ? "x" : "y") + "; the injection needs a nest with faces in x and y");
                         }
                     }
                     if (!make_box_array(nm).coarsenable(amrex::IntVect(2, 2, 1))) {
-                        err.push_back(fbk + ": nest." + nest.name + " splits into boxes with an odd "
+                        err.push_back(fbk + ": nest." + member.name + " splits into boxes with an odd "
                                       "number of cells in x or y at mesh.max_grid_size: give an even "
                                       "mesh.max_grid_size");
                     }

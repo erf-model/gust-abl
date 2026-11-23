@@ -145,7 +145,7 @@ void set_point (amrex::MultiFab& mf, const amrex::IntVect& iv, amrex::Real v, bo
 
 } // namespace
 
-// The validity check that replaced a min and a max per field (audit A7, I3):
+// The validity check that replaced a min and a max per field:
 // every NaN, infinity and negative value is counted, zero only when zero is
 // not allowed (-0 counts as zero), ghost layers only when asked, and every
 // rank gets the full count. The bad points sit in different boxes, so on 2
@@ -236,7 +236,7 @@ TEST (Reductions, SumRejectsFaceData)
 } // namespace
 
 // ---------------------------------------------------------------------------
-// Audit A4 (I4, I5, U2): sums over face data count each face once and do not
+// Sums over face data count each face once and do not
 // depend on the box layout or the ranks. An x-face field of a wrapped pattern
 // (face n equals face 0 when x is periodic, as the solver keeps them), x
 // periodic and not, on 3 x 3 uneven boxes, one box and 6-cell boxes, with the

@@ -11,6 +11,12 @@ The Tucker wall distance on ERF's Neutral_Hill_2D mesh: a 2-D Witch of Agnesi ri
 | `check_walldist.py` | Runs the driver, then ERF's wall-distance checks from `Neutral_Hill_2D/check_hill.py` against the exact distance to the ridge. |
 | `Gold/walldist_hill2d_plt00000/` | The driver's plotfile. |
 
+## Data and acknowledgements
+No measured data. The mesh is that of ERF's Neutral_Hill_2D case. The checks and their tolerances follow ERF's
+`check_hill.py`, and the plotfile is read with ERF's reader (`extern_erf/check_hill.py`,
+`extern_erf/erf_plotfile.py`, recorded in `extern_erf/EXTRACTED.md`; BSD 3-clause with the LBNL clause,
+`extern_erf/LICENSE.md`). Thanks to the ERF developers. Nothing has to be downloaded.
+
 ## CTest
 `rt_walldist_hill2d`, `rt_walldist_hill2d_matches` (double precision only).
 

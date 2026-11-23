@@ -1,6 +1,6 @@
 """
-The one-line mutant runner shared by tools/transfer_mutants.py and
-tools/continuation_mutants.py.
+The one-line mutant runner shared by the tools/*_mutants.py runners that
+import it.
 
 Each mutant replaces one piece of text (it must occur exactly once in its
 file), rebuilds unit_tests, runs the given GoogleTest filter on two ranks with

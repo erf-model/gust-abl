@@ -1,7 +1,7 @@
 #ifndef GUST_IMMERSED_STRAIN_H_
 #define GUST_IMMERSED_STRAIN_H_
 
-// The strain invariant S2 next to an immersed ground (terrain.representation = immersed_forcing;
+// The strain invariant S2 next to an immersed ground (terrain.representation = immersed_forcing or hybrid;
 // docs/immersed_terrain.rst). In the first full cell above a cut cell the closure's central
 // difference puts the cut cell's speed at its cell centre, though it stands for its fluid centroid,
 // d1 = (1 - beta) dz / 2 above the wall. Here the vertical gradients of u and v in that cell are the

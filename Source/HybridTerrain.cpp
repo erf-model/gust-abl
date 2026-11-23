@@ -12,7 +12,6 @@
 #include <algorithm>
 #include <iomanip>
 #include <cmath>
-#include <deque>
 #include <limits>
 #include <sstream>
 
@@ -250,7 +249,7 @@ HybridGap hybrid_gap (const amrex::MultiFab& z_nd, const amrex::Vector<amrex::Re
     if (zlevels.size() >= 2) {
         const double d0 = static_cast<double>(zlevels[1] - zlevels[0]);
         std::size_t k = 1;
-        while (k + 1 < zlevels.size() && std::abs(static_cast<double>(zlevels[k + 1] - zlevels[k]) - d0) <= std::max(1e-6, node_count_tol()) * d0) { ++k; }
+        while (k + 1 < static_cast<std::size_t>(zlevels.size()) && std::abs(static_cast<double>(zlevels[k + 1] - zlevels[k]) - d0) <= std::max(1e-6, node_count_tol()) * d0) { ++k; }
         gap.uniform_top = static_cast<double>(zlevels[k] - zlevels[0]);
     }
     return gap;

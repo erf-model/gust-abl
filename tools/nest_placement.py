@@ -37,12 +37,12 @@ Two questions, answered from the terrain file and the outer mesh only:
    flagged, and a nest is clear only when it is clear for every direction. The angle is measured against
    the face normal, not the wind.
 
-   What the runs support (PR-70, a channel site with 200 m outer cells, the wind normal to the faces):
+   What the runs support (a channel site with 200 m outer cells, the wind normal to the faces):
    the 20 degree angle and the 5 m misfit gate were fitted on four nests (25 and 28 degrees with misfit
    above 5 m raised the outer cells above 0.25 m/s from 12 to 663 and 817 in a joint run; 0 and 14 degrees
    stayed at 12 and 26); they have not been tested on an independent case. A nest next to an 89 degree
    channel bend stayed at 12 cells, so a bend is a note. The step rule was tested on an escarpment with
-   50 m cells (Tests/Canonical_RANS/Nest_Placement_Runs, N-114 item 11): for winds along an axis the two
+   50 m cells (Tests/Canonical_RANS/Nest_Placement_Runs): for winds along an axis the two
    flagged nests made the joint run worse and the two clear ones did not; for an oblique wind blowing
    within 10 degrees of the step's contours both nests were flagged but neither run was worse (the
    angle is taken against the face normal, not the wind). Other cell sizes have not been tested by a
@@ -290,7 +290,7 @@ def resolve_thresholds(a):
 
 
 def summary(site):
-    a, h, misfit_map = site.args, site.h, site.misfit_map
+    a, misfit_map = site.args, site.misfit_map
     print(f"terrain: relief {site.relief:.0f} m; outer cells {a.dx:g} m see it with misfit |h - h_c| mean "
           f"{misfit_map.mean():.1f} m, 95th percentile {np.percentile(misfit_map, 95):.1f} m, max {misfit_map.max():.1f} m")
     print("thresholds (* from dx): " + ", ".join(

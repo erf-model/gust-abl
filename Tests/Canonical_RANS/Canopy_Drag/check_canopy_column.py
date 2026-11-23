@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The column first guess with a uniform canopy (UT-8.5.1, ColumnGuess.H):
+"""The column first guess with a uniform canopy (ColumnGuess.H):
 
     check_canopy_column.py --tol T --max-ratio R -- LAUNCHER... GUST [ARGS ...]
 

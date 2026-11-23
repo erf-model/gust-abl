@@ -1,24 +1,24 @@
-// The nest faces of a nested patch (NestFaces.H), sub-phase 9.2 (beyond the plan).
-//   UT-9.2.1  the net flux through the nest faces is zero to round-off after
-//             the correction, for a non-uniform parent over a hill; the
-//             correction is the same delta on every face point (the closed
-//             form net / sum of the weights); nothing is removed with an
-//             outflow face; the sums do not depend on the rank map
-//   UT-9.2.2  the blended ground is the parent's on the nest faces (bit for
-//             bit), the patch's own from the blend width inwards (bit for
-//             bit) and the closed form between
-//   UT-9.2.3  the relaxation zone's rate and source equal the closed form at
-//             every point of u, v, w, theta and k: zero where the parent's
-//             flow leaves, zero outside the zone, the two faces' rates added
-//             in a corner
-//   UT-9.2.4  the implicit diagonal equals the finite-difference derivative
-//             of the source
-//   UT-9.2.5  with width 0 the residual and the implicit side are left bit
-//             for bit
+// The nest faces of a nested patch (NestFaces.H).
+//   the net flux through the nest faces is zero to round-off after
+//     the correction, for a non-uniform parent over a hill; the
+//     correction is the same delta on every face point (the closed
+//     form net / sum of the weights); nothing is removed with an
+//     outflow face; the sums do not depend on the rank map
+//   the blended ground is the parent's on the nest faces (bit for
+//     bit), the patch's own from the blend width inwards (bit for
+//     bit) and the closed form between
+//   the relaxation zone's rate and source equal the closed form at
+//     every point of u, v, w, theta and k: zero where the parent's
+//     flow leaves, zero outside the zone, the two faces' rates added
+//     in a corner
+//   the implicit diagonal equals the finite-difference derivative
+//     of the source
+//   with width 0 the residual and the implicit side are left bit
+//     for bit
 //   also: the ghost fills and the Dirichlet rows through BoundaryConditions
-//             (closed form, corners included; the homogeneous fill; the abort
-//             without the parent's values); each input fault is refused
-//             naming its key; the restart record.
+//     (closed form, corners included; the homogeneous fill; the abort
+//     without the parent's values); each input fault is refused
+//     naming its key; the restart record.
 // The parent's fields are a + b x + c y + d x y on each level (NestParent's
 // interpolation reproduces them to round-off), with normal velocities that
 // change sign along every face.
@@ -313,7 +313,6 @@ struct Case
     }
 };
 
-// UT-9.2.1
 TEST (NestFaces, NetFluxIsZeroAfterTheCorrection)
 {
     Case c("ut_nestfaces_flux");
@@ -560,7 +559,6 @@ TEST (NestFaces, GhostsAndFacePointsHoldTheParentsValues)
     EXPECT_EQ(hom.err, 0.0);
 }
 
-// UT-9.2.2
 TEST (NestFaces, BlendedGroundIsTheParentsOnTheFaceAndThePatchsInside)
 {
     NestRun p;
@@ -822,7 +820,7 @@ TEST (NestFaces, JointNestLevelsThatInvertAbortNamingTheNest)
     }
 }
 
-// UT-9.2.3 to UT-9.2.5 share this: the zone's rate, source and diagonal.
+// The tests of the relaxation zone share this: the zone's rate, source and diagonal.
 struct Zone
 {
     Case c{"ut_nestfaces_zone"};
@@ -902,7 +900,6 @@ TEST (NestFaces, ZoneRateAndSourceEqualTheClosedForm)
     }
 }
 
-// UT-9.2.4
 TEST (NestFaces, DiagonalIsTheSourcesDerivative)
 {
     Zone z(3, 0.8);
@@ -957,7 +954,6 @@ TEST (NestFaces, DiagonalIsTheSourcesDerivative)
     }
 }
 
-// UT-9.2.5
 TEST (NestFaces, WidthZeroLeavesTheResidualAndTheDiagonal)
 {
     Zone z(0, 1.0);
@@ -1083,7 +1079,7 @@ TEST (NestFaces, InputFaultsAreRefusedNamingTheKey)
     yhi_only.face[4] = gust::FaceType::nest;
     yhi_only.nest_parent.clear();
     EXPECT_TRUE(has(run(yhi_only, in, true, false), "bc.yhi = nest needs bc.nest_parent"));
-    // bc.nest_ratio (beyond the plan): 2, 4, 8 or 16; with a parent only.
+    // bc.nest_ratio: 2, 4, 8 or 16; with a parent only.
     for (const int r : {4, 8, 16}) {
         gust::BoundaryInputs br = good;
         br.nest_ratio = r;
@@ -1254,16 +1250,16 @@ TEST (NestFaces, NestNodeHeightsDoNotDependOnTheLayout)
                     f.make(false, [&] (amrex::MultiFab& z) { gust::blend_nest_ground(parent, b, 200, g, z); });
                 }
             };
-            NestRun one;
-            build({64, 64}, one);
-            ASSERT_EQ(one.ba.size(), 1);
+            NestRun one_run;
+            build({64, 64}, one_run);
+            ASSERT_EQ(one_run.ba.size(), 1);
             for (const std::array<int, 2> mgs : {std::array<int, 2>{9, 7}, std::array<int, 2>{6, 10}}) {
                 NestRun f;
                 build(mgs, f);
                 ASSERT_GT(f.ba.size(), 1);
                 const amrex::IntVect ng = f.q.z_phys_nd.nGrowVect();
                 amrex::MultiFab ref(f.q.z_phys_nd.boxArray(), f.dm, 1, ng);
-                ref.ParallelCopy(one.q.z_phys_nd, 0, 0, 1, ng, ng);
+                ref.ParallelCopy(one_run.q.z_phys_nd, 0, 0, 1, ng, ng);
                 double d = 0;
                 for (amrex::MFIter mfi(ref, false); mfi.isValid(); ++mfi) {
                     const amrex::Box bx = mfi.fabbox();

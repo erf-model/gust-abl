@@ -4,7 +4,7 @@ Test cases
 GUST is verified on a sequence of cases of increasing complexity. Each case adds one new feature to the case
 before it, so a failure points to the feature just added. A new solver or option is tested on the cases in this
 order. Most cases are ERF's Canonical_RANS cases, so ERF provides a reference solution (:doc:`references`). The input
-files are in ``Tests/Canonical_RANS/``.
+files are in ``Tests/Canonical_RANS/`` and ``Tests/Real_Terrain/``.
 
 Steady cases
 ------------
@@ -121,7 +121,8 @@ give the CTest names.
        ``Nests_Flat_ABL``, and ``Askervein_Nest`` and ``Columbia_Gorge`` on real terrain
    * - Immersed terrain (:doc:`immersed_terrain`)
      - ``Immersed_Column`` (case 1b above), ``Immersed_Ridge_2D``, ``Immersed_Ridge_Resolution``,
-       ``Immersed_Open_Faces``, and ``Immersed_Terrain_Cases`` on real terrain
+       ``Immersed_Open_Faces``, ``Immersed_Roughness_Step``, ``Immersed_Canopy``, and ``Immersed_Terrain_Cases``
+       on real terrain
 
 Transient cases
 ---------------
