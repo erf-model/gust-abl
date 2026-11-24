@@ -275,6 +275,61 @@ wind's shear: shear production equals dissipation in the neutral k–L closure (
   :math:`(l/\kappa(z + z_0))^2`); with the unbounded length the :math:`k` equation was out of balance instead. The
   domain adjusts either way; the capped form at least balances the :math:`k` equation.
 
+.. _inflow-column:
+
+**The run's own column** (``bc.inflow_profile = column``). With ``init.first_guess = column`` the run solves its
+horizontally uniform column at start-up (:doc:`initial_conditions`), including the target-wind search
+(``init.column_target_u``, ``_v``, ``_height``) that adjusts the geostrophic wind and the pressure gradient. With
+``bc.inflow_profile = column`` the converged column is also the profile of the inflow faces, of the side sponge
+and of the :math:`\theta` Rayleigh layer, and the run keeps the adjusted forcing. The log prints that forcing
+(from ``Tests/Canonical_RANS/Column_Inflow``):
+
+.. code-block:: text
+
+   gust: inflow faces: the converged column (bc.inflow_profile = column), 33 rows, z0 0.05 m, with the target wind's forcing (kept in the checkpoint):
+     forcing.ug = 9.26889497
+     forcing.vg = 5.13447251
+     forcing.pressure_gradient = 0 0 0
+
+- **What it replaces.** Two runs: a periodic column run that writes its table (``io.column_guess_file``) and logs
+  the forcing, then the 3-D run with ``bc.inflow_profile = file`` on that table and the forcing copied into
+  ``forcing.ug``, ``forcing.vg``. The single run gives the same table to the last bit and the same forcing
+  (``Tests/Canonical_RANS/Column_Inflow``). The log prints the forcing in 9 digits, so a two-run result that copies
+  it differs from the single run's by about :math:`10^{-11}` (relative); the single run keeps the full precision.
+- **The column's start.** The column starts from the analytic defaults (the log law with its default :math:`u_*` and
+  :math:`z_0`, along x), as a periodic column deck without ``bc.inflow_*`` keys does.
+- **Roughness.** The faces take the column's roughness: ``init.column_z0`` under a roughness map, else
+  ``bc.surface_z0``. ``bc.inflow_z0`` is refused, so the column and the faces cannot differ. The column always has
+  :math:`k`, so ``bc.inflow_tke_length`` is refused too. Under a roughness map the faces keep the column's
+  :math:`z_0`, not the map's value at the face; :math:`z_0` reaches the faces only through the diagnostic
+  :math:`\nu_t`, since the table holds :math:`k`. Choose ``init.column_z0`` near the map's values upwind.
+- **Restart.** The checkpoint holds the column, the faces' :math:`z_0` (and whether a roughness map was given), the
+  forcing, and the Coriolis setting with ``forcing.latitude`` and ``forcing.rotation_period`` (a text file
+  ``InflowColumn`` in the checkpoint directory, every value in ``%.17g``). A restart with
+  ``bc.inflow_profile = column`` takes the column and :math:`z_0` from it. When the column had a target wind, the
+  record's forcing replaces the restart deck's ``forcing.ug``, ``forcing.vg`` and ``forcing.pressure_gradient``
+  (x, y). Without a target wind, the deck's forcing must equal the record's, or the restart aborts naming the key.
+  A record with a geostrophic wind needs Coriolis with geostrophic forcing in the restart deck. The restart deck must
+  keep ``forcing.coriolis``, ``forcing.latitude`` and ``forcing.rotation_period``, and, without a map, the same
+  ``bc.surface_z0`` and no ``bc.surface_z0_file``; a column that ran under a map needs ``bc.surface_z0_file`` (its
+  :math:`z_0` cannot be compared: ``init.column_z0`` is refused on a restart). Each difference aborts, naming the
+  key. The :math:`\theta` sounding (``bc.theta_ref_*``) is not compared. A restart with no
+  stage reads no ``bc.*`` keys; its checkpoint carries the record of the one it read. A checkpoint without the
+  record is refused under ``bc.inflow_profile = column``.
+- **Refused.** A Rayleigh layer on ``u``, ``v`` or ``tke`` (also on a restart): the column's own layer would relax
+  towards the profile it is solving for. Nests (``nest.names``): their record of the outer run's faces does not hold
+  the column.
+- **Limits** (as for ``bc.inflow_profile = file``). Below the first cell centre the faces interpolate linearly from
+  the table's :math:`z = 0` row, not the column's log law. The target wind is measured with the column's log
+  interpolation between cell centres, while the faces interpolate the table linearly: a face cell between the
+  column's centres sees up to about 0.5 % less wind (50 m cells, target at 100 m). Nothing refuses a column whose
+  wind, turned by Coriolis, leaves through a face set to ``inflow``; the log warns, per face, with the rows and
+  heights (``gust: warning: bc.ylo = inflow: the column's wind leaves through this face in ...``). A wind that leaves
+  aloft only can still converge; one that leaves through most of a face does not. A stratified column's surface heat
+  flux is not in the record; a restart takes it from its deck.
+- **Drive.** With ``abl.drive = geostrophic_inflow`` (or ``geostrophic_column``), a target wind or a restart of a
+  column with one stands for ``forcing.ug``, ``forcing.vg``: no placeholder value is needed.
+
 Damping layers
 --------------
 

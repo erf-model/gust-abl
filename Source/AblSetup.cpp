@@ -31,7 +31,8 @@ bool any_face (const BoundaryInputs& bc, FaceType type)
     return std::find(bc.face.begin(), bc.face.end(), type) != bc.face.end();
 }
 
-// The theta of the air: the inflow table's with a file profile (bc.theta_profile is then the reference only).
+// The theta of the air: the inflow table's with a file profile (bc.theta_profile is then the reference only); the
+// sounding with bc.inflow_profile = column (the column holds it, or starts from it with a stratified surface).
 const amrex::Vector<amrex::Real>& air_theta (const AblSetupFacts& f)
 {
     return f.bc.inflow.kind == InflowProfileOptions::Kind::file ? f.inflow_table_theta : f.bc.theta_ref.theta;
@@ -57,11 +58,14 @@ void check_drive (Drive drive, const AblSetupFacts& f, std::vector<std::string>&
         if (!(cor.enabled && cor.geostrophic)) {
             err.emplace_back(pre + "needs forcing.coriolis = 1 and forcing.geostrophic = 1");
         }
-        // The column's target wind adjusts the forcing of a column without inflow faces (ColumnGuess.H).
-        const bool target = drive == Drive::geostrophic_column
-                            && (f.init.column_target_u != 0 || f.init.column_target_v != 0);
+        // The column's target wind adjusts the forcing (ColumnGuess.H); with inflow faces only under
+        // bc.inflow_profile = column (InflowColumn.H), whose restart takes the wind from the checkpoint's record.
+        const bool own_column = f.bc.inflow.kind == InflowProfileOptions::Kind::column;
+        const bool can_target = drive == Drive::geostrophic_column || own_column;
+        const bool target = (can_target && (f.init.column_target_u != 0 || f.init.column_target_v != 0))
+                            || (own_column && f.restart);
         if (cor.ug == 0 && cor.vg == 0 && !target) {
-            err.emplace_back(pre + (drive == Drive::geostrophic_column
+            err.emplace_back(pre + (can_target
                                     ? "needs a wind: forcing.ug, forcing.vg or init.column_target_u, init.column_target_v"
                                     : "needs a wind: forcing.ug, forcing.vg"));
         }
@@ -120,9 +124,9 @@ void check_drive (Drive drive, const AblSetupFacts& f, std::vector<std::string>&
         if (f.init.first_guess != InitOptions::FirstGuess::column && !f.restart) {
             err.emplace_back(pre + "needs init.first_guess = column or io.restart");
         }
-        if (inflow && f.bc.inflow.kind != InflowProfileOptions::Kind::file) {
+        if (inflow && f.bc.inflow.kind != InflowProfileOptions::Kind::file && f.bc.inflow.kind != InflowProfileOptions::Kind::column) {
             err.emplace_back(pre + "with an inflow face needs bc.inflow_profile = file (the column's table, "
-                             "io.column_guess_file of a periodic run)");
+                             "io.column_guess_file of a periodic run) or column (the run's own column)");
         }
     }
 }
@@ -173,8 +177,9 @@ void check_theta (Theta theta, Drive drive, const AblSetupFacts& f, std::vector<
             err.emplace_back(pre + "needs a stratified bc.theta_profile or bc.inflow_file table (uniform theta: use "
                              "abl.theta = neutral)");
         }
-        if (drive == Drive::geostrophic_column && !file_inflow) {
-            err.emplace_back(pre + "with abl.drive = geostrophic_column needs bc.inflow_profile = file (the theta to hold)");
+        if (drive == Drive::geostrophic_column && !file_inflow && f.bc.inflow.kind != InflowProfileOptions::Kind::column) {
+            err.emplace_back(pre + "with abl.drive = geostrophic_column needs bc.inflow_profile = file or column (the theta "
+                             "to hold)");
         }
     } else {
         if (!f.surface_layer || !flux_surface) {

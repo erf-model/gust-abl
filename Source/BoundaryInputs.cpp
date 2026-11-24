@@ -91,7 +91,8 @@ BoundaryInputs read_boundary_inputs ()
     if (kind == "log_law") { in.inflow.kind = K::log_law; }
     else if (kind == "power_law") { in.inflow.kind = K::power_law; }
     else if (kind == "file") { in.inflow.kind = K::file; }
-    else { amrex::Abort("gust: bc.inflow_profile = " + kind + ": must be log_law, power_law or file"); }
+    else if (kind == "column") { in.inflow.kind = K::column; }
+    else { amrex::Abort("gust: bc.inflow_profile = " + kind + ": must be log_law, power_law, file or column"); }
     pp.query("inflow_ustar", in.inflow.ustar);
     pp.query("inflow_z0", in.inflow.z0);
     pp.query("inflow_speed", in.inflow.speed_ref);
@@ -220,7 +221,8 @@ std::vector<std::string> check_boundary_inputs (const BoundaryInputs& in, const 
         for (const auto& e : check_inflow_profile_options(in.inflow)) { err.push_back(e); }
         // The keys of the other kinds would be read and ignored.
         using K = InflowProfileOptions::Kind;
-        const char* kind_name = (in.inflow.kind == K::log_law) ? "log_law" : (in.inflow.kind == K::power_law) ? "power_law" : "file";
+        const char* kind_name = (in.inflow.kind == K::log_law) ? "log_law" : (in.inflow.kind == K::power_law) ? "power_law"
+                                : (in.inflow.kind == K::file) ? "file" : "column";
         auto only_for = [&] (const char* k, K kind) {
             if (given(k) && in.inflow.kind != kind) {
                 err.emplace_back(std::string("bc.") + k + " has no effect with bc.inflow_profile = " + kind_name);
@@ -231,9 +233,20 @@ std::vector<std::string> check_boundary_inputs (const BoundaryInputs& in, const 
         only_for("inflow_zref", K::power_law);
         only_for("inflow_alpha", K::power_law);
         only_for("inflow_file", K::file);
-        // A file profile gives u and v itself (InflowProfile.H).
-        if (given("inflow_direction") && in.inflow.kind == K::file) {
-            err.emplace_back("bc.inflow_direction has no effect with bc.inflow_profile = file");
+        // A table gives u and v itself (InflowProfile.H).
+        if (given("inflow_direction") && (in.inflow.kind == K::file || in.inflow.kind == K::column)) {
+            err.emplace_back(std::string("bc.inflow_direction has no effect with bc.inflow_profile = ") + kind_name);
+        }
+        // The column's table has k (so no length) and the column's own roughness (InflowColumn.H): the face takes
+        // the z0 the column ran on, init.column_z0 under a map or bc.surface_z0.
+        if (in.inflow.kind == K::column) {
+            if (given("inflow_z0")) {
+                err.emplace_back("bc.inflow_z0 has no effect with bc.inflow_profile = column (the faces take the column's "
+                                 "roughness: init.column_z0 with bc.surface_z0_file, else bc.surface_z0)");
+            }
+            if (given("inflow_tke_length")) {
+                err.emplace_back("bc.inflow_tke_length has no effect with bc.inflow_profile = column (the column's table has k)");
+            }
         }
     } else {
         for (const char* k : {"inflow_profile", "inflow_ustar", "inflow_z0", "inflow_speed", "inflow_zref",

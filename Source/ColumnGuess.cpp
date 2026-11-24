@@ -248,14 +248,16 @@ std::vector<std::string> check_column_guess (const InitOptions& iopt, const Stea
                              "towards the deck's inflow profile, which the target does not change; leave u and v out of "
                              "bc.rayleigh_fields");
         }
-        if (bin.sponge_width > 0) {
+        // bc.inflow_profile = column: the faces and the sponge take the target column itself (InflowColumn.H).
+        const bool own_column = bin.inflow.kind == InflowProfileOptions::Kind::column;
+        if (bin.sponge_width > 0 && !own_column) {
             err.emplace_back("init.column_target_u, init.column_target_v with a sponge (bc.sponge_width): the 3-D sponge relaxes "
-                             "towards the deck's inflow profile, which the target does not change");
+                             "towards the deck's inflow profile, which the target does not change; set bc.inflow_profile = column");
         }
-        for (int o = 0; o < 6; ++o) {
+        for (int o = 0; o < 6 && !own_column; ++o) {
             if (bin.face[o] == FaceType::inflow) {
                 err.emplace_back("init.column_target_u, init.column_target_v with an inflow face: the face keeps the deck's inflow "
-                                 "profile; run the column on a periodic deck and give its table (io.column_guess_file) as bc.inflow_file");
+                                 "profile; set bc.inflow_profile = column (the faces take the target column)");
                 break;
             }
         }
@@ -413,7 +415,19 @@ ColumnGuessResult run_column_guess (const Inputs& in, const InitOptions& iopt, c
     cplx Wg(geo ? fopt.coriolis.ug : 0.0, geo ? fopt.coriolis.vg : 0.0);
     cplx F(fopt.pressure_gradient[0], fopt.pressure_gradient[1]);
     const double g_over_theta0 = (fopt.buoyancy.gravity > 0) ? static_cast<double>(fopt.buoyancy.gravity / fopt.buoyancy.theta0) : 0.0;
-    const InflowProfile prof(bin.inflow, bin.theta_ref);
+    // The start (u, v, k) and the Rayleigh layer's reference: the deck's inflow profile; with bc.inflow_profile =
+    // column (the column being solved) the analytic defaults, as a periodic deck without bc.inflow_* keys has them
+    // (InflowColumn.H; its checks refuse the layer on u, v and k there).
+    InflowProfileOptions start = bin.inflow;
+    if (start.kind == InflowProfileOptions::Kind::column) {
+        const InflowProfileOptions defaults;
+        start.kind = defaults.kind;
+        start.ustar = defaults.ustar;
+        start.z0 = defaults.z0;
+        start.direction = defaults.direction;
+        start.table = InflowTable{};
+    }
+    const InflowProfile prof(start, bin.theta_ref);
     const auto pv = prof.host_view();
     auto profile_at = [&] (double z, double& u, double& v, double& th, double& k) {
         amrex::Real pu, pw, pt, pk, pn;

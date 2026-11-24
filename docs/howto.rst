@@ -179,9 +179,10 @@ for bit. Other values, such as ``forcing.latitude``, ``forcing.ug`` and ``bc.inf
      - Shallow domains, :math:`u_*^2 = F H`. The wind does not turn with height.
    * - ``geostrophic_column``
      - ``forcing.coriolis = 1``, ``forcing.geostrophic = 1``
-     - ``forcing.ug``, ``forcing.vg`` or, without inflow faces, ``init.column_target_*``; ``init.first_guess = column`` or a restart; inflow faces take
-       ``bc.inflow_profile = file``; no pressure gradient
-     - Deep domains (top near 1.5 km or higher). The table comes from an earlier periodic run's
+     - ``forcing.ug``, ``forcing.vg`` or ``init.column_target_*``; ``init.first_guess = column`` or a restart; inflow
+       faces take ``bc.inflow_profile = column`` (the run's own column; needed with a target wind) or ``file``; no
+       pressure gradient
+     - Deep domains (top near 1.5 km or higher). With ``file``, the table comes from an earlier periodic run's
        ``io.column_guess_file``.
    * - ``geostrophic_inflow``
      - ``forcing.coriolis = 1``, ``forcing.geostrophic = 1``

@@ -3075,6 +3075,13 @@ Current tests
        ``check_column_target.py``, ``init.column_target_*``): the 3-D wind at 10 m is the target of 8 m/s to
        0.5 %; with a stable column (:math:`L` = 1000 m, ``bc.surface_stability = heat_flux``) the 3-D surface's
        :math:`L` is 1000 m to 2 %. Label ``regression``.
+   * - ``rt_column_inflow_*``, ``abort_column_inflow_no_record``, ``abort_column_inflow_no_face``
+     - ``bc.inflow_profile = column`` (``Tests/Canonical_RANS/Column_Inflow``, ``check_inflow_column.py``, 1-2 ranks,
+       about 5 s, labels ``regression;smoke``): a hill run with inflow faces and a target wind gives the column table
+       of the periodic column run to the last bit and the same forcing; its checkpoint holds the table, :math:`z_0`
+       and forcing; a restart from iteration 2 to 4 equals the uninterrupted run bit for bit; a restart with no stage
+       keeps the record in its own checkpoint; a checkpoint without the record and a deck without an inflow face are
+       refused.
    * - ``abort_no_stage``, ``abort_stage_no_guess``, ``abort_newton_keys_no_stage``,
        ``abort_inflow_tke_length_value``, ``abort_sequencing_overlap``
      - Input checks. Without ``steady.stage`` the solver keys (forcing, convection, SIMPLEC, closure, driver,

@@ -20,6 +20,7 @@ add_executable(unit_tests
     Unit_Tests/main.cpp
     Unit_Tests/test_Inputs.cpp
     Unit_Tests/test_AblSetup.cpp
+    Unit_Tests/test_InflowColumn.cpp
     Unit_Tests/test_IO.cpp
     Unit_Tests/test_Reductions.cpp
     Unit_Tests/test_SteadyCriterion.cpp
@@ -2780,6 +2781,85 @@ gust_add_test(NAME rt_column_target_mol NP 1 LABELS "regression"
               COMMAND $<TARGET_FILE:gust> ${COLUMN_TARGET_CASE}/inputs_column_target init.column_mol=1000
                       bc.surface_stability=heat_flux io.column_guess_file=column_target_mol_table.dat
                       ${GUST_TEST_AMREX_FLAGS})
+# bc.inflow_profile = column (Tests/Canonical_RANS/Column_Inflow): the single run solves its own column with the
+# target wind and takes it as the inflow faces' profile, with the adjusted geostrophic wind. Its column is the
+# periodic column run's to the last bit (the two tables, written in %.17g) with the same wind (the logs, %.9g); its
+# checkpoint holds the column and the wind; 2 iterations and a restart to 4 match 4 straight iterations to the last
+# bit (fcompare, zero tolerances, both on two ranks); a checkpoint without the record is refused.
+set(COLUMN_INFLOW_CASE ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Column_Inflow)
+set(COLUMN_INFLOW_DIR ${CMAKE_CURRENT_BINARY_DIR}/run/rt_column_inflow)
+add_test(NAME rt_column_inflow_clean
+         COMMAND ${Python3_EXECUTABLE} -c
+                 "import shutil, os, sys; shutil.rmtree(sys.argv[1], ignore_errors=True); [os.makedirs(os.path.join(sys.argv[1], d)) for d in ('two', 'one', 'restart')]"
+                 ${COLUMN_INFLOW_DIR})
+set_tests_properties(rt_column_inflow_clean PROPERTIES LABELS "regression;smoke" FIXTURES_SETUP column_inflow_clean)
+gust_add_test(NAME rt_column_inflow_two_run NP 2 LABELS "regression;smoke" RUN_DIR ${COLUMN_INFLOW_DIR}/two
+              FIXTURES_REQUIRED column_inflow_clean FIXTURES_SETUP column_inflow_two
+              PREFIX ${EXPECT_ABORT} --success --log ${COLUMN_INFLOW_DIR}/two/run.log "gust: not steady after 1 iterations" --
+              COMMAND $<TARGET_FILE:gust> ${COLUMN_INFLOW_CASE}/inputs_column ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME rt_column_inflow_one_run NP 2 LABELS "regression;smoke" RUN_DIR ${COLUMN_INFLOW_DIR}/one
+              FIXTURES_REQUIRED column_inflow_clean FIXTURES_SETUP column_inflow_one
+              PREFIX ${EXPECT_ABORT} --success --log ${COLUMN_INFLOW_DIR}/one/run.log
+                     "gust: inflow faces: the converged column \\(bc\\.inflow_profile = column\\), 33 rows, z0 0\\.05 m, with the target wind's forcing"
+                     "gust: not steady after 4 iterations" --
+              COMMAND $<TARGET_FILE:gust> ${COLUMN_INFLOW_CASE}/inputs_inflow_column steady.max_iterations=4
+                      ${GUST_TEST_AMREX_FLAGS})
+add_test(NAME rt_column_inflow_same_column
+         COMMAND ${Python3_EXECUTABLE} ${COLUMN_INFLOW_CASE}/check_inflow_column.py same-column
+                 two/two_run_inflow.txt two/run.log one/one_run_inflow.txt one/run.log
+         WORKING_DIRECTORY ${COLUMN_INFLOW_DIR})
+add_test(NAME rt_column_inflow_record
+         COMMAND ${Python3_EXECUTABLE} ${COLUMN_INFLOW_CASE}/check_inflow_column.py record
+                 one/chk00004 one/one_run_inflow.txt one/run.log 0.05
+         WORKING_DIRECTORY ${COLUMN_INFLOW_DIR})
+set_tests_properties(rt_column_inflow_same_column rt_column_inflow_record PROPERTIES LABELS "regression;smoke"
+                     FIXTURES_REQUIRED "column_inflow_two;column_inflow_one" ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
+gust_add_test(NAME rt_column_inflow_first NP 2 LABELS "regression;smoke" RUN_DIR ${COLUMN_INFLOW_DIR}/restart
+              FIXTURES_REQUIRED column_inflow_clean FIXTURES_SETUP column_inflow_first
+              COMMAND $<TARGET_FILE:gust> ${COLUMN_INFLOW_CASE}/inputs_inflow_column steady.max_iterations=2
+                      ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME rt_column_inflow_restart NP 2 LABELS "regression;smoke" RUN_DIR ${COLUMN_INFLOW_DIR}/restart
+              FIXTURES_REQUIRED column_inflow_first FIXTURES_SETUP column_inflow_restart
+              PREFIX ${EXPECT_ABORT} --success
+                     "gust: inflow faces: the column of the checkpoint \\(bc\\.inflow_profile = column\\), 33 rows, z0 0\\.05 m; the forcing of its target wind replaces"
+                     "gust: not steady after 2 iterations \\(4 over the run\\)" --
+              COMMAND $<TARGET_FILE:gust> ${COLUMN_INFLOW_CASE}/inputs_inflow_column_restart steady.max_iterations=4
+                      io.restart=chk00002 ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME rt_column_inflow_restart_matches NP 1 LABELS "regression;smoke" RUN_DIR ${COLUMN_INFLOW_DIR}
+              FIXTURES_REQUIRED "column_inflow_restart;column_inflow_one"
+              COMMAND ${FCOMPARE} --rel_tol 0 --abs_tol 0 one/plt00004 restart/restart_plt00004)
+add_test(NAME rt_column_inflow_drop_record
+         COMMAND ${Python3_EXECUTABLE} ${COLUMN_INFLOW_CASE}/check_inflow_column.py drop-record chk00002 chk_no_record
+         WORKING_DIRECTORY ${COLUMN_INFLOW_DIR}/restart)
+set_tests_properties(rt_column_inflow_drop_record PROPERTIES LABELS "regression;smoke" FIXTURES_REQUIRED column_inflow_first
+                     FIXTURES_SETUP column_inflow_no_record ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
+gust_add_test(NAME abort_column_inflow_no_record NP 1 LABELS "regression;smoke" RUN_DIR ${COLUMN_INFLOW_DIR}/restart
+              FIXTURES_REQUIRED column_inflow_no_record
+              PREFIX ${EXPECT_ABORT} "io\\.restart = chk_no_record: the checkpoint was written without bc\\.inflow_profile = column" --
+              COMMAND $<TARGET_FILE:gust> ${COLUMN_INFLOW_CASE}/inputs_inflow_column_restart steady.max_iterations=3
+                      io.restart=chk_no_record ${GUST_TEST_AMREX_FLAGS})
+# A restart deck at another latitude or roughness than the checkpoint's column is refused, naming each key.
+gust_add_test(NAME abort_column_inflow_restart_changed NP 1 LABELS "regression;smoke" RUN_DIR ${COLUMN_INFLOW_DIR}/restart
+              FIXTURES_REQUIRED column_inflow_first
+              PREFIX ${EXPECT_ABORT} "io\\.restart = chk00002: the checkpoint's column ran at forcing\\.latitude = 45"
+                     "io\\.restart = chk00002: the checkpoint's column ran on bc\\.surface_z0 = 0\\.05" --
+              COMMAND $<TARGET_FILE:gust> ${COLUMN_INFLOW_CASE}/inputs_inflow_column_restart_changed steady.max_iterations=3
+                      io.restart=chk00002 ${GUST_TEST_AMREX_FLAGS})
+# A restart with no stage reads no bc.* keys; its checkpoint carries the record of the one it read.
+gust_add_test(NAME rt_column_inflow_nostage NP 2 LABELS "regression;smoke" RUN_DIR ${COLUMN_INFLOW_DIR}/one
+              FIXTURES_REQUIRED column_inflow_one FIXTURES_SETUP column_inflow_nostage
+              COMMAND $<TARGET_FILE:gust> ${COLUMN_INFLOW_CASE}/inputs_inflow_column_nostage io.restart=chk00004
+                      ${GUST_TEST_AMREX_FLAGS})
+add_test(NAME rt_column_inflow_nostage_record
+         COMMAND ${Python3_EXECUTABLE} ${COLUMN_INFLOW_CASE}/check_inflow_column.py record
+                 one/nostage_chk00004 one/one_run_inflow.txt one/run.log 0.05
+         WORKING_DIRECTORY ${COLUMN_INFLOW_DIR})
+set_tests_properties(rt_column_inflow_nostage_record PROPERTIES LABELS "regression;smoke"
+                     FIXTURES_REQUIRED column_inflow_nostage ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
+# bc.inflow_profile = column on the periodic column deck: no inflow face, refused with the key named.
+gust_add_test(NAME abort_column_inflow_no_face NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT} "bc\\.inflow_profile = column needs an inflow face" --
+              COMMAND $<TARGET_FILE:gust> ${COLUMN_INFLOW_CASE}/inputs_column bc.inflow_profile=column ${GUST_TEST_AMREX_FLAGS})
 # io.column_guess_file without the column guess has no effect: refused, the key named.
 gust_add_test(NAME abort_column_guess_file_no_column NP 1 LABELS "regression;smoke"
               PREFIX ${EXPECT_ABORT} "io\\.column_guess_file has no effect without init\\.first_guess = column" --

@@ -87,7 +87,7 @@ bc.ylo_wall_velocity real 3
 bc.yhi_wall_velocity real 3
 bc.zlo_wall_velocity real 3
 bc.zhi_wall_velocity real 3
-bc.inflow_profile log_law,power_law,file 1
+bc.inflow_profile log_law,power_law,file,column 1
 bc.inflow_ustar real 1 >0
 bc.inflow_z0 real 1 >0
 bc.inflow_speed real 1 >=0

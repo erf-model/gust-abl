@@ -1,0 +1,48 @@
+# The single run (bc.inflow_profile = column): a round hill, 100 m high, under a wind of 8 m/s at 100 m from the
+# south-west, entering through the xlo and ylo faces. The run solves the column of inputs_column at start-up
+# (init.first_guess = column, the same target wind), then takes the converged column as the profile of the inflow
+# faces and the adjusted geostrophic wind as its forcing. The faces take the column's roughness (bc.surface_z0).
+mesh.n_cell        = 16 16 32
+mesh.prob_lo       = -1600. -1600. 0.
+mesh.prob_hi       =  1600.  1600. 1600.
+mesh.max_grid_size = 8
+
+terrain.type            = agnesi
+terrain.hill_height     = 100.
+terrain.hill_half_width = 400.
+terrain.hill_shape      = round
+
+bc.xlo = inflow
+bc.ylo = inflow
+bc.xhi = outflow
+bc.yhi = outflow
+bc.zlo = surface_layer
+bc.zhi = slip_wall
+bc.surface_z0      = 0.05
+bc.theta_profile_z = 0.
+bc.theta_profile   = 300.
+bc.inflow_profile  = column
+bc.rayleigh_zdamp    = 1200.
+bc.rayleigh_dampcoef = 0.2
+bc.rayleigh_fields   = w
+
+abl.drive = geostrophic_inflow
+forcing.latitude = 45.
+forcing.ug       = 10.   # the first guess of the target search; the run takes the adjusted wind
+forcing.vg       = 0.
+forcing.gravity  = 0.
+
+init.first_guess = column
+init.column_target_u      = 5.6568542
+init.column_target_v      = 5.6568542
+init.column_target_height = 100.
+
+turb.max_geom_lscale = 100.
+
+steady.stage          = simplec
+# steady.max_iterations is given on the command line (the CTests run 2 and 4)
+
+io.column_guess_file = one_run_inflow.txt
+io.plot_file         = plt
+io.turb_plot_file    = turb
+io.chk_file          = chk

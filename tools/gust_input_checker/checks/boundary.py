@@ -123,7 +123,10 @@ class InflowChecker(Checker):
     def run(self):
         c = self.ctx
         kind = c.inflow_profile
-        if kind not in ("log_law", "power_law", "file"):
+        if kind not in ("log_law", "power_law", "file", "column"):
+            return
+        if kind == "column":
+            self._column()
             return
         if not c.needs_profile:
             for k in ("inflow_profile", "inflow_ustar", "inflow_z0", "inflow_speed", "inflow_zref", "inflow_alpha",
@@ -155,6 +158,36 @@ class InflowChecker(Checker):
         self._direction()
         if kind == "log_law":
             self._log_law(z0)
+
+    def _column(self):
+        """bc.inflow_profile = column: the run's own column is the faces' profile (Source/InflowColumn.cpp)."""
+        c = self.ctx
+        pre = "GUST stops: bc.inflow_profile = column "
+        for k in ("inflow_ustar", "inflow_speed", "inflow_zref", "inflow_alpha", "inflow_file"):
+            self.no_effect("bc." + k, "with bc.inflow_profile = column (the faces take the column's table)")
+        if self.given("bc.inflow_direction"):
+            self.error("bc.inflow_direction", pre + "refuses bc.inflow_direction (the column gives u and v).",
+                       "Remove bc.inflow_direction.")
+        if self.given("bc.inflow_z0"):
+            self.error("bc.inflow_z0", pre + "refuses bc.inflow_z0: the faces take the column's roughness "
+                                             "(init.column_z0 with bc.surface_z0_file, else bc.surface_z0).",
+                       "Remove bc.inflow_z0.")
+        if self.given("bc.inflow_tke_length"):
+            self.error("bc.inflow_tke_length", pre + "refuses bc.inflow_tke_length (the column's table has k).",
+                       "Remove bc.inflow_tke_length.")
+        if c.first_guess != "column" and not c.restart:
+            self.error("bc.inflow_profile", pre + "needs init.first_guess = column (the run solves its column at "
+                                                  "start-up) or io.restart (the checkpoint holds the column).",
+                       "Set init.first_guess = column.")
+        if not c.inflow_faces:
+            self.error("bc.inflow_profile", pre + "needs an inflow face (bc.xlo, bc.xhi, bc.ylo or bc.yhi = inflow).",
+                       "Without one, init.first_guess = column alone gives the first guess.")
+        if c.positive("bc.rayleigh_zdamp") and any(c.rayleigh_field(f) for f in ("u", "v", "tke")):
+            self.error("bc.rayleigh_fields", pre + "with a Rayleigh layer on u, v or tke: the column's layer would "
+                                                   "relax towards the profile it is solving for.",
+                       "Leave u, v and tke out of bc.rayleigh_fields.")
+        if self.given("nest.names"):
+            self.error("nest.names", pre + "is not supported with nest.names.", "Use bc.inflow_profile = file.")
 
     def _direction(self):
         c = self.ctx

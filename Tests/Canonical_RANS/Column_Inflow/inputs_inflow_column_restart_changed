@@ -1,0 +1,41 @@
+# The restart deck at another latitude and roughness than the checkpoint's column: the restart is refused,
+# naming forcing.latitude and bc.surface_z0 (abort_column_inflow_restart_changed). Otherwise inputs_inflow_column_restart.
+mesh.n_cell        = 16 16 32
+mesh.prob_lo       = -1600. -1600. 0.
+mesh.prob_hi       =  1600.  1600. 1600.
+mesh.max_grid_size = 8
+
+terrain.type            = agnesi
+terrain.hill_height     = 100.
+terrain.hill_half_width = 400.
+terrain.hill_shape      = round
+
+bc.xlo = inflow
+bc.ylo = inflow
+bc.xhi = outflow
+bc.yhi = outflow
+bc.zlo = surface_layer
+bc.zhi = slip_wall
+bc.surface_z0      = 0.1
+bc.theta_profile_z = 0.
+bc.theta_profile   = 300.
+bc.inflow_profile  = column
+bc.rayleigh_zdamp    = 1200.
+bc.rayleigh_dampcoef = 0.2
+bc.rayleigh_fields   = w
+
+abl.drive = geostrophic_inflow
+forcing.latitude = 40.
+forcing.ug       = 10.   # the first guess of the target search; the run takes the adjusted wind
+forcing.vg       = 0.
+forcing.gravity  = 0.
+
+
+turb.max_geom_lscale = 100.
+
+steady.stage          = simplec
+# steady.max_iterations is given on the command line (the CTests run 2 and 4)
+
+io.plot_file         = changed_plt
+io.turb_plot_file    = changed_turb
+io.chk_file          = changed_chk

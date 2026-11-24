@@ -183,7 +183,7 @@ Quick reference
      - Velocity of a no-slip wall (m/s)
    * - ``bc.inflow_profile``
      - ``log_law``
-     - Inflow profile type
+     - Inflow profile type (``column``: the run's own column)
    * - ``bc.inflow_ustar``, ``bc.inflow_z0``
      - 0.4 m/s, 0.1 m
      - Log-law friction velocity and roughness
@@ -823,7 +823,8 @@ A restart cannot be combined with ``init.*`` keys.
        column's Rayleigh reference wind are turned and scaled by the ratio of the target to the column's wind there,
        the pressure gradient by that ratio times its magnitude, until they agree to 1e-4; the run then uses that
        forcing. Both 0: off (giving them as 0 is refused). Refused with what would hold the 3-D wind to the deck's
-       inflow profile: a Rayleigh layer on u and v, a sponge or an inflow face; and with a stratified column unless
+       inflow profile: a Rayleigh layer on u and v, a sponge or an inflow face (the sponge and the inflow face are
+       accepted with ``bc.inflow_profile = column``, which makes them take the target column); and with a stratified column unless
        ``bc.surface_stability = heat_flux``.
    * - ``init.column_target_height``
      - ``0``
@@ -895,8 +896,21 @@ types, the inflow profile and the sounding; the other keys act in the SIMPLEC st
        normal component must be 0.
    * - ``bc.inflow_profile``
      - ``log_law``
-     - ``log_law``, ``power_law`` or ``file``. The inflow keys need an inflow face, a damping layer,
-       ``init.first_guess = profile`` or ``column``, or a restart.
+     - ``log_law``, ``power_law``, ``file`` or ``column``. The inflow keys need an inflow face, a damping layer,
+       ``init.first_guess = profile`` or ``column``, or a restart. ``column``: the inflow faces, the side sponge
+       and the :math:`\theta` Rayleigh layer take the run's own converged column (``init.first_guess = column``), and the run keeps the forcing of
+       its target wind (:ref:`the run's own column <inflow-column>`). It needs ``init.first_guess = column`` (or ``io.restart``: the
+       checkpoint holds the column and its forcing) and an inflow face. Refused with ``bc.inflow_z0`` (the faces take
+       the column's roughness: ``init.column_z0`` under a map, else ``bc.surface_z0``), ``bc.inflow_tke_length``
+       (the column has :math:`k`), ``bc.inflow_direction``, ``bc.inflow_file``, the other analytic keys, a Rayleigh
+       layer on ``u``, ``v`` or ``tke``, and ``nest.names``. Accepted with ``abl.drive = geostrophic_column`` and
+       ``abl.theta = frozen``. A restart refuses a checkpoint written with another kind, and the other kinds refuse
+       a checkpoint written with ``column``. On a restart, the record's forcing replaces the deck's when the column
+       had a target wind; otherwise the deck's ``forcing.ug``, ``forcing.vg`` and ``forcing.pressure_gradient``
+       must equal the record's. The restart deck must also keep ``forcing.coriolis``, ``forcing.latitude``,
+       ``forcing.rotation_period`` and ``bc.surface_z0`` (or a ``bc.surface_z0_file`` when the column ran under a
+       map); each difference aborts, naming the key. ``abl.drive = pressure_driven`` with a stratified
+       :math:`\theta` is refused with ``column``: that drive needs a Rayleigh layer on ``u`` and ``v``.
    * - ``bc.inflow_ustar``
      - 0.4 m/s
      - Finite, > 0; ``log_law`` only.

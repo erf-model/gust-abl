@@ -1,0 +1,15 @@
+# A restart of inputs_inflow_column with no stage (io.restart on the command line). It reads no bc.* keys and writes
+# a plotfile and a checkpoint of the restarted state; its checkpoint carries the InflowColumn record of the one it
+# read, so a later restart with bc.inflow_profile = column can continue from it.
+mesh.n_cell        = 16 16 32
+mesh.prob_lo       = -1600. -1600. 0.
+mesh.prob_hi       =  1600.  1600. 1600.
+mesh.max_grid_size = 8
+
+terrain.type            = agnesi
+terrain.hill_height     = 100.
+terrain.hill_half_width = 400.
+terrain.hill_shape      = round
+
+io.plot_file = nostage_plt
+io.chk_file  = nostage_chk
