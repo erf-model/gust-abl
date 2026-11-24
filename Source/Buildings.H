@@ -156,6 +156,10 @@ struct BuildingsOptions
     //! from a surface. The mesh's layers then slope with the envelope (HybridTerrain.H), and the cut geometry
     //! measures the ground from each node's own height (BuildingsSurface.cpp).
     bool hybrid_mesh{false};
+    //! Set by the application, not read: terrain.lee_turn and terrain.lee_turn_ramp with an immersed ground
+    //! (ImmersedLeeTurn.H). 0: off.
+    double ground_lee_turn{0};
+    double ground_lee_turn_ramp{0.05};
     std::vector<std::string> given;  //!< buildings.* keys in the inputs
     std::vector<std::string> parse_errors;   //!< value counts and repeats
     [[nodiscard]] bool active () const { return type != BuildingsType::none; }

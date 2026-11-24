@@ -37,6 +37,8 @@ void BuildingForcing::build (const Buildings& b, const BuildingsOptions& opt, co
     m_k_cell_mean = opt.wall_tke && opt.wall_k_speed == BuildingWallKSpeed::cell_mean && side_law() && !opt.immersed_ground;
     m_spacing.clear();   // a rebuild without an immersed ground keeps no spacing
     if (m_immersed_ground && wall_law()) { make_centroid_spacing(); }
+    m_lee.build(b, geom, detJ, opt.immersed_ground ? static_cast<amrex::Real>(opt.ground_lee_turn) : amrex::Real(0),
+                static_cast<amrex::Real>(opt.ground_lee_turn_ramp));
     // The weight of each face in a cell's speed: 0 on a fixed row with buildings.wall_speed =
     // open_faces, else 1. A fixed row is a blocked face (fraction 1), but for w on the ground,
     // which is the boundary conditions' row (its value follows the slope). One ghost layer:
@@ -288,6 +290,8 @@ void BuildingForcing::set_ground_roughness (const amrex::MultiFab& map)
 
 void BuildingForcing::update (const amrex::MultiFab& u, const amrex::MultiFab& v, const amrex::MultiFab& w)
 {
+    // The lee turn does not depend on the wall law (it reads m_weight, which build sets either way).
+    m_lee.update(u, v, m_weight);
     if (!wall_law()) { return; }
     const amrex::Real z0 = m_z0, kappa = amrex::Real(0.41), umin = kBuildingMinSpeed;
     m_rate.setVal(0.0);
@@ -412,6 +416,7 @@ void BuildingForcing::update (const amrex::MultiFab& u, const amrex::MultiFab& v
 void BuildingForcing::add_sink (const amrex::MultiFab& u, const amrex::MultiFab& v, const amrex::MultiFab& w, amrex::MultiFab& Ru,
                                 amrex::MultiFab& Rv, amrex::MultiFab& Rw) const
 {
+    m_lee.add_sink(w, Rw);
     if (!wall_law()) { return; }
     const amrex::MultiFab* q[3] = {&u, &v, &w};
     amrex::MultiFab* R[3] = {&Ru, &Rv, &Rw};
@@ -521,6 +526,7 @@ void BuildingForcing::apply_rows (const amrex::MultiFab& u, const amrex::MultiFa
 void BuildingForcing::add_to_implicit (int c, const amrex::Array<const amrex::MultiFab*, AMREX_SPACEDIM>& open, amrex::MultiFab& A) const
 {
     const int di = (c == 0) ? 1 : 0, dj = (c == 1) ? 1 : 0, dk = (c == 2) ? 1 : 0;
+    if (c == 2) { m_lee.add_to_implicit(A); }
     if (wall_law() && (c < 2 || side_law())) {
         for (amrex::MFIter mfi(A, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
             const auto a = A.array(mfi);

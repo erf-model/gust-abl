@@ -53,6 +53,8 @@ terrain.nest_blend_width real 1 >=0
 terrain.representation body_fitted,immersed_forcing,hybrid 1
 terrain.flat_height real 1 >=0
 terrain.small_volfrac real 1 >=1e-4&<0.5
+terrain.lee_turn real 1 >=0&<=0.25
+terrain.lee_turn_ramp real 1 >0&<=1
 terrain.hybrid_half_width real 1 >=0
 init.first_guess none,profile,column,nest 1
 init.projection flag 1

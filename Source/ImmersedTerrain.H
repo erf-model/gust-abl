@@ -71,8 +71,8 @@ std::string check_immersed_ground_extent (const amrex::MultiFab& z_nd, double fi
 
 //! The wall-law options of the immersed ground: buildings.type = immersed_forcing with the form 7
 //! law on every wall (fraction_stress, open_faces), the wall value of k (wall_tke), no heat
-//! (a neutral run), no lee zone, t.small_volfrac, the ground's roughness z0 (bc.surface_z0) and
-//! immersed_ground set (hybrid_mesh with a hybrid mesh). z0_map: the roughness is a map
+//! (a neutral run), no lee zone, t.small_volfrac, the lee turn (t.lee_turn, t.lee_turn_ramp), the
+//! ground's roughness z0 (bc.surface_z0) and immersed_ground set (hybrid_mesh with a hybrid mesh). z0_map: the roughness is a map
 //! (bc.surface_z0_file), which the wall law takes from its level (BuildingForcing::set_ground_roughness);
 //! z0 is then not read. t.representation must be immersed_forcing or hybrid.
 BuildingsOptions immersed_terrain_options (const TerrainInputs& t, double z0, bool z0_map = false);

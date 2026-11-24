@@ -45,6 +45,7 @@ add_executable(unit_tests
     Unit_Tests/test_BuildingForcing.cpp
     Unit_Tests/test_ImmersedTerrain.cpp
     Unit_Tests/test_ImmersedSurface.cpp
+    Unit_Tests/test_ImmersedLeeTurn.cpp
     Unit_Tests/test_HybridTerrain.cpp
     Unit_Tests/test_BuildingLoads.cpp
     Unit_Tests/test_BuildingTheta.cpp
@@ -2518,6 +2519,16 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
                          --reference-immersed ${IMMERSED_RIDGE_CASE}/inputs_immersed_ridge --sweep 2e-4 --
                   COMMAND $<TARGET_FILE:gust> ${IMMERSED_RIDGE_CASE}/inputs_immersed_ridge_lusgs ${GUST_TEST_AMREX_FLAGS})
     set_tests_properties(rt_immersed_ridge_lusgs PROPERTIES TIMEOUT 1800)
+    # The ridge across the wind with the lee turn (terrain.lee_turn = 0.25), every other key the same, against the
+    # same body-fitted run, with tighter limits than rt_immersed_ridge_vertical in the lee: measured at 20 m, crest
+    # -1.07 %, lee minimum -9.65 %, rms 5.03 % (without the lee turn -1.52 %, -13.02 % and 6.36 %, which fail the
+    # lee and rms limits here). Two runs, about 8 min on 4 ranks.
+    gust_add_test(NAME rt_immersed_ridge_lee NP 4 LABELS "regression"
+                  RUN_DIR ${CMAKE_CURRENT_BINARY_DIR}/run/rt_immersed_ridge_lee
+                  PREFIX ${Python3_EXECUTABLE} ${IMMERSED_RIDGE_CASE}/check_immersed_ridge.py --wind across --variant lee
+                         --crest 2 --lee 11 --rms 5.5 --body-fitted ${IMMERSED_RIDGE_CASE}/inputs_body_fitted_ridge --
+                  COMMAND $<TARGET_FILE:gust> ${IMMERSED_RIDGE_CASE}/inputs_immersed_ridge_lee ${GUST_TEST_AMREX_FLAGS})
+    set_tests_properties(rt_immersed_ridge_lee PROPERTIES TIMEOUT 1800)
     if(GUST_PYTHON_NUMPY)
         # An immersed flat ground between an inflow and an outflow face against the body-fitted
         # run (Immersed_Open_Faces/README.md), one rank per run: the ground on a layer's face

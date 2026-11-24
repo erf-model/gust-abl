@@ -300,7 +300,7 @@ class ImmersedTerrainChecker(Checker):
         if not hybrid:
             self.no_effect("terrain.hybrid_half_width", "unless terrain.representation = hybrid")
         if rep == "body_fitted":
-            for k in ("flat_height", "small_volfrac"):
+            for k in ("flat_height", "small_volfrac", "lee_turn", "lee_turn_ramp"):
                 self.no_effect("terrain." + k, "unless terrain.representation = immersed_forcing or hybrid")
             return
         if rep not in ("immersed_forcing", "hybrid"):
@@ -316,6 +316,14 @@ class ImmersedTerrainChecker(Checker):
 
         def refuse(key, what, advice=""):
             self.error(key, "GUST stops: terrain.representation = %s %s." % (rep, what), advice)
+
+        lee = c.r("terrain.lee_turn")
+        if self.given("terrain.lee_turn_ramp") and not (lee is not None and lee > 0):
+            self.error("terrain.lee_turn_ramp", "GUST stops: terrain.lee_turn_ramp is given with terrain.lee_turn = 0 "
+                                                "(the lee turn is off).", "Give terrain.lee_turn > 0, or remove the ramp.")
+        if self.given("terrain.lee_turn") and lee is not None and lee > 0 and c.terrain_type in ("", "flat"):
+            self.error("terrain.lee_turn", "GUST stops: terrain.lee_turn has no effect with terrain.type = flat "
+                                           "(a flat ground has no lee).", "Remove terrain.lee_turn.")
 
         h = c.r("terrain.flat_height")
         if hybrid:

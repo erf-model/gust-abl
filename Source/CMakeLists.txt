@@ -21,6 +21,7 @@ set(GUST_SOURCES
     Convection.cpp
     Diffusion.cpp
     ImplicitOperator.cpp
+    ImmersedLeeTurn.cpp
     ImmersedStrain.cpp
     LogShear.cpp
     HybridTerrain.cpp

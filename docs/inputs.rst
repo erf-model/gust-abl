@@ -121,6 +121,12 @@ Quick reference
    * - ``terrain.small_volfrac``
      - ``0.005``
      - Solid fractions this close to 0 or 1 are rounded (immersed ground)
+   * - ``terrain.lee_turn``
+     - ``0`` (off)
+     - Turns the flow down with the ground in the lee cut cells of an immersed ground (:math:`C_0`)
+   * - ``terrain.lee_turn_ramp``
+     - ``0.05``
+     - Width of the ramp that brings the lee turn in where the ground turns from windward to lee (:math:`\epsilon`)
    * - **Initial conditions** (`init`_)
      -
      -
@@ -753,6 +759,19 @@ Quick reference
        1, as with ``buildings.small_volfrac``, so it still decides which cells are solid. Unlike
        ``buildings.small_volfrac`` it is not a tolerance of the wall-cell test: every cell that is not solid and whose
        low z face is more blocked than its high one is a wall cell. May not change across a restart.
+   * - ``terrain.lee_turn``
+     - ``0`` (off)
+     - 0 (off) or in (0, 0.25], finite; ``immersed_forcing`` and ``hybrid`` only (refused when given otherwise).
+       :math:`C_0` of the lee turn: in a cut cell where the ground falls away along the wind, :math:`w` is relaxed
+       towards the ground's slope times the wind of the first fully fluid cell above, at the rate
+       :math:`C_0 n^2 |U_r| / \Delta z` (:doc:`immersed_terrain`, Lee turn). 0.25 is the value chosen there on a
+       ridge; the bound is set there because 0.3 did not reach a steady state on 50 m cells. A value > 0 is refused
+       with ``terrain.type = flat``, which has no lee. May change across a restart.
+   * - ``terrain.lee_turn_ramp``
+     - ``0.05``
+     - In (0, 1], finite; refused when given with ``terrain.lee_turn = 0``. :math:`\epsilon` of the lee turn's
+       weight :math:`f = \min(1, -w_t / (\epsilon |U_r|))`, which brings the term in from 0 where the ground turns
+       from windward to lee, so the rate does not switch on and off between iterations. May change across a restart.
 
 ``init``
 --------

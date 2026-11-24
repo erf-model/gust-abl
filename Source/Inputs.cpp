@@ -94,7 +94,8 @@ Inputs parse_inputs ()
         auto& t = in.terrain;
         for (const char* key : {"type", "file", "smoothing", "gamma_m", "hill_height", "hill_half_width",
                                 "hill_shape", "idw_neighbors", "idw_power", "hierarchy_passes", "nest_blend_width",
-                                "representation", "flat_height", "small_volfrac", "hybrid_half_width"}) {
+                                "representation", "flat_height", "small_volfrac", "hybrid_half_width",
+                                "lee_turn", "lee_turn_ramp"}) {
             if (pp.contains(key)) {
                 t.given.emplace_back(key);
                 if (pp.countval(key) != 1) {
@@ -117,6 +118,8 @@ Inputs parse_inputs ()
         pp.query("flat_height", t.flat_height);
         pp.query("small_volfrac", t.small_volfrac);
         pp.query("hybrid_half_width", t.hybrid_half_width);
+        pp.query("lee_turn", t.lee_turn);
+        pp.query("lee_turn_ramp", t.lee_turn_ramp);
         // The roughness map (bc.surface_z0_file, SurfaceRoughness.H) shares the IDW keys.
         t.idw_for_z0_map = amrex::ParmParse("bc").contains("surface_z0_file");
         // So do the canopy's maps (canopy.type = map, Canopy.H). Read as text
@@ -151,7 +154,8 @@ Inputs parse_inputs ()
                        "stretch_ratio", "zlevels_file", "hierarchy_levels"}},
              {"terrain", {"type", "file", "smoothing", "gamma_m", "hill_height", "hill_half_width",
                           "hill_shape", "idw_neighbors", "idw_power", "hierarchy_passes", "nest_blend_width",
-                          "representation", "flat_height", "small_volfrac", "hybrid_half_width"}},
+                          "representation", "flat_height", "small_volfrac", "hybrid_half_width",
+                          "lee_turn", "lee_turn_ramp"}},
              {"io", {"plot_file", "chk_file", "restart", "write_plotfile", "write_checkpoint", "turb_plot_file",
                      "iteration_log", "column_guess_file"}}}) {
         amrex::ParmParse pp(ns);
@@ -326,8 +330,20 @@ std::vector<std::string> validate (const Inputs& in)
         if (m.hierarchy_levels > 1) {
             err.emplace_back(rep + " needs mesh.hierarchy_levels = 1 for now");
         }
+        // The lee turn (ImmersedLeeTurn.H): 0 is off.
+        if (!std::isfinite(t.lee_turn) || !(t.lee_turn >= 0) || !(t.lee_turn <= amrex::Real(0.25))) {
+            err.emplace_back("terrain.lee_turn must be 0 (off) or in (0, 0.25] (got " + std::to_string(static_cast<double>(t.lee_turn)) + ")");
+        }
+        if (!std::isfinite(t.lee_turn_ramp) || !(t.lee_turn_ramp > 0) || !(t.lee_turn_ramp <= 1)) {
+            err.emplace_back("terrain.lee_turn_ramp must be in (0, 1] (got " + std::to_string(static_cast<double>(t.lee_turn_ramp)) + ")");
+        } else if (given("lee_turn_ramp") && !(t.lee_turn > 0)) {
+            err.emplace_back("terrain.lee_turn_ramp has no effect unless terrain.lee_turn > 0");
+        }
+        if (given("lee_turn") && t.lee_turn > 0 && t.type == "flat") {
+            err.emplace_back("terrain.lee_turn has no effect with terrain.type = flat (a flat ground has no lee)");
+        }
     } else {
-        for (const char* k : {"flat_height", "small_volfrac"}) {
+        for (const char* k : {"flat_height", "small_volfrac", "lee_turn", "lee_turn_ramp"}) {
             if (given(k)) {
                 err.emplace_back(std::string("terrain.") + k + " has no effect unless terrain.representation = immersed_forcing or hybrid");
             }

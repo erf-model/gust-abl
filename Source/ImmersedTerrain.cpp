@@ -102,6 +102,8 @@ BuildingsOptions immersed_terrain_options (const TerrainInputs& t, double z0, bo
     o.limiter_zone_acts = false;
     o.immersed_ground = true;
     o.hybrid_mesh = t.representation == "hybrid";
+    o.ground_lee_turn = static_cast<double>(t.lee_turn);
+    o.ground_lee_turn_ramp = static_cast<double>(t.lee_turn_ramp);
     return o;
 }
 

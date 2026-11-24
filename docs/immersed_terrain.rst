@@ -38,6 +38,14 @@ unchanged.
    * - ``terrain.small_volfrac``
      - ``0.005``
      - A solid fraction below it becomes 0, and one within it of 1 becomes 1 (≥ 1e-4).
+   * - ``terrain.lee_turn``
+     - ``0`` (off)
+     - :math:`C_0` of the lee turn (`Lee turn`_): turns the flow down with the ground in the lee cut cells.
+       0.25 is the value chosen on a ridge.
+   * - ``terrain.lee_turn_ramp``
+     - ``0.05``
+     - :math:`\epsilon` of the lee turn: the width of the ramp that brings it in where the ground turns from
+       windward to lee.
 
 The ranges are in :doc:`inputs`.
 
@@ -261,6 +269,10 @@ the checkpoint: a restart computes them from the inputs, which the hash pins. Th
 checkpoint written before sloping grounds (version 1) or before the wall-cell test lost its tolerance (version 2) is
 refused, with a message naming the two versions. A restart reads the ``bc`` inputs in a stage only, so a restart of
 an immersed run names a ``steady.stage``.
+
+``terrain.lee_turn`` and ``terrain.lee_turn_ramp`` are not in the hash: they are model parameters, like the
+turbulence inputs, and a restart may change them (`Lee turn`_). The lee turn's rates are not in the checkpoint;
+the first iteration after a restart computes them from the restored wind.
 
 Verification
 ------------
@@ -831,6 +843,199 @@ same width (about 0.26 of the relief at a half-width of 8 cells, 0.58 at 4), and
 lies above the tool's upper end. The run warns when the largest gap exceeds 0.2 of the ground's height range and
 names ``tools/hybrid_width.py``. The gap is about the slope times the width while the square is narrower than the
 feature; once it spans a crest the crest gap is up to 1.2 times that.
+
+Lee turn
+--------
+
+In the cut cells the ground is a staircase of partly solid cells. Where the ground falls away along the wind, the
+cut cells pass the flow on through their open faces, but nothing turns it down with the ground: :math:`w` in a cut
+cell sees the closed parts of its faces and the wall law, not the slope. Over a ridge, the wind at 10 m above the
+ground in the lee is then slower than on the terrain-following mesh, and the deficit grows with the number of
+layers the ground crosses over one cell. ``terrain.lee_turn`` (:math:`C_0`, off by default) adds a term that turns
+the flow down with the ground in the lee cut cells.
+
+.. figure:: figures/immersed/lee_turn_schematic.png
+   :width: 100%
+
+   (a) A lee column: in a cut cell (grey) :math:`w` is relaxed towards :math:`w_t`, the slope times the wind
+   :math:`U_r` of the first fully fluid cell above (:math:`k_r`). :math:`n` counts the layers the ground crosses
+   over one cell. (b) The weight :math:`f` against :math:`-w_t/|U_r|` for three values of :math:`\epsilon`.
+
+In a cut cell (:math:`0 < \beta < 1`) the target is the vertical velocity of a flow that follows the ground,
+
+.. math::
+
+   w_t = s_x u_r + s_y v_r,
+
+with :math:`(s_x, s_y) = \nabla h` the ground's slope in the cell and :math:`(u_r, v_r)` the horizontal wind at the
+first cell above the cut cell with :math:`\beta = 0` (the reference cell; each component the mean of its two faces,
+weighted by their open parts as in `Open faces`_). Where :math:`w_t < 0` (the lee), the :math:`w` rows gain the sink
+
+.. math::
+
+   R_w \mathrel{+}= \lambda\,(w - w_t), \qquad a_P \mathrel{+}= \lambda, \qquad
+   \lambda = f\,C_0\,n^2\,\frac{|U_r|}{\Delta z},
+
+with
+
+.. math::
+
+   n = \max\!\left(1, \frac{\sqrt{(s_x\,\Delta x)^2 + (s_y\,\Delta y)^2}}{\Delta z}\right), \qquad
+   f = \min\!\left(1, \frac{-w_t}{\epsilon\,|U_r|}\right),
+
+:math:`\Delta z = J\,\Delta\zeta` the cut cell's height, :math:`\Delta x, \Delta y` the mesh spacings,
+:math:`|U_r| = \max(\sqrt{u_r^2 + v_r^2}, 10^{-3}` m/s), :math:`C_0` = ``terrain.lee_turn`` and :math:`\epsilon` =
+``terrain.lee_turn_ramp``. A windward cut cell (:math:`w_t \ge 0`) and a fluid or solid cell take nothing.
+
+- :math:`n` is the number of layers the ground drops over one cell. A ground that crosses several layers per cell
+  has several cut cells in a column. The power 2 is empirical: it was chosen on the ridge below, where :math:`n`
+  and :math:`n^{1/2}` left a deficit that grew with :math:`n`. Where :math:`n > 1`,
+  :math:`\lambda = C_0 |\nabla h|^2 \Delta x^2 |U_r| / \Delta z^3` (for :math:`s_y = 0`), so the rate grows quickly
+  as the layers are refined at a fixed :math:`\Delta x`; in practice :math:`w` then sits at :math:`w_t`.
+- :math:`f` brings the term in from 0 where the ground turns from windward to lee, so that the rate does not
+  switch on and off between iterations near a crest.
+- The form of the rate, a coefficient of order one times :math:`|U|/\Delta z`, is that of the drag forcing of
+  Kynema-SGF (``DragForcing.cpp``, :math:`C_d = 10/\Delta z`). Kynema-SGF caps its rate at :math:`1/\Delta t`;
+  here the term is implicit in :math:`a_P`, which does not need the cap for diagonal dominance.
+- A :math:`w` row on a z face takes the mean of its two cells' :math:`\lambda` and :math:`\lambda w_t`, as the
+  building rates do. The ground's own row (the mesh's lower face) and blocked faces take nothing.
+- :math:`\lambda` and :math:`w_t` are recomputed at each residual evaluation from the current wind and are
+  frozen within the line solves; the converged state is the same as with them updated in the solve. On a z face
+  between a cut cell and another cell the term vanishes at the :math:`\lambda`-weighted mean of the two cells'
+  :math:`w_t`; the face above the highest cut cell of a column takes half of that cell's rate. The term changes
+  the steady state by moving :math:`w` in the lee cut cells, which the open faces carry to :math:`u` and
+  :math:`v` through continuity.
+- With ``terrain.type = flat`` the slope is 0 and the term would be 0; ``terrain.lee_turn`` > 0 is refused there.
+
+Results for a periodic 2-D Agnesi ridge (``terrain.hill_shape = ridge_x``, height 80 m, half-width 200 m, largest
+slope 0.26; 12.8 km long; 78 stretched layers with a 2.4 m first layer; neutral, ``terrain.small_volfrac`` = 1e-4)
+against the terrain-following run on 12.5 m cells: rms of the speed difference at 10 and 40 m above the ground
+over :math:`|x| < 3` km.
+
+.. list-table::
+   :header-rows: 1
+
+   * - Mesh
+     - rms 10 m, off → :math:`C_0` = 0.25 (m/s)
+     - rms 40 m (m/s)
+     - Iterations
+   * - hybrid, dx = 100 m
+     - 1.09 → 0.22
+     - 1.22 → 0.32
+     - 170 / 133
+   * - hybrid, dx = 50 m
+     - 0.65 → 0.18
+     - 0.43 → 0.03
+     - 165 / 161
+   * - hybrid, dx = 25 m
+     - 0.12 → 0.036
+     - 0.055 → 0.017
+     - 160 / 157
+   * - flat immersed mesh, dx = 50 m
+     - 0.95 → 0.53
+     - 0.82 → 0.41
+     - 130 / 126
+   * - flat immersed mesh, dx = 25 m
+     - 0.70 → 0.53
+     - 0.49 → 0.34
+     - 150 / 147
+
+On the flat mesh the term removes about half of the 10 m difference on 50 m cells and a quarter on 25 m cells.
+The flat-mesh runs keep a deficit that does not shrink from 50 to 25 m cells (0.53 m/s in both), which the
+term does not address; the hybrid mesh is the recommended representation over terrain in any case.
+
+On two 128 m real-terrain sites on the hybrid mesh (an AWAKEN-area site and a site at 40.66 N, 86.87 W), against
+the terrain-following run on the same levels, at 10 m above the ground:
+
+.. list-table::
+   :header-rows: 1
+
+   * - Site, ``terrain.small_volfrac``
+     - rms (m/s), off → 0.25
+     - Columns with :math:`|\Delta S|` > 0.25 m/s
+     - > 1 m/s
+     - Iterations
+   * - AWAKEN area, 1e-4
+     - 0.077 → 0.064
+     - 195 → 138
+     - 7 → 0
+     - 256 / 256
+   * - AWAKEN area, 1e-3
+     - 0.080 → 0.069
+     - 227 → 169
+     - 7 → 0
+     - 158 / 157
+   * - 40.66 N, 86.87 W, 1e-4
+     - 0.061 → 0.048
+     - 87 → 56
+     - 10 → 5
+     - 147 / 140
+   * - 40.66 N, 86.87 W, 1e-3
+     - 0.062 → 0.049
+     - 94 → 64
+     - 10 → 5
+     - 141 / 136
+
+At 40 m no column differs by more than 0.25 m/s with the term on at either site. The largest overspeed against the
+terrain-following run is +0.28 m/s with the term on, against +0.12 m/s without it. The number of iterations does
+not grow.
+
+:math:`C_0` = 0.25 was chosen from 0.1, 0.15 and 0.25 on the ridge: the 10 m rms on 100 m cells is 0.68, 0.45 and
+0.22 m/s, and on 25 m cells 0.059, 0.029 and 0.036 m/s. 0.25 is a compromise across resolutions. Larger values
+were also run (hybrid ridge, iterations to :math:`r < 10^{-4}`, at most 3000):
+
+.. list-table::
+   :header-rows: 1
+
+   * - :math:`C_0`
+     - dx = 100 m
+     - dx = 50 m
+     - dx = 25 m
+   * - 0.25
+     - 133, rms 0.22 m/s
+     - 161, rms 0.18 m/s
+     - 157, rms 0.036 m/s
+   * - 0.3
+     -
+     - not steady (:math:`r` stays at 0.055)
+     - 157
+   * - 0.35
+     -
+     - not steady
+     - 599
+   * - 0.5
+     - 133, rms 0.40 m/s
+     - not steady
+     - not steady
+   * - 1
+     - 135, rms 0.68 m/s
+     -
+     - not steady
+   * - 10
+     - 134, rms 1.19 m/s
+     -
+     -
+
+On 100 m cells a larger :math:`C_0` converges but overturns the flow (the rms grows again). On 50 and 25 m cells
+the iteration settles into a cycle: :math:`w_t` is lagged, and a strong pull of :math:`w` towards it changes the
+reference wind through continuity, which moves :math:`w_t` at the next residual. ``terrain.lee_turn`` is therefore
+bounded by 0.25, the largest value that reached a steady state on all three meshes. 0.25 sits close to this limit;
+on a mesh or terrain not tested here, a smaller value may be needed for a steady state.
+
+On the flat immersed ridge of `Verification`_ (100 m high, 40 m cells), the term brings the 20 m lee minimum from
+13.0 % to 9.7 % of the far-field speed below the body-fitted run, and the rms from 6.4 % to 5.0 % (CTest
+``rt_immersed_ridge_lee``, 4809 iterations against 4822).
+
+Limits of the lee turn:
+
+- It is calibrated against the terrain-following mesh on smooth terrain, not against measurements. Where the flow
+  separates behind a steep edge, turning it down with the ground may not be right; this has not been tested.
+- It acts on :math:`w` only. The wall law and the turbulence of the cut cell are unchanged.
+- The target uses the wind of the reference cell, which in a log profile is faster than the wind at the cut
+  cell's height, so :math:`w_t` is steeper than a ground-following flow at that height would give.
+- It is not run with ``buildings.type`` (refused with an immersed ground).
+- Above :math:`C_0 \approx 0.3` the lagged target leads to a cycle in place of a steady state (see the table
+  above); an under-relaxed :math:`w_t` might lift this limit and is not tried here.
 
 Roughness map
 -------------

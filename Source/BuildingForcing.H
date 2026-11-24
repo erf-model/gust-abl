@@ -51,6 +51,7 @@
 // tilt is not taken out. A side is vertical, so (v, w) and (u, w) are parallel to it.
 
 #include "Buildings.H"
+#include "ImmersedLeeTurn.H"
 #include "SurfaceRoughness.H"
 #include "ImplicitOperator.H"
 
@@ -257,6 +258,9 @@ public:
     [[nodiscard]] const amrex::MultiFab& centroid_spacing () const { return m_spacing; }
     //! Fills centroid_spacing(). Public because it launches device kernels.
     void make_centroid_spacing ();
+    //! The lee turn of an immersed ground (terrain.lee_turn, ImmersedLeeTurn.H): update, add_sink and
+    //! add_to_implicit (w rows) call it; it is off unless the ground is immersed and lee_turn > 0.
+    [[nodiscard]] const ImmersedLeeTurn& lee_turn () const { return m_lee; }
 
 private:
     const Buildings* m_b{nullptr};
@@ -273,6 +277,7 @@ private:
     bool m_k_towards{false};   //!< buildings.wall_k_bound = impinging: kBuildingTowardsX..Z are filled
     bool m_immersed_ground{false};
     amrex::MultiFab m_spacing;
+    ImmersedLeeTurn m_lee;
 };
 
 //! How many fluid cells have no open path to the largest-index region. Aborts are
