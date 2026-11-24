@@ -29,7 +29,6 @@ struct ImmersedTerrainFacts
     bool buildings{false};           //!< buildings.type given
     bool nests{false};               //!< nest.names given, or this run is a nest
     bool newton{false};              //!< steady.stage = simplec_newton
-    bool zline_sweeps{true};         //!< steady.sweep = zjacobi
     bool poisson_mlmg{false};        //!< solver.poisson_backend = mlmg
     bool laminar{false};             //!< turb.closure = none
     bool unsteady{false};            //!< steady.stage = unsteady
@@ -55,6 +54,11 @@ std::vector<std::string> check_immersed_terrain (const ImmersedTerrainFacts& f);
 //! terrain.flat_height may be anything from 0: the surface layer's k row is off in the columns whose
 //! first cell is cut or solid (SurfaceLayerOptions::immersed_columns).
 std::string check_immersed_terrain_height (const TerrainInputs& t, double first_layer_top, double top_layer_bottom);
+
+//! The advice printed with terrain.representation = immersed_forcing over terrain that is not flat: a flat mesh
+//! puts the ground across many layers, and the hybrid mesh (terrain.representation = hybrid) keeps it within a few.
+//! Empty for hybrid, body_fitted and terrain.type = flat (where hybrid gives the same mesh).
+std::string immersed_terrain_advice (const TerrainInputs& t);
 
 //! The ground's height into z_nd's last component (of two), at every node of every column, ghost
 //! nodes included: terrain.flat_height plus the terrain's height (fill_terrain_surface for

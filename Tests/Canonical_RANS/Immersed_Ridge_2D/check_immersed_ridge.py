@@ -2,11 +2,13 @@
 """Run GUST on the immersed ridge and on its body-fitted reference and compare them (rt_immersed_ridge_*).
 
     check_immersed_ridge.py --body-fitted DECK [--wind across|along|hill]
-                            [--crest PCT] [--lee PCT] [--rms PCT] [--max PCT] [--reuse] -- COMMAND [ARGS ...]
+                            [--crest PCT] [--lee PCT] [--rms PCT] [--max PCT] [--reuse]
+                            [--variant NAME] [--reference-immersed DECK --sweep PCT] -- COMMAND [ARGS ...]
 
 COMMAND runs the application on inputs_immersed_ridge (--wind across, the default),
 inputs_immersed_along (--wind along) or inputs_immersed_hill (--wind hill, the round hill, read along
-the row of columns just north of its centre).
+the row of columns just north of its centre). With --variant NAME the immersed deck is
+inputs_immersed_<case>_NAME and its plotfiles immersed_<case>_NAME_plt (inputs_immersed_ridge_lusgs).
 The same COMMAND with DECK in place of the immersed deck runs the body-fitted ridge in the sub-folder
 body_fitted/ (--reuse: a body-fitted plotfile already there is read instead). Both must reach the
 steady verdict. The wind (u across the ridge, v along it) is then read at fixed heights above the ground, d = 20, 40, 80 and 160 m,
@@ -20,11 +22,18 @@ ln((d + z0)/z0). At each d:
   * the root mean square of the difference over the columns is at most --rms percent of that speed.
 With --wind along there is no crest or lee: the largest difference over the columns is at most --max
 percent of the body-fitted far-field speed, and the rms at most --rms percent.
+With --reference-immersed DECK the same COMMAND also runs DECK (an immersed deck of the same ridge, e.g. the
+z-line Jacobi one for the LU-SGS variant) in the sub-folder reference_immersed/ (--reuse as above), and at each d
+the largest difference over the columns between the two immersed runs, of the wind across the ridge and of w, is at
+most --sweep percent of the body-fitted far-field speed, and of k at most --sweep percent of the body-fitted far-field
+k: two sweeps that reach the steady verdict must give the same fields. --sweep must then be given, and the two runs'
+logs must name different sweeps (gust: SIMPLEC stage: N <sweep> sweeps).
 Prints one row per check and the measured table; the exit code is the verdict.
 """
 import glob
 import math
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -82,9 +91,15 @@ def iterations(log):
     return "?"
 
 
-def columns(plt, base, immersed, case):
-    """Per column, the (height above the ground, wind) of its fluid cells, lowest first."""
-    comp, NX, row = case["comp"], case["nx"], case["row"]
+def sweep_name(log):
+    """The sweep the run's SIMPLEC stage used, from its log."""
+    m = re.search(r"gust: SIMPLEC stage: \d+ (\w+) sweeps", log)
+    return m.group(1) if m else "?"
+
+
+def columns(plt, base, immersed, case, comp=None):
+    """Per column, the (height above the ground, value) of its fluid cells, lowest first (the wind by default)."""
+    comp, NX, row = comp or case["comp"], case["nx"], case["row"]
     names = [comp, "z"] + (["building_beta"] if immersed else [])
     _, f = erf_plotfile.read_fields(plt, names)
     if len(f[comp]) != NX:
@@ -111,15 +126,25 @@ def at(pts, d):
     return pts[0][1] * lg(d) / lg(pts[0][0])
 
 
+def lin(pts, d):
+    """A value at the height d above the ground, linear in d between fluid cells (the lowest one's below it)."""
+    for a, b in zip(pts, pts[1:]):
+        if a[0] <= d <= b[0]:
+            return a[1] + (d - a[0]) / (b[0] - a[0]) * (b[1] - a[1])
+    return pts[0][1] if d < pts[0][0] else pts[-1][1]
+
+
 def main(argv):
     if "--" not in argv:
         raise SystemExit(__doc__)
     sep = argv.index("--")
     opts, cmd = argv[:sep], argv[sep + 1:]
     body_fitted = None
-    lim = {"--crest": 5.0, "--lee": 10.0, "--rms": 5.0, "--max": 5.0}
+    lim = {"--crest": 5.0, "--lee": 10.0, "--rms": 5.0, "--max": 5.0, "--sweep": None}
+    reference = None
     wind = "across"
     reuse = False
+    variant = ""
     i = 0
     while i < len(opts):
         if opts[i] == "--reuse":
@@ -128,6 +153,10 @@ def main(argv):
             continue
         if opts[i] == "--wind":
             wind = opts[i + 1]
+        elif opts[i] == "--variant":
+            variant = "_" + opts[i + 1]
+        elif opts[i] == "--reference-immersed":
+            reference = opts[i + 1]
         elif opts[i] == "--body-fitted":
             body_fitted = opts[i + 1]
         elif opts[i] in lim:
@@ -137,11 +166,13 @@ def main(argv):
         i += 2
     if body_fitted is None or wind not in CASES:
         raise SystemExit("check_immersed_ridge: --body-fitted DECK and --wind across|along|hill")
+    if (reference is None) != (lim["--sweep"] is None):
+        raise SystemExit("check_immersed_ridge: --reference-immersed DECK and --sweep PCT go together")
     case = CASES[wind]
     tag, NX = case["tag"], case["nx"]
-    deck = [n for n, a in enumerate(cmd) if a.endswith("inputs_immersed_" + tag)]
+    deck = [n for n, a in enumerate(cmd) if a.endswith("inputs_immersed_" + tag + variant)]
     if len(deck) != 1:
-        raise SystemExit("check_immersed_ridge: COMMAND names inputs_immersed_" + tag + " once")
+        raise SystemExit("check_immersed_ridge: COMMAND names inputs_immersed_" + tag + variant + " once")
 
     ok = True
 
@@ -154,7 +185,9 @@ def main(argv):
     check("immersed steady verdict", code == 0 and "gust: steady after" in log, "exit %d, %s iterations" % (code, iterations(log)))
     if not ok:
         return 1
-    im = columns(written_plotfile(os.getcwd(), log, "immersed_" + tag + "_plt"), BASE, True, case)
+    im_sweep = sweep_name(log)
+    im_plt = written_plotfile(os.getcwd(), log, "immersed_" + tag + variant + "_plt")
+    im = columns(im_plt, BASE, True, case)
 
     sub = os.path.join(os.getcwd(), "body_fitted")
     old = sorted(glob.glob(os.path.join(sub, "body_fitted_" + tag + "_plt*"))) if reuse else []
@@ -175,6 +208,34 @@ def main(argv):
         bf_plt = written_plotfile(sub, log, "body_fitted_" + tag + "_plt")
     bf = columns(bf_plt, 0.0, False, case)
 
+    ref = None
+    if reference is not None:
+        rsub = os.path.join(os.getcwd(), "reference_immersed")
+        rtag = "immersed_" + tag + "_plt"
+        old = sorted(glob.glob(os.path.join(rsub, rtag + "*"))) if reuse else []
+        if old:
+            ref_plt = old[-1]
+            print("reusing " + ref_plt)
+            ref_sweep = "zjacobi (reused, not checked)"
+        else:
+            for stale in glob.glob(os.path.join(rsub, "immersed_" + tag + "_*")):
+                shutil.rmtree(stale)
+            ref_cmd = list(cmd)
+            ref_cmd[deck[0]] = os.path.abspath(reference)
+            code, log = run(ref_cmd, rsub)
+            check("reference immersed steady verdict", code == 0 and "gust: steady after" in log,
+                  "exit %d, %s iterations" % (code, iterations(log)))
+            if not ok:
+                return 1
+            ref_plt = written_plotfile(rsub, log, rtag)
+            ref_sweep = sweep_name(log)
+        if not ref_sweep.startswith("zjacobi (reused"):
+            check("the two immersed runs' sweeps differ", im_sweep != "?" and ref_sweep != "?" and im_sweep != ref_sweep,
+                  "%s against %s" % (im_sweep, ref_sweep))
+        ref = columns(ref_plt, BASE, True, case)
+        ref_extra = {f: (columns(im_plt, BASE, True, case, f), columns(ref_plt, BASE, True, case, f)) for f in ("w", "tke")}
+        bf_k = columns(bf_plt, 0.0, False, case, "tke")
+
     print("  d (m)   far field bf/im    crest bf/im (column)      lee minimum bf/im (column)    rms    max")
     for d in HEIGHTS:
         ub = [at(c, d) for c in bf]
@@ -190,6 +251,17 @@ def main(argv):
         mx = max(abs(a - b) for a, b in zip(ub, ui))
         print("  %5.0f   %6.3f / %6.3f    %6.3f / %6.3f (%d / %d)    %6.3f / %6.3f (%d / %d)    %.3f  %.3f"
               % (d, far, fari, ub[cb], ui[ci], cb, ci, ub[lb], ui[li], lb, li, rms, mx))
+        if ref is not None:
+            ur = [at(c, d) for c in ref]
+            m = max(abs(a - b) for a, b in zip(ui, ur))
+            check("sweep difference of %s at %g m" % (case["comp"], d), 100 * m / far <= lim["--sweep"],
+                  "%.2e m/s, %.2e %% of the far-field speed (max %.2e %%)" % (m, 100 * m / far, lim["--sweep"]))
+            for f, scale, unit in (("w", far, "m/s"), ("tke", sum(lin(c, d) for c in bf_k[:nfar]) / nfar, "m2/s2")):
+                a_, b_ = ref_extra[f]
+                m = max(abs(lin(x, d) - lin(y, d)) for x, y in zip(a_, b_))
+                check("sweep difference of %s at %g m" % (f, d), 100 * m / scale <= lim["--sweep"],
+                      "%.2e %s, %.2e %% of the body-fitted far-field %s (max %.2e %%)"
+                      % (m, unit, 100 * m / scale, "speed" if f == "w" else "k", lim["--sweep"]))
         if wind == "along":
             e = 100 * mx / far
             check("largest difference at %g m" % d, e <= lim["--max"], "%.2f %% of the far-field speed (max %.1f %%)" % (e, lim["--max"]))

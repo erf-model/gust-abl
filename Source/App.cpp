@@ -275,8 +275,7 @@ std::string run_domain (const DomainRole& role)
         itf.buildings = buildings_opt.active();
         itf.nests = role.nests != nullptr || nest != nullptr;
         itf.newton = newton;
-        // The sweep and the Poisson backend act in a stage only.
-        itf.zline_sweeps = !solve || sopt.sweep == SweepKind::zjacobi;
+        // The Poisson backend acts in a stage only.
         itf.poisson_mlmg = solve && popt.backend == "mlmg";
         itf.laminar = copt.kind == ClosureKind::none;
         itf.unsteady = unsteady;
@@ -502,6 +501,9 @@ std::string run_domain (const DomainRole& role)
     if (immersed) {
         buildings_opt = immersed_terrain_options(in.terrain, surf.z0, !surf.z0_file.empty());
         immersed_hash = immersed_terrain_hash(in.terrain, surf.z0, surf.z0_file);
+        // A restart keeps the checkpoint's representation, so the advice is for a fresh start only.
+        const std::string advice = in.io.restart.empty() ? immersed_terrain_advice(in.terrain) : std::string{};
+        if (!advice.empty()) { amrex::Print() << "gust: warning: " << advice << "\n"; }
     }
     // With a grid hierarchy, boxes every level coarsens exactly.
     const amrex::BoxArray ba = hierarchy_box_array(in.mesh);

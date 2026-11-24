@@ -968,6 +968,25 @@ gust_add_test(NAME abort_hybrid_restart_width NP 1 LABELS "regression;smoke" RUN
               PREFIX ${EXPECT_ABORT} "io\\.restart = hybrid_ground_chk00002: the immersed ground.s inputs .* differ" --
               COMMAND $<TARGET_FILE:gust> ${IMMERSED_RIDGE_CASE}/inputs_hybrid_restart terrain.hybrid_half_width=100
                       io.write_plotfile=0 ${GUST_TEST_AMREX_FLAGS})
+# terrain.representation = immersed_forcing over a ridge: a fresh start prints the warning that recommends
+# hybrid; a restart from its checkpoint keeps the checkpoint's representation and does not print it.
+set(IMMERSED_ADVICE_DIR ${CMAKE_CURRENT_BINARY_DIR}/run/immersed_advice)
+add_test(NAME immersed_advice_clean
+         COMMAND ${Python3_EXECUTABLE} -c
+                 "import shutil, os, sys; shutil.rmtree(sys.argv[1], ignore_errors=True); os.makedirs(sys.argv[1])"
+                 ${IMMERSED_ADVICE_DIR})
+set_tests_properties(immersed_advice_clean PROPERTIES LABELS "regression;smoke" FIXTURES_SETUP immersed_advice_clean)
+gust_add_test(NAME immersed_advice_run NP 2 LABELS "regression;smoke" RUN_DIR ${IMMERSED_ADVICE_DIR}
+              FIXTURES_REQUIRED immersed_advice_clean FIXTURES_SETUP immersed_advice
+              PREFIX ${EXPECT_ABORT} --success
+                     "gust: warning: terrain\\.representation = immersed_forcing over terrain\\.type = agnesi.*hybrid is recommended"
+                     "gust: wrote immersed_advice_chk00002" --
+              COMMAND $<TARGET_FILE:gust> ${IMMERSED_RIDGE_CASE}/inputs_immersed_advice ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME immersed_advice_restart NP 3 LABELS "regression;smoke" RUN_DIR ${IMMERSED_ADVICE_DIR}
+              FIXTURES_REQUIRED immersed_advice
+              PREFIX ${EXPECT_ABORT} --success "restarted from immersed_advice_chk00002 at step 2"
+                     "!gust: warning: terrain\\.representation" --
+              COMMAND $<TARGET_FILE:gust> ${IMMERSED_RIDGE_CASE}/inputs_immersed_advice_restart ${GUST_TEST_AMREX_FLAGS})
 # A roughness map (bc.surface_z0_file) under an immersed ground and under a hybrid mesh's ground
 # (Canonical_RANS/Immersed_Roughness_Step): two iterations write a checkpoint whose record of the ground
 # holds the map file's SHA-256 and the interpolation's settings. A restart on another layout and three
@@ -2488,6 +2507,17 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
                              ${_limits} --body-fitted ${IMMERSED_RIDGE_CASE}/inputs_body_fitted_${_tag} --
                       COMMAND $<TARGET_FILE:gust> ${IMMERSED_RIDGE_CASE}/inputs_immersed_${_tag} ${GUST_TEST_AMREX_FLAGS})
     endforeach()
+    # The ridge across the wind with LU-SGS (steady.sweep = lusgs) in place of z-line Jacobi, every other key the
+    # same: the same limits against the same body-fitted run, and u, w and k within --sweep percent of the z-line
+    # Jacobi immersed run, whose log must name another sweep (both run again in this test's folder: three runs,
+    # about 2.5 min on 4 ranks). The largest measured difference is 1.9e-5 %.
+    gust_add_test(NAME rt_immersed_ridge_lusgs NP 4 LABELS "regression"
+                  RUN_DIR ${CMAKE_CURRENT_BINARY_DIR}/run/rt_immersed_ridge_lusgs
+                  PREFIX ${Python3_EXECUTABLE} ${IMMERSED_RIDGE_CASE}/check_immersed_ridge.py --wind across --variant lusgs
+                         --crest 4 --lee 16 --rms 8 --body-fitted ${IMMERSED_RIDGE_CASE}/inputs_body_fitted_ridge
+                         --reference-immersed ${IMMERSED_RIDGE_CASE}/inputs_immersed_ridge --sweep 2e-4 --
+                  COMMAND $<TARGET_FILE:gust> ${IMMERSED_RIDGE_CASE}/inputs_immersed_ridge_lusgs ${GUST_TEST_AMREX_FLAGS})
+    set_tests_properties(rt_immersed_ridge_lusgs PROPERTIES TIMEOUT 1800)
     if(GUST_PYTHON_NUMPY)
         # An immersed flat ground between an inflow and an outflow face against the body-fitted
         # run (Immersed_Open_Faces/README.md), one rank per run: the ground on a layer's face
@@ -3277,6 +3307,32 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
                               mesh.zlevels_file=${SITES_128M_CASE}/zlevels_128m.txt ${_extra}
                               ${GUST_TEST_AMREX_FLAGS})
         set_tests_properties(rt_sites128_${_name} PROPERTIES TIMEOUT 3600)
+    endforeach()
+    # The same four sites on the hybrid mesh (terrain.representation = hybrid): one level, LU-SGS, to the steady
+    # verdict. Altamont uses the 127 layers of zlevels_128m_hybrid.txt, the other three the terrain-following
+    # levels (zlevels_128m.txt): each converges on its own levels only (Sites_128m/README.md).
+    foreach(_site "BigSouthernButte_LogLaw|inputs_butte_log_law|butte_log_law||zlevels_128m.txt"
+                  "AltamontPass_PowerLaw|inputs_altamont_power_law|altamont_power_law||zlevels_128m_hybrid.txt"
+                  "Perdigao_TargetWind|inputs_perdigao_target_wind|perdigao_target_wind|perdigao_inflow.txt|zlevels_128m.txt"
+                  "Flatirons_InflowFile|inputs_flatirons_inflow_file|flatirons_inflow_file|flatirons_inflow.txt|zlevels_128m.txt")
+        string(REPLACE "|" ";" _site "${_site}")
+        list(GET _site 0 _dir)
+        list(GET _site 1 _deck)
+        list(GET _site 2 _name)
+        list(GET _site 3 _table)
+        list(GET _site 4 _levels)
+        set(_extra "")
+        if(_table)
+            set(_extra bc.inflow_file=${SITES_128M_CASE}/${_dir}/${_table})
+        endif()
+        gust_add_test(NAME rt_sites128_${_name}_hybrid NP 4 LABELS "nightly"
+                      PREFIX ${EXPECT_ABORT} --success --timeout 3600 "gust: steady after" --
+                      COMMAND $<TARGET_FILE:gust> ${SITES_128M_CASE}/${_dir}/${_deck}_hybrid
+                              terrain.file=${SITES_128M_CASE}/${_dir}/terrain.xyz
+                              bc.surface_z0_file=${SITES_128M_CASE}/${_dir}/roughness.xyz
+                              mesh.zlevels_file=${SITES_128M_CASE}/${_levels} ${_extra}
+                              ${GUST_TEST_AMREX_FLAGS})
+        set_tests_properties(rt_sites128_${_name}_hybrid PROPERTIES TIMEOUT 3600)
     endforeach()
     foreach(_site "Flatirons_InflowFile|flatirons" "Perdigao_TargetWind|perdigao")
         string(REPLACE "|" ";" _site "${_site}")

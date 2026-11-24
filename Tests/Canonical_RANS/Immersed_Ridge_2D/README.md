@@ -33,9 +33,10 @@ and there is no flow over it.
 |---|---|
 | `inputs_body_fitted_along`, `inputs_immersed_along` | Wind along the ridge. |
 | `inputs_body_fitted_ridge`, `inputs_immersed_ridge` | Wind across the ridge. |
+| `inputs_immersed_ridge_lusgs` | `inputs_immersed_ridge` with LU-SGS (`steady.sweep = lusgs`) in place of z-line Jacobi. |
 | `inputs_body_fitted_hill`, `inputs_immersed_hill` | The round hill. |
 | `inputs_hybrid_ground`, `inputs_hybrid_restart` | The hybrid mesh on the ridge with the default `terrain.flat_height` and `terrain.hybrid_half_width`: two steps that write a checkpoint, then a restart from it on another box layout. |
-| `check_immersed_ridge.py` | Runs an immersed deck, runs (or reads) its body-fitted reference, and compares the two. |
+| `check_immersed_ridge.py` | Runs an immersed deck, runs (or reads) its body-fitted reference, and compares the two. `--variant NAME` picks `inputs_immersed_<case>_NAME`; `--reference-immersed DECK --sweep PCT` also runs a second immersed deck and bounds the largest difference of the wind between the two. |
 
 ## Data and acknowledgements
 None: the cases are analytic.
@@ -72,18 +73,19 @@ the same offset with this turbulence setting (see below), so it is not an effect
 largest speed at 20 m is 4.832 m/s body-fitted and 4.834 m/s immersed.
 
 **Wind across the ridge** (limits: crest 4 %, lee minimum 16 %, rms 8 %). Iterations: body-fitted 6297, immersed
-4878.
+4822 (re-measured on four ranks with the code of `rt_immersed_ridge_lusgs`; the table before gave immersed 4878 and
+speeds up to 0.04 m/s lower, from an earlier version of the code).
 
 | d (m) | Far field bf / immersed (m/s) | Crest bf / immersed (m/s) | Crest difference | Lee minimum bf / immersed (m/s) | Lee difference | rms |
 |---|---|---|---|---|---|---|
-| 20 | 4.863 / 4.638 | 7.411 / 7.247 | −2.2 % | 4.516 / 3.846 | −13.8 % | 7.0 % |
-| 40 | 5.569 / 5.337 | 8.004 / 7.832 | −2.2 % | 5.401 / 4.962 | −7.9 % | 5.0 % |
-| 80 | 6.399 / 6.173 | 8.529 / 8.329 | −2.4 % | 6.377 / 6.105 | −4.2 % | 3.4 % |
-| 160 | 7.486 / 7.298 | 9.142 / 8.967 | −1.9 % | 7.484 / 7.297 | −2.5 % | 2.2 % |
+| 20 | 4.863 / 4.664 | 7.411 / 7.298 | −1.5 % | 4.516 / 3.884 | −13.0 % | 6.4 % |
+| 40 | 5.569 / 5.365 | 8.004 / 7.868 | −1.7 % | 5.401 / 5.000 | −7.2 % | 4.4 % |
+| 80 | 6.399 / 6.203 | 8.529 / 8.357 | −2.0 % | 6.377 / 6.139 | −3.7 % | 2.9 % |
+| 160 | 7.486 / 7.327 | 9.142 / 8.992 | −1.6 % | 7.484 / 7.326 | −2.1 % | 1.9 % |
 
-The crest is in the same column in the two runs. The immersed runs are 2 to 5 % slower everywhere, the far
-field included, and the lee minimum at 20 m is deeper (3.85 against 4.52 m/s) and five columns (200 m) nearer the
-crest.
+The crest is in the same column in the two runs. The immersed run is 2 to 4 % slower in the far field and 1.5 to
+2 % at the crest, and the lee minimum at 20 m is deeper (3.88 against 4.52 m/s) and four columns (160 m) nearer
+the crest. The tables of the wind along the ridge and of the round hill were not re-measured.
 
 **The round hill** (limits: crest 5 %, lee minimum 27 %, rms 13 %), read along the row of columns just north of
 the hill's centre. Iterations: body-fitted 2441, immersed 2180.
@@ -107,7 +109,7 @@ the hill's centre. Iterations: body-fitted 2441, immersed 2180.
   `turb.face_mean = logarithmic` the two are +2.1 % and +4.9 %; the decks therefore keep the default face mean in
   both runs. The geostrophic column of the `ridge` decks without the ridge differs by 0.5 % or less above the cut
   cell.
-- *Flow over the ridge and the hill (2 to 5 % in the far field, more in the lee near the ground).* The immersed
+- *Flow over the ridge and the hill (1.5 to 4 % in the far field, more in the lee near the ground).* The immersed
   runs decelerate more in the lee. The slower far field is consistent with the periodic domain returning that
   flow upstream; this was not tested separately. The far field of the `ridge` decks is not flat either: the
   ridge's tail at the side of the domain is 3.7 m high (0.6 m in the `along` decks). The flat column (ground
@@ -123,6 +125,18 @@ the hill's centre. Iterations: body-fitted 2441, immersed 2180.
 `rt_immersed_along_vertical`, `rt_immersed_ridge_vertical` (label `regression`, four ranks). Each test runs the
 immersed and the body-fitted deck in `<build>/Tests/run/rt_immersed_<pair>`. Double precision only.
 `rt_immersed_hill_vertical` (label `nightly`, four ranks; about 40 min).
+`rt_immersed_ridge_lusgs` (label `regression`, four ranks) runs `inputs_immersed_ridge_lusgs`, the body-fitted ridge
+and `inputs_immersed_ridge` (three runs, about 2.5 min). It has the limits of `rt_immersed_ridge_vertical` against
+the body-fitted run. At each height, u and w of the two immersed runs may differ by at most 2e-4 % of the body-fitted
+far-field speed, and k by at most 2e-4 % of the body-fitted far-field k; the two runs' logs must name different
+sweeps. Measured on four ranks: 4670 iterations with LU-SGS, 4822 with z-line Jacobi. The largest differences are
+7.1e-7 m/s in u (1.5e-5 %), 2.0e-7 m/s in w (2.7e-6 %) and 1.1e-7 m²/s² in k (1.9e-5 %): the two sweeps reach the
+same steady state. Mutants: with the refusal of LU-SGS on an immersed ground restored, the test fails at the first
+run; `bc.surface_z0 = 0.101` in the LU-SGS deck fails the sweep check at every height (u differs by 0.12 % at
+20 m); `steady.sweep = zjacobi` in the LU-SGS deck fails the check that the logs name different sweeps.
+`immersed_advice_run` (two ranks) runs `inputs_immersed_advice` (`immersed_forcing` over the ridge, two
+iterations) and checks that the warning recommending `hybrid` is printed; `immersed_advice_restart` (three ranks)
+restarts from its checkpoint (`inputs_immersed_advice_restart`) and checks that it is not.
 `hybrid_ground_run` (two ranks) checks that the hybrid defaults are applied and logged (half-width 80 m = 2 cells).
 `hybrid_ground_restart` (three ranks, other boxes) restarts from its checkpoint. `abort_hybrid_restart_width` restarts with
 `terrain.hybrid_half_width = 100` and must be refused because the immersed ground's inputs differ.

@@ -1,0 +1,79 @@
+# Perdigao (Portugal) at 128 m cells: 96 x 96 cells (12.29 km a side), 56 layers (10 of 2 m, then 1.15
+# until 128 m, then 128 m to 3063 m) on the hybrid mesh: the mesh follows the terrain's lower envelope
+# (terrain.hybrid_half_width = 256 m) and the ground is immersed in it, one level, LU-SGS. The inflow is a table,
+# perdigao_inflow.txt: GUST's converged single column (inputs_perdigao_column) for the geostrophic wind that gives
+# 10 m/s at 100 m from the south-west, across the ridges, at 39.713 N over z0 = 0.398 m (the geometric mean of the
+# roughness map along xlo and ylo). The wind turns from 47 degrees at the ground to 22 degrees aloft, so it enters
+# through xlo and ylo at every height; outflow at xhi and yhi. The 3-D run keeps the Coriolis force and the
+# geostrophic wind the column run found (abl.drive = geostrophic_inflow), so the table stays in balance away from
+# the terrain. The terrain file has a flat border at the mean level (768 m flat, 1536 m slope). The first guess is
+# the inflow profile (init.first_guess = profile): the column first guess is refused on an immersed ground. A slip
+# top with damping of w from 2400 m; truly neutral. The terrain (terrain.xyz), the roughness map (roughness.xyz),
+# the table and the levels (../zlevels_128m.txt) are given on the command line (README.md):
+#   terrain.file=terrain.xyz bc.surface_z0_file=roughness.xyz bc.inflow_file=perdigao_inflow.txt
+#   mesh.zlevels_file=../zlevels_128m.txt
+# The terrain-following decks' levels: on the 4 m levels of ../zlevels_128m_hybrid.txt r stalled near
+# 5e-3 (README.md).
+mesh.n_cell        = 96 96 56
+mesh.prob_lo       = -6144. -6144. 0.
+mesh.prob_hi       =  6144.  6144. 3063.490293
+mesh.max_grid_size = 32
+
+terrain.type      = xyz
+terrain.smoothing = 1   # STF: the levels above the hybrid mesh's lower face are smoothed as on the body-fitted mesh
+terrain.representation   = hybrid
+terrain.flat_height      = 2.     # the first layer of zlevels_128m.txt (the default, given here)
+terrain.hybrid_half_width = 256.  # 2 cells (the default, given here): the narrowest width that converged in the
+                                  # calibration of docs/immersed_terrain.rst; tools/hybrid_width.py finds no width
+                                  # that also keeps the gap below 0.2 of the relief on this mesh
+terrain.small_volfrac    = 0.1    # as Immersed_Terrain_Cases: merges thin cut cells into the ground
+
+bc.xlo = inflow
+bc.ylo = inflow
+bc.xhi = outflow
+bc.yhi = outflow
+bc.zlo = surface_layer
+bc.zhi = slip_wall
+bc.inflow_profile  = file
+bc.inflow_z0       = 0.398
+bc.theta_profile_z = 0.
+bc.theta_profile   = 300.
+bc.rayleigh_zdamp    = 2400.
+bc.rayleigh_dampcoef = 0.2
+bc.rayleigh_fields   = w
+
+abl.drive = geostrophic_inflow
+
+forcing.latitude = 39.713
+forcing.ug       = 15.3874   # found by inputs_perdigao_column (its log, 6 digits: the 3-D column guess differs
+forcing.vg       = 6.43277   # from the table by about 1e-5)
+
+init.first_guess = profile   # the inflow table (the column first guess is refused on an immersed ground)
+init.alpha_h     = 1.0
+init.alpha_v     = 0.5
+
+solver.poisson_reltol   = 1.e-10
+solver.poisson_max_iter = 200
+
+forcing.gravity = 0.
+turb.tke_floor  = 1.e-6
+simplec.w_vnn_cap = 16   # thin first cells (aspect ratio 64)
+
+turb.realizability          = 0.309
+turb.nut_relax              = 0.5
+turb.max_geom_lscale        = 100.
+# The cut cells take the shear from the log law (as the immersed cases do).
+turb.shear_stencil          = log_law
+convection.hybrid_sigma_max = 0.1
+convection.hybrid_height    = 1125.   # 2.5 x 450 m
+
+steady.stage          = simplec
+steady.sweep          = lusgs
+steady.zline_sweeps   = 2
+steady.cfl_max        = 16
+steady.max_iterations = 20000
+
+io.plot_file        = plt
+io.turb_plot_file   = turb
+io.chk_file         = chk
+io.write_checkpoint = 0

@@ -8,7 +8,8 @@ ground are solid, and the cells the ground cuts carry the form 7 wall law of ERF
 choice is made once, at start-up, and cannot change across a restart.
 
 **Status.** A flat or sloping ground (``terrain.type`` = ``flat``, ``agnesi``, ``xyz`` or ``erf_grid``) in a neutral
-run with SIMPLEC and z-line sweeps, laterally periodic or with inflow and outflow faces (`Open faces`_).
+run with SIMPLEC and either line sweep (``steady.sweep``), laterally periodic or with inflow and outflow faces
+(`Open faces`_).
 The roughness length is one value or a map (``bc.surface_z0_file``, `Roughness map`_). Stratification, buildings
 and nests on an immersed ground are not supported yet; a forest canopy is, without ``canopy.heat = fixed``; `Limits`_ lists what the run refuses. ``body_fitted`` remains the default and its answers are
 unchanged.
@@ -23,7 +24,10 @@ unchanged.
    * - ``terrain.representation``
      - ``body_fitted``
      - ``immersed_forcing``: a flat mesh with the ground immersed in it. ``hybrid``: the same ground in a mesh that
-       follows its lower envelope (`Hybrid mesh`_).
+       follows its lower envelope (`Hybrid mesh`_). ``immersed_forcing`` over terrain that is not flat prints a
+       warning that recommends ``hybrid`` on a fresh start: the flat mesh cuts the ground across many layers. The
+       verification decks below (`Verification`_) print it by design: they compare the flat mesh with the
+       body-fitted one.
    * - ``terrain.flat_height``
      - required (``hybrid``: the first layer's thickness)
      - The height of the terrain's zero level above the mesh's lower face (m): the ground itself with
@@ -618,7 +622,11 @@ how many columns are of each kind (unit tests ``SurfaceLayer.ImmersedColumnsOfAH
 ground cuts the levels at the slope of :math:`\delta`, not of :math:`h_t`, so a narrow square leaves the immersed
 ground cutting few layers per column. The gap is then small, so the layers through it can keep the first layer's
 thickness: with ``mesh.zlevels_file`` uniform up to above the largest gap, every cut cell and the cells above it
-have the same thickness, as on the flat mesh.
+have the same thickness, as on the flat mesh. This holds where the gap is small. On three of the four 128 m sites
+of ``Tests/Real_Terrain/Sites_128m``, where the default width leaves gaps of 220 to 320 m, levels uniform at 4 m to
+above the gap had not reached the steady verdict with ``lusgs`` (r stalled, swung or fell slowly), while the
+terrain-following decks' levels (2 m layers to 20 m, then stretched) converged in 204 to 327 iterations; on the
+fourth, Altamont Pass, it is the other way round. No rule for the levels is given yet: the site's README lists the runs.
 
 **What.** The envelope is computed once, at start-up, on every rank from the whole surface (one value per domain
 node), so it does not depend on the boxes or the rank count (``Source/HybridTerrain.cpp``). The cut geometry
@@ -952,9 +960,18 @@ Limits
   tails have not decayed at the sides) makes a step across the seam, which the geometry treats as a slope across
   one cell.
 - ``bc.zlo = surface_layer``, ``bc.surface_stability = neutral``, ``bc.surface_wall_k = dirichlet``, a uniform
-  ``bc.theta_profile``, ``turb.closure = kl`` and ``steady.sweep = zjacobi`` are
-  required. The refusals in this list apply to a run with no stage too (the sweep and the Poisson backend in a
-  stage only).
+  ``bc.theta_profile`` and ``turb.closure = kl`` are required. The refusals in this list apply to a run with no
+  stage too (the Poisson backend in a stage only).
+- Both line sweeps apply (``steady.sweep``): the solid cells and the wall law are rows of the same line systems.
+  Earlier versions refused ``lusgs`` on an immersed ground. With ``lusgs`` (the CPU default) the immersed ridge of
+  `Verification`_ meets the limits of its ``zjacobi`` deck (CTest ``rt_immersed_ridge_lusgs``), and the four
+  128 m sites of ``Tests/Real_Terrain/Sites_128m`` reach the steady verdict on the hybrid mesh in 204 to 359
+  iterations. On the same levels (``zlevels_128m_hybrid.txt``), Altamont Pass took 359 iterations with ``lusgs``,
+  where ``zjacobi`` had r = 0.13 after 350; the other three sites converged with ``lusgs`` only on other levels,
+  so their ``zjacobi`` runs (r between 0.02 and 0.17 after 150 to 440 iterations) are not a like-for-like
+  comparison. Only the default options of ``lusgs`` have been run on an immersed ground: ``steady.line_ghosts =
+  zero``, ``steady.line_overlap`` > 0, ``steady.line_order = diagonal`` and ``steady.line_alternate = 1`` have
+  not. ``buildings.type = immersed_forcing`` still needs ``zjacobi``.
 - ``buildings.type``, nests, ``init.first_guess = column``, ``steady.probes_file``,
   ``steady.stage = simplec_newton`` and ``steady.stage = unsteady`` are refused. The column's and
   the probes' heights are measured from the mesh's lower face, not from the immersed ground.

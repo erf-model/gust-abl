@@ -306,6 +306,13 @@ class ImmersedTerrainChecker(Checker):
         if rep not in ("immersed_forcing", "hybrid"):
             return
         with_rep = "with terrain.representation = " + rep
+        # App.cpp prints this advice on a fresh start only.
+        if not hybrid and not c.restart and c.terrain_type not in ("", "flat"):
+            self.warn("terrain.representation",
+                      "terrain.representation = immersed_forcing over terrain.type = %s: the flat mesh cuts the ground "
+                      "across many layers." % c.terrain_type,
+                      "terrain.representation = hybrid is recommended: the mesh follows the terrain's lower envelope "
+                      "and the ground stays within a few layers of it.")
 
         def refuse(key, what, advice=""):
             self.error(key, "GUST stops: terrain.representation = %s %s." % (rep, what), advice)
@@ -371,8 +378,6 @@ class ImmersedTerrainChecker(Checker):
             refuse("steady.probes_file", "is not supported with steady.probes_file yet")
         if c.newton or c.unsteady:
             refuse("steady.stage", "is not supported with steady.stage = %s yet" % c.stage, "Use simplec.")
-        if c.solve and c.sweep != "zjacobi":
-            refuse("steady.sweep", "needs z-line sweeps", "Set steady.sweep = zjacobi.")
         if c.solve and c.s("solver.poisson_backend") == "mlmg":
             refuse("solver.poisson_backend", "cannot use solver.poisson_backend = mlmg", "Use gmres_mlmg or gmres_fft.")
         if c.reads_bc and c.closure == "none":
