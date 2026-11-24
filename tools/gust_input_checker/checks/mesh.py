@@ -164,7 +164,8 @@ class HierarchyChecker(Checker):
             self.error("simplec.theta", "GUST stops: simplec.theta = frozen is not supported with steady.stage = unsteady "
                                         "and init.first_guess = nest.", "Solve theta in the unsteady patch.")
         if c.solve and n and L == 1 and c.terrain_type in ("xyz", "erf_grid") and n[0] * n[1] * n[2] >= LARGE_MESH \
-                and not c.buildings and not c.unsteady:
+                and not c.buildings and not c.unsteady \
+                and c.s("terrain.representation") not in ("immersed_forcing", "hybrid"):
             self.advise("mesh.hierarchy_levels", "A terrain mesh of %d cells is solved on one level." % (n[0] * n[1] * n[2]),
                         "Grid sequencing (mesh.hierarchy_levels = 3, steady.sequencing = 1) gives the fine level a "
                         "better start (docs/howto.rst, Converge faster).")

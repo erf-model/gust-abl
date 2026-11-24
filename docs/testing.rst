@@ -1940,6 +1940,20 @@ Current tests
        within 4 %, lee minimum within 16 % and rms within 8 %. Round hill: 5 %, 27 % and 13 %. The limits across the
        ridge and over the hill are the measured differences with a margin (the case's README). Mutant: the wall cell's distance halved fails
        ``rt_immersed_along_vertical`` (7.4 % against 2 %).
+   * - ``rt_immersed_ridge_lusgs``
+     - The wind across the immersed ridge with ``steady.sweep = lusgs`` (``inputs_immersed_ridge_lusgs``) on four
+       ranks, in three runs: the body-fitted deck, the ``zjacobi`` immersed deck and the ``lusgs`` one. The ``lusgs``
+       run meets the limits of ``rt_immersed_ridge_vertical``; at 20, 40, 80 and 160 m above the ground its u and w
+       are within 2e-4 % of the body-fitted far-field speed, and its k within 2e-4 % of the body-fitted far-field k,
+       of the ``zjacobi`` run in every column (measured: at most 1.9e-5 %), and the two logs name different sweeps.
+       About 2.5 min. Mutants: the earlier refusal of ``lusgs`` on an immersed ground restored fails the first run;
+       ``bc.surface_z0 = 0.101`` in the ``lusgs`` deck fails at every height (u: 0.12 % at 20 m); ``steady.sweep =
+       zjacobi`` in it fails the check of the sweeps' names.
+   * - ``immersed_advice_run``, ``immersed_advice_restart``
+     - ``terrain.representation = immersed_forcing`` over the ridge (``inputs_immersed_advice``, two iterations):
+       a fresh start prints the warning that recommends ``hybrid``; a restart from its checkpoint
+       (``inputs_immersed_advice_restart``) does not. Mutants: the warning's print removed fails the first; the
+       restart guard removed (``Source/App.cpp``) fails the second.
    * - ``rt_immersed_open_faces``
      - Flat immersed ground between an inflow and an outflow face (``Tests/Canonical_RANS/Immersed_Open_Faces``,
        :doc:`immersed_terrain`) at cut-cell solid fractions 0, 0.5, 0.95 and 1 with ``turb.shear_stencil = log_law``

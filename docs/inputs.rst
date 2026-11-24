@@ -715,10 +715,12 @@ Quick reference
        immersed surface with the form 7 wall law, :doc:`immersed_terrain`) or ``hybrid`` (the mesh follows a
        smoothed lower envelope of the ground and the ground is immersed in it, :doc:`immersed_terrain`, Hybrid
        mesh). ``hybrid`` has the refusals of ``immersed_forcing`` except ``terrain.smoothing`` and
-       ``terrain.gamma_m``, which shape its mesh aloft as on a body-fitted mesh. ``immersed_forcing`` needs
+       ``terrain.gamma_m``, which shape its mesh aloft as on a body-fitted mesh. ``immersed_forcing`` over
+       terrain that is not flat prints a warning that recommends ``hybrid`` on a fresh start (not on a
+       restart). ``immersed_forcing`` needs
        ``mesh.hierarchy_levels = 1``,
        ``bc.zlo = surface_layer``, ``bc.surface_stability = neutral``, ``bc.surface_wall_k = dirichlet``,
-       ``turb.closure = kl`` and, in a stage, ``steady.sweep = zjacobi``. It refuses
+       and ``turb.closure = kl``; both sweeps (``steady.sweep``) apply. It refuses
        ``bc.surface_zref``, ``bc.surface_denominator_floor``, a non-uniform ``bc.theta_profile``,
        ``buildings.type``, ``canopy.heat = fixed``, nests, ``init.first_guess = column``, ``steady.probes_file``,
        ``steady.stage = simplec_newton`` and ``unsteady``, ``solver.poisson_backend = mlmg`` (in a stage), and

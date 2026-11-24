@@ -28,15 +28,29 @@ Each case uses the roughness map of its site (`bc.surface_z0_file`) and the reco
 first-order upwind below 2.5 terrain heights. The flow is truly neutral: 300 K, no buoyancy. Only the two
 geostrophic cases have Coriolis.
 
+Each case also has a hybrid-mesh deck (`inputs_*_hybrid`, `terrain.representation = hybrid`,
+`docs/immersed_terrain.rst`): the mesh follows the terrain's lower envelope (`terrain.hybrid_half_width = 256 m`)
+and the ground is immersed in it, with its cut cells on the form 7 wall law. The hybrid decks keep the inflow, the
+faces, the roughness map and the solver settings of their terrain-following deck, and differ in:
+- one level (no grid sequencing);
+- `turb.shear_stencil = log_law` in the cut cells, as in the immersed cases;
+- Perdigão starts from the inflow profile (`init.first_guess = profile`): the column first guess is refused on an
+  immersed ground;
+- the levels: Butte, Perdigão and the Flatirons use `zlevels_128m.txt` with `terrain.flat_height = 2` (the first
+  layer); Altamont uses `zlevels_128m_hybrid.txt` (127 layers: 88 of 4 m to 352 m, then the same stretch) with
+  `terrain.flat_height = 4`. Each converges on its own levels only (Expected Results).
+
 The decks do not name their files. The terrain, the roughness map, the levels and, for the Flatirons and Perdigão, the
 inflow table are given on the command line, as in the other terrain CTests.
 
 ## Files
 | File | Role |
 |---|---|
-| `zlevels_128m.txt` | The 57 level heights of the four decks (`mesh.zlevels_file`). |
+| `zlevels_128m.txt` | The 57 level heights of the four terrain-following decks and of the Butte, Perdigão and Flatirons hybrid decks (`mesh.zlevels_file`). |
+| `zlevels_128m_hybrid.txt` | The 128 level heights of the Altamont hybrid deck: 4 m layers to 352 m, above the largest gap of the four sites at the default width. |
 | `prepare_sites.py` | Writes `terrain.xyz`, `terrain.sources.txt` and `roughness.xyz` of each site (needs numpy, PyYAML, rasterio and network access). |
-| `<case>/inputs_*` | The deck of each case. |
+| `<case>/inputs_*` | The terrain-following deck of each case. |
+| `<case>/inputs_*_hybrid` | The hybrid-mesh deck of each case. |
 | `<case>/terrain.xyz` | `x y z` points (m) at the spacing of the tiles (about 45 to 49 m) over the domain and 256 m beyond it. UTM zone of the site centre, origin at the centre, heights above the lowest point kept. Perdigão has a flat border at the mean level (768 m flat, 1536 m slope), so its inflow faces are flat like the column of its table. |
 | `<case>/terrain.sources.txt` | The data sources of the terrain tiles, as the download recorded them. |
 | `<case>/roughness.xyz` | `x y z0` points (m) every 64 m, two per 128 m cell (below). |
@@ -107,6 +121,13 @@ mpirun -np 4 <build>/gust inputs_flatirons_inflow_file terrain.file=terrain.xyz 
 ```bash
 mpirun -np 4 <build>/gust inputs_perdigao_target_wind terrain.file=terrain.xyz bc.surface_z0_file=roughness.xyz bc.inflow_file=perdigao_inflow.txt mesh.zlevels_file=../zlevels_128m.txt
 ```
+A hybrid deck runs the same way with its own levels file, for example:
+```bash
+mpirun -np 4 <build>/gust inputs_butte_log_law_hybrid terrain.file=terrain.xyz bc.surface_z0_file=roughness.xyz mesh.zlevels_file=../zlevels_128m.txt
+```
+```bash
+mpirun -np 4 <build>/gust inputs_altamont_power_law_hybrid terrain.file=terrain.xyz bc.surface_z0_file=roughness.xyz mesh.zlevels_file=../zlevels_128m_hybrid.txt
+```
 Remake the point files (network access):
 ```bash
 python3 prepare_sites.py
@@ -139,10 +160,50 @@ Choosing the column first guess (`init.first_guess = column`, `init.column_z0`) 
 profile first guess (`init.first_guess = profile`) gives the same iterations (4253), since both start from the
 same table.
 
+### Hybrid mesh
+The hybrid decks on 2 ranks, same machine and stop, one level (the nightly CTests run on 4 ranks, where the
+iteration counts can differ). On all four the last residual to reach its floor is k.
+
+| Case | Levels | Iterations | Final r | Final k-res | Terrain-following iterations |
+|---|---|---|---|---|---|
+| Altamont | `zlevels_128m_hybrid.txt` | **359** | 7.0e-6 | 4.92e-5 | 617 |
+| Butte | `zlevels_128m.txt` | **327** | 6.5e-7 | 4.94e-5 | 6111 |
+| Perdigão | `zlevels_128m.txt` | **204** | 8.6e-6 | 4.83e-5 | 4253 |
+| Flatirons | `zlevels_128m.txt` | **217** | 5.6e-6 | 4.82e-5 | 7275 |
+
+The levels were chosen per site from these runs:
+- `zlevels_128m_hybrid.txt` follows the advice of `docs/immersed_terrain.rst` (uniform layers to above the largest
+  gap). Altamont converges on it. The Butte had r = 2.4e-4 after 1850 iterations, Perdigão stalled near 5e-3
+  after 500, and the Flatirons swung between 0.04 and 3 (also with `steady.cfl_max = 4`). On the Flatirons half of
+  the yhi outflow face's fluid cells drew air in, at up to 14 m/s;
+- `zlevels_128m.txt` (2 m layers to 20 m, then stretched): the Butte, Perdigão and the Flatirons converge;
+  Altamont diverged within 7 iterations.
+
+With `steady.sweep = zjacobi` (the sweep immersed grounds needed before), the four hybrid decks on
+`zlevels_128m_hybrid.txt` were stopped before the steady verdict: Altamont r = 0.13 after 350 iterations, the Butte
+0.17 after 260, Perdigão 0.17 after 150 and the Flatirons 0.017 after 440. Only Altamont is a like-for-like
+comparison with the LU-SGS runs above (359 iterations on the same levels).
+
+The speeds differ from the terrain-following runs near the ground. On the same 127 levels (the terrain-following
+Altamont deck run on `zlevels_128m_hybrid.txt` without sequencing: 405 iterations, and within 0.03 m/s of its
+56-level answer on average at 10 m), the hybrid Altamont is slower by 2.4 m/s on average at 10 m above the ground, 1.5 m/s at
+40 m and 0.2 m/s at 200 m; above 500 m the two agree within 0.3 m/s. The other three use the same levels in both runs:
+
+| Case | Mean difference at 10 m | 40 m | 200 m | 1000 m | Columns at 10 m with \|ΔS\| > 1 m/s |
+|---|---|---|---|---|---|
+| Butte | -0.22 m/s | -0.22 | -0.11 | +0.04 | 482 of 4353 |
+| Perdigão | -0.46 m/s | -0.48 | -0.30 | +0.04 | 636 of 5254 |
+| Flatirons | -0.76 m/s | -0.41 | -0.09 | +0.31 | 474 of 1177 |
+
+The speeds are compared column by column at equal height above the ground, from the cells with no solid part, away
+from the four cells next to each side face. The largest local differences reach 11 m/s on the Butte, up to 500 m
+above the ground. The cause of the differences has not been studied yet.
+
 ## CTest
 | Test | Ranks | Labels | What it checks |
 |---|---|---|---|
 | `rt_sites128_butte_log_law`, `rt_sites128_altamont_power_law`, `rt_sites128_perdigao_target_wind`, `rt_sites128_flatirons_inflow_file` | 4 | `nightly` | The deck reaches "gust: steady after" (`Supporting_Files/expect_abort.py --success`, timeout 3600 s). |
+| `rt_sites128_butte_log_law_hybrid`, `rt_sites128_altamont_power_law_hybrid`, `rt_sites128_perdigao_target_wind_hybrid`, `rt_sites128_flatirons_inflow_file_hybrid` | 4 | `nightly` | The hybrid deck, with the levels file of the table above, reaches "gust: steady after" (timeout 3600 s). |
 | `rt_sites128_flatirons_clean`, `rt_sites128_perdigao_clean`, `rt_sites128_perdigao_column_z0_clean` | – | `regression`, `smoke` | Delete the table of an earlier run, so it cannot pass the table test. |
 | `rt_sites128_flatirons_column`, `rt_sites128_perdigao_column` | 1 | `regression`, `smoke` | The column deck runs and writes its table. |
 | `rt_sites128_flatirons_table`, `rt_sites128_perdigao_table` | – | `regression`, `smoke` | `check_column_table.py` compares the new table with the committed one (heights to 1e-9 m; u, v, k and u* to a relative 1e-4; theta to 1e-3 K). A target height of 101 m instead of 100 m fails it (u differs by 2.8e-3). |

@@ -686,7 +686,6 @@ TEST (ImmersedTerrain, RefusesWhatItDoesNotSupport)
         {[] (auto& x) { x.buildings = true; }, "buildings.type"},
         {[] (auto& x) { x.nests = true; }, "nests"},
         {[] (auto& x) { x.newton = true; }, "steady.stage = simplec_newton"},
-        {[] (auto& x) { x.zline_sweeps = false; }, "steady.sweep = zjacobi"},
         {[] (auto& x) { x.poisson_mlmg = true; }, "solver.poisson_backend = mlmg"},
         {[] (auto& x) { x.unsteady = true; }, "steady.stage = unsteady"},
         {[] (auto& x) { x.canopy_heat = true; }, "canopy.heat = fixed"},
@@ -719,6 +718,15 @@ TEST (ImmersedTerrain, RefusesWhatItDoesNotSupport)
     EXPECT_TRUE(gust::check_immersed_terrain_height(hyb(0.5 * kDz), kDz, top).empty());
     EXPECT_NE(gust::check_immersed_terrain_height(hyb(-0.1), kDz, top).find("between 0 and"), std::string::npos);
     EXPECT_NE(gust::check_immersed_terrain_height(hyb(23.5 * kDz), kDz, top).find("between 0 and"), std::string::npos);
+    // The advice: immersed_forcing over a hill or a file recommends hybrid; flat terrain, hybrid and body_fitted get none.
+    auto rep = [] (const std::string& r, const std::string& type) { auto t = terrain(kDz); t.representation = r; t.type = type; return t; };
+    for (const std::string type : {"agnesi", "xyz", "erf_grid"}) {
+        EXPECT_NE(gust::immersed_terrain_advice(rep("immersed_forcing", type)).find("terrain.representation = hybrid is recommended"),
+                  std::string::npos) << type;
+        EXPECT_TRUE(gust::immersed_terrain_advice(rep("hybrid", type)).empty()) << type;
+        EXPECT_TRUE(gust::immersed_terrain_advice(rep("body_fitted", type)).empty()) << type;
+    }
+    EXPECT_TRUE(gust::immersed_terrain_advice(rep("immersed_forcing", "flat")).empty());
 }
 
 // The restart record: the hash follows flat_height, small_volfrac and z0; a checkpoint is refused for a

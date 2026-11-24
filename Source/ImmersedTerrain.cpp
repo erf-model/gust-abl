@@ -38,7 +38,6 @@ std::vector<std::string> check_immersed_terrain (const ImmersedTerrainFacts& f)
     if (f.buildings) { err.push_back(rep + " cannot be combined with buildings.type for now"); }
     if (f.nests) { err.push_back(rep + " cannot be combined with nests for now"); }
     if (f.newton) { err.push_back(rep + " is not supported with steady.stage = simplec_newton yet"); }
-    if (!f.zline_sweeps) { err.push_back(rep + " needs z-line sweeps (steady.sweep = zjacobi) for now"); }
     if (f.poisson_mlmg) {
         err.push_back(rep + " cannot use solver.poisson_backend = mlmg (no solid cells in its operator); use gmres_mlmg or gmres_fft");
     }
@@ -71,6 +70,15 @@ std::string check_immersed_terrain_height (const TerrainInputs& t, double first_
     return "terrain.flat_height must lie between the top of the mesh's first layer (" + std::to_string(first_layer_top)
            + " m) and the bottom of its top layer (" + std::to_string(top_layer_bottom)
            + " m) with terrain.representation = " + t.representation + " (got " + std::to_string(h) + ")";
+}
+
+std::string immersed_terrain_advice (const TerrainInputs& t)
+{
+    if (t.representation != "immersed_forcing" || t.type == "flat") { return {}; }
+    return "terrain.representation = immersed_forcing over terrain.type = " + t.type
+           + ": the flat mesh cuts the ground across many layers; terrain.representation = hybrid is recommended (the mesh "
+             "follows the terrain's lower envelope and the ground stays within a few layers of it, "
+             "docs/immersed_terrain.rst)";
 }
 
 BuildingsOptions immersed_terrain_options (const TerrainInputs& t, double z0, bool z0_map)

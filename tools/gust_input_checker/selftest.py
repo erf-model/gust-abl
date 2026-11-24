@@ -61,6 +61,8 @@ JOINT = "GUST_JOINT 1\nfeedback %s\nexchanges %d\nouter 0x0p+0\nnest %s 0x0p+0 c
 JOINT3 = "GUST_JOINT 3\nfeedback %s\nexchanges 4\nouter 0x0p+0\nwindow 0\n%snest a 0x0p+0 chk_a\n"
 JOINT2 = "GUST_JOINT 2\nfeedback %s\nexchanges %d\nouter 0x0p+0\nwindow %s\nnest %s 0x0p+0 chk_a\n"
 
+LARGE_XYZ = "mesh.n_cell = 128 128 32\nterrain.type = xyz\nterrain.file = t.xyz\n"
+XYZ_FILE = "0 0 0\n1600 0 50\n0 1600 20\n1600 1600 80\n"
 IMMERSED = "terrain.representation = immersed_forcing\nterrain.flat_height = 250\nbc.zlo = surface_layer\nsteady.sweep = zjacobi\n"
 
 COLUMN = ("init.first_guess = column\nforcing.coriolis = 1\nforcing.latitude = 45\nforcing.geostrophic = 1\n"
@@ -151,7 +153,19 @@ CASES = [
     ("immersed_top_layer", "solve", IMMERSED.replace("250", "750"), ["E terrain.flat_height immersed_terrain"], []),
     ("immersed_no_height", "solve", IMMERSED.replace("terrain.flat_height = 250\n", ""),
      ["E terrain.flat_height immersed_terrain"], []),
-    ("immersed_lusgs", "solve", IMMERSED.replace("zjacobi", "lusgs"), ["E steady.sweep immersed_terrain"], []),
+    ("immersed_lusgs", "solve", IMMERSED.replace("zjacobi", "lusgs"), [], ["E steady.sweep"]),
+    ("immersed_flat_no_advice", "solve", IMMERSED, [], ["W terrain.representation"]),
+    ("immersed_hill_advice", "hill", IMMERSED, ["W terrain.representation immersed_terrain"], []),
+    ("hybrid_hill_no_advice", "hill", IMMERSED.replace("immersed_forcing", "hybrid"), [], ["W terrain.representation"]),
+    # App.cpp prints the advice on a fresh start only.
+    ("immersed_hill_restart_no_advice", "hill", IMMERSED + "io.restart = old00010\n", [], ["W terrain.representation"],
+     {"files": {"old00010/Header": "x\n"}}),
+    # An immersed or hybrid ground needs mesh.hierarchy_levels = 1: no grid-sequencing advice for a large mesh.
+    ("large_xyz_mesh_sequencing_advice", "solve", LARGE_XYZ, ["A mesh.hierarchy_levels"], [], {"files": {"t.xyz": XYZ_FILE}}),
+    ("large_xyz_immersed_no_sequencing_advice", "solve", LARGE_XYZ + IMMERSED, [], ["A mesh.hierarchy_levels"],
+     {"files": {"t.xyz": XYZ_FILE}}),
+    ("large_xyz_hybrid_no_sequencing_advice", "solve", LARGE_XYZ + IMMERSED.replace("immersed_forcing", "hybrid"), [],
+     ["A mesh.hierarchy_levels"], {"files": {"t.xyz": XYZ_FILE}}),
     ("immersed_z0_map", "solve", IMMERSED + "bc.surface_z0_file = z0.xyz\nterrain.idw_neighbors = 1\n", [], ["E *"],
      {"files": {"z0.xyz": "0 0 0.03\n800 0 0.3\n"}}),
     ("hybrid_z0_map", "solve", IMMERSED.replace("immersed_forcing", "hybrid") + "bc.surface_z0_file = z0.xyz\nterrain.idw_neighbors = 1\n", [], ["E *"],

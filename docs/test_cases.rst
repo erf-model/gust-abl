@@ -33,7 +33,8 @@ Steady cases
      - A sloping ground immersed in a flat mesh against the terrain-following mesh (:doc:`immersed_terrain`): the
        wind along a ridge (the wall law on slopes up to 18°), across a ridge and over a round hill (crest speed and
        lee minimum).
-     - ``rt_immersed_along_vertical``, ``rt_immersed_ridge_vertical``; ``rt_immersed_hill_vertical`` (nightly)
+     - ``rt_immersed_along_vertical``, ``rt_immersed_ridge_vertical``, ``rt_immersed_ridge_lusgs``;
+       ``rt_immersed_hill_vertical`` (nightly)
    * - 2
      - Flat 3-D periodic (ERF ``Neutral_ABL_Flat``)
      - Horizontal directions, pressure, Coriolis forcing.
@@ -75,7 +76,10 @@ Steady cases
 ``Tests/Real_Terrain/Sites_128m`` also holds Altamont Pass (power-law inflow, ``rt_sites128_altamont_power_law``)
 and the Flatirons (an inflow table from GUST's column, ``rt_sites128_flatirons_inflow_file``,
 ``rt_sites128_flatirons_column``, ``rt_sites128_flatirons_table``); the four nightly tests check that each case
-reaches a steady state. The column tests ``rt_sites128_perdigao_column_z0`` and ``rt_sites128_column_z0_needed``
+reaches a steady state. The four sites also have hybrid-mesh decks (:doc:`immersed_terrain`), one level with
+LU-SGS: ``rt_sites128_butte_log_law_hybrid``, ``rt_sites128_altamont_power_law_hybrid``,
+``rt_sites128_perdigao_target_wind_hybrid`` and ``rt_sites128_flatirons_inflow_file_hybrid`` (nightly) check the
+steady verdict. The column tests ``rt_sites128_perdigao_column_z0`` and ``rt_sites128_column_z0_needed``
 run ``init.column_z0`` under a roughness map.
 
 **Case 5b.** Case 5 keeps the potential temperature, gravity, Coriolis forcing at 57.2° N and the flat case's
