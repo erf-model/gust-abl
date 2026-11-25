@@ -159,12 +159,13 @@ std::string run_domain (const DomainRole& role)
         }
         simplec = read_simplec_options();
         if (newton && simplec.theta_frozen) {
-            err.emplace_back("simplec.theta = frozen is not supported with steady.stage = simplec_newton (the Newton stage "
-                             "solves theta)");
+            err.emplace_back("simplec.theta = " + theta_value(simplec)
+                             + " is not supported with steady.stage = simplec_newton (the Newton stage solves theta)");
         }
         if (simplec.theta_frozen && !in.io.restart.empty()) {
-            err.emplace_back("simplec.theta = frozen is not supported with io.restart (theta is held at the first guess; restart with "
-                             "simplec.theta = solve, or start again from the first guess)");
+            err.emplace_back("simplec.theta = " + theta_value(simplec)
+                             + " is not supported with io.restart (theta is held at the first guess; restart with "
+                               "simplec.theta = solve, or start again from the first guess)");
         }
         if (newton) {
             newton_opt = read_newton_stage_options(sopt, copt);
@@ -312,7 +313,8 @@ std::string run_domain (const DomainRole& role)
     }
     if (solve && buildings_opt.active() && simplec.theta_frozen && !buildings_opt.theta_mode_name.empty()
         && buildings_opt.theta_mode != BuildingThetaMode::none) {
-        err.emplace_back("buildings.theta_mode = " + buildings_opt.theta_mode_name + " has no effect with simplec.theta = frozen "
+        err.emplace_back("buildings.theta_mode = " + buildings_opt.theta_mode_name + " has no effect with simplec.theta = "
+                         + theta_value(simplec) + " "
                          "(theta is data, not solved; leave the key out or give none)");
     }
     if (solve && canopy_opt.active() && canopy_opt.heat.on() && !simplec.theta_frozen
@@ -349,14 +351,16 @@ std::string run_domain (const DomainRole& role)
     // then blend it again (the same reason as for nest.names, below).
     if (solve && nest == nullptr && nest_guess && simplec.theta_frozen && canopy_opt.active() && canopy_opt.heat.on()
         && canopy_opt.heat.frozen == CanopyFrozenHeat::blend) {
-        err.emplace_back("init.first_guess = nest is not supported with simplec.theta = frozen and canopy.heat_frozen = "
+        err.emplace_back("init.first_guess = nest is not supported with simplec.theta = " + theta_value(simplec)
+                         + " and canopy.heat_frozen = "
                          "blend (the parent run's theta may already carry the leaves' heat, and the patch would blend it again; "
                          "use canopy.heat_frozen = skip)");
     }
     // Frozen theta meets the unsteady stage only in a patch (elsewhere it needs grid sequencing, which that stage
     // refuses); it is refused there too.
     if (solve && nest == nullptr && nest_guess && simplec.theta_frozen && unsteady) {
-        err.emplace_back("simplec.theta = frozen is not supported with steady.stage = unsteady and init.first_guess = nest "
+        err.emplace_back("simplec.theta = " + theta_value(simplec)
+                         + " is not supported with steady.stage = unsteady and init.first_guess = nest "
                          "(a held theta in an unsteady patch is not tested)");
     }
     for (const auto& e : check_column_guess(iopt, sopt, fopt, bin, surf, surface_layer)) { err.push_back(e); }
@@ -396,7 +400,8 @@ std::string run_domain (const DomainRole& role)
         // again (Simplec.cpp, canopy.heat_frozen = blend takes the theta of its first iteration as the frozen field).
         if (simplec.theta_frozen && canopy_opt.active() && canopy_opt.heat.on()
             && canopy_opt.heat.frozen == CanopyFrozenHeat::blend) {
-            err.emplace_back("nest.names is not supported with simplec.theta = frozen and canopy.heat_frozen = blend (a "
+            err.emplace_back("nest.names is not supported with simplec.theta = " + theta_value(simplec)
+                             + " and canopy.heat_frozen = blend (a "
                              "nest would blend the outer domain's blended theta again)");
         }
         if (!solve || unsteady) {
@@ -512,6 +517,16 @@ std::string run_domain (const DomainRole& role)
     // A nest holds theta at its start: a joint run's nest the outer domain's frozen theta, interpolated; a patch
     // that starts from a parent run (init.first_guess = nest) that run's theta, interpolated, whether the parent
     // solved theta or held it.
+    // frozen_buoyant first: the advice of the frozen check below (grid sequencing) would not do for it.
+    if (simplec.theta_buoyant && nest != nullptr) {
+        amrex::Abort(invalid + "\n  simplec.theta = frozen_buoyant is not supported in the nests of nest.names (not "
+                     "tested); give the patch no nest.names, or use simplec.theta = frozen");
+    }
+    if (simplec.theta_buoyant && !nest_guess) {
+        amrex::Abort(invalid + "\n  simplec.theta = frozen_buoyant needs a nested patch of a parent run (bc.nest_parent, "
+                     "init.first_guess = nest): elsewhere the frozen theta is the inflow profile's by height above the "
+                     "ground, whose buoyancy over terrain is not a physical force; use simplec.theta = frozen");
+    }
     if (simplec.theta_frozen && nest == nullptr && !nest_guess && !(sequencing && in.mesh.hierarchy_levels > 1)) {
         amrex::Abort(invalid + "\n  simplec.theta = frozen needs grid sequencing (steady.sequencing = 1, "
                      "mesh.hierarchy_levels > 1): the frozen theta is set from the inflow profile (or the stratified "

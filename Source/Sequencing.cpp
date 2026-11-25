@@ -73,7 +73,8 @@ ResidualInputs residual_inputs (const RunSetup& s, const Closure& closure, const
     r.theta = s.cin.theta;
     r.hybrid = s.cin.hybrid;
     r.buoyancy = s.fopt.buoyancy;
-    r.buoyancy_in_momentum = !s.simplec.theta_frozen;
+    r.buoyancy_in_momentum = buoyancy_in_momentum(s.simplec);
+    r.buoyancy_point_implicit = buoyancy_point_implicit(s.simplec);
     r.coriolis = s.fopt.coriolis;
     r.pressure_gradient = s.fopt.pressure_gradient;
     r.surface = s.surface_layer ? &surf : nullptr;

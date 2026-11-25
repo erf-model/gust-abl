@@ -157,6 +157,9 @@ struct ResidualInputs
     //! stratification of van der Laan et al. 2024, whose momentum equations
     //! carry no buoyancy).
     bool buoyancy_in_momentum{true};
+    //! The predictor's point-implicit buoyancy in the w rows (Predictor.H) predicts theta's change; false with theta
+    //! held (simplec.theta = frozen_buoyant), where theta does not change and the w rows take the buoyancy explicitly.
+    bool buoyancy_point_implicit{true};
     CoriolisOptions coriolis;
     //! The constant kinematic pressure-gradient force (m/s^2) on u, v, w (Forcing.H).
     amrex::Array<amrex::Real, 3> pressure_gradient{0, 0, 0};

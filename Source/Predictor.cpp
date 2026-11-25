@@ -342,7 +342,7 @@ MomentumPredictorResult momentum_predictor (State& q, const ResidualFields& R,
             }
             amrex::Gpu::streamSynchronize();   // dmean is read by the kernels above
         }
-        if (c == 2 && in.buoyancy.gravity > 0 && in.buoyancy_in_momentum) {
+        if (c == 2 && in.buoyancy.gravity > 0 && in.buoyancy_in_momentum && in.buoyancy_point_implicit) {
             // Point-implicit buoyancy (the header): the w rows gain the
             // stiffness (g/theta_0) max(d theta/dz, 0) tau_theta on the diagonal
             // (into d as well) and the buoyancy of the theta change the theta
