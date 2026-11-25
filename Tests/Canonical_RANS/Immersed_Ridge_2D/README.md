@@ -34,6 +34,7 @@ and there is no flow over it.
 | `inputs_body_fitted_along`, `inputs_immersed_along` | Wind along the ridge. |
 | `inputs_body_fitted_ridge`, `inputs_immersed_ridge` | Wind across the ridge. |
 | `inputs_immersed_ridge_lusgs` | `inputs_immersed_ridge` with LU-SGS (`steady.sweep = lusgs`) in place of z-line Jacobi. |
+| `inputs_immersed_ridge_lee` | `inputs_immersed_ridge` with the lee turn (`terrain.lee_turn = 0.25`). |
 | `inputs_body_fitted_hill`, `inputs_immersed_hill` | The round hill. |
 | `inputs_hybrid_ground`, `inputs_hybrid_restart` | The hybrid mesh on the ridge with the default `terrain.flat_height` and `terrain.hybrid_half_width`: two steps that write a checkpoint, then a restart from it on another box layout. |
 | `check_immersed_ridge.py` | Runs an immersed deck, runs (or reads) its body-fitted reference, and compares the two. `--variant NAME` picks `inputs_immersed_<case>_NAME`; `--reference-immersed DECK --sweep PCT` also runs a second immersed deck and bounds the largest difference of the wind between the two. |
@@ -122,6 +123,11 @@ the hill's centre. Iterations: body-fitted 2441, immersed 2180.
   18°, where cos α is 0.99 to 0.95) and was removed from the code (see the docs).
 
 ## CTest
+`rt_immersed_ridge_lee` (label `regression`, four ranks; about 8 min) runs `inputs_immersed_ridge_lee` and the
+body-fitted ridge. The lee turn (`docs/immersed_terrain.rst`, Lee turn) brings the immersed lee closer to the
+body-fitted run; the limits are crest 2 %, lee minimum 11 % and rms 5.5 % of the far-field speed. Measured on four
+ranks at 20 m: crest -1.07 %, lee minimum -9.65 %, rms 5.03 % (4809 iterations); without the lee turn
+(`inputs_immersed_ridge`) -1.52 %, -13.02 % and 6.36 % (4822 iterations), which fail the lee and rms limits.
 `rt_immersed_along_vertical`, `rt_immersed_ridge_vertical` (label `regression`, four ranks). Each test runs the
 immersed and the body-fitted deck in `<build>/Tests/run/rt_immersed_<pair>`. Double precision only.
 `rt_immersed_hill_vertical` (label `nightly`, four ranks; about 40 min).

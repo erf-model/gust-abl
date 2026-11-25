@@ -112,6 +112,13 @@ struct TerrainInputs
     amrex::Real flat_height{0};
     //! immersed_forcing and hybrid: solid fractions below it are fluid and above 1 - it solid, in [1e-4, 0.5).
     amrex::Real small_volfrac{amrex::Real(0.005)};
+    //! immersed_forcing and hybrid: C_0 of the lee turn (ImmersedLeeTurn.H), w in a lee cut cell relaxed
+    //! towards the ground's slope times the wind above at rate C_0 n^2 |U_r| / dz. 0: off; else finite and in
+    //! (0, 10].
+    amrex::Real lee_turn{0};
+    //! immersed_forcing and hybrid with lee_turn > 0: epsilon of the lee turn's ramp, which brings the term in
+    //! from 0 where the ground turns from windward to lee: min(1, -w_t / (epsilon |U_r|)). Finite, in (0, 1].
+    amrex::Real lee_turn_ramp{amrex::Real(0.05)};
     //! Keys given in the inputs (a key with no effect for the chosen type is an error).
     std::vector<std::string> given;
     //! The ground is immersed in the mesh: terrain.representation = immersed_forcing or hybrid.

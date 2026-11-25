@@ -186,6 +186,14 @@ CASES = [
      ["E init.column_z0"], [], {"files": {"z0.xyz": "0 0 0.03\n1600 0 0.3\n"}}),
     ("immersed_column_guess", "solve", IMMERSED + "init.first_guess = column\n",
      ["E init.first_guess immersed_terrain"], [], {"dedupe": "init.first_guess"}),
+    ("lee_turn_body_fitted", "solve", "terrain.lee_turn = 0.25\n", ["E terrain.lee_turn immersed_terrain"], []),
+    ("lee_turn_flat", "solve", IMMERSED + "terrain.lee_turn = 0.25\n", ["E terrain.lee_turn immersed_terrain"], []),
+    ("lee_turn_ramp_off", "solve", IMMERSED + "terrain.type = agnesi\nterrain.hill_height = 100\nterrain.hill_half_width = 500\n"
+     "terrain.lee_turn_ramp = 0.1\n", ["E terrain.lee_turn_ramp immersed_terrain"], []),
+    ("lee_turn_hill", "solve", IMMERSED + "terrain.type = agnesi\nterrain.hill_height = 100\nterrain.hill_half_width = 500\n"
+     "terrain.lee_turn = 0.25\nterrain.lee_turn_ramp = 0.1\n", [], ["E *"]),
+    ("lee_turn_range", "solve", IMMERSED + "terrain.type = agnesi\nterrain.hill_height = 100\nterrain.hill_half_width = 500\n"
+     "terrain.lee_turn = 0.3\n", ["E terrain.lee_turn"], []),
     ("immersed_keys_body_fitted", "solve", "terrain.flat_height = 250\n", ["E terrain.flat_height immersed_terrain"], []),
     ("immersed_hill", "solve", IMMERSED + "terrain.type = agnesi\nterrain.hill_height = 100\nterrain.hill_half_width = 500\n",
      [], ["E *"]),

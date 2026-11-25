@@ -1,5 +1,6 @@
 // ParmParse parsing of every namespace, including unknown-key
 // detection. The abort itself is exercised by the deck tests in Tests/Infrastructure/Input_Validation.
+#include "ImmersedTerrain.H"
 #include "Inputs.H"
 
 #include <AMReX_ParallelDescriptor.H>
@@ -304,6 +305,19 @@ TEST (Inputs, ImmersedTerrainChecksNameTheInput)
              in.terrain.representation = "body_fitted"; in.terrain.given.emplace_back("flat_height"); }},
         {"terrain.small_volfrac has no effect unless", [] (gust::Inputs& in) {
              in.terrain.representation = "body_fitted"; in.terrain.given.emplace_back("small_volfrac"); }},
+        {"terrain.lee_turn must be 0 (off) or in (0, 0.25]", [] (gust::Inputs& in) { in.terrain.lee_turn = amrex::Real(-0.1); }},
+        {"terrain.lee_turn must be 0 (off) or in (0, 0.25]", [] (gust::Inputs& in) { in.terrain.lee_turn = amrex::Real(0.26); }},
+        {"terrain.lee_turn must be 0 (off) or in (0, 0.25]", [] (gust::Inputs& in) {
+             in.terrain.lee_turn = std::numeric_limits<amrex::Real>::quiet_NaN(); }},
+        {"terrain.lee_turn_ramp must be in (0, 1]", [] (gust::Inputs& in) { in.terrain.lee_turn = amrex::Real(0.25); in.terrain.lee_turn_ramp = 0; }},
+        {"terrain.lee_turn_ramp must be in (0, 1]", [] (gust::Inputs& in) {
+             in.terrain.lee_turn = amrex::Real(0.25); in.terrain.lee_turn_ramp = amrex::Real(1.5); }},
+        {"terrain.lee_turn_ramp has no effect unless terrain.lee_turn > 0", [] (gust::Inputs& in) {
+             in.terrain.given.emplace_back("lee_turn_ramp"); }},
+        {"terrain.lee_turn has no effect unless terrain.representation = immersed_forcing", [] (gust::Inputs& in) {
+             in.terrain.representation = "body_fitted"; in.terrain.given.emplace_back("lee_turn"); }},
+        {"terrain.lee_turn has no effect with terrain.type = flat", [] (gust::Inputs& in) {
+             in.terrain.lee_turn = amrex::Real(0.25); in.terrain.given.emplace_back("lee_turn"); }},
     };
     for (const auto& c : cases) {
         auto in = immersed();
@@ -311,6 +325,28 @@ TEST (Inputs, ImmersedTerrainChecksNameTheInput)
         const auto err = gust::validate(in);
         EXPECT_EQ(err.size(), 1u) << c.key;
         EXPECT_TRUE(any_mentions(err, c.key)) << c.key;
+    }
+    {
+        // terrain.lee_turn = 0 may be given on a flat ground (off), and > 0 on a hill.
+        auto in = immersed();
+        in.terrain.given.emplace_back("lee_turn");
+        EXPECT_TRUE(gust::validate(in).empty());
+        in.terrain.lee_turn = amrex::Real(0.25);
+        in.terrain.type = "agnesi";
+        in.terrain.hill_height = 50;
+        in.terrain.hill_half_width = 100;
+        EXPECT_TRUE(gust::validate(in).empty());
+    }
+    {
+        // The lee turn's ends of range are accepted.
+        for (const double c0 : {0.0, 0.1, 0.25}) {
+            for (const double eps : {0.05, 1.0}) {
+                auto in = immersed();
+                in.terrain.lee_turn = static_cast<amrex::Real>(c0);
+                in.terrain.lee_turn_ramp = static_cast<amrex::Real>(eps);
+                EXPECT_TRUE(gust::validate(in).empty()) << c0 << " " << eps;
+            }
+        }
     }
 }
 
@@ -399,6 +435,25 @@ TEST (Inputs, ParsesTheImmersedTerrainKeys)
     EXPECT_EQ(in.terrain.given.size(), 3u);
     const auto unk = gust::unknown_inputs(gust::parmparse_entries());
     EXPECT_TRUE(unk.empty()) << (unk.empty() ? "" : unk.front());
+}
+
+// terrain.lee_turn and terrain.lee_turn_ramp are read from an inputs file and reach the immersed ground's options.
+TEST (Inputs, ParsesTheLeeTurnKeys)
+{
+    ScopedKeys guard{{{"terrain", "representation"}, {"terrain", "flat_height"}, {"terrain", "lee_turn"}, {"terrain", "lee_turn_ramp"}}};
+    add_inputs_text("terrain.representation = hybrid\nterrain.flat_height = 0\nterrain.lee_turn = 0.25\nterrain.lee_turn_ramp = 0.1\n");
+    const auto in = gust::parse_inputs();
+    EXPECT_EQ(in.terrain.lee_turn, amrex::Real(0.25));
+    EXPECT_EQ(in.terrain.lee_turn_ramp, amrex::Real(0.1));
+    const auto unk = gust::unknown_inputs(gust::parmparse_entries());
+    EXPECT_TRUE(unk.empty()) << (unk.empty() ? "" : unk.front());
+    const gust::BuildingsOptions o = gust::immersed_terrain_options(in.terrain, 0.1);
+    EXPECT_EQ(o.ground_lee_turn, 0.25);
+    EXPECT_NEAR(o.ground_lee_turn_ramp, 0.1, 1e-7);
+    // Off by default.
+    gust::TerrainInputs t;
+    t.representation = "hybrid";
+    EXPECT_EQ(gust::immersed_terrain_options(t, 0.1).ground_lee_turn, 0.0);
 }
 
 // terrain.immersed_slope, terrain.immersed_side_walls and terrain.immersed_wall_distance are not inputs: the
