@@ -300,7 +300,7 @@ def _write_run_script(chain_dir, crop, lat0, lon0, case, cloud):
         f"TOOL={q(tool)}; CROP={q(crop)}",
         'step() { (cd "$1" && rm -rf chk[0-9]* plt[0-9]* turb[0-9]* && $MPI "$G" inputs > log.txt 2>&1) || '
         '{ echo "run.sh: $1 failed (see $1/log.txt)" >&2; exit 1; }; }',
-        "rm -f score.txt score.json parent/chk00000",
+        "rm -rf score.txt score.json parent/chk00000",
         "step hrrr_raw",
         f'$PY "$TOOL" to-chk "$CROP" hrrr_raw/chk00000 {site} --cloud-mixing-ratio {cloud!r}',
         '$PY "$TOOL" balance hrrr_raw/chk00000',
