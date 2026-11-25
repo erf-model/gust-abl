@@ -89,7 +89,7 @@ the full table, with bias, rms, direction, the mean speed bias from 5 to 50 m (`
 | frozen_flux | 0.88 | 0.58 | 0.92 | 1.57 | 1.64 | 1.19 |
 | **frozen_buoyant** | **0.54** | **0.36** | **0.60** | 1.67 | 1.41 | 1.29 |
 | frozen_buoyant_flux | 0.63 | 0.38 | 0.63 | 1.72 | 1.46 | 1.33 |
-| solved_flux | 1.93 (not steady) | not run | not run | **1.00** | **1.30** | **0.90** |
+| solved_flux | 1.93 (not steady) | 1.48 (not steady) | 1.00 (not steady) | **1.00** | **1.30** | **0.90** |
 
 - **frozen_buoyant is the recommended option for C1 hours** (0.12 to 0.24 m/s below frozen, 0.22 to 0.52 m/s below
   the scheme, in each hour). The gain is mostly in speed: the speed bias below 500 m goes from −0.57, −0.36, −0.72
@@ -99,8 +99,8 @@ the full table, with bias, rms, direction, the mean speed bias from 5 to 50 m (`
   frozen θ with its buoyancy force, limits), which can give a horizontal force in the capping layer that HRRR does
   not have; part of the gain may come from it. The case does not separate the two.
 - **solved_flux is the lowest in the three C2 hours** (0.31 to 0.39 m/s below the scheme), and steady in fewer than
-  200 iterations. In may10_19 (the only C1 hour run with it) it is not steady: w reaches 6.6 m/s after 2000
-  iterations.
+  200 iterations. In the three C1 hours it is not steady after 2000 iterations: w reaches 6.6, 5.4 and 4.9 m/s, and
+  the residual stays near 5e-3.
 - frozen_buoyant does not help in the C2 hours: it is the highest in apr02_18 (the lowest boundary layer, z_i
   797 m), where w reaches 4.2 m/s.
 - HRRR's heat flux at the ground adds 0.02 to 0.10 m/s with θ held, in every hour.
