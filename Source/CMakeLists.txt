@@ -66,6 +66,7 @@ set(GUST_SOURCES
     NestDefect.cpp
     NestFaceFlux.cpp
     NestRelax.cpp
+    ThetaRelax.cpp
     NestInject.cpp
     NestFaces.cpp
     NestParent.cpp

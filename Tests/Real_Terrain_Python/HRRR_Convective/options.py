@@ -10,6 +10,8 @@ parent (a nest_<option> folder beside the chain's nest):
     frozen_buoyant  simplec.theta = frozen_buoyant: theta held at the parent's, its buoyancy kept in w
                   (the recommended option for C1 hours, README)
     frozen_buoyant_flux  frozen_buoyant with HRRR's heat flux at the ground
+    relaxed_flux_T  simplec.theta = relaxed_buoyant with simplec.theta_relax_time = T s (T in RELAX_TIMES): theta
+                  solved and relaxed towards the parent's, its buoyancy kept in w, HRRR's heat flux at the ground
 
 The script writes <out>/<hour>/ and <out>/run_options.sh, which runs each chain and then the nest options of its
 hour, one run at a time, and scores each nest. An hour the tool refuses is reported and left out.
@@ -36,17 +38,24 @@ from prepare import HOURS, LAT, LON, crop_name  # noqa: E402
 
 # the theta-solved heated surface had no steady state in 4000 iterations (Nov 2026); 2000 are enough to show it
 SOLVED_FLUX_ITERATIONS = 2000
+# the relaxation times of simplec.theta = relaxed_buoyant, s (z_i / w* is about 500-600 s in these hours)
+RELAX_TIMES = (300, 1000, 3000)
 
 
 def nest_options(q):
     """The nest options for an hour with HRRR's box-mean kinematic virtual heat flux q (K m/s):
     name -> (keys set, keys dropped)."""
     flux = {"bc.surface_stability": "heat_flux", "bc.surface_heat_flux": round(q, 5)}
-    return {"frozen": ({"simplec.theta": "frozen"}, ()),
+    opts = {"frozen": ({"simplec.theta": "frozen"}, ()),
             "frozen_flux": (dict(flux, **{"simplec.theta": "frozen"}), ()),
             "frozen_buoyant": ({"simplec.theta": "frozen_buoyant"}, ()),
             "frozen_buoyant_flux": (dict(flux, **{"simplec.theta": "frozen_buoyant"}), ()),
             "solved_flux": (dict(flux, **{"steady.max_iterations": SOLVED_FLUX_ITERATIONS}), ())}
+    for t in RELAX_TIMES:
+        relax = {"simplec.theta": "relaxed_buoyant", "simplec.theta_relax_time": t,
+                 "steady.max_iterations": SOLVED_FLUX_ITERATIONS}
+        opts[f"relaxed_flux_{t}"] = (dict(flux, **relax), ())
+    return opts
 
 
 NEST_OPTIONS = tuple(nest_options(0.1))

@@ -17,7 +17,9 @@ ERROR:
   io.iteration_log with the stage; intervals without their output switch;
 - simplec.*, solver.* (Source/Simplec.cpp, Source/Poisson.cpp): every simplec
   key without a stage; simplec.w_vnn_cap_slope_margin without simplec.w_vnn_cap;
-  simplec.theta = frozen with the Newton stage or a restart;
+  simplec.theta = frozen with the Newton stage or a restart; simplec.theta_relax_time without
+  simplec.theta = relaxed_buoyant, and relaxed_buoyant without it, with the Newton stage, a restart, the
+  unsteady stage or nest.names; frozen_buoyant and relaxed_buoyant outside a patch of a parent run;
   solver.poisson_precond and solver.poisson_restart with a backend that does
   not use them.
 
@@ -234,6 +236,32 @@ class PressureChecker(Checker):
             if c.first_guess == "column" and c.column_evolves and c.heat_flux_surface:
                 self.error("simplec.theta", "GUST stops: simplec.theta = frozen with a column first guess that sets "
                                             "theta from a surface heat flux.", "Use simplec.theta = solve.")
+        theta = c.s("simplec.theta")
+        # frozen_buoyant and relaxed_buoyant hold or relax theta towards a parent run's (Source/App.cpp).
+        if theta in ("frozen_buoyant", "relaxed_buoyant") and c.first_guess != "nest" and not c.restart:
+            self.error("simplec.theta", "GUST stops: simplec.theta = %s needs a nested patch of a parent run "
+                                        "(bc.nest_parent, init.first_guess = nest)." % theta,
+                       "Use simplec.theta = solve or frozen.")
+        # simplec.theta = relaxed_buoyant (Source/Simplec.cpp, Source/App.cpp): the time scale is required with it and
+        # refused without it; the Newton stage, a restart, the unsteady stage and nest.names are refused.
+        if theta != "relaxed_buoyant":
+            self.no_effect("simplec.theta_relax_time", "unless simplec.theta = relaxed_buoyant")
+        else:
+            if not self.given("simplec.theta_relax_time"):
+                self.error("simplec.theta", "GUST stops: simplec.theta = relaxed_buoyant needs simplec.theta_relax_time.",
+                           "Give simplec.theta_relax_time (s, finite and > 0).")
+            if c.newton:
+                self.error("simplec.theta", "GUST stops: simplec.theta = relaxed_buoyant is not supported with "
+                                            "steady.stage = simplec_newton.", "Use steady.stage = simplec.")
+            if c.restart:
+                self.error("simplec.theta", "GUST stops: simplec.theta = relaxed_buoyant is not supported with "
+                                            "io.restart.", "Start the run from a first guess.")
+            if c.unsteady:
+                self.error("simplec.theta", "GUST stops: simplec.theta = relaxed_buoyant is not supported with "
+                                            "steady.stage = unsteady.", "Use steady.stage = simplec.")
+            if self.given("nest.names"):
+                self.error("simplec.theta", "GUST stops: simplec.theta = relaxed_buoyant is not supported with "
+                                            "nest.names.", "Use simplec.theta = solve in a joint run.")
         aspect = c.aspect_ratio
         if cap and cap > 0 and margin == 0 and c.has_terrain and aspect is not None and aspect > TESTED_ASPECT:
             self.warn("simplec.w_vnn_cap", "simplec.w_vnn_cap = %s with simplec.w_vnn_cap_slope_margin = 0 over terrain: "
