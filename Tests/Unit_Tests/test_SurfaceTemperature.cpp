@@ -239,7 +239,7 @@ TEST(SurfaceTemperature, MapIsReadTheSameOnEveryDecomposition)
     amrex::MultiFab map;
     gust::read_surface_temperature_map(file, "bc.surface_temperature_file", 4, 2.0, c.geom, c.ba, c.dm, map);
     EXPECT_GT(c.ba.size(), 3);
-    long bad = 0;
+    amrex::Long bad = 0;
     for (amrex::MFIter mfi(map, false); mfi.isValid(); ++mfi) {
         const auto a = map.const_array(mfi);
         amrex::LoopOnCpu(mfi.fabbox(), [&] (int i, int j, int k) {
