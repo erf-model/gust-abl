@@ -14,6 +14,7 @@ parent (a nest_<option> folder beside the chain's nest):
                   frozen, frozen_buoyant and solved theta with bc.surface_stability = surface_temperature: HRRR's skin
                   theta_v as a map (surface_theta.xyz in the option's folder), the flux from Monin-Obukhov
                   similarity cell by cell; solved_tsurf stops at SOLVED_FLUX_ITERATIONS
+    solved_flux_l200  solved_flux with the length-scale cap at 200 m (turb.max_geom_lscale; the scheme's is 100 m)
 
 The script writes <out>/<hour>/ and <out>/run_options.sh, which runs each chain and then the nest options of its
 hour, one run at a time, and scores each nest. An hour the tool refuses is reported and left out.
@@ -56,7 +57,9 @@ def nest_options(q):
             "solved_flux": (dict(flux, **{"steady.max_iterations": SOLVED_FLUX_ITERATIONS}), ()),
             "frozen_tsurf": (dict(TSURF, **{"simplec.theta": "frozen"}), ()),
             "frozen_buoyant_tsurf": (dict(TSURF, **{"simplec.theta": "frozen_buoyant"}), ()),
-            "solved_tsurf": (dict(TSURF, **{"steady.max_iterations": SOLVED_FLUX_ITERATIONS}), ())}
+            "solved_tsurf": (dict(TSURF, **{"steady.max_iterations": SOLVED_FLUX_ITERATIONS}), ()),
+            "solved_flux_l200": (dict(flux, **{"steady.max_iterations": SOLVED_FLUX_ITERATIONS,
+                                                "turb.max_geom_lscale": 200.0}), ())}
 
 
 NEST_OPTIONS = tuple(nest_options(0.1))

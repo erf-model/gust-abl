@@ -44,6 +44,7 @@ The options (each changes only the nest, so all share the chain's parent):
 | frozen_tsurf | frozen | HRRR's skin temperature as a θv map (`bc.surface_stability = surface_temperature`); GUST's own MOST flux |
 | frozen_buoyant_tsurf | frozen_buoyant | HRRR's skin temperature |
 | solved_tsurf | solved | HRRR's skin temperature (at most 2000 iterations) |
+| solved_flux_l200 | solved | HRRR's heat flux, with the length-scale cap at 200 m (`turb.max_geom_lscale = 200`; the scheme's is 100 m) |
 
 The three `_tsurf` options read `surface_theta.xyz`, which `options.py` writes into each of their folders: HRRR's
 skin temperature as θv, θv_s = T_s (10^5 / p_s)^0.2857 (1 + 0.61 q_2m), at the columns of the nest
@@ -77,7 +78,8 @@ python3 score_options.py options
 ```
 The options take about four hours on 4 ranks of a laptop (6 hours × 6 nests, and the 12 coarser runs); solved_flux
 is most of it in the C1 hours, where it does not reach a steady state. The 18 `_tsurf` runs took 3 h 40 min, part
-of it beside another 4-rank job on the same laptop; solved_tsurf is most of it in the C1 hours.
+of it beside another 4-rank job on the same laptop; solved_tsurf is most of it in the C1 hours. The six
+solved_flux_l200 runs took about an hour and a half, also beside another 4-rank job.
 
 ## Expected Results
 2026-11-25, 4 ranks. Vector rms (m/s) of the nest minus HRRR below 500 m above the ground (`score_options.py` prints
@@ -90,10 +92,11 @@ the full table, with bias, rms, direction, the mean speed bias from 5 to 50 m (`
 | frozen_flux | 0.88 | 0.58 | 0.92 | 1.57 | 1.64 | 1.19 |
 | **frozen_buoyant** | **0.54** | **0.36** | **0.60** | 1.67 | 1.41 | 1.29 |
 | frozen_buoyant_flux | 0.63 | 0.38 | 0.63 | 1.72 | 1.46 | 1.33 |
-| solved_flux | 1.93 (not steady) | 1.48 (not steady) | 1.00 (not steady) | **1.00** | **1.30** | **0.90** |
+| solved_flux | 1.93 (not steady) | 1.48 (not steady) | 1.00 (not steady) | 1.00 | 1.30 | 0.90 |
 | frozen_tsurf | 0.90 | 0.60 | 0.93 | 1.59 | 1.65 | 1.20 |
 | frozen_buoyant_tsurf | 0.65 | 0.39 | 0.64 | 1.73 | 1.48 | 1.34 |
 | solved_tsurf | 1.87 (not steady) | 1.57 (not steady) | 1.22 | 0.98 | 1.27 | 0.91 |
+| **solved_flux_l200** | 1.57 | 1.10 | 0.70 | **0.79** | **1.08** | **0.60** |
 
 - **frozen_buoyant is the recommended option for C1 hours** (0.12 to 0.24 m/s below frozen, 0.22 to 0.52 m/s below
   the scheme, in each hour). The gain is mostly in speed: the speed bias below 500 m goes from −0.57, −0.36, −0.72
@@ -102,9 +105,10 @@ the full table, with bias, rms, direction, the mean speed bias from 5 to 50 m (`
   the mixed layer and above it. The held θ was laid by height above GUST's ground (`docs/solution_algorithm.rst`,
   frozen θ with its buoyancy force, limits), which can give a horizontal force in the capping layer that HRRR does
   not have; part of the gain may come from it. The case does not separate the two.
-- **solved_flux is the lowest in the three C2 hours** (0.31 to 0.39 m/s below the scheme), and steady in fewer than
-  200 iterations. In the three C1 hours it is not steady after 2000 iterations: w reaches 6.6, 5.4 and 4.9 m/s, and
-  the residual stays near 5e-3.
+- **solved_flux_l200 is the lowest in the three C2 hours** (0.21 to 0.30 m/s below solved_flux, 0.53 to 0.65 m/s
+  below the scheme), steady in 161 to 171 iterations. solved_flux is next (0.31 to 0.39 m/s below the scheme),
+  steady in fewer than 200 iterations. In the three C1 hours solved_flux is not steady after 2000 iterations: w
+  reaches 6.6, 5.4 and 4.9 m/s, and the residual stays near 5e-3.
 - frozen_buoyant does not help in the C2 hours: it is the highest in apr02_18 (the lowest boundary layer, z_i
   797 m), where w reaches 4.2 m/s.
 - HRRR's heat flux at the ground adds 0.02 to 0.10 m/s with θ held, in every hour.
@@ -118,6 +122,16 @@ the full table, with bias, rms, direction, the mean speed bias from 5 to 50 m (`
   but its vector rms is higher (1.22 against 1.00 m/s). may10_19 and may10_20 are not steady after 2000
   iterations (residual 0.07 and 6e-3 at the end; w up to 6.0 and 5.7 m/s). One steady hour of three does not
   make solved_tsurf a C1 option.
+- With the length cap at 200 m, solved_flux is steady in all three C1 hours as well (1234, 646 and 1590
+  iterations). Its vector rms is 0.30 to 0.38 m/s lower than at 100 m in C1 and 0.21 to 0.30 m/s lower in C2.
+  In C1, w falls (rms 0.33 to 0.52 m/s against 0.57 to 0.74; maximum 4.0 to 5.8 m/s against 4.9 to 6.6). In all
+  six hours k comes closer to HRRR's (k / k_HRRR 0.67 to 0.78 against 0.54 to 0.68). In the C1 hours it stays
+  above frozen_buoyant (1.57, 1.10, 0.70 against 0.54, 0.36, 0.60 m/s), so frozen_buoyant stays the C1 option.
+- On may10_19 alone, caps of 300 and 500 m lower the vector rms further (1.34 and 1.21 m/s) but are not steady
+  after 2000 iterations (residual plateaus near 1.6e-4 and 3e-3); 200 m is the largest cap tried that is steady.
+  These two runs are not part of `options.py`.
+- The cap is a scheme-wide input (default 100 m since November 2026, `docs/inputs.rst`); the option sets it in the
+  nest's deck only and changes no default.
 - Three hours per class are a small sample.
 - may10_19 with frozen_buoyant (the test deck): rms 0.39 m/s, bias −0.18 m/s; below 500 m a speed bias of
   −0.36 m/s, a vector rms of 0.54 m/s and 0.2° of direction; steady after 194 iterations.
