@@ -90,6 +90,20 @@ void fill_stable (amrex::MultiFab& theta, double gamma, const PCase& c)
     amrex::Gpu::streamSynchronize();
 }
 
+// d = p - a k (k+1) / 2 on the valid cells (a device lambda may not sit in a TEST body under nvcc).
+void subtract_hydrostatic (amrex::MultiFab& d, const amrex::MultiFab& p, amrex::Real a)
+{
+    for (amrex::MFIter mfi(d, false); mfi.isValid(); ++mfi) {
+        const auto o = d.array(mfi);
+        const auto pp = p.const_array(mfi);
+        amrex::ParallelFor(mfi.validbox(), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+        {
+            o(i, j, k) = pp(i, j, k) - a * amrex::Real(0.5) * static_cast<amrex::Real>(k) * static_cast<amrex::Real>(k + 1);
+        });
+    }
+    amrex::Gpu::streamSynchronize();
+}
+
 double max_abs_diff (const amrex::MultiFab& a, const amrex::MultiFab& b)
 {
     amrex::MultiFab d(a.boxArray(), a.DistributionMap(), 1, 0);
@@ -463,15 +477,7 @@ TEST (FrozenTheta, BuoyantHydrostaticPressure)
         const amrex::Real a = buoyant ? static_cast<amrex::Real>(lam.in.buoyancy.gravity * (gamma - gamma_ref) / 290.0) * dz * dz
                                       : amrex::Real(0);
         amrex::MultiFab d(c.ba, c.dm, 1, 0);
-        for (amrex::MFIter mfi(d, false); mfi.isValid(); ++mfi) {
-            const auto o = d.array(mfi);
-            const auto p = q.p.const_array(mfi);
-            amrex::ParallelFor(mfi.validbox(), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
-            {
-                o(i, j, k) = p(i, j, k) - a * amrex::Real(0.5) * static_cast<amrex::Real>(k) * static_cast<amrex::Real>(k + 1);
-            });
-        }
-        amrex::Gpu::streamSynchronize();
+        subtract_hydrostatic(d, q.p, a);
         const double spread = static_cast<double>(d.max(0) - d.min(0));
         const double prange = static_cast<double>(a) * 0.5 * 15 * 16;   // p(15) - p(0)
         EXPECT_LT(spread, buoyant ? 1e-6 * prange : 1e-12) << "buoyant " << buoyant << ", p range " << prange;
