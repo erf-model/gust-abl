@@ -126,6 +126,7 @@ class FilesChecker(Checker):
                     self._format("bc.inflow_file", problem, "The table holds 'z u v theta [k]' rows from z = 0 up.")
         if c.surface_layer:
             self._file("bc.surface_z0_file")
+            self._file("bc.surface_temperature_file")
         kind = c.s("canopy.type")
         if kind == "patches":
             self._file("canopy.file")

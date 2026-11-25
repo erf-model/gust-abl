@@ -17,6 +17,7 @@ set-up, expected results and the full list of its CTests.
 | `Immersed_Roughness_Step` | `rt_immersed_roughness_step`, `*_z0_map_*` | A roughness map under an immersed ground and under the ground of a hybrid mesh, against the same flow on a body-fitted mesh with the same map; the map's restart and refusals. |
 | `Immersed_Canopy` | `rt_immersed_canopy_*` | A forest canopy over an immersed ground and on a hybrid mesh, against the same flow on a body-fitted mesh, on the decks of three canopy cases. |
 | `Neutral_ABL_Flat` | `rt_steady_neutral_flat` | ERF's Neutral_ABL_Flat to steady, with ERF's `check_neutral.py --physics`. |
+| `Surface_Temperature_Flat` | `rt_surface_temperature_flat` | A 20-iteration flat 3-D run over a ground-temperature map; u* in every column against Monin-Obukhov similarity solved in Python. |
 | `Neutral_Hill_2D` | `rt_steady_hill2d`, `rt_steady_hill2d_lusgs`, `rt_steady_hill2d_column` | ERF's Neutral_Hill_2D with Jacobi sweeps, line LU-SGS sweeps and the column first guess. |
 | `Neutral_Hill_3D` | `rt_steady_hill3d` | ERF's Neutral_Hill_3D (64 x 64 x 20); label `nightly`. |
 | `Truly_Neutral_Hill_3D` | `rt_steady_hill3d_neutral_zjacobi`, `rt_steady_hill3d_neutral_lusgs` | A truly neutral Hill_3D to round-off with z-line Jacobi and box-local line LU-SGS sweeps; the two states agree to 1e-8. Label `nightly`. |

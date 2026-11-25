@@ -237,10 +237,16 @@ Quick reference
      - Wall-model reference height (0: first cell centre)
    * - ``bc.surface_stability``
      - ``neutral``
-     - ``neutral`` or ``heat_flux``
+     - ``neutral``, ``heat_flux`` or ``surface_temperature``
    * - ``bc.surface_heat_flux``
      - ``0``
      - Kinematic surface heat flux (K m/s)
+   * - ``bc.surface_temperature``
+     - none
+     - Ground (virtual potential) temperature (K)
+   * - ``bc.surface_temperature_file``
+     - none
+     - Ground temperature map, ``x y theta_s`` points (instead of ``bc.surface_temperature``)
    * - ``bc.surface_wall_k``
      - ``dirichlet``
      - Wall treatment of the TKE
@@ -702,11 +708,13 @@ Quick reference
      - ``ridge_x`` (a ridge along y, varying in x), ``ridge_y`` or ``round``; ``agnesi`` only.
    * - ``terrain.idw_neighbors``
      - ``6``
-     - ≥ 1; ``xyz``, ``bc.surface_z0_file`` or ``canopy.type = map`` only. Points used for each height (and each
-       column's :math:`z_0` of the roughness map, and the canopy's maps).
+     - ≥ 1; ``xyz``, ``bc.surface_z0_file``, ``bc.surface_temperature_file`` or ``canopy.type = map`` only. Points
+       used for each height (and each column's :math:`z_0` of the roughness map, its ground temperature, and the
+       canopy's maps).
    * - ``terrain.idw_power``
      - ``2``
-     - Finite, > 0; ``xyz``, ``bc.surface_z0_file`` or ``canopy.type = map`` only. Weight exponent :math:`p` in
+     - Finite, > 0; ``xyz``, ``bc.surface_z0_file``, ``bc.surface_temperature_file`` or ``canopy.type = map`` only.
+       Weight exponent :math:`p` in
        :math:`d^{-p}`.
    * - ``terrain.hierarchy_passes``
      - ``1``
@@ -1018,10 +1026,24 @@ types, the inflow profile and the sounding; the other keys act in the SIMPLEC st
        heights of every column (m).
    * - ``bc.surface_stability``
      - ``neutral``
-     - ``neutral`` or ``heat_flux``.
+     - ``neutral``, ``heat_flux`` or ``surface_temperature`` (:ref:`surface temperature <surface-temperature>`).
+       ``surface_temperature`` needs exactly one of ``bc.surface_temperature`` and ``bc.surface_temperature_file``,
+       and refuses ``bc.surface_stable_functions = qnse``, a non-zero ``bc.surface_heat_flux``, an immersed or hybrid ground,
+       and a stratified column first guess (only ``init.column_stability = mol`` with ``init.column_mol = 0``).
    * - ``bc.surface_heat_flux``
      - ``0``
      - Finite (K m/s); ``heat_flux`` only.
+   * - ``bc.surface_temperature``
+     - none
+     - Finite, in [150, 350] K, or the run aborts naming the key; ``surface_temperature`` only. The ground's virtual
+       potential temperature :math:`\theta_s` (GUST's :math:`\theta` is :math:`\theta_v`). Not with
+       ``bc.surface_temperature_file`` (both given aborts).
+   * - ``bc.surface_temperature_file``
+     - none
+     - ``surface_temperature`` only. A file of ``x y theta_s`` points (``terrain.file``'s format), interpolated to
+       each level's ground columns as an inverse-distance-weighted mean with ``terrain.idw_neighbors`` and
+       ``terrain.idw_power``. Every value finite and in [150, 350] K, at least ``terrain.idw_neighbors`` points, and
+       the file readable, or the run aborts naming the key.
    * - ``bc.surface_wall_k``
      - ``dirichlet``
      - ``dirichlet`` or ``source``.

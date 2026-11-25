@@ -162,7 +162,7 @@ std::vector<std::string> check_stable_functions (const InitOptions& iopt, const 
     std::vector<std::string> err;
     if (!surface_layer || surf.stable_functions != SurfaceLayerOptions::StableFunctions::qnse) { return err; }
     const bool column = iopt.first_guess == InitOptions::FirstGuess::column && column_theta_evolves(iopt, surf);
-    if (surf.stability != SurfaceLayerOptions::Stability::heat_flux && !column) {
+    if (surf.stability == SurfaceLayerOptions::Stability::neutral && !column) {
         err.emplace_back("bc.surface_stable_functions = qnse has no effect: the surface is neutral (bc.surface_stability) "
                          "and there is no stratified column (init.first_guess = column, init.column_stability)");
     }
@@ -207,6 +207,12 @@ std::vector<std::string> check_column_guess (const InitOptions& iopt, const Stea
         if (surf.stability == SurfaceLayerOptions::Stability::heat_flux && mol_flux && flux_given) {
             err.emplace_back("bc.surface_heat_flux with init.column_stability = mol: the 3-D run takes the column's flux for "
                              "init.column_mol; leave bc.surface_heat_flux out");
+        }
+        if (surf.stability == SurfaceLayerOptions::Stability::surface_temperature
+            && (iopt.column_stability != CS::mol || iopt.column_mol != 0)) {
+            err.emplace_back("init.first_guess = column with bc.surface_stability = surface_temperature supports a neutral "
+                             "column only (init.column_stability = mol with init.column_mol = 0): the column does not take "
+                             "the 3-D run's ground temperature");
         }
         if (flux_mode && surf.stability != SurfaceLayerOptions::Stability::heat_flux) {
             err.emplace_back("init.column_stability = heat_flux needs bc.surface_stability = heat_flux (the column takes "

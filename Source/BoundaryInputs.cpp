@@ -38,7 +38,8 @@ FaceType face_type_from_name (const std::string& name, const std::string& key)
 }
 
 const char* const kSurfaceKeys[] = {"surface_z0", "surface_z0_file", "surface_zref", "surface_stability",
-                                    "surface_heat_flux", "surface_wall_k", "surface_denominator_floor",
+                                    "surface_heat_flux", "surface_temperature", "surface_temperature_file", "surface_wall_k",
+                                    "surface_denominator_floor",
                                     "surface_stable_functions", "surface_qnse_am", "surface_qnse_bm", "surface_qnse_ah",
                                     "surface_qnse_bh"};
 

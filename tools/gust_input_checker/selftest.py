@@ -324,6 +324,20 @@ CASES = [
      [], ["E bc.surface_heat_flux"]),
     ("surface_qnse_neutral", "solve", "bc.surface_stable_functions = qnse\n",
      ["E bc.surface_stable_functions surface"], []),
+    ("surface_temperature_ok", "solve", "bc.surface_stability = surface_temperature\nbc.surface_temperature = 290\n",
+     [], ["E bc.surface_temperature", "E bc.surface_stability"]),
+    ("surface_temperature_range", "solve", "bc.surface_stability = surface_temperature\nbc.surface_temperature = 400\n",
+     ["E bc.surface_temperature values"], []),
+    ("surface_temperature_missing", "solve", "bc.surface_stability = surface_temperature\n",
+     ["E bc.surface_stability surface"], []),
+    ("surface_temperature_neutral", "solve", "bc.surface_temperature = 290\n", ["E bc.surface_temperature surface"], []),
+    ("surface_temperature_qnse", "solve", "bc.surface_stability = surface_temperature\nbc.surface_temperature = 290\n"
+     "bc.surface_stable_functions = qnse\n", ["E bc.surface_stable_functions surface"], []),
+    ("surface_temperature_abl_flux", "solve", "bc.surface_stability = surface_temperature\nbc.surface_temperature = 290\nabl.theta = surface_flux\nbc.rayleigh_zdamp = 700\n"
+     "bc.rayleigh_dampcoef = 0.01\nbc.rayleigh_fields = w theta\n", [], ["E bc.surface_stability", "E bc.surface_heat_flux"]),
+    ("surface_temperature_abl_capped", "solve", "bc.surface_stability = surface_temperature\nbc.surface_temperature = 290\nabl.theta = capped\n", ["E bc.surface_stability"], []),
+    ("surface_temperature_column", "solve", "bc.surface_stability = surface_temperature\nbc.surface_temperature = 290\n" + COLUMN + "init.column_stability = surface_temperature\n"
+     "init.column_surface_theta = 290\n", ["E init.column_stability"], []),
     # --- nest -------------------------------------------------------------------------------------------
     ("nest_parent_missing_key", "nest", "", ["E bc.nest_parent nest"], [], {"drop": "bc.nest_parent"}),
     ("nest_parent_alone", "solve", "bc.nest_parent = parent_chk\n", ["E bc.nest_parent nest"], [], PARENT),

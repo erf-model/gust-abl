@@ -10,6 +10,10 @@ parent (a nest_<option> folder beside the chain's nest):
     frozen_buoyant  simplec.theta = frozen_buoyant: theta held at the parent's, its buoyancy kept in w
                   (the recommended option for C1 hours, README)
     frozen_buoyant_flux  frozen_buoyant with HRRR's heat flux at the ground
+    frozen_tsurf, frozen_buoyant_tsurf, solved_tsurf
+                  frozen, frozen_buoyant and solved theta with bc.surface_stability = surface_temperature: HRRR's skin
+                  theta_v as a map (surface_theta.xyz in the option's folder), the flux from Monin-Obukhov
+                  similarity cell by cell; solved_tsurf stops at SOLVED_FLUX_ITERATIONS
 
 The script writes <out>/<hour>/ and <out>/run_options.sh, which runs each chain and then the nest options of its
 hour, one run at a time, and scores each nest. An hour the tool refuses is reported and left out.
@@ -37,6 +41,9 @@ from prepare import HOURS, LAT, LON, crop_name  # noqa: E402
 # the theta-solved heated surface had no steady state in 4000 iterations (Nov 2026); 2000 are enough to show it
 SOLVED_FLUX_ITERATIONS = 2000
 
+# bc.surface_stability = surface_temperature: the map of HRRR's skin theta_v written into the option's folder
+TSURF = {"bc.surface_stability": "surface_temperature", "bc.surface_temperature_file": hc.SURFACE_THETA_FILE}
+
 
 def nest_options(q):
     """The nest options for an hour with HRRR's box-mean kinematic virtual heat flux q (K m/s):
@@ -46,7 +53,10 @@ def nest_options(q):
             "frozen_flux": (dict(flux, **{"simplec.theta": "frozen"}), ()),
             "frozen_buoyant": ({"simplec.theta": "frozen_buoyant"}, ()),
             "frozen_buoyant_flux": (dict(flux, **{"simplec.theta": "frozen_buoyant"}), ()),
-            "solved_flux": (dict(flux, **{"steady.max_iterations": SOLVED_FLUX_ITERATIONS}), ())}
+            "solved_flux": (dict(flux, **{"steady.max_iterations": SOLVED_FLUX_ITERATIONS}), ()),
+            "frozen_tsurf": (dict(TSURF, **{"simplec.theta": "frozen"}), ()),
+            "frozen_buoyant_tsurf": (dict(TSURF, **{"simplec.theta": "frozen_buoyant"}), ()),
+            "solved_tsurf": (dict(TSURF, **{"steady.max_iterations": SOLVED_FLUX_ITERATIONS}), ())}
 
 
 NEST_OPTIONS = tuple(nest_options(0.1))
@@ -137,6 +147,10 @@ def main():
             for f in ("inputs", "terrain.xyz"):
                 shutil.copy(os.path.join(chain, "nest", f), d)
             edit_deck(os.path.join(d, "inputs"), *opts[v])
+            if opts[v][0].get("bc.surface_stability") == "surface_temperature":
+                # HRRR's columns over the nest and 6 km beyond (as hrrr_outer.py case writes it)
+                n, lo, hi, mean = field.write_surface_theta(os.path.join(d, hc.SURFACE_THETA_FILE), half + 6000.0)
+                print(f"  nest_{v}: skin theta_v of {n} HRRR columns, {lo:.2f} to {hi:.2f} K, mean {mean:.2f} K")
             run.append(f"  (cd {tag}/nest_{v} && rm -rf plt[0-9]* turb[0-9]* chk[0-9]* score.* && "
                        f"$MPI \"$GUST\" inputs > log.txt 2>&1 && {score_cmd(crop)}) || echo \"{tag}/nest_{v} failed\"")
         run.append(f'else echo "{tag}: chain failed (see {tag}/chain.log); nest options not run"; fi')

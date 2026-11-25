@@ -259,6 +259,12 @@ class FetchRegex(unittest.TestCase):
             elif key.startswith("sfc_"):
                 self.assertRegex(f"7:890:d=2023051019{self.SFC[key]}1 hour fcst:", ho.SFC_REGEX, key)
 
+    def test_skin_temperature_matched(self):
+        """The skin temperature (hrrr.surface = surface_temperature) is TMP at the surface, not only at 2 m.
+        Mutant: :(HGT|TMP|PRES):surface back to :(HGT|PRES):surface."""
+        self.assertRegex("7:890:d=2023051019:TMP:surface:1 hour fcst:", ho.SFC_REGEX)
+        self.assertRegex("7:890:d=2023051019:TMP:2 m above ground:1 hour fcst:", ho.SFC_REGEX)
+
 
 class Cloud(unittest.TestCase):
     """UT-16.2.3: an hour with cloud in the domain is refused by name."""
@@ -464,6 +470,28 @@ class Forcing(unittest.TestCase):
         want = 200.0 / (rho * 1004.0) * 1.0061 + 0.61 * 300.0 * 100.0 / (rho * 2.5e6)
         self.assertAlmostEqual(ho.HrrrField(d, LAT0, LON0).surface_flux(10000.0), want, delta=1e-12)
 
+    def test_surface_theta_closed_form(self):
+        """theta_v,s = T_skin (1e5 / p_s)^0.2857 (1 + 0.61 q_2m), column by column. Mutant: q_2m left out."""
+        d = crop()
+        one = np.ones_like(d["sfc_orog"])
+        tskin = 300.0 + 0.001 * (np.arange(one.size).reshape(one.shape))
+        d.update({"sfc_sp": 9e4 * one, "sfc_sh2": 0.01 * one, "sfc_t": tskin})
+        got = ho.HrrrField(d, LAT0, LON0).surface_theta()
+        want = (tskin * (1e5 / 9e4) ** 0.2857 * 1.0061).ravel()
+        np.testing.assert_allclose(got, want, rtol=1e-14)
+
+    def test_surface_theta_refusals(self):
+        d = crop()
+        one = np.ones_like(d["sfc_orog"])
+        d.update({"sfc_sp": 1e5 * one, "sfc_sh2": 0.01 * one})
+        with self.assertRaisesRegex(ho.HrrrOuterError, r"no skin temperature \(sfc_t\)"):
+            ho.HrrrField(d, LAT0, LON0).surface_theta()
+        d["sfc_t"] = 400.0 * one
+        with tempfile.TemporaryDirectory(prefix="ut_hrrr_tsurf_") as tmp:
+            with self.assertRaisesRegex(ho.HrrrOuterError, r"must be finite and in \[150, 350\] K"):
+                ho.HrrrField(d, LAT0, LON0).write_surface_theta(os.path.join(tmp, "t.xyz"), 10000.0)
+            self.assertFalse(os.path.exists(os.path.join(tmp, "t.xyz")))
+
 
 class Top(unittest.TestCase):
     def test_top_refusals(self):
@@ -585,6 +613,33 @@ class Chain(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertFalse(os.path.exists(os.path.join(case, "parent", "chk00000")))
 
+    def test_surface_temperature_map(self):
+        """hrrr.surface = surface_temperature: the nest deck names the map, and the map holds HRRR's columns within
+        the nest's half-width plus 6 km in the case frame, with theta_v,s of each. Mutant: the map written in the
+        crop's grid order but with the columns of the whole crop."""
+        d = crop()
+        one = np.ones_like(d["sfc_orog"])
+        d.update({"sfc_sp": 1e5 * one, "sfc_sh2": 0.01 * one, "sfc_t": 305.0 + 1e-4 * d["sfc_orog"]})
+        np.savez(os.path.join(self.tmp, "hour.npz"), **d)
+        yaml = open(os.path.join(self.tmp, "case.yaml")).read().replace("theta: frozen", "theta: frozen, "
+                                                                        "surface: surface_temperature")
+        open(os.path.join(self.tmp, "case.yaml"), "w").write(yaml)
+        info = hc.build_chain(os.path.join(self.tmp, "case.yaml"))
+        n = self._deck("nest")
+        self.assertEqual((n["bc.surface_stability"], n["bc.surface_temperature_file"]),
+                         ("surface_temperature", hc.SURFACE_THETA_FILE))
+        for level in ("hrrr_raw", "parent"):
+            self.assertNotIn("bc.surface_temperature_file", self._deck(level))
+        pts = np.loadtxt(os.path.join(self.tmp, "c", "nest", hc.SURFACE_THETA_FILE))
+        fld = ho.HrrrField(d, LAT0, LON0)
+        m = fld.box(7000.0)
+        self.assertEqual(len(pts), int(m.sum()))
+        self.assertEqual(info["surface_temperature"][0], len(pts))
+        np.testing.assert_allclose(pts[:, 0], fld.X.ravel()[m], atol=0.005)
+        np.testing.assert_allclose(pts[:, 1], fld.Y.ravel()[m], atol=0.005)
+        want = (305.0 + 1e-4 * d["sfc_orog"].ravel()[m]) * 1.0061
+        np.testing.assert_allclose(pts[:, 2], want, atol=5e-4)
+
     def test_strip_stage_keys(self):
         path = os.path.join(self.tmp, "deck")
         with open(path, "w") as fh:
@@ -604,6 +659,8 @@ class CaseSection(unittest.TestCase):
             for sec, msg in (({"file": f.name, "ratio": 4}, "hrrr.ratio"),
                              ({"file": f.name, "parent_ratio": 3}, "hrrr.parent_ratio"),
                              ({"file": f.name, "theta": "capped"}, "hrrr.theta"),
+                             ({"file": f.name, "surface": "skin"}, r"hrrr.surface \(skin\) must be neutral, "
+                              "heat_flux or surface_temperature"),
                              ({"file": f.name, "raw_margin": 0}, "hrrr.raw_margin"),
                              ({"file": f.name, "cloud_mixing_ratio": -1}, "hrrr.cloud_mixing_ratio"),
                              ({"file": f.name, "cloud_mixing_ratio": "1e-5"}, r"hrrr.cloud_mixing_ratio \('1e-5'\) "

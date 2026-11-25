@@ -41,6 +41,15 @@ The options (each changes only the nest, so all share the chain's parent):
 | frozen_buoyant | `simplec.theta = frozen_buoyant` (the parent's θ; buoyancy also in w) | neutral |
 | frozen_buoyant_flux | frozen_buoyant | HRRR's heat flux |
 | solved_flux | solved | HRRR's heat flux (at most 2000 iterations) |
+| frozen_tsurf | frozen | HRRR's skin temperature as a θv map (`bc.surface_stability = surface_temperature`); GUST's own MOST flux |
+| frozen_buoyant_tsurf | frozen_buoyant | HRRR's skin temperature |
+| solved_tsurf | solved | HRRR's skin temperature (at most 2000 iterations) |
+
+The three `_tsurf` options read `surface_theta.xyz`, which `options.py` writes into each of their folders: HRRR's
+skin temperature as θv, θv_s = T_s (10^5 / p_s)^0.2857 (1 + 0.61 q_2m), at the columns of the nest
+and 6 km around it (`docs/hrrr_outer.rst`). The flux is then GUST's, from the first cell's θ and wind; it is not
+HRRR's. Crops fetched before November 2026 have no skin temperature: `hrrr_outer.py` refuses them for these
+options; delete them and run `prepare.py` again (it fetches only the crops that are missing).
 
 ## Data and acknowledgements
 The meteorological fields are from the High-Resolution Rapid Refresh (HRRR) model of NOAA's Global Systems
@@ -71,7 +80,7 @@ is most of it in the C1 hours, where it does not reach a steady state.
 
 ## Expected Results
 2026-11-25, 4 ranks. Vector rms (m/s) of the nest minus HRRR below 500 m above the ground (`score_options.py` prints
-the full table, with bias, rms, direction, w, k and iterations):
+the full table, with bias, rms, direction, the mean speed bias from 5 to 50 m (`bias 5-50`), w, k and iterations):
 
 | Option | may10_19 | may10_20 | may10_21 | apr02_18 | apr04_18 | apr19_21 |
 |---|---|---|---|---|---|---|

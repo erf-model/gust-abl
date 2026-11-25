@@ -8,7 +8,8 @@ section, ``hrrr``, read here and not by make_gust_case.py:
       parent_ratio: 4                   # bc.nest_ratio of the nest: 2, 4, 8 or 16
       raw_margin: 2000.                 # the raw HRRR domain reaches this far beyond the parent, m
       theta: solved                     # solved (gravity on) or frozen (simplec.theta = frozen)
-      surface: neutral                  # neutral, or heat_flux with HRRR's box-mean kinematic flux
+      surface: neutral                  # neutral; heat_flux with HRRR's box-mean kinematic flux; or
+                                        # surface_temperature with HRRR's skin theta_v as a map
       geostrophic: false                # true: forcing.geostrophic with HRRR's G (mean over 200-1000 m)
       cloud_mixing_ratio: 1.0e-5        # cloud water above this in the raw domain refuses the hour, kg/kg
 
@@ -50,11 +51,13 @@ HRRR_KEYS = {
     "cloud_mixing_ratio": ho.CLOUD_MIXING_RATIO,
 }
 LEVELS = ("hrrr_raw", "parent", "nest")
+SURFACE_THETA_FILE = "surface_theta.xyz"     # hrrr.surface = surface_temperature: x y theta_v,s, nest folder
 SCHEME_KEYS = ("bc.xlo", "bc.xhi", "bc.ylo", "bc.yhi", "bc.nest_parent", "bc.nest_ratio", "init.first_guess",
                "terrain.nest_blend_width", "forcing.coriolis", "forcing.latitude", "forcing.geostrophic",
                "forcing.ug", "forcing.vg", "forcing.gravity", "forcing.theta0", "bc.theta_profile_z",
                "bc.theta_profile", "bc.zhi_theta_grad", "bc.rayleigh_fields", "abl.theta", "abl.drive",
-               "simplec.theta", "bc.surface_stability", "bc.surface_heat_flux", "steady.stage",
+               "simplec.theta", "bc.surface_stability", "bc.surface_heat_flux", "bc.surface_temperature",
+               "bc.surface_temperature_file", "steady.stage",
                "turb.max_geom_lscale", "io.write_checkpoint")
 
 
@@ -88,8 +91,8 @@ def read_hrrr_section(raw, base_dir):
         raise ho.HrrrOuterError(f"hrrr.raw_margin ({h['raw_margin']}) must be > 0 m")
     if h["theta"] not in ("solved", "frozen"):
         raise ho.HrrrOuterError(f"hrrr.theta ({h['theta']}) must be solved or frozen")
-    if h["surface"] not in ("neutral", "heat_flux"):
-        raise ho.HrrrOuterError(f"hrrr.surface ({h['surface']}) must be neutral or heat_flux")
+    if h["surface"] not in ("neutral", "heat_flux", "surface_temperature"):
+        raise ho.HrrrOuterError(f"hrrr.surface ({h['surface']}) must be neutral, heat_flux or surface_temperature")
     if not isinstance(h["geostrophic"], bool):
         raise ho.HrrrOuterError(f"hrrr.geostrophic ({h['geostrophic']}) must be true or false")
     if not (_num(h["cloud_mixing_ratio"]) and h["cloud_mixing_ratio"] > 0):
@@ -260,6 +263,10 @@ def build_chain(yaml_path, output_dir=None, overwrite=False, dry_run=False):
         q = field.surface_flux(half)
         nest_gi.update({"bc.surface_stability": "heat_flux", "bc.surface_heat_flux": round(q, 5)})
         info["heat_flux"] = q
+    if h["surface"] == "surface_temperature":
+        field.surface_theta()      # refuses a crop without the skin temperature before anything is written
+        nest_gi.update({"bc.surface_stability": "surface_temperature",
+                        "bc.surface_temperature_file": SURFACE_THETA_FILE})
     parent_gi = dict(faces)
     parent_gi.update(first_only)
     parent_gi.update({"bc.nest_parent": "../hrrr_raw/chk00000", "init.first_guess": "nest",
@@ -278,6 +285,10 @@ def build_chain(yaml_path, output_dir=None, overwrite=False, dry_run=False):
             os.remove(os.path.join(chain_dir, name, "run.sh"))
             if name != "nest":
                 strip_stage_keys(os.path.join(chain_dir, name, "inputs"))
+    if h["surface"] == "surface_temperature" and not dry_run:
+        # HRRR's columns (3 km apart) over the nest and two of them beyond, so IDW has neighbours at the faces
+        info["surface_temperature"] = field.write_surface_theta(os.path.join(chain_dir, "nest", SURFACE_THETA_FILE),
+                                                                half + 6000.0)
     if not dry_run:
         _write_run_script(chain_dir, h["file"], lat0, lon0, case, h["cloud_mixing_ratio"])
     info["case_dir"] = chain_dir
@@ -324,3 +335,6 @@ def main_case(yaml_path, output_dir=None, overwrite=False):
     print(f"  wind at 80 m (raw and parent inflow profile only) {info['wind']['speed']:.2f} m/s from "
           f"{info['wind']['direction']:.0f} degrees; theta_v {info['theta'][0]:.2f} K at the ground, "
           f"{info['top_gradient']:.4f} K/m at the top")
+    if info.get("surface_temperature"):
+        n, lo, hi, mean = info["surface_temperature"]
+        print(f"  skin theta_v ({SURFACE_THETA_FILE}, {n} HRRR columns): {lo:.2f} to {hi:.2f} K, mean {mean:.2f} K")

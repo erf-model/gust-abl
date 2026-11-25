@@ -30,7 +30,8 @@ Commands
 
 ``fetch`` downloads byte-range subsets of the native-level (``wrfnat``) and surface (``wrfsfc``) files: wind,
 vertical velocity, height, temperature, humidity, pressure, cloud water and k on the first 30 hybrid levels, and the
-ground height, :math:`z_0`, the sensible heat flux, the 2 m temperature and the surface pressure. The crop is
+ground height, :math:`z_0`, the sensible and latent heat fluxes, the skin temperature, the 2 m temperature and
+humidity and the surface pressure. The crop is
 :math:`\sqrt{2}` times ``--half-km`` plus three HRRR cells a side, so a square of that half-width fits at any turn of
 HRRR's grid against the UTM grid. It records the cycle and the forecast hour; ``to-chk``, ``profile``, ``score`` and
 ``case`` read them from it. ``to-chk`` refuses a crop without them. A refusal names the input or the field and
@@ -126,7 +127,9 @@ scores ``pltNNNNN``), ``mesh.hierarchy_levels`` other than 1, ``solver.grid_sequ
    * - ``hrrr.surface``
      - ``neutral``
      - ``heat_flux``: ``bc.surface_stability = heat_flux`` with HRRR's box-mean virtual kinematic heat flux
-       (below).
+       (below). ``surface_temperature``: ``bc.surface_stability = surface_temperature`` with HRRR's skin
+       :math:`\theta_v` as a map (``surface_theta.xyz`` in the nest's folder, below; :ref:`surface temperature <surface-temperature>`).
+       A crop fetched before the skin temperature was added is refused; fetch it again.
    * - ``hrrr.geostrophic``
      - ``false``
      - ``true``: ``forcing.geostrophic`` with HRRR's geostrophic wind (below).
@@ -188,6 +191,19 @@ with :math:`H` and :math:`L_E` HRRR's sensible and latent heat fluxes (W/m², up
 :math:`q_2` the 2 m temperature and specific humidity, :math:`p_s` the surface pressure,
 :math:`c_p` = 1004 J/(kg K) and :math:`L_v` = 2.5e6 J/kg, as a box mean. GUST's :math:`\theta` is :math:`\theta_v`,
 so the moist part belongs in its flux. The November 2026 study used :math:`H/(\rho c_p)` alone.
+
+The ground temperature of ``hrrr.surface = surface_temperature`` is HRRR's skin temperature :math:`T_s` (``TMP`` at
+the surface) as a virtual potential temperature, column by column:
+
+.. math::
+
+   \theta_{v,s} = T_s\,(10^5/p_s)^{0.2857}\,(1 + 0.61\,q_2),
+
+with the 2 m humidity :math:`q_2` in place of the skin's own, which HRRR does not write. ``surface_theta.xyz``
+holds one ``x y theta`` line per HRRR column within the nest's half-width plus 6 km (two HRRR cells), so
+inverse-distance weighting has neighbours on every side at the faces. A value outside 150–350 K refuses the hour.
+GUST then computes the flux in each ground cell from :math:`\theta_{v,s}` and its own first-cell wind and
+:math:`\theta` by Monin-Obukhov similarity; the flux is not HRRR's.
 
 The score
 ---------

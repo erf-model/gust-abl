@@ -35,6 +35,12 @@ std::string write_turbulence_plotfile (const std::string& prefix, const State& q
         check_roughness_map("write_turbulence_plotfile", *z0_map, q.p);
         names.emplace_back("z0");
     }
+    const int nts = static_cast<int>(names.size());   // theta_s and qflux, with bc.surface_stability = surface_temperature
+    const bool ground_temperature = (surface != nullptr && surface->ground_temperature);
+    if (ground_temperature) {
+        names.emplace_back("theta_s");
+        names.emplace_back("qflux");
+    }
     const int ncomp = static_cast<int>(names.size());
     amrex::MultiFab plt(ba, dm, ncomp, 0);
     const amrex::Real Cmu0 = copt.Cmu0, alpha_m = copt.alpha_molecular;
@@ -94,6 +100,15 @@ std::string write_turbulence_plotfile (const std::string& prefix, const State& q
             amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
             {
                 o(i, j, k, nz0) = (k == klo) ? zm(i, j, klo) : amrex::Real(0);
+            });
+        }
+        if (ground_temperature) {
+            const auto ts = surface->theta_s.const_array(mfi.index());
+            const auto qf = surface->qflux.const_array(mfi.index());
+            amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+            {
+                o(i, j, k, nts) = (k == klo) ? ts(i, j, klo) : amrex::Real(0);
+                o(i, j, k, nts + 1) = (k == klo) ? qf(i, j, klo) : amrex::Real(0);
             });
         }
     }

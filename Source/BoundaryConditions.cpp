@@ -309,11 +309,10 @@ void ground_gradients (const SurfaceState& ss, const SurfaceLayerOptions& surfac
 {
     // The wall law's gradient per column: u*/(kappa (d0 + z0)) along the
     // tangential wind for u and v (components 0, 1), -q/(kappa u* (d0 +
-    // z0)) for theta (component 2, 0 when neutral).
+    // z0)) for theta (component 2, 0 when neutral; q per column, the surface
+    // state's qflux: bc.surface_heat_flux or the surface_temperature solve's).
     const amrex::Real kappa = surface_opt.kappa;
     const Roughness rough = ground_roughness(&surface_opt);
-    const amrex::Real qs = (surface_opt.stability == SurfaceLayerOptions::Stability::heat_flux)
-                               ? surface_opt.heat_flux : amrex::Real(0);
     const StableCoefficients sc = surface_opt.stable_coefficients();
     for (amrex::MFIter mfi(ground_grad, false); mfi.isValid(); ++mfi) {
         const auto g = ground_grad.array(mfi);
@@ -321,6 +320,7 @@ void ground_gradients (const SurfaceState& ss, const SurfaceLayerOptions& surfac
         const auto d0 = ss.d0.const_array(mfi);
         const auto ta = ss.tau.const_array(mfi);
         const auto il = ss.inv_L.const_array(mfi);
+        const auto qf = ss.qflux.const_array(mfi);
         const Z0 zf = Z0::of(rough, mfi);
         amrex::ParallelFor(mfi.growntilebox(amrex::IntVect(1, 1, 0)), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
         {
@@ -343,7 +343,7 @@ void ground_gradients (const SurfaceState& ss, const SurfaceLayerOptions& surfac
             const amrex::Real dir_y = ta(i, j, k, 1) / tsafe;
             g(i, j, k, 0) = us(i, j, k) / s * dir_x * phi_m;
             g(i, j, k, 1) = us(i, j, k) / s * dir_y * phi_m;
-            g(i, j, k, 2) = -qs / (us(i, j, k) * s) * phi_h;
+            g(i, j, k, 2) = -qf(i, j, k) / (us(i, j, k) * s) * phi_h;
         });
     }
 }

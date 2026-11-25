@@ -4,6 +4,8 @@
 #include "ERF_MOSTUtils.H"
 #include "ImplicitOperator.H"
 #include "Stencil_K.H"
+#include "SurfaceTemperature.H"
+#include "SurfaceTemperature_K.H"
 
 #include <AMReX_ParallelReduce.H>
 #include <AMReX_ParmParse.H>
@@ -12,6 +14,7 @@
 #include <fstream>
 #include <limits>
 #include <string>
+#include <utility>
 
 namespace gust {
 
@@ -46,11 +49,14 @@ void clear_immersed_columns (const amrex::MultiFab& mask, SurfaceState& s)
         const auto m = mask.const_array(mfi);
         const auto ta = s.tau.array(mfi);
         const auto dg = s.drag.array(mfi);
+        const auto qf = s.qflux.array(mfi), hc = s.heat_coef.array(mfi);
         amrex::ParallelFor(mfi.growntilebox(amrex::IntVect(1, 1, 0)), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
         {
             if (m(i, j, k) > amrex::Real(0)) {
                 for (int n = 0; n < 3; ++n) { ta(i, j, k, n) = 0; }
                 dg(i, j, k) = 0;
+                qf(i, j, k) = 0;     // no heat through a lower face inside the terrain either
+                hc(i, j, k) = 0;
             }
         });
     }
@@ -131,8 +137,9 @@ struct MostRelation
     }
 };
 
-// Z0: the roughness accessor (SurfaceRoughness.H), uniform or the map.
-template <class Z0, bool HEAT, bool FIRST_CENTRE, bool FLOOR_ONE, bool QNSE = false>
+// Z0: the roughness accessor (SurfaceRoughness.H), uniform or the map. HEAT: a given flux (heat_flux);
+// TSURF: a given ground temperature (surface_temperature, s.theta_s set; never with HEAT or QNSE).
+template <class Z0, bool HEAT, bool FIRST_CENTRE, bool FLOOR_ONE, bool QNSE = false, bool TSURF = false>
 void columns (const State& q, const SurfaceLayerOptions& opt, const BuoyancyOptions& buoy,
               const amrex::Geometry& geom, SurfaceState& s)
 {
@@ -141,7 +148,9 @@ void columns (const State& q, const SurfaceLayerOptions& opt, const BuoyancyOpti
     const int nz = geom.Domain().length(2);
     const int klo = geom.Domain().smallEnd(2);
     const amrex::Real zref_in = opt.zref, kappa = opt.kappa;
-    const amrex::Real gq = (buoy.gravity / buoy.theta0) * opt.heat_flux;
+    const amrex::Real goth = buoy.gravity / buoy.theta0;
+    const amrex::Real qs = opt.heat_flux;
+    const amrex::Real gq = goth * qs;
     const amrex::Real inv_cmu2 = amrex::Real(1) / (opt.Cmu0 * opt.Cmu0);
     const amrex::Real eps = std::numeric_limits<amrex::Real>::epsilon();
     const amrex::Real tol = 64 * eps;
@@ -149,6 +158,7 @@ void columns (const State& q, const SurfaceLayerOptions& opt, const BuoyancyOpti
     // The floors as locals: nvcc cannot use a namespace-scope constant in
     // device code (it is odr-used through amrex::max's references).
     const amrex::Real ws_min_c = kWsMin, ustar_min_c = kUstarMin;
+    const amrex::Real rib_min_c = kSurfaceTemperatureRibMin, rib_max_c = kSurfaceTemperatureRibMax;
     const StableCoefficients sc = opt.stable_coefficients();
     for (amrex::MFIter mfi(s.ustar, false); mfi.isValid(); ++mfi) {
         const amrex::Box bx = mfi.growntilebox(amrex::IntVect(1, 1, 0));
@@ -165,6 +175,10 @@ void columns (const State& q, const SurfaceLayerOptions& opt, const BuoyancyOpti
         const auto dg = s.drag.array(mfi);
         const auto kw = s.kwall.array(mfi);
         const auto ar = s.area.array(mfi);
+        const auto qf = s.qflux.array(mfi);
+        const auto hc = s.heat_coef.array(mfi);
+        const auto ts = s.theta_s.const_array(mfi);
+        const auto th = q.theta.const_array(mfi);
         const Z0 zf = Z0::of(rough, mfi);
         amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int) noexcept
         {
@@ -173,6 +187,10 @@ void columns (const State& q, const SurfaceLayerOptions& opt, const BuoyancyOpti
             // an extended device lambda whose first capture of a variable is
             // inside an if constexpr.
             const amrex::Real gq_c = gq, hrel_c = hrel, tol_c = tol, ustar_min_l = ustar_min_c;
+            const amrex::Real goth_c = goth, rib_min_l = rib_min_c, rib_max_l = rib_max_c;
+            const auto th_l = th;
+            const auto ts_l = ts;
+            amrex::Real qcol = qs, ccol = 0;
             const StableCoefficients sc_l = sc;
             const Column h{z, i, j, klo};
             const amrex::Real zx = stencil::deriv<stencil::NODE, stencil::ZF, 0>(z, i, j, klo) * dxinv[0];
@@ -223,6 +241,21 @@ void columns (const State& q, const SurfaceLayerOptions& opt, const BuoyancyOpti
                 if (!converged) { ustar = std::numeric_limits<amrex::Real>::quiet_NaN(); }
                 invL = F.inv_L(ustar);
             }
+            if constexpr (TSURF) {
+                // theta at the reference point, interpolated as the wind (k = 0: the first cell's own theta).
+                const amrex::Real ta_r = th_l(i, j, klo + k), tb_r = th_l(i, j, klo + k + 1);
+                const amrex::Real dtheta = (ta_r + f * (tb_r - ta_r)) - ts_l(i, j, klo);
+                const SurfaceTemperatureMost r = surface_temperature_most(kappa, U, d, lz, den_min, goth_c, dtheta,
+                                                                          rib_min_l, rib_max_l);
+                // A NaN theta gives a finite u* (cm at its floor) but a NaN q: mark u* NaN so the check below
+                // names the surface.
+                ustar = (r.converged && r.q == r.q) ? r.ustar : std::numeric_limits<amrex::Real>::quiet_NaN();
+                invL = r.zeta / d;
+                qcol = r.q;
+                // The Picard diagonal of the first cell's theta row is d(q |A|)/d(theta_klo) at fixed c:
+                // c |A| (1 - f) when the reference interval starts at the first cell (k = 0), 0 above it.
+                ccol = (k == 0) ? r.c * area * (amrex::Real(1) - f) : amrex::Real(0);
+            }
             const amrex::Real d0 = h0 * ia;
             us(i, j, klo) = ustar;
             sp(i, j, klo) = U;
@@ -240,7 +273,13 @@ void columns (const State& q, const SurfaceLayerOptions& opt, const BuoyancyOpti
                 kwall = inv_cmu2 * std::pow(ustar * ustar * ustar + kappa * amrex::max(gq_c, amrex::Real(0)) * d0,
                                             amrex::Real(2) / amrex::Real(3));
             }
+            if constexpr (TSURF) {
+                kwall = inv_cmu2 * std::pow(ustar * ustar * ustar + kappa * amrex::max(goth_c * qcol, amrex::Real(0)) * d0,
+                                            amrex::Real(2) / amrex::Real(3));
+            }
             kw(i, j, klo) = kwall;
+            qf(i, j, klo) = qcol;
+            hc(i, j, klo) = ccol;
         });
     }
 }
@@ -252,6 +291,15 @@ void dispatch_columns (const State& q, const SurfaceLayerOptions& opt, const Buo
 {
     const bool heat = (opt.stability == SurfaceLayerOptions::Stability::heat_flux);
     const bool first = !(opt.zref > 0);
+    const bool one_floor = opt.denominator_floor == SurfaceLayerOptions::DenominatorFloor::one;
+    if (opt.stability == SurfaceLayerOptions::Stability::surface_temperature) {
+        // Businger-Dyer only (check_surface_layer_options refuses qnse here).
+        if (first && one_floor) { columns<Z0, false, true, true, false, true>(q, opt, buoyancy, geom, s); }
+        else if (first) { columns<Z0, false, true, false, false, true>(q, opt, buoyancy, geom, s); }
+        else if (one_floor) { columns<Z0, false, false, true, false, true>(q, opt, buoyancy, geom, s); }
+        else { columns<Z0, false, false, false, false, true>(q, opt, buoyancy, geom, s); }
+        return;
+    }
     // QNSE changes only the stable psi_m of the heat-flux u* (its own kernels; neutral has no zeta).
     const bool qnse = heat && opt.stable_functions == SurfaceLayerOptions::StableFunctions::qnse;
     const bool one = opt.denominator_floor == SurfaceLayerOptions::DenominatorFloor::one;
@@ -292,8 +340,35 @@ std::vector<std::string> check_surface_layer_options (const SurfaceLayerOptions&
     }
     if (!std::isfinite(opt.heat_flux)) {
         err.emplace_back("surface layer heat_flux = " + std::to_string(opt.heat_flux) + ": must be finite");
-    } else if (opt.stability == SurfaceLayerOptions::Stability::neutral && opt.heat_flux != 0) {
-        err.emplace_back("surface layer heat_flux is set but the stability is neutral; it would be ignored");
+    } else if (opt.stability != SurfaceLayerOptions::Stability::heat_flux && opt.heat_flux != 0) {
+        err.emplace_back(std::string("surface layer heat_flux is set but the stability is ")
+                         + (opt.stability == SurfaceLayerOptions::Stability::neutral ? "neutral" : "surface_temperature")
+                         + "; it would be ignored");
+    }
+    const bool tsurf = opt.stability == SurfaceLayerOptions::Stability::surface_temperature;
+    const bool ts_value = opt.surface_temperature != 0, ts_file = !opt.surface_temperature_file.empty();
+    if (tsurf) {
+        if (ts_value == ts_file) {
+            err.emplace_back("surface layer stability = surface_temperature needs exactly one of surface_temperature "
+                             "(K) and surface_temperature_file");
+        }
+        if (ts_value && !(opt.surface_temperature >= kSurfaceTemperatureMin
+                          && opt.surface_temperature <= kSurfaceTemperatureMax)) {   // NaN fails both
+            err.emplace_back("surface layer surface_temperature = " + std::to_string(opt.surface_temperature)
+                             + ": must be finite and in " + surface_temperature_range());
+        }
+        if (opt.stable_functions == SurfaceLayerOptions::StableFunctions::qnse) {
+            err.emplace_back("surface layer stable_functions = qnse is not available with stability = surface_temperature "
+                             "(Businger-Dyer only)");
+        }
+    } else {
+        for (const auto& [given, key] : {std::pair<bool, const char*>{ts_value, "surface_temperature"},
+                                         std::pair<bool, const char*>{ts_file, "surface_temperature_file"}}) {
+            if (given) {
+                err.emplace_back(std::string("surface layer ") + key
+                                 + " is set but the stability is not surface_temperature; it would be ignored");
+            }
+        }
     }
     const amrex::Real qc[4] = {opt.qnse_am, opt.qnse_bm, opt.qnse_ah, opt.qnse_bh};
     const char* qn[4] = {"qnse_am", "qnse_bm", "qnse_ah", "qnse_bh"};
@@ -325,7 +400,8 @@ SurfaceLayerOptions read_surface_layer_options ()
     SurfaceLayerOptions opt;
     amrex::ParmParse pp("bc");
     for (const char* key : {"surface_z0", "surface_z0_file", "surface_zref", "surface_stability", "surface_heat_flux",
-                            "surface_wall_k", "surface_denominator_floor", "surface_stable_functions", "surface_qnse_am",
+                            "surface_temperature", "surface_temperature_file", "surface_wall_k",
+                            "surface_denominator_floor", "surface_stable_functions", "surface_qnse_am",
                             "surface_qnse_bm", "surface_qnse_ah", "surface_qnse_bh"}) {
         if (pp.countname(key) > 1) { amrex::Abort(std::string("gust: bc.") + key + " is given more than once"); }
         if (pp.contains(key) && pp.countval(key) != 1) {
@@ -343,6 +419,26 @@ SurfaceLayerOptions read_surface_layer_options ()
         amrex::ParallelDescriptor::Bcast(&readable, 1, amrex::ParallelDescriptor::IOProcessorNumber());
         if (readable == 0) { amrex::Abort("gust: bc.surface_z0_file = " + opt.z0_file + ": cannot be read"); }
     }
+    if (pp.contains("surface_temperature") && pp.contains("surface_temperature_file")) {
+        amrex::Abort("gust: bc.surface_temperature and bc.surface_temperature_file cannot both be given (one ground "
+                     "temperature: a value or a map)");
+    }
+    if (pp.contains("surface_temperature")) {
+        pp.get("surface_temperature", opt.surface_temperature);
+        // 0 means "not given" in the options: refuse it here, by name.
+        if (!(opt.surface_temperature >= kSurfaceTemperatureMin && opt.surface_temperature <= kSurfaceTemperatureMax)) {
+            amrex::Abort("gust: bc.surface_temperature = " + std::to_string(opt.surface_temperature)
+                         + ": must be finite and in " + surface_temperature_range());
+        }
+    }
+    if (pp.query("surface_temperature_file", opt.surface_temperature_file)) {
+        if (opt.surface_temperature_file.empty()) {
+            amrex::Abort("gust: bc.surface_temperature_file is empty: give a file of 'x y theta_s' points");
+        }
+        int readable = amrex::ParallelDescriptor::IOProcessor() ? (std::ifstream(opt.surface_temperature_file).good() ? 1 : 0) : 0;
+        amrex::ParallelDescriptor::Bcast(&readable, 1, amrex::ParallelDescriptor::IOProcessorNumber());
+        if (readable == 0) { amrex::Abort("gust: bc.surface_temperature_file = " + opt.surface_temperature_file + ": cannot be read"); }
+    }
     pp.query("surface_zref", opt.zref);
     pp.query("surface_heat_flux", opt.heat_flux);
     pp.query("surface_qnse_am", opt.qnse_am);
@@ -356,7 +452,8 @@ SurfaceLayerOptions read_surface_layer_options ()
     pp.query("surface_denominator_floor", f);
     if (s == "neutral") { opt.stability = SurfaceLayerOptions::Stability::neutral; }
     else if (s == "heat_flux") { opt.stability = SurfaceLayerOptions::Stability::heat_flux; }
-    else { amrex::Abort("gust: bc.surface_stability = " + s + ": must be neutral or heat_flux"); }
+    else if (s == "surface_temperature") { opt.stability = SurfaceLayerOptions::Stability::surface_temperature; }
+    else { amrex::Abort("gust: bc.surface_stability = " + s + ": must be neutral, heat_flux or surface_temperature"); }
     if (w == "dirichlet") { opt.wall_k = SurfaceLayerOptions::WallK::dirichlet; }
     else if (w == "source") { opt.wall_k = SurfaceLayerOptions::WallK::source; }
     else { amrex::Abort("gust: bc.surface_wall_k = " + w + ": must be dirichlet or source"); }
@@ -445,12 +542,27 @@ void compute_surface_state (const State& q, const SurfaceLayerOptions& opt, cons
     const amrex::DistributionMapping& dm = mesh.detJ.DistributionMap();
     if (s.ustar.empty() || s.ustar.boxArray() != ba2 || s.ustar.DistributionMap() != dm) {
         const amrex::IntVect ng(1, 1, 0);
-        for (auto* mf : {&s.ustar, &s.speed, &s.zref, &s.d0, &s.inv_L, &s.drag, &s.kwall, &s.area}) {
+        for (auto* mf : {&s.ustar, &s.speed, &s.zref, &s.d0, &s.inv_L, &s.drag, &s.kwall, &s.area, &s.qflux, &s.heat_coef,
+                         &s.theta_s}) {
             mf->clear();
             mf->define(ba2, dm, 1, ng);
         }
         s.tau.clear();
         s.tau.define(ba2, dm, 3, ng);
+    }
+    s.ground_temperature = (opt.stability == SurfaceLayerOptions::Stability::surface_temperature);
+    if (!s.ground_temperature) {
+        s.theta_s.setVal(0);
+    } else if (opt.theta_s_map != nullptr) {
+        check_surface_temperature_map(op, *opt.theta_s_map, mesh.detJ);
+        amrex::MultiFab::Copy(s.theta_s, *opt.theta_s_map, 0, 0, 1, amrex::IntVect(1, 1, 0));
+    } else if (!opt.surface_temperature_file.empty()) {
+        amrex::Abort("gust: compute_surface_state: bc.surface_temperature_file is given but the level holds no map");
+    } else {
+        s.theta_s.setVal(opt.surface_temperature);
+    }
+    if (opt.stability == SurfaceLayerOptions::Stability::surface_temperature) {
+        check_operator_field(op, "theta", q.theta, Loc::cell, mesh, 1);
     }
     if (opt.z0_map != nullptr) {
         check_roughness_map(op, *opt.z0_map, mesh.detJ);
@@ -476,18 +588,21 @@ void compute_surface_state (const State& q, const SurfaceLayerOptions& opt, cons
     int bad = amrex::get<0>(data.value());
     amrex::ParallelAllReduce::Sum(bad, amrex::ParallelDescriptor::Communicator());
     if (bad > 0) {
+        const std::string ground = (opt.stability == SurfaceLayerOptions::Stability::surface_temperature)
+                                       ? (opt.theta_s_map != nullptr ? "theta_s from bc.surface_temperature_file"
+                                                                     : "bc.surface_temperature = " + std::to_string(opt.surface_temperature))
+                                       : "surface layer heat_flux = " + std::to_string(opt.heat_flux);
         amrex::Abort("gust: compute_surface_state: no positive, finite friction velocity at "
-                     + std::to_string(bad) + " columns (surface layer heat_flux = " + std::to_string(opt.heat_flux)
+                     + std::to_string(bad) + " columns (" + ground
                      + (opt.z0_map != nullptr ? ", z0 from bc.surface_z0_file" : ", z0 = " + std::to_string(opt.z0)) + ")");
     }
     if (opt.immersed_columns != nullptr) { clear_immersed_columns(*opt.immersed_columns, s); }
 }
 
-void set_ground_fluxes (const SurfaceState& s, const SurfaceLayerOptions& opt, amrex::MultiFab& Gu,
+void set_ground_fluxes (const SurfaceState& s, const SurfaceLayerOptions& /*opt: q is the surface state's*/, amrex::MultiFab& Gu,
                         amrex::MultiFab& Gv, amrex::MultiFab& Gtheta, amrex::MultiFab& Gtke)
 {
     check_slab("set_ground_fluxes", s, Gtheta);
-    const amrex::Real qs = (opt.stability == SurfaceLayerOptions::Stability::heat_flux) ? opt.heat_flux : amrex::Real(0);
     const amrex::Real half = amrex::Real(0.5);
     for (amrex::MFIter mfi(Gtheta, false); mfi.isValid(); ++mfi) {
         amrex::Box cb = amrex::enclosedCells(mfi.validbox());
@@ -495,6 +610,7 @@ void set_ground_fluxes (const SurfaceState& s, const SurfaceLayerOptions& opt, a
         const int k0 = cb.smallEnd(2);
         const auto ta = s.tau.const_array(mfi);
         const auto ar = s.area.const_array(mfi);
+        const auto qf = s.qflux.const_array(mfi);
         const auto gu = Gu.array(mfi);
         const auto gv = Gv.array(mfi);
         const auto gt = Gtheta.array(mfi);
@@ -509,7 +625,7 @@ void set_ground_fluxes (const SurfaceState& s, const SurfaceLayerOptions& opt, a
         });
         amrex::ParallelFor(cb, [=] AMREX_GPU_DEVICE (int i, int j, int) noexcept
         {
-            gt(i, j, k0) = -qs * ar(i, j, k0);
+            gt(i, j, k0) = -qf(i, j, k0) * ar(i, j, k0);
             gk(i, j, k0) = 0;
         });
     }
@@ -623,6 +739,29 @@ void apply_wall_k_to_implicit (const SurfaceState& s, const SurfaceLayerOptions&
                 a(i, j, k0, coef_P) += amrex::max(us(i, j, k0), us_min) / d0(i, j, k0);
             });
         }
+    }
+}
+
+void apply_surface_temperature_to_implicit (const SurfaceState& s, const SurfaceLayerOptions& opt, const Mesh& mesh,
+                                            const amrex::Geometry& geom, amrex::MultiFab& A)
+{
+    if (opt.stability != SurfaceLayerOptions::Stability::surface_temperature) { return; }
+    check_slab("apply_surface_temperature_to_implicit", s, A);
+    if (A.nComp() != n_implicit_coefs || !A.ixType().cellCentered()) {
+        amrex::Abort("gust: apply_surface_temperature_to_implicit: A must be the cell-centred implicit coefficients");
+    }
+    const amrex::Real dzinv = geom.InvCellSize(2);
+    for (amrex::MFIter mfi(A, false); mfi.isValid(); ++mfi) {
+        amrex::Box cb = mfi.validbox();
+        cb.setBig(2, cb.smallEnd(2));
+        const int k0 = cb.smallEnd(2);
+        const auto a = A.array(mfi);
+        const auto hc = s.heat_coef.const_array(mfi);
+        const auto J = mesh.detJ.const_array(mfi);
+        amrex::ParallelFor(cb, [=] AMREX_GPU_DEVICE (int i, int j, int) noexcept
+        {
+            a(i, j, k0, coef_P) += hc(i, j, k0) * dzinv / J(i, j, k0);
+        });
     }
 }
 

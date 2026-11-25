@@ -166,6 +166,12 @@ class InitChecker(Checker):
                 self.error("init.column_stability", "GUST stops: init.column_stability = heat_flux needs "
                                                     "bc.surface_stability = heat_flux.",
                            "Set bc.surface_stability = heat_flux and bc.surface_heat_flux.")
+            if c.temperature_surface and (mode != "mol" or mol):
+                self.error("init.column_stability", "GUST stops: init.first_guess = column with bc.surface_stability "
+                                                    "= surface_temperature supports a neutral column only "
+                                                    "(init.column_stability = mol with init.column_mol = 0): the "
+                                                    "column does not take the 3-D run's ground temperature.",
+                           "Leave init.column_stability and init.column_mol out.")
             if c.s("bc.surface_wall_k") != "dirichlet":
                 self.error("bc.surface_wall_k", "GUST stops: init.first_guess = column supports bc.surface_wall_k = "
                                                 "dirichlet only.", "Remove bc.surface_wall_k.")
@@ -512,6 +518,9 @@ class AblChecker(Checker):
             need("simplec.theta", "refuses simplec.theta = frozen", "Use abl.theta = frozen.")
         if theta != "surface_flux" and c.heat_flux_surface:
             need("bc.surface_stability", "refuses bc.surface_stability = heat_flux", "Use abl.theta = surface_flux.")
+        if theta != "surface_flux" and c.temperature_surface:
+            need("bc.surface_stability", "refuses bc.surface_stability = surface_temperature",
+                 "Use abl.theta = surface_flux.")
         column = c.first_guess == "column"
         mode, mol = c.s("init.column_stability"), c.r("init.column_mol")
         if theta != "surface_flux" and column and (mode != "mol" or mol):
@@ -541,11 +550,12 @@ class AblChecker(Checker):
             if c.abl_drive == "geostrophic_column" and c.inflow_profile not in ("file", "column"):
                 need("bc.inflow_profile", "with abl.drive = geostrophic_column needs bc.inflow_profile = file or column")
         else:
-            if not c.heat_flux_surface:
-                need("bc.surface_stability", "needs bc.zlo = surface_layer and bc.surface_stability = heat_flux")
+            if not (c.heat_flux_surface or c.temperature_surface):
+                need("bc.surface_stability", "needs bc.zlo = surface_layer and bc.surface_stability = heat_flux or "
+                                             "surface_temperature")
             column_flux = column and mode == "mol" and bool(mol)
             flux = c.r("bc.surface_heat_flux")
-            if not column_flux and not (self.given("bc.surface_heat_flux") and flux):
+            if not c.temperature_surface and not column_flux and not (self.given("bc.surface_heat_flux") and flux):
                 need("bc.surface_heat_flux", "needs a non-zero bc.surface_heat_flux or init.column_mol")
             marching = column and c.positive("init.column_time")
             if not c.outflow_faces and not c.rayleigh_damps("theta") and not marching:

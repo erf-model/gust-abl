@@ -177,6 +177,8 @@ struct RunSetup
 //! With bc.surface_z0_file the level owns its roughness map (SurfaceRoughness.H):
 //! read from the file when z0_fine is null (level 0), else averaged from
 //! level 0's map z0_fine.
+//! With bc.surface_temperature_file every level reads the ground temperature map from the file at its own cell
+//! centres (SurfaceTemperature.H).
 //! With a canopy (Canopy.H), level 0 takes the run's (canopy, built from the
 //! inputs) and a coarse level restricts it (canopy with canopy_fine_detJ, level
 //! 0's detJ) into its own canopy_field.
@@ -208,6 +210,7 @@ public:
     //! The surface-layer options of this level: the run's, with z0_map set to z0_map_field when there is a map.
     SurfaceLayerOptions surf;
     amrex::MultiFab z0_map_field;  //!< the roughness map (empty without bc.surface_z0_file)
+    amrex::MultiFab theta_s_map_field;  //!< the ground temperature map (SurfaceTemperature.H; empty without bc.surface_temperature_file)
     //! A hybrid mesh's columns whose lower face lies inside the terrain (surf.immersed_columns; else empty).
     amrex::MultiFab immersed_columns;
     Canopy canopy_field;           //!< a coarse level's canopy (restricted from level 0)

@@ -277,6 +277,31 @@ class HrrrField:
         return float((f("sfc_ishf") / (rho * CP) * (1.0 + 0.61 * q2) + 0.61 * theta * f("sfc_slhtf") / (rho * LV))
                      .mean())
 
+    def surface_theta(self):
+        """Per column, the ground's virtual potential temperature theta_v,s = T_skin (1e5 / p_s)^0.2857
+        (1 + 0.61 q_2m), K: HRRR's skin temperature (TMP at the surface), its surface pressure and its 2 m specific
+        humidity (the skin's own humidity is not in HRRR's output). GUST's theta is theta_v."""
+        if "sfc_t" not in self.d:
+            raise HrrrOuterError(f"{self.label}: the crop has no skin temperature (sfc_t); fetch it again with "
+                                 "'hrrr_outer.py fetch'")
+        f = lambda k: np.asarray(self.d[k], float).ravel()
+        return f("sfc_t") * (1e5 / f("sfc_sp")) ** KAPPA_P * (1.0 + 0.61 * f("sfc_sh2"))
+
+    def write_surface_theta(self, path, half, lo=150.0, hi=350.0):
+        """Write the columns within half (m) of the centre as 'x y theta_v,s' lines (bc.surface_temperature_file);
+        returns (count, min, max, mean). A value outside [lo, hi] K refuses the hour."""
+        m = self.box(half)
+        th = self.surface_theta()[m]
+        if not m.any():
+            raise HrrrOuterError(f"{self.label}: no HRRR column within {half:.0f} m of the centre")
+        if not (np.isfinite(th).all() and (th >= lo).all() and (th <= hi).all()):
+            raise HrrrOuterError(f"{self.label}: the skin theta_v ({np.nanmin(th):.2f} to {np.nanmax(th):.2f} K) "
+                                 f"must be finite and in [{lo:g}, {hi:g}] K")
+        with open(path, "w") as out:
+            for x, y, t in zip(self.X.ravel()[m], self.Y.ravel()[m], th):
+                out.write(f"{x:.2f} {y:.2f} {t:.3f}\n")
+        return int(m.sum()), float(th.min()), float(th.max()), float(th.mean())
+
 
 # ---------------------------------------------------------------------------------------------------- checkpoints
 
@@ -534,7 +559,7 @@ def score_text(s):
 # ---------------------------------------------------------------------------------------------------- fetch
 
 NAT_REGEX = r":(UGRD|VGRD|HGT|TMP|SPFH|PRES|VVEL|TKE|CLMR|CLWMR):([1-9]|[1-2][0-9]|30) hybrid level"
-SFC_REGEX = r":(SHTFL|LHTFL|FRICV|HPBL|SFCR):|:HGT:surface|:(TMP|SPFH):2 m|:PRES:surface"
+SFC_REGEX = r":(SHTFL|LHTFL|FRICV|HPBL|SFCR):|:(HGT|TMP|PRES):surface|:(TMP|SPFH):2 m"
 
 
 def fetch(cycle, fxx, lat0, lon0, half_km, save, out):

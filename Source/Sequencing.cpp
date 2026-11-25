@@ -4,6 +4,7 @@
 #include "ColumnGuess.H"
 #include "HybridTerrain.H"
 #include "SurfaceRoughness.H"
+#include "SurfaceTemperature.H"
 
 #include "WallDistance.H"
 
@@ -289,6 +290,13 @@ LevelSolver::LevelSolver (const RunSetup& s, const Mesh& mesh, const amrex::Geom
         amrex::Print() << "gust: " << label << "surface z0 map ("
                        << (z0_fine == nullptr ? "bc.surface_z0_file" : "geometric mean of level 0") << "): "
                        << roughness_summary(z0_map_field) << "\n";
+    }
+    if (s.surface_layer && !s.surf.surface_temperature_file.empty()) {
+        read_surface_temperature_map(s.surf.surface_temperature_file, "bc.surface_temperature_file", s.idw_neighbors,
+                                     static_cast<double>(s.idw_power), geom, ba, dm, theta_s_map_field);
+        surf.theta_s_map = &theta_s_map_field;
+        amrex::Print() << "gust: " << label << "surface temperature map (bc.surface_temperature_file): "
+                       << surface_temperature_summary(theta_s_map_field) << "\n";
     }
     if (s.surface_layer && buildings != nullptr && buildings->geometry() != nullptr && buildings->geometry()->hybrid_mesh()) {
         // A hybrid mesh: the surface layer acts at the lower face only where it is the ground.

@@ -30,7 +30,18 @@
 //   leaves to the MOST relation;
 // - neutral: the log law; heat_flux: solved by Newton's method to round-off
 //   (so the residual is a smooth function of the state, as jvp needs), from
-//   the neutral value, u* >= 0.001 m/s in L.
+//   the neutral value, u* >= 0.001 m/s in L;
+// - surface_temperature: a ground potential temperature theta_s (K) per
+//   column instead of q, and q from the bulk Richardson number of the
+//   reference point (SurfaceTemperature_K.H, after ERF's surface_temp mode):
+//     Ri_b = g d (theta_r - theta_s) / (theta_0 U^2), bounded to [-4, 0.19],
+//     zeta = Ri_b cm(zeta)^2 / ch(zeta),  cm = max(lz - psi_m, m), ch = max(lz - psi_h, m),
+//     u* = kappa U / cm,  theta* = kappa (theta_r - theta_s) / ch,  q = -u* theta*,  1/L = zeta / d,
+//   theta_r the state's theta at the reference point (interpolated as the
+//   wind), lz = ln((d + z0)/z0). zeta is found to round-off by Newton's method
+//   kept inside the bracket [-100, 0] or [0, 100]. The bound on Ri_b keeps
+//   q finite and the stable root real at low wind (Businger-Dyer has no
+//   stable root for Ri_b >= 0.2). The flux therefore falls where the wind falls.
 // A column whose solve fails, or gives u* <= 0, stops the run.
 //
 // The reference height: the default is each column's first cell centre.
@@ -49,7 +60,9 @@
 //    component acts on the half control volume of w at the ground, a
 //    boundary row, and is dropped (as in ERF, whose MOST stress enters only
 //    the u and v rows; ERF leaves out |A| unless most.terrain_rotate is set);
-//  * theta: the flux -q |A| (zero for neutral);
+//  * theta: the flux -q |A| (zero for neutral); with surface_temperature
+//    q = c (theta_s - theta_r), c = kappa u* / ch, and the theta rows of the
+//    first cells take the Picard coefficient c |A| dzeta^-1 / J;
 //  * k: no flux through the ground, and in the first cell the wall value
 //      k_w = (u*^3 + kappa B d_0)^(2/3) / Cmu0^2,  B = g q / theta_0 if q > 0, else 0
 //    (Axell and Liungman 2001, Eq. 16, as ERF, with d_0 the first centre's
@@ -98,7 +111,7 @@ void most_phi (amrex::Real zeta, amrex::Real& phi_m, amrex::Real& phi_h) noexcep
 
 struct SurfaceLayerOptions
 {
-    enum class Stability { neutral, heat_flux };
+    enum class Stability { neutral, heat_flux, surface_temperature };
     enum class WallK { dirichlet, source };
     //! The floor m of the MOST denominator: log_law m = min(ln((d + z0)/z0), 1),
     //! one m = 1.
@@ -127,6 +140,14 @@ struct SurfaceLayerOptions
     Stability stability{Stability::neutral};
     //! Kinematic surface heat flux q (K m/s, positive upward), heat_flux only.
     amrex::Real heat_flux{0};
+    //! bc.surface_temperature: the ground's potential temperature theta_s (K, the state's theta: virtual in a
+    //! moist run), every column's when theta_s_map is null; surface_temperature only (0: not given).
+    amrex::Real surface_temperature{0};
+    //! bc.surface_temperature_file: a file of "x y theta_s" points (SurfaceTemperature.H; empty: the uniform value).
+    std::string surface_temperature_file;
+    //! The level's theta_s map from surface_temperature_file (null: the uniform value); set by the level that owns
+    //! it (LevelSolver), on the surface state's layout.
+    const amrex::MultiFab* theta_s_map{nullptr};
     WallK wall_k{WallK::dirichlet};
     DenominatorFloor denominator_floor{DenominatorFloor::log_law};
     //! Axell's Cmu0 (> 0), ERF's default.
@@ -159,7 +180,8 @@ inline Roughness ground_roughness (const SurfaceLayerOptions* opt)
 }
 
 //! Read the ground's keys, bc.surface_z0 or bc.surface_z0_file (not both), bc.surface_zref,
-//! bc.surface_stability (neutral | heat_flux), bc.surface_heat_flux and
+//! bc.surface_stability (neutral | heat_flux | surface_temperature), bc.surface_heat_flux,
+//! bc.surface_temperature or bc.surface_temperature_file (not both), and
 //! bc.surface_wall_k (dirichlet | source), bc.surface_denominator_floor
 //! (log_law | one), bc.surface_stable_functions (businger_dyer | qnse) and
 //! bc.surface_qnse_am, _bm, _ah, _bh, and range-check them; aborts
@@ -180,12 +202,20 @@ struct SurfaceState
     amrex::MultiFab drag;    //!< u*^2 |A| / U (m/s): tau = drag U_t
     amrex::MultiFab kwall;   //!< k_w (m^2/s^2)
     amrex::MultiFab area;    //!< |A| = sqrt(1 + z_x^2 + z_y^2)
+    amrex::MultiFab qflux;   //!< q (K m/s, upward > 0): bc.surface_heat_flux, or the surface_temperature solve's; 0 neutral
+    amrex::MultiFab heat_coef;  //!< d(q |A|)/d(theta of the first cell) at fixed c = kappa u* / ch (m/s): c |A| (1 - f) with
+                                //!< the reference point in the first interval (f its weight; 1 - f = 1 at the first centre),
+                                //!< 0 above it; 0 unless surface_temperature
+    amrex::MultiFab theta_s; //!< the ground's theta_s (K) with surface_temperature, else 0
     //! Some column's reference interval ends at the top cell, so the state
     //! read the top w face (a z_ref between the last two cell centres, or a
     //! mesh of two layers). The ghost fill writes that face after the wall
     //! model, so then the fill's state need not be that of the filled state
     //! (residual() computes its own; Residual.H). The same on every rank.
     bool reads_top_face{false};
+    //! bc.surface_stability = surface_temperature: theta_s and qflux vary by
+    //! column (the turbulence plotfile writes them).
+    bool ground_temperature{false};
 };
 
 //! Compute the surface layer from the state's velocity (one ghost cell
@@ -243,6 +273,12 @@ void apply_wall_to_implicit (const SurfaceState& s, Loc loc, const Mesh& mesh, c
 //! neighbour 0); for source a is added to the diagonal. The rows apply_wall_k
 //! gives the residual.
 void apply_wall_k_to_implicit (const SurfaceState& s, const SurfaceLayerOptions& opt, amrex::MultiFab& A);
+
+//! The theta rows of the implicit-side coefficients A (cell-centred) on the first cells, after
+//! apply_wall_to_implicit, with surface_temperature: the ground flux's Picard coefficient heat_coef dzeta^-1 / J
+//! added to the diagonal (the flux c |A| (theta_r - theta_s) with c held). Nothing for the other stabilities.
+void apply_surface_temperature_to_implicit (const SurfaceState& s, const SurfaceLayerOptions& opt, const Mesh& mesh,
+                                            const amrex::Geometry& geom, amrex::MultiFab& A);
 
 } // namespace gust
 

@@ -120,8 +120,10 @@ Inputs parse_inputs ()
         pp.query("hybrid_half_width", t.hybrid_half_width);
         pp.query("lee_turn", t.lee_turn);
         pp.query("lee_turn_ramp", t.lee_turn_ramp);
-        // The roughness map (bc.surface_z0_file, SurfaceRoughness.H) shares the IDW keys.
-        t.idw_for_z0_map = amrex::ParmParse("bc").contains("surface_z0_file");
+        // The roughness map (bc.surface_z0_file, SurfaceRoughness.H) and the ground temperature map
+        // (bc.surface_temperature_file, SurfaceTemperature.H) share the IDW keys.
+        t.idw_for_z0_map = amrex::ParmParse("bc").contains("surface_z0_file")
+                           || amrex::ParmParse("bc").contains("surface_temperature_file");
         // So do the canopy's maps (canopy.type = map, Canopy.H). Read as text
         // here; Canopy.cpp reads and checks the key.
         std::string canopy_type;
@@ -290,8 +292,8 @@ std::vector<std::string> validate (const Inputs& in)
     } else {
         for (const char* k : {"idw_neighbors", "idw_power"}) {
             if (given(k)) {
-                err.emplace_back(std::string("terrain.") + k + " has no effect unless terrain.type = xyz, bc.surface_z0_file is given "
-                                             "or canopy.type = map");
+                err.emplace_back(std::string("terrain.") + k + " has no effect unless terrain.type = xyz, bc.surface_z0_file or "
+                                             "bc.surface_temperature_file is given or canopy.type = map");
             }
         }
     }

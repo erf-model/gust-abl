@@ -136,6 +136,8 @@ void check_theta (Theta theta, Drive drive, const AblSetupFacts& f, std::vector<
     const std::string pre = std::string("abl.theta = ") + abl_theta_name(theta) + " ";
     const auto& sounding = air_theta(f);
     const bool flux_surface = f.surface.stability == SurfaceLayerOptions::Stability::heat_flux;
+    // A given ground temperature heats or cools the air as a given flux does.
+    const bool temperature_surface = f.surface.stability == SurfaceLayerOptions::Stability::surface_temperature;
     const bool file_inflow = f.bc.inflow.kind == InflowProfileOptions::Kind::file;
     // No table to read: the boundary checks report the missing bc.inflow_file.
     const bool known = !(file_inflow && f.inflow_table_theta.empty());
@@ -148,6 +150,9 @@ void check_theta (Theta theta, Drive drive, const AblSetupFacts& f, std::vector<
     }
     if (theta != Theta::surface_flux && flux_surface) {
         err.emplace_back(pre + "refuses bc.surface_stability = heat_flux (use abl.theta = surface_flux)");
+    }
+    if (theta != Theta::surface_flux && temperature_surface) {
+        err.emplace_back(pre + "refuses bc.surface_stability = surface_temperature (use abl.theta = surface_flux)");
     }
 
     using CS = InitOptions::ColumnStability;
@@ -182,14 +187,14 @@ void check_theta (Theta theta, Drive drive, const AblSetupFacts& f, std::vector<
                              "to hold)");
         }
     } else {
-        if (!f.surface_layer || !flux_surface) {
-            err.emplace_back(pre + "needs bc.zlo = surface_layer and bc.surface_stability = heat_flux");
+        if (!f.surface_layer || !(flux_surface || temperature_surface)) {
+            err.emplace_back(pre + "needs bc.zlo = surface_layer and bc.surface_stability = heat_flux or surface_temperature");
         }
         // The column with a Monin-Obukhov length hands the 3-D run its flux.
         const bool column_flux = column && f.init.column_stability == CS::mol && f.init.column_mol != 0;
         const auto& keys = f.bc.given;
         const bool flux_given = std::find(keys.begin(), keys.end(), "surface_heat_flux") != keys.end();
-        if (!column_flux && !(flux_given && f.surface.heat_flux != 0)) {
+        if (!temperature_surface && !column_flux && !(flux_given && f.surface.heat_flux != 0)) {
             err.emplace_back(pre + "needs a non-zero bc.surface_heat_flux or init.column_mol");
         }
         // A marching column stops at init.column_time (ColumnGuess.H): its heat budget need not close.

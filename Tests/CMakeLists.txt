@@ -42,6 +42,7 @@ add_executable(unit_tests
     Unit_Tests/test_ResidualWorkspace.cpp
     Unit_Tests/test_SurfaceLayer.cpp
     Unit_Tests/test_SurfaceRoughness.cpp
+    Unit_Tests/test_SurfaceTemperature.cpp
     Unit_Tests/test_BuildingForcing.cpp
     Unit_Tests/test_ImmersedTerrain.cpp
     Unit_Tests/test_ImmersedSurface.cpp
@@ -198,6 +199,7 @@ set(OUTFLOW_CASE        ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Outflow_Steep
 set(HILL2D_CASE         ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Neutral_Hill_2D)
 set(HILL3D_CASE         ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Neutral_Hill_3D)
 set(HILL3D_NEUTRAL_CASE ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Truly_Neutral_Hill_3D)
+set(TSURF_CASE          ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Surface_Temperature_Flat)
 set(ASKERVEIN_CASE      ${CMAKE_CURRENT_SOURCE_DIR}/Real_Terrain/Askervein)
 set(CNBL_CASE           ${CMAKE_CURRENT_SOURCE_DIR}/Real_Terrain/Askervein_CNBL)
 set(ASKERVEIN_210_CASE  ${CMAKE_CURRENT_SOURCE_DIR}/Real_Terrain/Askervein_210)
@@ -1380,6 +1382,36 @@ gust_add_test(NAME rt_sequencing_z0map NP 2 LABELS "regression;smoke"
               COMMAND $<TARGET_FILE:gust> ${HILL3D_NEUTRAL_CASE}/inputs_sequencing_z0map steady.max_iterations=3
                       init.first_guess=profile bc.surface_z0_file=${HILL3D_NEUTRAL_CASE}/z0_two_points.xyz
                       ${GUST_TEST_AMREX_FLAGS})
+# bc.surface_stability = surface_temperature on a flat 3-D ABL over a ground-temperature map (Canonical_RANS/
+# Surface_Temperature_Flat/README.md): 20 iterations on 2 ranks, then the run's u* in every column against
+# Monin-Obukhov similarity solved again in Python from the plotfile's first-cell wind and theta.
+set(TSURF_DIR ${CMAKE_CURRENT_BINARY_DIR}/run/surface_temperature_flat)
+add_test(NAME rt_surface_temperature_flat_clean
+         COMMAND ${Python3_EXECUTABLE} -c
+                 "import shutil, os, sys; shutil.rmtree(sys.argv[1], ignore_errors=True); os.makedirs(sys.argv[1])"
+                 ${TSURF_DIR})
+set_tests_properties(rt_surface_temperature_flat_clean PROPERTIES LABELS "regression;smoke"
+                     FIXTURES_SETUP tsurf_flat_clean)
+gust_add_test(NAME rt_surface_temperature_flat NP 2 LABELS "regression;smoke" RUN_DIR ${TSURF_DIR}
+              FIXTURES_REQUIRED tsurf_flat_clean FIXTURES_SETUP tsurf_flat
+              PREFIX ${EXPECT_ABORT} --success
+                     "gust: surface temperature map \\(bc\\.surface_temperature_file\\): min 297, max 303, mean 300 K"
+                     "gust: not steady after 20 iterations" --
+              COMMAND $<TARGET_FILE:gust> ${TSURF_CASE}/inputs_surface_temperature_flat
+                      bc.surface_temperature_file=${TSURF_CASE}/theta_s_ramp.xyz ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME rt_surface_temperature_flat_check NP 1 LABELS "regression;smoke" RUN_DIR ${TSURF_DIR}
+              FIXTURES_REQUIRED tsurf_flat
+              COMMAND ${Python3_EXECUTABLE} ${TSURF_CASE}/check_surface_temperature.py ${TSURF_DIR})
+gust_add_test(NAME abort_surface_temperature_inputs NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT}
+                     "bc\\.surface_temperature = 400[.0-9]*: must be finite and in \\[150, 350\\] K" --
+              COMMAND $<TARGET_FILE:gust> ${TSURF_CASE}/inputs_surface_temperature_flat bc.surface_temperature=400
+                      ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_surface_temperature_both NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT}
+                     "bc\\.surface_temperature and bc\\.surface_temperature_file" --
+              COMMAND $<TARGET_FILE:gust> ${TSURF_CASE}/inputs_surface_temperature_flat bc.surface_temperature=300
+                      bc.surface_temperature_file=${TSURF_CASE}/theta_s_ramp.xyz ${GUST_TEST_AMREX_FLAGS})
 # Old against new steady.sequencing_hold on the same two-level deck (only
 # level 0 is seeded; seconds): with the hold (1, the default before) level 0 runs
 # its first iterations at steady.cfl0 with r = 1; without it (0, the

@@ -34,6 +34,7 @@ set(GUST_SOURCES
     UnsteadyOutput.cpp
     SurfaceLayer.cpp
     SurfaceRoughness.cpp
+    SurfaceTemperature.cpp
     BuildingForcing.cpp
     BuildingLoads.cpp
     BuildingTheta.cpp

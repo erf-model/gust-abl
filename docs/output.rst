@@ -93,7 +93,10 @@ the final state under ERF's variable names, so ERF's Canonical_RANS check script
 diffusivity), ``Lturb``, ``walldist`` (the closure's wall distance; with ``buildings.wall_tke = on`` the smaller of the ground's and the nearest building wall's, the latter plus ``buildings.z0`` less the ground's roughness, which can be below zero, :doc:`buildings`), ``diss`` (:math:`\varepsilon`), ``density`` (1), ``Rt``, ``cmu`` and
 ``cmu_prime`` (the stability functions of :math:`R_t`, AL01 Eqs. 31–32, as ERF writes them), ``ustar`` (the ground
 cells; 0 above), ``z_phys`` (the cell-centre height), and the residual at the final state, ``R_u``, ``R_v``, ``R_w`` (cell means of the face
-residuals), ``R_p``, ``R_theta``, ``R_tke``: where the iteration has not converged. Inside it ``surf_hist.dat`` holds ``t u_star`` and one row with the iteration count and the
+residuals), ``R_p``, ``R_theta``, ``R_tke``: where the iteration has not converged. With a roughness map it adds
+``z0``, and with ``bc.surface_stability = surface_temperature`` it adds ``theta_s`` (the ground temperature, K) and
+``qflux`` (the kinematic heat flux, K m/s, upward > 0), all on the ground cells and 0 above
+(:ref:`surface temperature <surface-temperature>`). Inside it ``surf_hist.dat`` holds ``t u_star`` and one row with the iteration count and the
 mean :math:`u_*` over the ground, the file ERF's ``--physics`` checks read.
 
 Other output files

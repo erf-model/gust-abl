@@ -111,8 +111,10 @@ bc.outflow_transport mirror,from_velocity 1
 bc.surface_z0 real 1 >0
 bc.surface_z0_file str 1
 bc.surface_zref real 1
-bc.surface_stability neutral,heat_flux 1
+bc.surface_stability neutral,heat_flux,surface_temperature 1
 bc.surface_heat_flux real 1
+bc.surface_temperature real 1 >=150&<=350
+bc.surface_temperature_file str 1
 bc.surface_wall_k dirichlet,source 1
 bc.surface_denominator_floor log_law,one 1
 bc.surface_stable_functions businger_dyer,qnse 1

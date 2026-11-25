@@ -152,16 +152,17 @@ struct Level
     }
 };
 
-const char* const kSurfaceNames[] = {"ustar", "speed", "zref", "d0", "inv_L", "tau", "drag", "kwall", "area"};
+const char* const kSurfaceNames[] = {"ustar", "speed", "zref", "d0", "inv_L", "tau", "drag", "kwall", "area", "qflux",
+                                     "heat_coef", "theta_s"};
 
 amrex::Vector<const amrex::MultiFab*> surface_fields (const gust::SurfaceState& s)
 {
-    return {&s.ustar, &s.speed, &s.zref, &s.d0, &s.inv_L, &s.tau, &s.drag, &s.kwall, &s.area};
+    return {&s.ustar, &s.speed, &s.zref, &s.d0, &s.inv_L, &s.tau, &s.drag, &s.kwall, &s.area, &s.qflux, &s.heat_coef, &s.theta_s};
 }
 
 amrex::Vector<amrex::MultiFab*> surface_fields (gust::SurfaceState& s)
 {
-    return {&s.ustar, &s.speed, &s.zref, &s.d0, &s.inv_L, &s.tau, &s.drag, &s.kwall, &s.area};
+    return {&s.ustar, &s.speed, &s.zref, &s.d0, &s.inv_L, &s.tau, &s.drag, &s.kwall, &s.area, &s.qflux, &s.heat_coef, &s.theta_s};
 }
 
 amrex::Long surface_differences (const gust::SurfaceState& a, const gust::SurfaceState& b)

@@ -1,0 +1,48 @@
+# bc.surface_stability = surface_temperature on a flat periodic 3-D ABL (rt_surface_temperature_flat): 16 x 16 x 32
+# cells over 2560 m x 2560 m x 1000 m in four boxes, z0 = 0.1 m, the log law (u* = 0.35 m/s) from the south with no
+# Coriolis force, theta 300 K to 700 m. The ground temperature is the map theta_s_ramp.xyz, one point per cell
+# centre: 297 K at the west columns to 303 K at the east ones, so the run holds stable and unstable columns side by
+# side. The wind blows along the columns of equal theta_s: a wind from the west would carry the warm air of the east
+# columns across the periodic seam onto the coldest ones. Twenty
+# iterations from the log law; check_surface_temperature.py then solves Monin-Obukhov similarity in each column again
+# from the plotfile's first-cell wind and theta and compares it with the run's u* (README.md).
+mesh.n_cell        = 16 16 32
+mesh.prob_hi       = 2560. 2560. 1000.
+mesh.is_periodic   = 1 1 0
+mesh.max_grid_size = 8 8
+
+terrain.type = flat
+
+bc.zlo = surface_layer
+bc.zhi = slip_wall
+bc.surface_z0 = 0.1
+bc.surface_stability = surface_temperature
+bc.theta_profile_z = 0. 700. 1000.
+bc.theta_profile   = 300. 300. 309.
+bc.zhi_theta_grad  = 0.03
+bc.inflow_profile   = log_law
+bc.inflow_ustar     = 0.35
+bc.inflow_z0        = 0.1
+bc.inflow_tke_length = unbounded
+bc.inflow_direction = 90.
+bc.rayleigh_zdamp    = 700.
+bc.rayleigh_dampcoef = 0.2
+bc.rayleigh_fields   = w theta
+
+init.first_guess = profile
+
+forcing.coriolis = 0
+
+steady.stage          = simplec
+steady.sweep          = zjacobi
+steady.cfl0           = 1.
+steady.cfl_max        = 2.
+steady.zline_sweeps   = 4
+steady.max_iterations = 20
+
+turb.tke_floor = 1.e-6
+turb.max_geom_lscale = 30.
+
+io.plot_file      = tsurf_flat_plt
+io.turb_plot_file = tsurf_flat_turb
+io.chk_file       = tsurf_flat_chk

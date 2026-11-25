@@ -200,6 +200,76 @@ The wall model replaces the diffusive fluxes through the ground:
 
 The ghost cells below the ground continue the MOST profile.
 
+.. _surface-temperature:
+
+**Surface temperature.** ``bc.surface_stability = surface_temperature`` gives the ground's temperature
+:math:`\theta_s` instead of the flux: one value (``bc.surface_temperature``) or a map of ``x y theta_s`` points
+(``bc.surface_temperature_file``). Each column then finds its flux from the difference between the air at the
+reference point and the ground, so the flux falls where the wind falls. The column's bulk Richardson number fixes
+:math:`\zeta = d/L_O`:
+
+.. math::
+
+   \mathrm{Ri}_b = \frac{g\,d\,(\theta_r - \theta_s)}{\theta_0\,U^2}, \qquad
+   \zeta - \mathrm{Ri}_b\,\frac{c_m(\zeta)^2}{c_h(\zeta)} = 0, \qquad
+   c_m = \max\left(\ln\frac{d + z_0}{z_0} - \psi_m(\zeta),\, m\right), \quad
+   c_h = \max\left(\ln\frac{d + z_0}{z_0} - \psi_h(\zeta),\, m\right),
+
+.. math::
+
+   u_* = \frac{\kappa\,U}{c_m}, \qquad \theta_* = \frac{\kappa\,(\theta_r - \theta_s)}{c_h}, \qquad
+   q = -u_*\,\theta_* = c\,(\theta_s - \theta_r), \qquad c = \frac{\kappa\,u_*}{c_h} .
+
+- :math:`\theta_r`: :math:`\theta` at the reference point, interpolated as the wind (the first cell's own
+  :math:`\theta` by default).
+- :math:`\theta_s`: the ground temperature, from the value or the map.
+- :math:`\theta_0` (``forcing.theta0``, default 300 K) and :math:`g` (``forcing.gravity``): the buoyancy's reference
+  temperature and gravity.
+- :math:`\psi_m, \psi_h`: Businger–Dyer (``qnse`` is refused with this ground condition); :math:`m`, :math:`U`,
+  :math:`d` and :math:`z_0` as above.
+- :math:`c`: the exchange velocity (m/s) of the heat flux.
+
+GUST's :math:`\theta` is the virtual potential temperature :math:`\theta_v`, so :math:`\theta_s` is the ground's
+:math:`\theta_v` too (``tools/hrrr_outer.py`` writes :math:`\theta_{v,s} = T_\mathrm{skin}\,(10^5/p_s)^{0.2857}
+(1 + 0.61\,q_{2\mathrm{m}})` from HRRR's skin temperature).
+
+:math:`\mathrm{Ri}_b` is bounded to :math:`[-4, 0.19]` before the solve. The lower bound is ERF's. The upper one
+comes from Businger–Dyer's stable side, :math:`c_m = c_h = \ln((d + z_0)/z_0) + 5\zeta`: it gives
+:math:`\mathrm{Ri}_b = \zeta c_h/c_m^2 = \zeta/(\ln((d + z_0)/z_0) + 5\zeta) < 0.2` for every :math:`\zeta`, so
+without the bound a calm, cooled column has no root and no flux. With the bound it keeps a small downward flux.
+The root is bracketed in :math:`[-100, 0]` or :math:`[0, 100]` (the side of :math:`\mathrm{Ri}_b`'s sign) and found
+by Newton's method with bisection steps, to round-off, as the ``heat_flux`` solve. ERF's ``surface_temp`` mode uses the
+stability functions of Jiménez et al. instead; on the stable side the two differ by up to about 10 % at low
+wind (0.1 % on the unstable side). Thermal roughness is not modelled: :math:`z_{0h} = z_0`. Over a radiometric skin
+temperature this overestimates the flux (by a factor of about 1.7 for :math:`kB^{-1} = 2` at 5 m/s and a 6 K
+difference), and the bound 0.19 lies far beyond the range Businger–Dyer was fitted for (:math:`\zeta \lesssim 1`),
+so strongly stable columns are only bounded, not modelled. A bracket without a root (only
+possible at the bounds) gives its far end. At zero wind :math:`U` is still floored at 0.1 m/s, so the flux stays
+finite.
+
+The flux enters every place where ``heat_flux`` uses :math:`q`: the ground flux of :math:`\theta` (now
+:math:`-q|A|` with each column's own :math:`q`), the ghost cells' :math:`\theta` gradient, :math:`L_O` and
+:math:`k_w`. In the implicit rows of :math:`\theta` the flux is linearised in the first cell's :math:`\theta`: the
+diagonal gains :math:`c\,|A|\,(1 - f)/(J\,\Delta\zeta)`, the derivative of the flux with :math:`c` held (a Picard step),
+so a warm ground pulls the air towards :math:`\theta_s` without overshoot. :math:`f` is the weight of the cell above in
+the reference point's interpolation: 0 at the default reference point (the first cell centre). With a
+``bc.surface_zref`` above the second cell centre the first cell's :math:`\theta` does not enter the flux and the
+diagonal gains nothing.
+
+With ``simplec.theta = frozen`` or ``frozen_buoyant`` :math:`\theta` does not change, so :math:`\theta_r - \theta_s` is
+fixed; the flux then changes only through :math:`U` and sets :math:`u_*`, :math:`L_O` and :math:`k_w`. The heat the
+ground gives is not carried into :math:`\theta`.
+
+On the coarse levels of grid sequencing each level reads the map at its own cell centres. A restart reads the file the
+deck names again: the checkpoint does not record the map. ``init.first_guess = column`` allows a neutral column only
+(the column does not take the ground temperature); ``abl.theta = surface_flux`` accepts this ground condition.
+``Tests/Canonical_RANS/Surface_Temperature_Flat`` checks the wall model's :math:`u_*` against the formulas above in a
+3-D run with stable and unstable columns.
+
+The map's interpolation is the inverse-distance-weighted mean of :math:`\theta_s` itself over the
+``terrain.idw_neighbors`` nearest points (weight :math:`r^{-p}`, :math:`p` = ``terrain.idw_power``); a point within
+:math:`10^{-6}` m of a cell centre gives its own value, and ghost columns take the column they image.
+
 .. _roughness-map:
 
 **Roughness map.** ``bc.surface_z0_file`` replaces the single :math:`z_0` with one value per ground column, for a

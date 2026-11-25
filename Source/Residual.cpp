@@ -93,12 +93,15 @@ void require_surface_state_of (const State& q, const ResidualInputs& in, const M
 {
     SurfaceState fresh;
     compute_surface_state(q, *in.surface, in.buoyancy, mesh, geom, fresh);
-    const char* names[] = {"ustar", "speed", "zref", "d0", "inv_L", "tau", "drag", "kwall", "area"};
+    const char* names[] = {"ustar", "speed", "zref", "d0", "inv_L", "tau", "drag", "kwall", "area", "qflux", "heat_coef",
+                           "theta_s"};
     const amrex::MultiFab* a[] = {&fresh.ustar, &fresh.speed, &fresh.zref, &fresh.d0, &fresh.inv_L,
-                                  &fresh.tau, &fresh.drag, &fresh.kwall, &fresh.area};
+                                  &fresh.tau, &fresh.drag, &fresh.kwall, &fresh.area, &fresh.qflux, &fresh.heat_coef,
+                                  &fresh.theta_s};
     const amrex::MultiFab* b[] = {&given.ustar, &given.speed, &given.zref, &given.d0, &given.inv_L,
-                                  &given.tau, &given.drag, &given.kwall, &given.area};
-    for (int n = 0; n < 9; ++n) {
+                                  &given.tau, &given.drag, &given.kwall, &given.area, &given.qflux, &given.heat_coef,
+                                  &given.theta_s};
+    for (int n = 0; n < 12; ++n) {
         if (b[n]->boxArray() != a[n]->boxArray() || b[n]->DistributionMap() != a[n]->DistributionMap()) {
             amrex::Abort(std::string("gust: residual: the given surface state is not on q's layout (") + names[n] + ")");
         }
@@ -468,6 +471,7 @@ void implicit_rows (const amrex::Array<const amrex::MultiFab*, AMREX_SPACEDIM>& 
         }
         apply_wall_to_implicit(*surface, loc, mesh, geom, A);
         if (eq == Equation::tke) { apply_wall_k_to_implicit(*surface, *in.surface, A); }
+        if (eq == Equation::theta) { apply_surface_temperature_to_implicit(*surface, *in.surface, mesh, geom, A); }
     }
     const bool momentum = (eq == Equation::u || eq == Equation::v || eq == Equation::w);
     if (in.canopy != nullptr && momentum) {

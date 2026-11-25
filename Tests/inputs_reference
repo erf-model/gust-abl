@@ -78,11 +78,12 @@
 #     ridge_x (a ridge along y, varying in x), ridge_y or round; agnesi only.
 #
 # terrain.idw_neighbors = 6
-#     ≥ 1; xyz, bc.surface_z0_file or canopy.type = map only. Points used for each height (and each column's z_0 of
-#     the roughness map, and the canopy's maps).
+#     ≥ 1; xyz, bc.surface_z0_file, bc.surface_temperature_file or canopy.type = map only. Points used for each
+#     height (and each column's z_0 of the roughness map, its ground temperature, and the canopy's maps).
 #
 # terrain.idw_power = 2
-#     Finite, > 0; xyz, bc.surface_z0_file or canopy.type = map only. Weight exponent p in d^(-p).
+#     Finite, > 0; xyz, bc.surface_z0_file, bc.surface_temperature_file or canopy.type = map only. Weight exponent p
+#     in d^(-p).
 #
 # terrain.hierarchy_passes = 1
 #     Integer from 0 to 64; only with mesh.hierarchy_levels > 1. The ground of level l is smoothed by this number
@@ -385,10 +386,23 @@
 #     heights of every column (m).
 #
 # bc.surface_stability = neutral
-#     neutral or heat_flux.
+#     neutral, heat_flux or surface_temperature (surface temperature, docs/boundary_conditions.rst).
+#     surface_temperature needs exactly one of bc.surface_temperature and bc.surface_temperature_file, and refuses
+#     bc.surface_stable_functions = qnse, a non-zero bc.surface_heat_flux, an immersed or hybrid ground, and a
+#     stratified column first guess (only init.column_stability = mol with init.column_mol = 0).
 #
 # bc.surface_heat_flux = 0
 #     Finite (K m/s); heat_flux only.
+#
+# bc.surface_temperature =    # none
+#     Finite, in [150, 350] K, or the run aborts naming the key; surface_temperature only. The ground's virtual
+#     potential temperature θ_s (GUST's θ is θ_v). Not with bc.surface_temperature_file (both given aborts).
+#
+# bc.surface_temperature_file =    # none
+#     surface_temperature only. A file of x y theta_s points (terrain.file's format), interpolated to each level's
+#     ground columns as an inverse-distance-weighted mean with terrain.idw_neighbors and terrain.idw_power. Every
+#     value finite and in [150, 350] K, at least terrain.idw_neighbors points, and the file readable, or the run
+#     aborts naming the key.
 #
 # bc.surface_wall_k = dirichlet
 #     dirichlet or source.

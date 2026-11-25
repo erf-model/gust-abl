@@ -326,10 +326,32 @@ class SurfaceChecker(Checker):
             self.error("bc.surface_z0_file", "GUST stops: bc.surface_z0 and bc.surface_z0_file cannot both be given "
                                              "(one roughness: a value or a map).", "Keep one of the two.")
         flux = c.r("bc.surface_heat_flux")
-        if flux is not None and flux != 0 and c.s("bc.surface_stability") == "neutral":
+        stability = c.s("bc.surface_stability")
+        if flux is not None and flux != 0 and stability in ("neutral", "surface_temperature"):
             self.error("bc.surface_heat_flux", "GUST stops: bc.surface_heat_flux is set but bc.surface_stability is "
-                                               "neutral; it would be ignored.",
+                                               "%s; it would be ignored." % stability,
                        "Set bc.surface_stability = heat_flux, or remove the flux.")
+        # SurfaceLayer.cpp, read_surface_layer_options and check_surface_layer_options: the ground temperature.
+        value, ts_file = self.given("bc.surface_temperature"), self.given("bc.surface_temperature_file")
+        if stability == "surface_temperature":
+            if value and ts_file:
+                self.error("bc.surface_temperature_file", "GUST stops: bc.surface_temperature and "
+                                                          "bc.surface_temperature_file cannot both be given (one ground "
+                                                          "temperature: a value or a map).", "Keep one of the two.")
+            elif not value and not ts_file:
+                self.error("bc.surface_stability", "GUST stops: bc.surface_stability = surface_temperature needs "
+                                                   "exactly one of bc.surface_temperature (K) and "
+                                                   "bc.surface_temperature_file.",
+                           "Give the ground temperature, or a map of it.")
+            if c.s("bc.surface_stable_functions") == "qnse":
+                self.error("bc.surface_stable_functions", "GUST stops: bc.surface_stable_functions = qnse is not "
+                                                          "available with bc.surface_stability = surface_temperature "
+                                                          "(Businger-Dyer only).", "Remove the key.")
+        else:
+            for k in ("bc.surface_temperature", "bc.surface_temperature_file"):
+                if self.given(k):
+                    self.error(k, "GUST stops: %s is set but bc.surface_stability is %s; it would be ignored."
+                               % (k, stability), "Set bc.surface_stability = surface_temperature, or remove the key.")
         q = {k: c.r("bc.surface_qnse_" + k) for k in ("am", "bm", "ah", "bh")}
         if None in q.values():
             return
@@ -343,7 +365,7 @@ class SurfaceChecker(Checker):
                                                        "bc.surface_qnse_%s = %s." % (a, _g(q[a]), b, _g(q[b])),
                                "Keep a >= b, so that the stability function is at least 1.")
             column = c.first_guess == "column" and c.column_evolves
-            if not c.heat_flux_surface and not column:
+            if stability == "neutral" and not column:
                 self.error("bc.surface_stable_functions", "GUST stops: bc.surface_stable_functions = qnse has no effect: "
                                                           "the surface is neutral and there is no stratified column.",
                            "Remove the key, or set bc.surface_stability = heat_flux.")
