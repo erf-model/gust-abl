@@ -4,7 +4,9 @@
 // bit for bit as the one with gravity off), the buoyancy kept in the closure
 // (a stable theta lowers nu_t), the stage's refusal of residual inputs
 // that do not match the option, and the ground ghosts of a frozen theta
-// (the linear extension of the first two cells).
+// (the linear extension of the first two cells). simplec.theta =
+// frozen_buoyant: the reader, theta held with the force kept in w, and the
+// hydrostatic pressure of a held stratification at rest (closed form).
 #include "BoundaryConditions.H"
 #include "Closure.H"
 #include "Poisson.H"
@@ -20,6 +22,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <memory>
 #include <random>
 #include <stdexcept>
@@ -82,6 +85,20 @@ void fill_stable (amrex::MultiFab& theta, double gamma, const PCase& c)
         {
             amrex::ignore_unused(i, j);
             a(i, j, k) = amrex::Real(300) + g * (static_cast<amrex::Real>(k) + amrex::Real(0.5)) * dz;
+        });
+    }
+    amrex::Gpu::streamSynchronize();
+}
+
+// d = p - a k (k+1) / 2 on the valid cells (a device lambda may not sit in a TEST body under nvcc).
+void subtract_hydrostatic (amrex::MultiFab& d, const amrex::MultiFab& p, amrex::Real a)
+{
+    for (amrex::MFIter mfi(d, false); mfi.isValid(); ++mfi) {
+        const auto o = d.array(mfi);
+        const auto pp = p.const_array(mfi);
+        amrex::ParallelFor(mfi.validbox(), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+        {
+            o(i, j, k) = pp(i, j, k) - a * amrex::Real(0.5) * static_cast<amrex::Real>(k) * static_cast<amrex::Real>(k + 1);
         });
     }
     amrex::Gpu::streamSynchronize();
@@ -307,6 +324,170 @@ TEST (FrozenTheta, StageRefusesMismatchedResidualInputs)
     EXPECT_THROW(gust::SimplecStage(opt, 2, lam.in, nullptr, lam.popt, c.mesh, c.geom, c.z, 0, c.ba, c.dm), std::runtime_error);
     lam.in.buoyancy_in_momentum = true;
     EXPECT_NO_THROW(gust::SimplecStage(opt, 2, lam.in, nullptr, lam.popt, c.mesh, c.geom, c.z, 0, c.ba, c.dm));
+}
+
+// ---------------------------------------------------------------------------
+// frozen_buoyant: theta held and the buoyancy kept in momentum; the switch
+// that decides the residual inputs' buoyancy_in_momentum for each value.
+TEST (FrozenTheta, BuoyantReaderAndSwitch)
+{
+    amrex::ParmParse pp("simplec");
+    auto clear = [&] { while (pp.remove("theta") > 0) {} };
+    clear();
+    const gust::SimplecOptions solve = gust::read_simplec_options();
+    EXPECT_TRUE(gust::buoyancy_in_momentum(solve));
+    EXPECT_TRUE(gust::buoyancy_point_implicit(solve));
+    pp.add("theta", std::string("frozen"));
+    const gust::SimplecOptions frozen = gust::read_simplec_options();
+    EXPECT_FALSE(frozen.theta_buoyant);
+    EXPECT_FALSE(gust::buoyancy_in_momentum(frozen));
+    EXPECT_FALSE(gust::buoyancy_point_implicit(frozen));
+    clear();
+    pp.add("theta", std::string("frozen_buoyant"));
+    const gust::SimplecOptions fb = gust::read_simplec_options();
+    EXPECT_TRUE(fb.theta_frozen);
+    EXPECT_TRUE(fb.theta_buoyant);
+    EXPECT_TRUE(gust::buoyancy_in_momentum(fb));
+    EXPECT_FALSE(gust::buoyancy_point_implicit(fb));
+    EXPECT_EQ(gust::theta_value(solve), "solve");
+    EXPECT_EQ(gust::theta_value(frozen), "frozen");
+    EXPECT_EQ(gust::theta_value(fb), "frozen_buoyant");
+    clear();
+    pp.add("theta", std::string("Frozen_Buoyant"));
+    try {
+        (void)gust::read_simplec_options();
+        ADD_FAILURE() << "simplec.theta = Frozen_Buoyant was accepted";
+    } catch (const std::runtime_error& e) {
+        EXPECT_NE(std::string(e.what()).find("frozen_buoyant"), std::string::npos) << e.what();
+    }
+    clear();
+    // The stage takes frozen_buoyant only with the momentum buoyancy on and its
+    // point-implicit part off.
+    PCase c = flat_case(4, 4, 4, 400, 400, 200, 4);
+    Laminar lam;
+    lam.make(c, 1.0);
+    lam.in.buoyancy_in_momentum = false;
+    lam.in.buoyancy_point_implicit = false;
+    EXPECT_THROW(gust::SimplecStage(fb, 2, lam.in, nullptr, lam.popt, c.mesh, c.geom, c.z, 0, c.ba, c.dm), std::runtime_error);
+    lam.in.buoyancy_in_momentum = true;
+    lam.in.buoyancy_point_implicit = true;
+    EXPECT_THROW(gust::SimplecStage(fb, 2, lam.in, nullptr, lam.popt, c.mesh, c.geom, c.z, 0, c.ba, c.dm), std::runtime_error);
+    lam.in.buoyancy_point_implicit = false;
+    EXPECT_NO_THROW(gust::SimplecStage(fb, 2, lam.in, nullptr, lam.popt, c.mesh, c.geom, c.z, 0, c.ba, c.dm));
+}
+
+// ---------------------------------------------------------------------------
+// Three iterations from the random state of ThetaHeldAndNoBuoyancyInMomentum
+// on 4 boxes: frozen_buoyant holds theta to the last bit, and its w differs
+// from frozen's (the force acts); with gravity off the two are bit for bit
+// the same (only the force differs).
+TEST (FrozenTheta, BuoyantHoldsThetaAndKeepsTheForce)
+{
+    PCase c = flat_case(8, 8, 8, 800, 800, 400, 4);
+    gust::State q0;
+    random_state(q0, c);
+    gust::SimplecOptions frozen, fb;
+    frozen.theta_frozen = true;
+    fb.theta_frozen = true;
+    fb.theta_buoyant = true;
+    auto run = [&] (const gust::SimplecOptions& opt, double gravity, gust::State& q) {
+        Laminar lam;
+        lam.make(c, 5.0);
+        lam.in.buoyancy.gravity = static_cast<amrex::Real>(gravity);
+        lam.in.buoyancy_in_momentum = gust::buoyancy_in_momentum(opt);
+        lam.in.buoyancy_point_implicit = gust::buoyancy_point_implicit(opt);
+        define_state(q, c);
+        copy_state(q, q0);
+        run_laminar(q, lam, opt, c, 3);
+    };
+    gust::State a, b, a0, b0;
+    run(fb, 9.81, a);
+    run(frozen, 9.81, b);
+    run(fb, 0.0, a0);
+    run(frozen, 0.0, b0);
+    EXPECT_EQ(max_abs_diff(a.theta, q0.theta), 0);
+    EXPECT_GT(max_abs_diff(a.w, b.w), 1e-3);
+    for (auto [f, g, name] : {std::tuple{&a0.u, &b0.u, "u"}, std::tuple{&a0.v, &b0.v, "v"}, std::tuple{&a0.w, &b0.w, "w"},
+                              std::tuple{&a0.p, &b0.p, "p"}}) {
+        EXPECT_EQ(max_abs_diff(*f, *g), 0) << name;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// The predictor's point-implicit buoyancy follows buoyancy_point_implicit:
+// with theta solved (where it is on) three iterations from the random state
+// give another w with it off. frozen_buoyant turns it off (the switch above).
+TEST (FrozenTheta, PointImplicitSwitchActs)
+{
+    PCase c = flat_case(8, 8, 8, 800, 800, 400, 4);
+    gust::State q0;
+    random_state(q0, c);
+    gust::SimplecOptions solve;
+    auto run = [&] (bool point_implicit, gust::State& q) {
+        Laminar lam;
+        lam.make(c, 5.0);
+        lam.in.buoyancy.gravity = static_cast<amrex::Real>(9.81);
+        lam.in.buoyancy_point_implicit = point_implicit;
+        define_state(q, c);
+        copy_state(q, q0);
+        run_laminar(q, lam, solve, c, 3);
+    };
+    gust::State on, off;
+    run(true, on);
+    run(false, off);
+    EXPECT_GT(max_abs_diff(on.w, off.w), 1e-6);
+}
+
+// ---------------------------------------------------------------------------
+// A held stratification theta = 300 + gamma z at rest, the reference
+// theta_ref = 300 + gamma_ref z and theta_0 = 290 K, on 4 boxes: the steady
+// state is rest with the hydrostatic pressure dp/dz = g (theta - theta_ref) /
+// theta_0. On uniform layers the w face k+1/2 sits at z = (k+1) dz and its
+// theta - theta_ref is the mean of its two cells', so p(k+1) - p(k) =
+// (g (gamma - gamma_ref) / theta_0) (k+1) dz^2 and p(k) = p(0) + a k (k+1) / 2
+// with a = g (gamma - gamma_ref) dz^2 / theta_0. A swap of theta_0 and the
+// reference, or the reference at another height, fails. frozen_buoyant reaches it (u, v, w at rest to
+// round-off); frozen keeps p at 0 (no force).
+TEST (FrozenTheta, BuoyantHydrostaticPressure)
+{
+    const double gamma = 0.01;
+    const double gamma_ref = 0.004;
+    PCase c = flat_case(8, 8, 16, 800, 800, 800, 4);
+    const amrex::Real dz = c.geom.CellSize(2);
+    for (const bool buoyant : {true, false}) {
+        gust::SimplecOptions opt;
+        opt.theta_frozen = true;
+        opt.theta_buoyant = buoyant;
+        Laminar lam;
+        lam.make(c, 5.0);
+        lam.in.theta_ref.theta = {static_cast<amrex::Real>(300 - 1000 * gamma_ref),
+                                  static_cast<amrex::Real>(300 + 5000 * gamma_ref)};
+        lam.in.buoyancy.theta0 = 290;
+        lam.in.buoyancy_in_momentum = gust::buoyancy_in_momentum(opt);
+        lam.in.buoyancy_point_implicit = false;
+        gust::State q;
+        define_state(q, c);
+        q.u.setVal(0.0);
+        q.v.setVal(0.0);
+        q.w.setVal(0.0);
+        q.p.setVal(0.0);
+        fill_stable(q.theta, gamma, c);
+        q.tke.setVal(0.5);
+        run_laminar(q, lam, opt, c, 200);
+        const amrex::Real a = buoyant ? static_cast<amrex::Real>(lam.in.buoyancy.gravity * (gamma - gamma_ref) / 290.0) * dz * dz
+                                      : amrex::Real(0);
+        amrex::MultiFab d(c.ba, c.dm, 1, 0);
+        subtract_hydrostatic(d, q.p, a);
+        const double spread = static_cast<double>(d.max(0) - d.min(0));
+        const double prange = static_cast<double>(a) * 0.5 * 15 * 16;   // p(15) - p(0)
+        EXPECT_LT(spread, buoyant ? 1e-6 * prange : 1e-12) << "buoyant " << buoyant << ", p range " << prange;
+        if (buoyant) { EXPECT_GT(prange, 1.0); }
+        // At rest to round-off (the force is of order 1e-3 m/s^2, p of order 100 m^2/s^2).
+        const double rest = 1e4 * static_cast<double>(std::numeric_limits<amrex::Real>::epsilon());
+        for (auto [f, name] : {std::pair{&q.u, "u"}, std::pair{&q.v, "v"}, std::pair{&q.w, "w"}}) {
+            EXPECT_LT(static_cast<double>(f->norm0()), rest) << name << ", buoyant " << buoyant;
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
