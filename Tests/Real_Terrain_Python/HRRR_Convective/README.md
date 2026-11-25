@@ -76,7 +76,8 @@ GUST=<build>/gust MPI="mpiexec -n 4" options/run_options.sh
 python3 score_options.py options
 ```
 The options take about four hours on 4 ranks of a laptop (6 hours × 6 nests, and the 12 coarser runs); solved_flux
-is most of it in the C1 hours, where it does not reach a steady state.
+is most of it in the C1 hours, where it does not reach a steady state. The 18 `_tsurf` runs took 3 h 40 min, part
+of it beside another 4-rank job on the same laptop; solved_tsurf is most of it in the C1 hours.
 
 ## Expected Results
 2026-11-25, 4 ranks. Vector rms (m/s) of the nest minus HRRR below 500 m above the ground (`score_options.py` prints
@@ -90,6 +91,9 @@ the full table, with bias, rms, direction, the mean speed bias from 5 to 50 m (`
 | **frozen_buoyant** | **0.54** | **0.36** | **0.60** | 1.67 | 1.41 | 1.29 |
 | frozen_buoyant_flux | 0.63 | 0.38 | 0.63 | 1.72 | 1.46 | 1.33 |
 | solved_flux | 1.93 (not steady) | 1.48 (not steady) | 1.00 (not steady) | **1.00** | **1.30** | **0.90** |
+| frozen_tsurf | 0.90 | 0.60 | 0.93 | 1.59 | 1.65 | 1.20 |
+| frozen_buoyant_tsurf | 0.65 | 0.39 | 0.64 | 1.73 | 1.48 | 1.34 |
+| solved_tsurf | 1.87 (not steady) | 1.57 (not steady) | 1.22 | 0.98 | 1.27 | 0.91 |
 
 - **frozen_buoyant is the recommended option for C1 hours** (0.12 to 0.24 m/s below frozen, 0.22 to 0.52 m/s below
   the scheme, in each hour). The gain is mostly in speed: the speed bias below 500 m goes from −0.57, −0.36, −0.72
@@ -106,6 +110,14 @@ the full table, with bias, rms, direction, the mean speed bias from 5 to 50 m (`
 - HRRR's heat flux at the ground adds 0.02 to 0.10 m/s with θ held, in every hour.
 - Near the ground (5 to 50 m) frozen_buoyant is slower than HRRR, by 0.5 to 0.6 m/s in may10_19.
   Below HRRR's lowest level the score interpolates HRRR.
+- HRRR's skin temperature in place of its heat flux (the `_tsurf` options; GUST computes the flux by MOST) does
+  not lower the error. With θ held, each `_tsurf` option is within 0.02 m/s of its `_flux` twin, and higher in
+  every hour; the bias from 5 to 50 m is 0.02 to 0.05 m/s more negative. solved_tsurf is within 0.03 m/s of
+  solved_flux in the C2 hours, steady in 170 to 183 iterations.
+- In the C1 hours solved_tsurf is steady in may10_21 (1349 iterations, residual 1.5e-5), where solved_flux is not,
+  but its vector rms is higher (1.22 against 1.00 m/s). may10_19 and may10_20 are not steady after 2000
+  iterations (residual 0.07 and 6e-3 at the end; w up to 6.0 and 5.7 m/s). One steady hour of three does not
+  make solved_tsurf a C1 option.
 - Three hours per class are a small sample.
 - may10_19 with frozen_buoyant (the test deck): rms 0.39 m/s, bias −0.18 m/s; below 500 m a speed bias of
   −0.36 m/s, a vector rms of 0.54 m/s and 0.2° of direction; steady after 194 iterations.
