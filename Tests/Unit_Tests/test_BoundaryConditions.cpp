@@ -846,8 +846,9 @@ TEST(BoundaryFill, GroundGradientIsTheWallLaw)
     }
     BoundaryInputs in;
     BoundaryConditions bc(in, c.geom, c.mesh, kNoCoriolis);
-    for (const int mode : {0, 1, 2}) {   // 0 Businger-Dyer, 1 QNSE, 2 Jimenez (surface temperature)
-        const bool qnse = (mode == 1), jim = (mode == 2);
+    // 0 Businger-Dyer, 1 QNSE, 2 Jimenez (surface temperature), 3 Beljaars's w* (a warm ground, unstable)
+    for (const int mode : {0, 1, 2, 3}) {
+        const bool qnse = (mode == 1), jim = (mode == 2), wst = (mode == 3);
         q.theta.setVal(300.0);
         q.tke.setVal(0.3);
         q.p.setVal(0.0);
@@ -862,6 +863,14 @@ TEST(BoundaryFill, GroundGradientIsTheWallLaw)
             so.heat_flux = 0;
             so.surface_temperature = 298;
             so.stable_functions = gust::SurfaceLayerOptions::StableFunctions::jimenez;
+        }
+        if (wst) {
+            // 10 K warmer than the air and a deep boundary layer: beta w* ~ 3 m/s against a wind of ~5 m/s.
+            so.stability = gust::SurfaceLayerOptions::Stability::surface_temperature;
+            so.heat_flux = 0;
+            so.surface_temperature = 310;
+            so.wstar = gust::SurfaceLayerOptions::Wstar::beljaars;
+            so.pblh = 5000;
         }
         gust::SurfaceState s;
         bc.fill_ghosts(q, &so, kBuoy, false, &s);
@@ -879,6 +888,9 @@ TEST(BoundaryFill, GroundGradientIsTheWallLaw)
         ta2.ParallelCopy(s.tau, 0, 0, 3, amrex::IntVect(0), ng2, c.geom.periodicity());
         amrex::MultiFab qf2(s.ustar.boxArray(), s.ustar.DistributionMap(), 1, ng2);
         qf2.ParallelCopy(s.qflux, 0, 0, 1, amrex::IntVect(0), ng2, c.geom.periodicity());
+        amrex::MultiFab ar2(s.ustar.boxArray(), s.ustar.DistributionMap(), 1, ng2);
+        ar2.ParallelCopy(s.area, 0, 0, 1, amrex::IntVect(0), ng2, c.geom.periodicity());
+        amrex::Real min_fac = 1;
         // The node heights of those columns (three lateral ghost nodes, the
         // periodic images; the fab's own have one): the fill gives each ghost
         // column the value of the box that owns it, at its own heights.
@@ -909,7 +921,7 @@ TEST(BoundaryFill, GroundGradientIsTheWallLaw)
             const auto z = host_copy(z3, mfi);
             const auto u = host_copy(q.u, mfi), v = host_copy(q.v, mfi), t = host_copy(q.theta, mfi), k = host_copy(q.tke, mfi);
             const auto us = host_copy(us2, mfi), d0 = host_copy(d02, mfi), ta = host_copy(ta2, mfi), il = host_copy(il2, mfi);
-            const auto qf = host_copy(qf2, mfi);
+            const auto qf = host_copy(qf2, mfi), ar = host_copy(ar2, mfi);
             amrex::Box gb = mfi.validbox();
             gb.grow(ng2);
             gb.setBig(2, 0);
@@ -925,10 +937,18 @@ TEST(BoundaryFill, GroundGradientIsTheWallLaw)
                     const amrex::IntVect iv(ii, jj, 0);
                     return std::max(-100.0, std::min(100.0, double(d0(iv)) * il(iv)));
                 };
-                // u*/(kappa (d0 + z0)) phi_m(d0/L): the wall law's gradient under MOST
+                // u*/(kappa (d0 + z0)) phi_m(d0/L): the wall law's gradient under MOST. With w*, u* belongs to
+                // U_eff and the wind U carries the stress u*^2 U / U_eff, so the gradient takes U / U_eff:
+                // |tau| / (u*^2 |A|) from tau = u*^2 U_t / U_eff |A| (every |U_t| here is above the 0.1 floor).
                 auto wall = [&] (int ii, int jj) {
                     const amrex::IntVect iv(ii, jj, 0);
-                    return double(us(iv)) / (0.41 * (d0(iv) + 0.1)) * phi_m(zeta(ii, jj));
+                    double fac = 1;
+                    if (wst) {
+                        const double m = std::sqrt(double(ta(iv, 0)) * ta(iv, 0) + double(ta(iv, 1)) * ta(iv, 1) + double(ta(iv, 2)) * ta(iv, 2));
+                        fac = m / (double(us(iv)) * us(iv) * ar(iv));
+                        min_fac = std::min(min_fac, static_cast<amrex::Real>(fac));
+                    }
+                    return double(us(iv)) / (0.41 * (d0(iv) + 0.1)) * phi_m(zeta(ii, jj)) * fac;
                 };
                 auto dir = [&] (int ii, int jj, int comp) {
                     const amrex::IntVect iv(ii, jj, 0);
@@ -944,9 +964,10 @@ TEST(BoundaryFill, GroundGradientIsTheWallLaw)
                 const double gt = -double(qf(amrex::IntVect(i, j, 0)))
                                   / (0.41 * us(amrex::IntVect(i, j, 0)) * (d0(amrex::IntVect(i, j, 0)) + 0.1))
                                   * phi_h(zeta(i, j));
-                EXPECT_GT(zeta(i, j), 0.0);   // stable: phi_h > 1 here, so the factor is tested
+                if (wst) { EXPECT_LT(zeta(i, j), 0.0); }   // unstable: phi_h < 1
+                else { EXPECT_GT(zeta(i, j), 0.0); }   // stable: phi_h > 1 here, so the factor is tested
                 // theta ~ 300 K: a float resolves 3e-5 K, 2e-4 of this gradient over a layer.
-                EXPECT_NEAR(grad_of(t, 0), gt, tol(jim ? 1e-9 : 1e-12, 2e-3) * gt);   // jim: phi by finite difference, ~1e-10
+                EXPECT_NEAR(grad_of(t, 0), gt, tol(jim ? 1e-9 : 1e-12, 2e-3) * std::abs(gt));   // jim: phi by finite difference, ~1e-10
                 EXPECT_EQ(k(amrex::IntVect(i, j, -1)), k(amrex::IntVect(i, j, 0)));
                 EXPECT_EQ(k(amrex::IntVect(i, j, -2)), k(amrex::IntVect(i, j, 1)));
                 // The second layer continues the same slope.
@@ -956,6 +977,9 @@ TEST(BoundaryFill, GroundGradientIsTheWallLaw)
         }
         std::feclearexcept(FE_ALL_EXCEPT);
         amrex::setFPExcept(prev_fpe);
+        // The w* factor is far from 1 somewhere (the check above sees it); the same on every rank.
+        amrex::ParallelDescriptor::ReduceRealMin(min_fac);
+        if (wst) { EXPECT_LT(min_fac, 0.95); }
     }
     // Homogeneous: gradient and value rules give zero, k stays even; the
     // ground w is the no-flux value of the (perturbation) u, v (1.16).

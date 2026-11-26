@@ -21,7 +21,6 @@ namespace gust {
 
 namespace {
 
-constexpr amrex::Real kWsMin = amrex::Real(0.1);        // ERF's minimum wind speed
 constexpr amrex::Real kUstarMin = amrex::Real(0.001);   // ERF's u* floor in L
 constexpr amrex::Real kWallKUstarMin = amrex::Real(0.01);
 constexpr int kMaxNewton = 50;
@@ -160,7 +159,7 @@ void columns (const State& q, const SurfaceLayerOptions& opt, const BuoyancyOpti
     const amrex::Real hrel = std::sqrt(eps);
     // The floors as locals: nvcc cannot use a namespace-scope constant in
     // device code (it is odr-used through amrex::max's references).
-    const amrex::Real ws_min_c = kWsMin, ustar_min_c = kUstarMin;
+    const amrex::Real ws_min_c = kSurfaceWindMin, ustar_min_c = kUstarMin;
     // The upper bound of Ri_b goes with the stable side (SurfaceTemperature_K.H).
     const amrex::Real rib_min_c = kSurfaceTemperatureRibMin;
     const amrex::Real rib_max_c = JIMENEZ ? kSurfaceTemperatureRibMaxJimenez : kSurfaceTemperatureRibMax;

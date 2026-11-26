@@ -303,14 +303,17 @@ void fill_no_flux_w (State& q, const BoundaryInputs& in, const amrex::Geometry& 
 
 //! The wall law's gradient of u, v (components 0, 1) and theta (2) on the
 //! valid and first ghost columns of g (the surface state's slab); Z0 the
-//! roughness accessor (SurfaceRoughness.H).
-template <class Z0, bool JIMENEZ = false>
+//! roughness accessor (SurfaceRoughness.H). WSTAR: bc.surface_wstar = beljaars (its own kernel).
+template <class Z0, bool JIMENEZ = false, bool WSTAR = false>
 void ground_gradients (const SurfaceState& ss, const SurfaceLayerOptions& surface_opt, amrex::MultiFab& ground_grad)
 {
     // The wall law's gradient per column: u*/(kappa (d0 + z0)) along the
     // tangential wind for u and v (components 0, 1), -q/(kappa u* (d0 +
     // z0)) for theta (component 2, 0 when neutral; q per column, the surface
     // state's qflux: bc.surface_heat_flux or the surface_temperature solve's).
+    // With w* (WSTAR) u* belongs to U_eff (SurfaceWstar_K.H), and the mean wind U carries the stress
+    // u*^2 U / U_eff: its gradient is u*/(kappa (d0 + z0)) U / U_eff, U = max(|U_t|, kSurfaceWindMin)
+    // from the state (|U_t| = |tau| / drag) and U_eff its speed. Without w* the factor is 1 (not computed).
     const amrex::Real kappa = surface_opt.kappa;
     const Roughness rough = ground_roughness(&surface_opt);
     const StableCoefficients sc = surface_opt.stable_coefficients();
@@ -321,6 +324,8 @@ void ground_gradients (const SurfaceState& ss, const SurfaceLayerOptions& surfac
         const auto ta = ss.tau.const_array(mfi);
         const auto il = ss.inv_L.const_array(mfi);
         const auto qf = ss.qflux.const_array(mfi);
+        const auto dg = ss.drag.const_array(mfi);
+        const auto sp = ss.speed.const_array(mfi);
         const Z0 zf = Z0::of(rough, mfi);
         amrex::ParallelFor(mfi.growntilebox(amrex::IntVect(1, 1, 0)), [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
         {
@@ -332,6 +337,8 @@ void ground_gradients (const SurfaceState& ss, const SurfaceLayerOptions& surfac
             // Captured here, outside the constexpr-if: nvcc refuses an extended device lambda whose
             // first capture of a variable is inside an if constexpr.
             [[maybe_unused]] const StableCoefficients sc_l = sc;
+            [[maybe_unused]] const auto dg_l = dg;
+            [[maybe_unused]] const auto sp_l = sp;
             // Jimenez phi with bc.surface_stable_functions = jimenez (its own kernel).
             if constexpr (JIMENEZ) { most_phi_jimenez(zeta, phi_m, phi_h); } else { most_phi(zeta, sc_l, phi_m, phi_h); }
             const amrex::Real s = kappa * (d0(i, j, k) + zf(i, j));
@@ -345,8 +352,11 @@ void ground_gradients (const SurfaceState& ss, const SurfaceLayerOptions& surfac
             const amrex::Real tsafe = tmag + std::numeric_limits<amrex::Real>::min();
             const amrex::Real dir_x = ta(i, j, k, 0) / tsafe;
             const amrex::Real dir_y = ta(i, j, k, 1) / tsafe;
-            g(i, j, k, 0) = us(i, j, k) / s * dir_x * phi_m;
-            g(i, j, k, 1) = us(i, j, k) / s * dir_y * phi_m;
+            amrex::Real fac = 1;
+            // drag = u*^2 |A| / U_eff > 0 (u* >= its floor); speed >= kSurfaceWindMin > 0.
+            if constexpr (WSTAR) { fac = amrex::max(tmag / dg_l(i, j, k), kSurfaceWindMin) / sp_l(i, j, k); }
+            g(i, j, k, 0) = us(i, j, k) / s * dir_x * phi_m * fac;
+            g(i, j, k, 1) = us(i, j, k) / s * dir_y * phi_m * fac;
             g(i, j, k, 2) = -qf(i, j, k) / (us(i, j, k) * s) * phi_h;
         });
     }
@@ -498,12 +508,17 @@ void BoundaryConditions::fill_ghosts (State& q, const SurfaceLayerOptions* surfa
             ground_grad.setVal(unset);
             // The wall law's gradient per column (ground_gradients).
             const bool cb = surface_opt->stable_functions == SurfaceLayerOptions::StableFunctions::jimenez;
+            const bool wb = surface_opt->wstar == SurfaceLayerOptions::Wstar::beljaars;
             if (surface_opt->z0_map != nullptr) {
                 check_roughness_map("fill_ghosts", *surface_opt->z0_map, m_mesh.detJ);
-                if (cb) { ground_gradients<MapZ0, true>(*ss, *surface_opt, ground_grad); }
+                if (cb && wb) { ground_gradients<MapZ0, true, true>(*ss, *surface_opt, ground_grad); }
+                else if (cb) { ground_gradients<MapZ0, true>(*ss, *surface_opt, ground_grad); }
+                else if (wb) { ground_gradients<MapZ0, false, true>(*ss, *surface_opt, ground_grad); }
                 else { ground_gradients<MapZ0>(*ss, *surface_opt, ground_grad); }
             } else {
-                if (cb) { ground_gradients<UniformZ0, true>(*ss, *surface_opt, ground_grad); }
+                if (cb && wb) { ground_gradients<UniformZ0, true, true>(*ss, *surface_opt, ground_grad); }
+                else if (cb) { ground_gradients<UniformZ0, true>(*ss, *surface_opt, ground_grad); }
+                else if (wb) { ground_gradients<UniformZ0, false, true>(*ss, *surface_opt, ground_grad); }
                 else { ground_gradients<UniformZ0>(*ss, *surface_opt, ground_grad); }
             }
             ground_grad.FillBoundary(m_geom.periodicity());

@@ -143,7 +143,7 @@ the full table, with bias, rms, direction, the mean speed bias from 5 to 50 m (`
   iterations). Its vector rms is 0.30 to 0.38 m/s lower than at 100 m in C1 and 0.21 to 0.30 m/s lower in C2.
   In C1, w falls (rms 0.33 to 0.52 m/s against 0.57 to 0.74; maximum 4.0 to 5.8 m/s against 4.9 to 6.6). In all
   six hours k comes closer to HRRR's (k / k_HRRR 0.67 to 0.78 against 0.54 to 0.68). In the C1 hours it stays
-  above frozen_buoyant (1.57, 1.10, 0.70 against 0.54, 0.36, 0.60 m/s), so frozen_buoyant stays the C1 option.
+  above frozen_buoyant (1.57, 1.10, 0.70 against 0.54, 0.36, 0.60 m/s), so solving θ is not a C1 option; the cap with θ held is (frozen_buoyant_l200, below).
 - On may10_19 alone, caps of 300 and 500 m lower the vector rms further (1.34 and 1.21 m/s) but are not steady
   after 2000 iterations (residual plateaus near 1.6e-4 and 3e-3); 200 m is the largest cap tried that is steady.
   These two runs are not part of `options.py`.
@@ -175,8 +175,10 @@ the full table, with bias, rms, direction, the mean speed bias from 5 to 50 m (`
 - Every surface feature together (the `_all` rows: kB⁻¹ = 2, `bc.surface_stable_functions = jimenez`,
   `bc.surface_wstar = beljaars` with HRRR's boundary-layer height as a map) was run in may10_19 only. Each `_all`
   row is 0.03 to 0.07 m/s above its `_kb2` row (0.68, 0.93, 1.52 against 0.61, 0.86, 1.46 m/s), and the bias from
-  5 to 50 m moves 0.05 to 0.07 m/s further from zero. The Jimenez functions change only the stable side, so in
-  these hours the difference is mostly w*. The other hours were not run, since the change in may10_19 is small.
+  5 to 50 m moves 0.05 to 0.07 m/s further from zero. On the unstable side the Jimenez functions are close to
+  Businger–Dyer's (a few per cent only below ζ = −2), so in these hours the difference is mostly w*. The other hours were not run, since the change in may10_19 is small.
+  These three runs predate the w* factor U/U_eff in the ground's ghost-cell gradient (which changes runs with
+  `bc.surface_wstar = beljaars` only) and were not repeated.
 - Three hours per class are a small sample.
 - may10_19 with frozen_buoyant (the test deck): rms 0.39 m/s, bias −0.18 m/s; below 500 m a speed bias of
   −0.36 m/s, a vector rms of 0.54 m/s and 0.2° of direction; steady after 194 iterations.

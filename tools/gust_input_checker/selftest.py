@@ -335,6 +335,9 @@ CASES = [
     ("surface_kb_inverse_range", "solve", "bc.surface_stability = surface_temperature\nbc.surface_temperature = 290\n"
      "bc.surface_kb_inverse = 25\n", ["E bc.surface_kb_inverse values"], []),
     ("surface_kb_inverse_neutral", "solve", "bc.surface_kb_inverse = 2\n", ["E bc.surface_kb_inverse surface"], []),
+    ("surface_kb_inverse_zero_neutral", "solve", "bc.surface_kb_inverse = 0\n", [], ["E bc.surface_kb_inverse"]),
+    ("surface_pblh_file_missing", "solve", "bc.surface_stability = surface_temperature\nbc.surface_temperature = 290\n"
+     "bc.surface_wstar = beljaars\nbc.surface_pblh_file = nothere.xyz\n", ["E bc.surface_pblh_file files"], []),
     ("surface_wstar_ok", "solve", "bc.surface_stability = surface_temperature\nbc.surface_temperature = 290\n"
      "bc.surface_wstar = beljaars\nbc.surface_pblh = 800\n", [], ["E bc.surface_wstar", "E bc.surface_pblh"]),
     ("surface_wstar_flux_ok", "solve", "bc.surface_stability = heat_flux\nbc.surface_heat_flux = 0.1\n"
@@ -357,7 +360,7 @@ CASES = [
      "bc.surface_stable_functions = qnse\n", ["E bc.surface_stable_functions surface"], []),
     ("surface_temperature_jimenez", "solve", "bc.surface_stability = surface_temperature\nbc.surface_temperature = 290\n"
      "bc.surface_stable_functions = jimenez\n", [], ["E bc.surface_stable_functions"]),
-    ("surface_jimenez_flux", "solve", "bc.surface_heat_flux = 0.02\nbc.surface_stability = surface_flux\n"
+    ("surface_jimenez_flux", "solve", "bc.surface_heat_flux = 0.02\nbc.surface_stability = heat_flux\n"
      "bc.surface_stable_functions = jimenez\n", ["E bc.surface_stable_functions surface"], []),
     ("surface_temperature_abl_flux", "solve", "bc.surface_stability = surface_temperature\nbc.surface_temperature = 290\nabl.theta = surface_flux\nbc.rayleigh_zdamp = 700\n"
      "bc.rayleigh_dampcoef = 0.01\nbc.rayleigh_fields = w theta\n", [], ["E bc.surface_stability", "E bc.surface_heat_flux"]),

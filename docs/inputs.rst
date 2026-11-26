@@ -724,13 +724,13 @@ Quick reference
      - ``ridge_x`` (a ridge along y, varying in x), ``ridge_y`` or ``round``; ``agnesi`` only.
    * - ``terrain.idw_neighbors``
      - ``6``
-     - ≥ 1; ``xyz``, ``bc.surface_z0_file``, ``bc.surface_temperature_file`` or ``canopy.type = map`` only. Points
-       used for each height (and each column's :math:`z_0` of the roughness map, its ground temperature, and the
-       canopy's maps).
+     - ≥ 1; ``xyz``, ``bc.surface_z0_file``, ``bc.surface_temperature_file``, ``bc.surface_pblh_file`` or ``canopy.type = map``
+       only. Points used for each height (and each column's :math:`z_0` of the roughness map, its ground
+       temperature, its :math:`z_i`, and the canopy's maps).
    * - ``terrain.idw_power``
      - ``2``
-     - Finite, > 0; ``xyz``, ``bc.surface_z0_file``, ``bc.surface_temperature_file`` or ``canopy.type = map`` only.
-       Weight exponent :math:`p` in
+     - Finite, > 0; ``xyz``, ``bc.surface_z0_file``, ``bc.surface_temperature_file``, ``bc.surface_pblh_file`` or
+       ``canopy.type = map`` only. Weight exponent :math:`p` in
        :math:`d^{-p}`.
    * - ``terrain.hierarchy_passes``
      - ``1``

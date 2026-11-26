@@ -21,21 +21,29 @@
 // [0, 100] (stable), the wall model's clamp on d/L, and found by Newton's
 // method with a bisection step whenever Newton leaves the bracket. Without a
 // sign change in the bracket (|Ri_b| beyond the clamp's reach) zeta is the
-// bracket's end. The tolerance is round-off, so u* and q are smooth
-// functions of the state (as jvp needs). A Ri_b of zero gives zeta = 0 and the
-// log law exactly.
+// bracket's end. The tolerance is round-off, so u* and q follow the state
+// smoothly while the root does (as jvp needs). A Ri_b of zero gives zeta = 0
+// and the log law exactly. With kB > lz, G can have three roots on the stable
+// side with the Jimenez functions (z0 = 2, d = 1, kB = 2 and Ri_b = 0.327 has
+// roots at zeta = 0.095, 0.247 and 4.11): Newton then takes the one its start
+// leads to, and u* and q can jump where a root appears or vanishes.
 //
 // The bound on Ri_b: ERF's -4 below. Above, 0.19: Businger-Dyer's stable
-// side, cm = ch = lz + 5 zeta, gives Ri_b = zeta ch / cm^2 = zeta / (lz + 5 zeta) < 0.2 for
-// every zeta (the column guess's kRibMaxBusingerDyer, ColumnGuess.cpp), so a
-// calm, cooled column keeps a small flux instead of none. The root then lies at a
-// zeta of order 10, far past Businger-Dyer's fitted range (zeta up to about 1).
+// side, cm = lz + 5 zeta and ch = lz + kB + 5 zeta, gives Ri_b = zeta ch / cm^2, which
+// tends to 0.2 as zeta grows (the column guess's kRibMaxBusingerDyer, ColumnGuess.cpp).
+// With kB = 0 (or kB <= lz) Ri_b < 0.2 for every zeta; with kB > lz it rises above 0.2 near
+// zeta ~ 0.5 and falls back to 0.2, but it crosses 0.19 once, so the root stays unique. A
+// calm, cooled column keeps a small flux instead of none. At the bound the root lies at a
+// zeta of order 10, far past Businger-Dyer's fitted range (zeta up to about 1); the flux
+// itself peaks near zeta = 0.4, inside that range (|q| falls again past it).
 //
 // With bc.surface_stable_functions = jimenez (JIMENEZ = true) both sides are ERF's surface_temp
 // pair (calc_psi_m2/calc_psi_h2, StabilityFunctions.H), as WRF's revised MM5 surface layer: the
 // stable side is Cheng and Brutsaert's (2005), psi grows as a log, Ri_b has no critical value and
-// the bound above is ERF's 4 (kSurfaceTemperatureRibMaxJimenez); the unstable side is Jimenez et
-// al.'s (2012) blend of Businger-Dyer and a free-convection form. The bracket is unchanged.
+// the bound above is ERF's 4 (kSurfaceTemperatureRibMaxJimenez; the clamp zeta = 100 gives Ri_b of
+// only 2.0-2.6, so that bound is not reached and zeta stays at the bracket's end beyond); the
+// unstable side is Jimenez et al.'s (2012) blend of Businger-Dyer and a free-convection form. The
+// bracket is unchanged.
 
 #include "StabilityFunctions.H"
 

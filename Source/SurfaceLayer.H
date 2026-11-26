@@ -99,6 +99,9 @@
 
 namespace gust {
 
+//! The floor of the surface layer's wind speed, U = max(|U_t|, kSurfaceWindMin) (m/s; ERF's minimum wind speed).
+constexpr amrex::Real kSurfaceWindMin = amrex::Real(0.1);
+
 //! MOST's gradient functions phi_m and phi_h of zeta = d/L (Businger-Dyer, as
 //! ERF's similarity_funs::calc_phi_m/calc_phi_h, which
 //! SimilarityFunctions.MatchTheReferenceTable pins). Written without a select

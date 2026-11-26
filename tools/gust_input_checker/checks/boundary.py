@@ -354,7 +354,8 @@ class SurfaceChecker(Checker):
                                                           "surface_temperature.",
                            "Set bc.surface_stability = surface_temperature, or remove the key.")
             for k in ("bc.surface_temperature", "bc.surface_temperature_file", "bc.surface_kb_inverse"):
-                if self.given(k):
+                # The solver refuses bc.surface_kb_inverse only when it is not zero (SurfaceLayer.cpp).
+                if self.given(k) and not (k == "bc.surface_kb_inverse" and c.r(k) == 0):
                     self.error(k, "GUST stops: %s is set but bc.surface_stability is %s; it would be ignored."
                                % (k, stability), "Set bc.surface_stability = surface_temperature, or remove the key.")
         # SurfaceLayer.cpp, check_surface_layer_options: Beljaars's w* and its boundary layer depth.

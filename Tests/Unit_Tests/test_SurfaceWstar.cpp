@@ -125,6 +125,66 @@ TEST(SurfaceWstar, StableAndNeutralColumnsKeepTheWind)
     }
 }
 
+TEST(SurfaceWstar, RoundOffDoesNotStopTheFixedPoint)
+{
+    // Columns where a stopping test of 16 eps cycled between two values of U_eff about 40 eps apart (the noise
+    // of the zeta solve), so the column was reported as not converged and the run aborted. The first five cycled
+    // in double, the last five in single precision (a sweep of 1.8 million columns, kappa 0.4).
+    struct Case { double U, dtheta, z0, d, zi, kb; bool jimenez; };
+    for (const Case c : {Case{0.7, -3.4, 0.1, 2, 5000, 0, true}, Case{1.3, -13, 0.1, 2, 1000, 0, false},
+                         Case{4.3, -11.4, 1, 10, 5000, 0, true}, Case{6.7, -14.2, 0.1, 2, 1000, 0, true},
+                         Case{7, -6.6, 0.1, 2, 5000, 0, true}, Case{0.1, -6.2, 0.1, 2, 5000, 0, false},
+                         Case{0.4, -11, 1, 10, 5000, 0, false}, Case{0.4, -8.6, 1, 10, 5000, 0, false},
+                         Case{0.4, -7, 0.1, 2, 5000, 0, false}, Case{0.4, -4.2, 1, 2, 200, 2, true}}) {
+        SCOPED_TRACE("U " + std::to_string(c.U) + ", dtheta " + std::to_string(c.dtheta) + ", z0 "
+                     + std::to_string(c.z0) + ", jimenez " + std::to_string(c.jimenez));
+        const Real lz = std::log(Real((c.d + c.z0) / c.z0));
+        const Real den = amrex::min(lz, Real(1));
+        Real u_eff = 0;
+        const auto r = c.jimenez
+            ? gust::surface_temperature_most_wstar<true>(Real(0.4), Real(c.U), Real(c.d), lz, den, Real(kGoth),
+                                                         Real(c.dtheta), gust::kSurfaceTemperatureRibMin,
+                                                         gust::kSurfaceTemperatureRibMaxJimenez, Real(c.kb),
+                                                         Real(c.zi), u_eff)
+            : gust::surface_temperature_most_wstar<false>(Real(0.4), Real(c.U), Real(c.d), lz, den, Real(kGoth),
+                                                          Real(c.dtheta), gust::kSurfaceTemperatureRibMin,
+                                                          gust::kSurfaceTemperatureRibMax, Real(c.kb), Real(c.zi),
+                                                          u_eff);
+        EXPECT_TRUE(r.converged);
+        EXPECT_GT(r.ustar, 0);
+        // U_eff is a fixed point to well within the solve's tolerance (dF/dU_eff < 1/3).
+        const Real next = gust::beljaars_speed(Real(c.U), Real(kGoth), Real(c.zi), r.q);
+        EXPECT_NEAR(static_cast<double>(u_eff), static_cast<double>(next), rtol() * static_cast<double>(next));
+    }
+}
+
+TEST(SurfaceWstar, KinkedFixedPointIsFoundByBisection)
+{
+    // z0 = 2, d = 5 (lz = ln 3.5 = 1.25), kB^-1 = 2, a shallow layer and a light wind: q(U_eff) has a kink where
+    // MOST's denominator meets its floor (1), past which F grows faster than U_eff, and the plain iteration
+    // cycles between U_eff = 0.8952 and 0.9292 (both function sets, kappa 0.41). Bisection finds the root between.
+    for (const bool jimenez : {false, true}) {
+        SCOPED_TRACE(jimenez ? "Jimenez" : "Businger-Dyer");
+        const double U = 0.3, dtheta = -8, z0 = 2, d = 5, zi = 10, kb = 2;
+        const Real lz = std::log(Real((d + z0) / z0));
+        const Real den = amrex::min(lz, Real(1));
+        Real u_eff = 0;
+        const auto r = jimenez
+            ? gust::surface_temperature_most_wstar<true>(Real(kKappa), Real(U), Real(d), lz, den, Real(kGoth),
+                                                         Real(dtheta), gust::kSurfaceTemperatureRibMin,
+                                                         gust::kSurfaceTemperatureRibMaxJimenez, Real(kb), Real(zi),
+                                                         u_eff)
+            : gust::surface_temperature_most_wstar<false>(Real(kKappa), Real(U), Real(d), lz, den, Real(kGoth),
+                                                          Real(dtheta), gust::kSurfaceTemperatureRibMin,
+                                                          gust::kSurfaceTemperatureRibMax, Real(kb), Real(zi), u_eff);
+        EXPECT_TRUE(r.converged);
+        EXPECT_GT(static_cast<double>(u_eff), 0.8952);
+        EXPECT_LT(static_cast<double>(u_eff), 0.9292);
+        const Real next = gust::beljaars_speed(Real(U), Real(kGoth), Real(zi), r.q);
+        EXPECT_NEAR(static_cast<double>(u_eff), static_cast<double>(next), rtol() * static_cast<double>(next));
+    }
+}
+
 // ---------------------------------------------------------------------------------------------- the wall model
 
 using gust::SurfaceLayerOptions;

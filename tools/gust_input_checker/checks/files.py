@@ -127,6 +127,7 @@ class FilesChecker(Checker):
         if c.surface_layer:
             self._file("bc.surface_z0_file")
             self._file("bc.surface_temperature_file")
+            self._file("bc.surface_pblh_file")
         kind = c.s("canopy.type")
         if kind == "patches":
             self._file("canopy.file")

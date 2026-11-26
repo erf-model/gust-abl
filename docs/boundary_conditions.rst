@@ -256,16 +256,24 @@ GUST's :math:`\theta` is the virtual potential temperature :math:`\theta_v`, so 
 (1 + 0.61\,q_{2\mathrm{m}})` from HRRR's skin temperature).
 
 :math:`\mathrm{Ri}_b` is bounded to :math:`[-4, 0.19]` before the solve. The lower bound is ERF's. The upper one
-comes from Businger–Dyer's stable side, :math:`c_m = c_h = \ln((d + z_0)/z_0) + 5\zeta`: it gives
-:math:`\mathrm{Ri}_b = \zeta c_h/c_m^2 = \zeta/(\ln((d + z_0)/z_0) + 5\zeta) < 0.2` for every :math:`\zeta`, so
-without the bound a calm, cooled column has no root and no flux. With the bound it keeps a small downward flux.
+comes from Businger–Dyer's stable side, :math:`c_m = \ln((d + z_0)/z_0) + 5\zeta` and :math:`c_h = c_m + kB^{-1}`:
+:math:`\mathrm{Ri}_b = \zeta c_h/c_m^2` tends to 0.2 as :math:`\zeta` grows. With :math:`kB^{-1} = 0` it stays
+below 0.2 for every :math:`\zeta`, so without the bound a calm, cooled column has no root and no flux. (With
+:math:`kB^{-1} > \ln((d + z_0)/z_0)` it rises above 0.2 near :math:`\zeta \approx 0.5` and falls back, but it
+crosses 0.19 once, so the root stays unique.) With the bound the column keeps a small downward flux.
 The root is bracketed in :math:`[-100, 0]` or :math:`[0, 100]` (the side of :math:`\mathrm{Ri}_b`'s sign) and found
 by Newton's method with bisection steps, to round-off, as the ``heat_flux`` solve. ERF's ``surface_temp`` mode uses the
 stability functions of Jiménez et al. instead; on the stable side the two differ by up to about 10 % at low
 wind (0.1 % on the unstable side). With the default :math:`kB^{-1} = 0` the thermal roughness is
 :math:`z_{0h} = z_0`. Over a radiometric skin temperature this overestimates the flux (by a factor of about 1.7 for :math:`kB^{-1} = 2` at 5 m/s and a 6 K
-difference), and the bound 0.19 lies far beyond the range Businger–Dyer was fitted for (:math:`\zeta \lesssim 1`),
-so strongly stable columns are only bounded, not modelled. A bracket without a root (only
+difference, for :math:`z_0 = 0.1` m and a reference height of 5–10 m), and the bound 0.19 lies far beyond the range
+Businger–Dyer was fitted for (:math:`\zeta \lesssim 1`), so strongly stable columns are only bounded, not modelled.
+The downward flux itself is largest near :math:`\zeta \approx 0.4`, inside that range, and falls past it.
+With the Jiménez functions the bound is ERF's 4, but the clamp :math:`\zeta = 100` gives :math:`\mathrm{Ri}_b` of
+only 2.0–2.6, so a column beyond takes :math:`\zeta = 100`. With those functions and
+:math:`kB^{-1} > \ln((d + z_0)/z_0)` (a large :math:`z_0` close to the ground) the stable side can have three
+roots; Newton's method takes the one its start leads to, and :math:`u_*` and :math:`q` can jump between
+iterations where a root appears or vanishes. A bracket without a root (only
 possible at the bounds) gives its far end. At zero wind :math:`U` is still floored at 0.1 m/s, so the flux stays
 finite.
 
@@ -309,12 +317,17 @@ model's wind (Beljaars, 1995), as ERF's ``surface_flux`` and ``surface_temp`` mo
 
 :math:`U_\mathrm{eff}` replaces :math:`U` in the Monin–Obukhov solve and in the drag: :math:`u_* = \kappa
 U_\mathrm{eff}/c_m` and the stress is :math:`u_*^2/U_\mathrm{eff}` times the wind, so a calm, heated column keeps
-a stress and a flux. A stable or neutral column has :math:`w_* = 0` and the numbers of a run without the key.
+a stress and a flux. The ghost cells' wind gradient, :math:`u_*\phi_m/(\kappa(d_0 + z_0))` along the stress, takes
+the factor :math:`U/U_\mathrm{eff}`, so that it belongs to the wind :math:`U` that carries this stress. A stable or
+neutral column has :math:`w_* = 0` and the numbers of a run without the key.
 
 With ``heat_flux`` :math:`U_\mathrm{eff}` is direct. With ``surface_temperature`` :math:`q` depends on
 :math:`U_\mathrm{eff}`; GUST solves the fixed point :math:`U_\mathrm{eff} = F(U_\mathrm{eff})` of each column to
 round-off, from :math:`U_\mathrm{eff} = U`. In a sweep of winds, temperature differences and depths the slope
-:math:`|F'|` at the fixed point stayed below 0.13, and 8–15 iterations reach it. Two differences from ERF: ERF lags
+:math:`|F'|` at the fixed point stayed below 0.13, and 8–15 iterations reach it. Where the floor :math:`c_h \ge m`
+puts a kink in :math:`q(U_\mathrm{eff})` (a large :math:`z_0` close to the ground with :math:`kB^{-1} > 0` and a
+shallow layer) the iteration can cycle between two values; after 100 steps without convergence GUST bisects on
+:math:`F(x) - x` between :math:`U` and a point where :math:`F(x) < x`. Two differences from ERF: ERF lags
 :math:`q` by one step, and it uses the cell's :math:`\theta_v` where GUST uses the reference :math:`\theta_0` of
 every buoyancy term. With Businger–Dyer and the floor :math:`c_h \ge m`, :math:`q` is not monotone in the wind in
 strongly unstable, calm columns (:math:`\zeta < -1`); there :math:`w_*` raises :math:`u_*` but can lower
