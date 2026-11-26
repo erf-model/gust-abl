@@ -15,6 +15,8 @@ parent (a nest_<option> folder beside the chain's nest):
                   theta_v as a map (surface_theta.xyz in the option's folder), the flux from Monin-Obukhov
                   similarity cell by cell; solved_tsurf stops at SOLVED_FLUX_ITERATIONS
     solved_flux_l200  solved_flux with the length-scale cap at 200 m (turb.max_geom_lscale; the scheme's is 100 m)
+    relaxed_flux_T  simplec.theta = relaxed_buoyant with simplec.theta_relax_time = T s (T in RELAX_TIMES): theta
+                  solved and relaxed towards the parent's, its buoyancy kept in w, HRRR's heat flux at the ground
 
 The script writes <out>/<hour>/ and <out>/run_options.sh, which runs each chain and then the nest options of its
 hour, one run at a time, and scores each nest. An hour the tool refuses is reported and left out.
@@ -41,6 +43,8 @@ from prepare import HOURS, LAT, LON, crop_name  # noqa: E402
 
 # the theta-solved heated surface had no steady state in 4000 iterations (Nov 2026); 2000 are enough to show it
 SOLVED_FLUX_ITERATIONS = 2000
+# the relaxation times of simplec.theta = relaxed_buoyant, s (z_i / w* is about 500-600 s in these hours)
+RELAX_TIMES = (300, 1000, 3000)
 
 # bc.surface_stability = surface_temperature: the map of HRRR's skin theta_v written into the option's folder
 TSURF = {"bc.surface_stability": "surface_temperature", "bc.surface_temperature_file": hc.SURFACE_THETA_FILE}
@@ -50,7 +54,7 @@ def nest_options(q):
     """The nest options for an hour with HRRR's box-mean kinematic virtual heat flux q (K m/s):
     name -> (keys set, keys dropped)."""
     flux = {"bc.surface_stability": "heat_flux", "bc.surface_heat_flux": round(q, 5)}
-    return {"frozen": ({"simplec.theta": "frozen"}, ()),
+    opts = {"frozen": ({"simplec.theta": "frozen"}, ()),
             "frozen_flux": (dict(flux, **{"simplec.theta": "frozen"}), ()),
             "frozen_buoyant": ({"simplec.theta": "frozen_buoyant"}, ()),
             "frozen_buoyant_flux": (dict(flux, **{"simplec.theta": "frozen_buoyant"}), ()),
@@ -60,6 +64,11 @@ def nest_options(q):
             "solved_tsurf": (dict(TSURF, **{"steady.max_iterations": SOLVED_FLUX_ITERATIONS}), ()),
             "solved_flux_l200": (dict(flux, **{"steady.max_iterations": SOLVED_FLUX_ITERATIONS,
                                                 "turb.max_geom_lscale": 200.0}), ())}
+    for t in RELAX_TIMES:
+        relax = {"simplec.theta": "relaxed_buoyant", "simplec.theta_relax_time": t,
+                 "steady.max_iterations": SOLVED_FLUX_ITERATIONS}
+        opts[f"relaxed_flux_{t}"] = (dict(flux, **relax), ())
+    return opts
 
 
 NEST_OPTIONS = tuple(nest_options(0.1))

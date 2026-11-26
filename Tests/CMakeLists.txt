@@ -89,6 +89,7 @@ add_executable(unit_tests
     Unit_Tests/test_NewtonStage.cpp
     Unit_Tests/test_LeeWake.cpp
     Unit_Tests/test_FrozenTheta.cpp
+    Unit_Tests/test_ThetaRelax.cpp
 )
 target_include_directories(unit_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Unit_Tests)
 target_link_libraries(unit_tests PRIVATE gust_core GTest::gtest)
@@ -1303,7 +1304,7 @@ gust_add_test(NAME abort_ri_gate_range NP 1 LABELS "regression;smoke"
 # Frozen with a stratified column first guess and with nests runs in
 # rt_nests_flat_abl_*; in a patch of a parent run, in rt_nest_faces_frozen.
 gust_add_test(NAME abort_simplec_theta_value NP 1 LABELS "regression;smoke"
-              PREFIX ${EXPECT_ABORT} "simplec\\.theta = fixed: must be solve, frozen or frozen_buoyant" --
+              PREFIX ${EXPECT_ABORT} "simplec\\.theta = fixed: must be solve, frozen, frozen_buoyant or relaxed_buoyant" --
               COMMAND $<TARGET_FILE:gust> ${HILL3D_NEUTRAL_CASE}/inputs_steady_hill3d_neutral
                       simplec.theta=fixed ${GUST_TEST_AMREX_FLAGS})
 gust_add_test(NAME abort_simplec_theta_newton NP 1 LABELS "regression;smoke"
@@ -1324,6 +1325,31 @@ gust_add_test(NAME abort_simplec_theta_buoyant_no_patch NP 1 LABELS "regression;
               PREFIX ${EXPECT_ABORT} "simplec\\.theta = frozen_buoyant needs a nested patch of a parent run" --
               COMMAND $<TARGET_FILE:gust> ${HILL3D_NEUTRAL_CASE}/inputs_sequencing_restart simplec.theta=frozen_buoyant init.first_guess=profile
                       ${GUST_TEST_AMREX_FLAGS})
+# relaxed_buoyant (theta solved, relaxed towards the parent run's theta, ThetaRelax.H): refused outside a patch of a
+# parent run, with the Newton stage, a restart, the unsteady stage and nest.names. In a patch it runs in
+# rt_nest_faces_relaxed_buoyant.
+set(RELAXED_ARGS simplec.theta=relaxed_buoyant simplec.theta_relax_time=1000)
+gust_add_test(NAME abort_simplec_theta_relaxed_no_patch NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT} "simplec\\.theta = relaxed_buoyant needs a nested patch of a parent run" --
+              COMMAND $<TARGET_FILE:gust> ${HILL3D_NEUTRAL_CASE}/inputs_steady_hill3d_neutral ${RELAXED_ARGS}
+                      ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_simplec_theta_relaxed_newton NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT} "simplec\\.theta = relaxed_buoyant is not supported with steady\\.stage = simplec_newton" --
+              COMMAND $<TARGET_FILE:gust> ${HILL2D_CASE}/inputs_steady_hill2d_newton ${RELAXED_ARGS}
+                      ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_simplec_theta_relaxed_restart NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT} "simplec\\.theta = relaxed_buoyant is not supported with io\\.restart" --
+              COMMAND $<TARGET_FILE:gust> ${HILL3D_NEUTRAL_CASE}/inputs_sequencing_restart ${RELAXED_ARGS}
+                      io.restart=seq_chk00003 ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_simplec_theta_relaxed_unsteady NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT} "simplec\\.theta = relaxed_buoyant is not supported with steady\\.stage = unsteady" --
+              COMMAND $<TARGET_FILE:gust> ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Unsteady_Hill_2D/inputs_unsteady_hill2d
+                      unsteady.stop_time=600 unsteady.dt=60 io.write_checkpoint=0 init.first_guess=profile
+                      ${RELAXED_ARGS} ${GUST_TEST_AMREX_FLAGS})
+gust_add_test(NAME abort_simplec_theta_relaxed_nests NP 1 LABELS "regression;smoke"
+              PREFIX ${EXPECT_ABORT} "simplec\\.theta = relaxed_buoyant is not supported with nest\\.names" --
+              COMMAND $<TARGET_FILE:gust> ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Nests_Flat_ABL/inputs_stable_gabls1
+                      ${RELAXED_ARGS} ${GUST_TEST_AMREX_FLAGS})
 # The Newton stage's keys and the switch rules have no effect
 # with steady.stage = simplec (one stage), so they abort there.
 gust_add_test(NAME abort_newton_keys_no_newton_stage NP 1 LABELS "regression;smoke"
@@ -1837,8 +1863,17 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
     # checks of frozen, and the patch's w is closer to the parent's than the frozen patch's (check 7).
     gust_add_test(NAME rt_nest_faces_frozen_buoyant NP 2 LABELS "regression;smoke" RUN_DIR ${NESTF_DIR}
                   FIXTURES_REQUIRED "nest_faces_frozen_parent;nest_faces_frozen_patch"
+                  FIXTURES_SETUP nest_faces_frozen_buoyant
                   PREFIX ${NESTF_CHECK} frozen_buoyant frozen_parent_plt_final frozen_buoyant_patch 8 6 1e-10 0.01 0.08
                          0.03 frozen_patch_plt_final --
+                  COMMAND $<TARGET_FILE:gust> ${NEST_FACES_CASE}/inputs_hill_patch_restart "mesh.max_grid_size=13 9"
+                          bc.nest_parent=frozen_parent_chk_final init.first_guess=nest ${NESTF_STABLE}
+                          ${GUST_TEST_AMREX_FLAGS})
+    # relaxed_buoyant in the same patch: with a time scale of 1e-3 s the steady patch is the frozen_buoyant one;
+    # with 1e6 s theta leaves the parent's (check_nest_faces.py relaxed).
+    gust_add_test(NAME rt_nest_faces_relaxed_buoyant NP 2 LABELS "regression;smoke" RUN_DIR ${NESTF_DIR}
+                  FIXTURES_REQUIRED "nest_faces_frozen_parent;nest_faces_frozen_buoyant"
+                  PREFIX ${NESTF_CHECK} relaxed relaxed_patch 1e-5 1e-3 1e-3 frozen_buoyant_patch_plt_final --
                   COMMAND $<TARGET_FILE:gust> ${NEST_FACES_CASE}/inputs_hill_patch_restart "mesh.max_grid_size=13 9"
                           bc.nest_parent=frozen_parent_chk_final init.first_guess=nest ${NESTF_STABLE}
                           ${GUST_TEST_AMREX_FLAGS})

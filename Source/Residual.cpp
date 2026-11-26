@@ -9,6 +9,7 @@
 #include "NestDefect.H"
 #include "NestRelax.H"
 #include "NestInject.H"
+#include "ThetaRelax.H"
 #include "TimeTerm.H"
 
 #include "Diffusion.H"
@@ -389,6 +390,8 @@ void residual (const State& q, const ResidualInputs& in, const Mesh& mesh, const
     if (in.defect != nullptr) { in.defect->add_to_residual(R); }
     // The nests' relaxation (NestRelax.H), also before the rows that replace their residual.
     if (in.relax != nullptr) { in.relax->add_to_residual(q, R); }
+    // theta relaxed towards the parent's (ThetaRelax.H), also before the rows that replace their residual.
+    if (in.theta_relax != nullptr) { in.theta_relax->add_to_residual(q, R); }
     if (in.surface != nullptr) { apply_wall_k(*ssp, *in.surface, q.tke, R.tke); }
     // The canopy drag before the boundary rows, which replace their rows' residuals.
     if (in.canopy != nullptr) { add_canopy_drag(*in.canopy, q.u, q.v, q.w, R.u, R.v, R.w); }
@@ -460,6 +463,8 @@ void implicit_rows (const amrex::Array<const amrex::MultiFab*, AMREX_SPACEDIM>& 
     if (in.time != nullptr) { in.time->add_to_implicit(eq, A); }
     // The nests' relaxation rate, likewise before the rows made identity rows (NestRelax.H).
     if (in.relax != nullptr) { in.relax->add_to_implicit(eq, A); }
+    // theta's relaxation rate 1/tau (ThetaRelax.H), likewise.
+    if (in.theta_relax != nullptr) { in.theta_relax->add_to_implicit(eq, A); }
     if (closure && eq == Equation::tke) {
         // Point-implicit sources: the Patankar diagonal (eps + max(-P_b, 0))/k.
         amrex::MultiFab::Add(A, fields->dSdk, 0, coef_P, 1, 0);

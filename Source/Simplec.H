@@ -69,6 +69,7 @@
 #include "Predictor.H"
 #include "Residual.H"
 #include "SurfaceLayer.H"
+#include "ThetaRelax.H"
 
 #include <AMReX_Array.H>
 #include <AMReX_Geometry.H>
@@ -89,7 +90,7 @@ struct SimplecOptions
     //! the cap is lowered on sloping ground so the pressure operator stays
     //! definite with this safety factor (Predictor.H).
     amrex::Real w_vnn_cap_slope_margin{4};
-    //! simplec.theta, "solve" (default), "frozen" or "frozen_buoyant": with frozen, theta is the
+    //! simplec.theta, "solve" (default), "frozen", "frozen_buoyant" or "relaxed_buoyant": with frozen, theta is the
     //! inflow profile's theta by height above the ground (set on every
     //! sequenced level) and is not solved; the closure uses it as given and the
     //! momentum equations carry no buoyancy (a prescribed stratification, van
@@ -97,8 +98,15 @@ struct SimplecOptions
     //! theta the same way and keeps its buoyancy in the w equation, so a
     //! parent run's horizontal theta differences act as a pressure force (a
     //! nested patch only, App.cpp).
+    //! relaxed_buoyant: theta is solved with a relaxation source towards the parent run's theta,
+    //! (theta - theta_p) / theta_relax_time, implicit on theta's diagonal (ThetaRelax.H), and its buoyancy kept in
+    //! w (a nested patch only, App.cpp); theta_frozen is then false.
     bool theta_frozen{false};
     bool theta_buoyant{false};   //!< simplec.theta = frozen_buoyant (theta_frozen is then true as well)
+    bool theta_relaxed{false};   //!< simplec.theta = relaxed_buoyant
+    //! simplec.theta_relax_time (s): tau of relaxed_buoyant, finite and > 0; required with it and refused
+    //! with any other simplec.theta.
+    amrex::Real theta_relax_time{0};
     std::vector<std::string> given;                  //!< the simplec.* keys given
 };
 
@@ -113,6 +121,7 @@ inline bool buoyancy_point_implicit (const SimplecOptions& o) { return !o.theta_
 //! The simplec.theta value these options stand for (for messages).
 inline std::string theta_value (const SimplecOptions& o)
 {
+    if (o.theta_relaxed) { return "relaxed_buoyant"; }
     return o.theta_buoyant ? "frozen_buoyant" : (o.theta_frozen ? "frozen" : "solve");
 }
 
@@ -242,6 +251,9 @@ public:
                   const PoissonOptions& popt, const Mesh& mesh, const amrex::Geometry& geom, const amrex::MultiFab& z_nd,
                   amrex::Real tke_floor, const amrex::BoxArray& ba, const amrex::DistributionMapping& dm,
                   const LineSweepOptions& sweep = LineSweepOptions());
+    // m_in.theta_relax points into the stage: no copies.
+    SimplecStage (const SimplecStage&) = delete;
+    SimplecStage& operator= (const SimplecStage&) = delete;
 
     [[nodiscard]] std::string name () const override { return "simplec"; }
     void init (State& q) override;
@@ -273,6 +285,9 @@ public:
     void note_relative_residual (amrex::Real r, bool replay = false) override;
     //! The blend field sigma (empty without convection.hybrid_sigma_max).
     [[nodiscard]] const amrex::MultiFab& hybrid_sigma () const { return m_sigma; }
+    //! theta's relaxation towards the parent's (simplec.theta = relaxed_buoyant, ThetaRelax.H); null otherwise. Its
+    //! target is set at the first iteration.
+    [[nodiscard]] const ThetaRelax* theta_relax () const { return m_opt.theta_relaxed ? &m_theta_relax : nullptr; }
     //! The line solver of every sweep (steady.sweep and steady.line_*).
     [[nodiscard]] const LineSweepOptions& line_sweep () const { return m_sweep; }
 
@@ -301,6 +316,7 @@ private:
     CanopyRows m_canopy_rows;   //!< the canopy drag's diagonal at q (CanopyDrag.H), each predictor step
     //! canopy.heat_frozen = blend: the frozen theta of the level (theta at the stage's first iteration).
     amrex::MultiFab m_theta_frozen;
+    ThetaRelax m_theta_relax;   //!< simplec.theta = relaxed_buoyant (m_in.theta_relax points to it)
     PredictorFields m_pf;
     SimplecWorkspace m_w;
     ResidualWorkspace m_rws;    //!< the residual's scratch
