@@ -6,6 +6,7 @@
 #include "ERF_MOSTUtils.H"
 #include "SurfaceLayer.H"
 #include "SurfaceTemperature.H"
+#include "TestHelpers.H"
 #include "TransportTestHelpers.H"
 
 #include <gtest/gtest.h>
@@ -294,7 +295,12 @@ TEST(SurfaceTemperature, OptionsAreChecked)
     EXPECT_NE(first(both).find("exactly one"), std::string::npos);
     EXPECT_NE(first(temperature_options(100)).find("[150, 350]"), std::string::npos);
     EXPECT_NE(first(temperature_options(400)).find("[150, 350]"), std::string::npos);
-    EXPECT_NE(first(temperature_options(std::numeric_limits<double>::quiet_NaN())).find("[150, 350]"), std::string::npos);
+    {
+        // A NaN raises FE_INVALID in the check's comparisons; the CI builds trap it.
+        const gust::test::ScopedNoInvalidTrap no_trap;
+        EXPECT_NE(first(temperature_options(std::numeric_limits<double>::quiet_NaN())).find("[150, 350]"),
+                  std::string::npos);
+    }
     SurfaceLayerOptions qn = temperature_options(290);
     qn.stable_functions = SurfaceLayerOptions::StableFunctions::qnse;
     EXPECT_NE(first(qn).find("qnse"), std::string::npos);
