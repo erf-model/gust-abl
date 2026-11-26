@@ -247,6 +247,18 @@ Quick reference
    * - ``bc.surface_temperature_file``
      - none
      - Ground temperature map, ``x y theta_s`` points (instead of ``bc.surface_temperature``)
+   * - ``bc.surface_kb_inverse``
+     - ``0``
+     - Thermal roughness :math:`\ln(z_0/z_{0t})` of ``surface_temperature``
+   * - ``bc.surface_wstar``
+     - ``none``
+     - Convective velocity in the wall model's wind: ``none`` or ``beljaars``
+   * - ``bc.surface_pblh``
+     - none
+     - Boundary layer depth :math:`z_i` (m) of ``beljaars``
+   * - ``bc.surface_pblh_file``
+     - none
+     - Map of :math:`z_i`, ``x y z_i`` points (instead of ``bc.surface_pblh``)
    * - ``bc.surface_wall_k``
      - ``dirichlet``
      - Wall treatment of the TKE
@@ -255,7 +267,7 @@ Quick reference
      - Floor of the MOST denominator
    * - ``bc.surface_stable_functions``
      - ``businger_dyer``
-     - Stable-side MOST functions: ``businger_dyer`` or ``qnse``
+     - MOST functions: ``businger_dyer``, ``qnse`` (stable side) or ``jimenez`` (both sides)
    * - ``bc.surface_qnse_am``, ``_bm``, ``_ah``, ``_bh``
      - ``2.5``, ``0.2``, ``2.5``, ``0.2``
      - QNSE coefficients
@@ -1048,6 +1060,30 @@ types, the inflow profile and the sounding; the other keys act in the SIMPLEC st
        each level's ground columns as an inverse-distance-weighted mean with ``terrain.idw_neighbors`` and
        ``terrain.idw_power``. Every value finite and in [150, 350] K, at least ``terrain.idw_neighbors`` points, and
        the file readable, or the run aborts naming the key.
+   * - ``bc.surface_kb_inverse``
+     - ``0``
+     - Finite, in [0, 20], or the run aborts naming the key; ``surface_temperature`` only (a non-zero value with
+       another stability aborts). :math:`kB^{-1} = \ln(z_0/z_{0t})`: a thermal roughness :math:`z_{0t}` below
+       :math:`z_0` adds it to :math:`c_h` (:ref:`surface temperature <surface-temperature>`). ``0`` (:math:`z_{0t} =
+       z_0`) gives the same numbers as before the key.
+   * - ``bc.surface_wstar``
+     - ``none``
+     - ``none`` or ``beljaars``, or the run aborts naming the key. ``beljaars`` adds Beljaars's convective velocity
+       :math:`w_*` to the wall model's wind, :math:`U_\mathrm{eff} = \sqrt{U^2 + (1.2\,w_*)^2}`
+       (:ref:`convective velocity <surface-wstar>`). It needs ``bc.surface_stability = surface_temperature``, or
+       ``heat_flux`` with ``bc.surface_heat_flux`` > 0, and exactly one of ``bc.surface_pblh`` and
+       ``bc.surface_pblh_file``; otherwise the run stops. ``none`` gives the same numbers as before the key.
+   * - ``bc.surface_pblh``
+     - none
+     - Finite, in [10, 10000] m, or the run aborts naming the key; ``bc.surface_wstar = beljaars`` only (otherwise
+       the run stops). The boundary layer depth :math:`z_i` of :math:`w_*`. Not with ``bc.surface_pblh_file``
+       (both given aborts).
+   * - ``bc.surface_pblh_file``
+     - none
+     - ``bc.surface_wstar = beljaars`` only. A file of ``x y z_i`` points (``terrain.file``'s format), interpolated
+       as ``bc.surface_temperature_file``. Every value finite and in [10, 10000] m, at least
+       ``terrain.idw_neighbors`` points, and the file readable, or the run aborts naming the key.
+       ``tools/hrrr_outer.py`` writes one from HRRR's boundary layer height.
    * - ``bc.surface_wall_k``
      - ``dirichlet``
      - ``dirichlet`` or ``source``.
@@ -1057,10 +1093,12 @@ types, the inflow profile and the sounding; the other keys act in the SIMPLEC st
        denominator. They differ only where :math:`\ln((d + z_0)/z_0) < 1`.
    * - ``bc.surface_stable_functions``
      - ``businger_dyer``
-     - ``businger_dyer`` or ``qnse``: the stable side (:math:`z/L > 0`) of :math:`\phi_m, \phi_h, \psi_m, \psi_h`
-       (:ref:`stable functions <stable-functions>`), for the wall model and the column. ``qnse`` needs
-       ``bc.surface_stability = heat_flux`` or a stratified column (``init.column_stability``), otherwise the run
-       stops.
+     - ``businger_dyer``, ``qnse`` or ``jimenez``: :math:`\phi_m, \phi_h, \psi_m, \psi_h`
+       (:ref:`stable functions <stable-functions>`). ``businger_dyer`` and ``qnse`` set the stable side
+       (:math:`z/L > 0`), for the wall model and the column. ``qnse`` needs ``bc.surface_stability = heat_flux`` or a
+       stratified column (``init.column_stability``), otherwise the run stops. ``jimenez`` sets both sides
+       (Cheng-Brutsaert stable, Jimenez et al. unstable) for the wall model only and needs
+       ``bc.surface_stability = surface_temperature``, otherwise the run stops.
    * - ``bc.surface_qnse_am``, ``bc.surface_qnse_bm``
      - ``2.5``, ``0.2``
      - :math:`a_m, b_m` of :math:`\phi_m = (1 + a_m\zeta)/(1 + b_m\zeta)`: :math:`b_m > 0`, :math:`a_m \ge b_m`,

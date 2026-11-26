@@ -86,7 +86,8 @@ struct TerrainInputs
     //! xyz: nearest points used and the weight power (FastWindTerrain's defaults).
     int idw_neighbors{6};
     amrex::Real idw_power{2};
-    //! bc.surface_z0_file or bc.surface_temperature_file is given: the map is interpolated with idw_neighbors and idw_power too.
+    //! bc.surface_z0_file, bc.surface_temperature_file or bc.surface_pblh_file is given: the map is interpolated with
+    //! idw_neighbors and idw_power too.
     bool idw_for_z0_map{false};
     //! canopy.type = map: its maps are interpolated with idw_neighbors and idw_power too (Canopy.H).
     bool idw_for_canopy_map{false};

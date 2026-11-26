@@ -298,6 +298,13 @@ LevelSolver::LevelSolver (const RunSetup& s, const Mesh& mesh, const amrex::Geom
         amrex::Print() << "gust: " << label << "surface temperature map (bc.surface_temperature_file): "
                        << surface_temperature_summary(theta_s_map_field) << "\n";
     }
+    if (s.surface_layer && !s.surf.pblh_file.empty()) {
+        read_pblh_map(s.surf.pblh_file, "bc.surface_pblh_file", s.idw_neighbors, static_cast<double>(s.idw_power), geom,
+                      ba, dm, pblh_map_field);
+        surf.pblh_map = &pblh_map_field;
+        amrex::Print() << "gust: " << label << "boundary layer depth map (bc.surface_pblh_file): "
+                       << surface_temperature_summary(pblh_map_field, "m") << "\n";
+    }
     if (s.surface_layer && buildings != nullptr && buildings->geometry() != nullptr && buildings->geometry()->hybrid_mesh()) {
         // A hybrid mesh: the surface layer acts at the lower face only where it is the ground.
         const amrex::Long n = hybrid_immersed_columns(buildings->geometry()->beta(), ground_slab(ba), dm, 1, immersed_columns);

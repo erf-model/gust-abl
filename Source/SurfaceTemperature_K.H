@@ -10,8 +10,12 @@
 //
 //   Ri_b = g d dtheta / (theta_0 U^2),  dtheta = theta_r - theta_s,  bounded to [kRibMin, kRibMax],
 //   G(zeta) = zeta - Ri_b cm(zeta)^2 / ch(zeta) = 0,
-//   cm = max(lz - psi_m(zeta), m),  ch = max(lz - psi_h(zeta), m),  lz = ln((d + z0)/z0),
+//   cm = max(lz - psi_m(zeta), m),  ch = max(lz + kB - psi_h(zeta), m),  lz = ln((d + z0)/z0),
 //   u* = kappa U / cm,  theta* = kappa dtheta / ch,  q = -u* theta*,  1/L = zeta / d.
+//
+// kB = ln(z0 / z0t) >= 0 is the thermal roughness term (bc.surface_kb_inverse): the heat's roughness length z0t
+// = z0 exp(-kB), so ln((d + z0)/z0t) = lz + kB. kB = 0 (the default) is z0t = z0 and the form before the input,
+// bit for bit (lz + 0 is exact).
 //
 // zeta has the sign of Ri_b; the root is bracketed in [-100, 0] (unstable) or
 // [0, 100] (stable), the wall model's clamp on d/L, and found by Newton's
@@ -24,10 +28,18 @@
 // The bound on Ri_b: ERF's -4 below. Above, 0.19: Businger-Dyer's stable
 // side, cm = ch = lz + 5 zeta, gives Ri_b = zeta ch / cm^2 = zeta / (lz + 5 zeta) < 0.2 for
 // every zeta (the column guess's kRibMaxBusingerDyer, ColumnGuess.cpp), so a
-// calm, cooled column keeps a small flux instead of none.
+// calm, cooled column keeps a small flux instead of none. The root then lies at a
+// zeta of order 10, far past Businger-Dyer's fitted range (zeta up to about 1).
+//
+// With bc.surface_stable_functions = jimenez (JIMENEZ = true) both sides are ERF's surface_temp
+// pair (calc_psi_m2/calc_psi_h2, StabilityFunctions.H), as WRF's revised MM5 surface layer: the
+// stable side is Cheng and Brutsaert's (2005), psi grows as a log, Ri_b has no critical value and
+// the bound above is ERF's 4 (kSurfaceTemperatureRibMaxJimenez); the unstable side is Jimenez et
+// al.'s (2012) blend of Businger-Dyer and a free-convection form. The bracket is unchanged.
 
 #include "StabilityFunctions.H"
 
+#include <AMReX_Algorithm.H>
 #include <AMReX_Extension.H>
 #include <AMReX_GpuQualifiers.H>
 #include <AMReX_REAL.H>
@@ -40,6 +52,8 @@ namespace gust {
 //! The bounds of the bulk Richardson number (see above).
 constexpr amrex::Real kSurfaceTemperatureRibMin = amrex::Real(-4);
 constexpr amrex::Real kSurfaceTemperatureRibMax = amrex::Real(0.19);
+//! The upper bound with the Cheng-Brutsaert stable side: ERF's (ERF_MOSTStress.H, surface_temp).
+constexpr amrex::Real kSurfaceTemperatureRibMaxJimenez = amrex::Real(4);
 
 //! The result of the column's solve.
 struct SurfaceTemperatureMost
@@ -52,16 +66,26 @@ struct SurfaceTemperatureMost
 };
 
 //! The column's surface layer: kappa, U (m/s, already floored), d (m), lz = ln((d + z0)/z0), den_min the floor m,
-//! goth = g / theta_0 (m/s^2/K), dtheta = theta_r - theta_s (K), rib_min and rib_max the bounds of Ri_b.
+//! goth = g / theta_0 (m/s^2/K), dtheta = theta_r - theta_s (K), rib_min and rib_max the bounds of Ri_b,
+//! kb = ln(z0 / z0t) >= 0. JIMENEZ: the Cheng-Brutsaert stable side (false: Businger-Dyer).
+template <bool JIMENEZ = false>
 AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
 SurfaceTemperatureMost surface_temperature_most (amrex::Real kappa, amrex::Real U, amrex::Real d, amrex::Real lz,
                                                  amrex::Real den_min, amrex::Real goth, amrex::Real dtheta,
-                                                 amrex::Real rib_min, amrex::Real rib_max) noexcept
+                                                 amrex::Real rib_min, amrex::Real rib_max,
+                                                 amrex::Real kb = 0) noexcept
 {
-    const StableCoefficients sc{};   // Businger-Dyer
+    const StableCoefficients sc{};   // Businger-Dyer (JIMENEZ = false)
+    auto psi_m = [&] (amrex::Real z) noexcept {
+        if constexpr (JIMENEZ) { return most_psi_m_jimenez(z); } else { return most_psi_m<false>(z, sc); }
+    };
+    auto psi_h = [&] (amrex::Real z) noexcept {
+        if constexpr (JIMENEZ) { return most_psi_h_jimenez(z); } else { return most_psi_h<false>(z, sc); }
+    };
     const amrex::Real rib = amrex::max(rib_min, amrex::min(rib_max, goth * d * dtheta / (U * U)));
-    auto cm_of = [&] (amrex::Real z) noexcept { return amrex::max(lz - most_psi_m<false>(z, sc), den_min); };
-    auto ch_of = [&] (amrex::Real z) noexcept { return amrex::max(lz - most_psi_h<false>(z, sc), den_min); };
+    auto cm_of = [&] (amrex::Real z) noexcept { return amrex::max(lz - psi_m(z), den_min); };
+    const amrex::Real lzh = lz + kb;
+    auto ch_of = [&] (amrex::Real z) noexcept { return amrex::max(lzh - psi_h(z), den_min); };
     auto G = [&] (amrex::Real z) noexcept {
         const amrex::Real cm = cm_of(z);
         return z - rib * cm * cm / ch_of(z);
@@ -70,7 +94,7 @@ SurfaceTemperatureMost surface_temperature_most (amrex::Real kappa, amrex::Real 
     amrex::Real zeta = 0;
     bool converged = true;
     if (rib != 0) {
-        // G(0) = -Ri_b lz^2/lz has the sign of -Ri_b; the root lies on Ri_b's side of 0.
+        // G(0) = -Ri_b lz^2/lzh has the sign of -Ri_b; the root lies on Ri_b's side of 0.
         amrex::Real lo = (rib < 0) ? amrex::Real(-100) : amrex::Real(0);
         amrex::Real hi = (rib < 0) ? amrex::Real(0) : amrex::Real(100);
         const amrex::Real glo = G(lo), ghi = G(hi);

@@ -69,15 +69,25 @@ struct Reference { double ustar, q, zeta, c; };
 // The independent solve: bisection to round-off on zeta = Ri_b cm^2 / ch over [-100, 0] or [0, 100] with ERF's
 // Businger-Dyer psi (extern_erf/ERF_MOSTUtils.H), Ri_b = g d dtheta / (theta_0 U^2) bounded to [-4, 0.19] (a
 // bracket without a root gives its far end), cm = max(lz - psi_m, 1), ch = max(lz - psi_h, 1) (lz = 3.93 > 1 at the
-// 5 m first centre over z0 = 0.1 m: both floors are 1). Then u* = kappa U / cm, q = -kappa u* dtheta / ch.
-Reference reference_most (double U, double d, double z0, double dtheta)
+// 5 m first centre over z0 = 0.1 m: both floors are 1). Then u* = kappa U / cm, q = -kappa u* dtheta / ch. A thermal
+// roughness z0t = z0 exp(-kb) adds kb = ln(z0 / z0t) to ch only. cb: ERF's calc_psi_m2/calc_psi_h2 (Jimenez et al.
+// 2012) on both sides and Ri_b bounded to [-4, 4], as ERF's surface_temp.
+Reference reference_most (double U, double d, double z0, double dtheta, double kb = 0, bool cb = false)
 {
     const auto prev_fpe = amrex::disableFPExcept(amrex::FPExcept::invalid);   // ERF's branches (test_SurfaceLayer.cpp)
     const similarity_funs sf;
     const double kappa = 0.41, lz = std::log((d + z0) / z0);
-    const double rib = std::max(-4.0, std::min(0.19, 9.81 * d * dtheta / (300 * U * U)));
-    auto cm = [&] (double z) { return std::max(lz - double(sf.calc_psi_m(static_cast<amrex::Real>(z))), 1.0); };
-    auto ch = [&] (double z) { return std::max(lz - double(sf.calc_psi_h(static_cast<amrex::Real>(z))), 1.0); };
+    const double rib = std::max(-4.0, std::min(cb ? 4.0 : 0.19, 9.81 * d * dtheta / (300 * U * U)));
+    auto pm = [&] (double z) {
+        const auto r = static_cast<amrex::Real>(z);
+        return double(cb ? sf.calc_psi_m2(r) : sf.calc_psi_m(r));
+    };
+    auto ph = [&] (double z) {
+        const auto r = static_cast<amrex::Real>(z);
+        return double(cb ? sf.calc_psi_h2(r) : sf.calc_psi_h(r));
+    };
+    auto cm = [&] (double z) { return std::max(lz - pm(z), 1.0); };
+    auto ch = [&] (double z) { return std::max(lz + kb - ph(z), 1.0); };
     auto G = [&] (double z) { return z - rib * cm(z) * cm(z) / ch(z); };
     double zeta = 0;
     if (rib != 0) {
@@ -155,6 +165,99 @@ TEST(SurfaceTemperature, MatchesTheBisectionStableAndUnstable)
     EXPECT_LT(r.zeta, -0.05);
     EXPECT_GT(r.q, 0.05);
     EXPECT_NEAR(at00(s.qflux), r.q, tol(1e-11, 1e-4) * r.q);
+}
+
+// bc.surface_kb_inverse = ln(z0 / z0t): a thermal roughness below z0 adds kb to the heat-transfer resistance ch only.
+// For kb = 1, 2 and 5 the wall model matches the bisection with the same kb, stable and unstable; the heat flux |q|
+// falls as kb grows (a larger resistance at the same dtheta), and kb = 0 gives the same numbers as the default.
+TEST(SurfaceTemperature, ThermalRoughnessMatchesTheBisection)
+{
+    PCase c = flat_column(24);
+    gust::State q;
+    define_state(q, c);
+    const double z0 = 0.1, d = 5.0;
+    struct Case { double U, theta_s; };
+    for (const Case cs : {Case{8.0, 305.0}, Case{8.0, 298.0}, Case{3.0, 305.0}, Case{3.0, 298.0}}) {
+        uniform_state(q, cs.U);
+        double last_q = 0;
+        for (const double kb : {0.0, 1.0, 2.0, 5.0}) {
+            SurfaceLayerOptions opt = temperature_options(cs.theta_s);
+            opt.kb_inverse = static_cast<amrex::Real>(kb);
+            gust::SurfaceState s;
+            gust::compute_surface_state(q, opt, kBuoyancy, c.mesh, c.geom, s);
+            const Reference want = reference_most(cs.U, d, z0, 300.0 - cs.theta_s, kb);
+            const std::string tag = "U " + std::to_string(cs.U) + " theta_s " + std::to_string(cs.theta_s)
+                                    + " kb " + std::to_string(kb);
+            EXPECT_NEAR(at00(s.ustar), want.ustar, tol(1e-11, 1e-4) * want.ustar) << tag;
+            EXPECT_NEAR(at00(s.qflux), want.q, tol(1e-11, 1e-4) * std::abs(want.q)) << tag;
+            EXPECT_NEAR(at00(s.inv_L) * d, want.zeta, tol(1e-10, 1e-4) * (1 + std::abs(want.zeta))) << tag;
+            EXPECT_NEAR(at00(s.heat_coef), want.c, tol(1e-11, 1e-4) * want.c) << tag;
+            if (kb == 0) {
+                gust::SurfaceState s0;
+                gust::compute_surface_state(q, temperature_options(cs.theta_s), kBuoyancy, c.mesh, c.geom, s0);
+                EXPECT_EQ(at00(s.qflux), at00(s0.qflux)) << tag;
+                EXPECT_EQ(at00(s.ustar), at00(s0.ustar)) << tag;
+            } else {
+                EXPECT_LT(std::abs(want.q), std::abs(last_q)) << tag;
+            }
+            last_q = want.q;
+        }
+    }
+    // Pinned: over a 5 K warmer ground at 8 m/s, kb = 2 lowers the flux by more than a quarter.
+    const Reference r0 = reference_most(8.0, d, z0, -5.0), r2 = reference_most(8.0, d, z0, -5.0, 2.0);
+    EXPECT_LT(r2.q, 0.75 * r0.q);
+}
+
+// bc.surface_stable_functions = jimenez: ERF's Jimenez et al. (2012) pair and Ri_b bounded above at 4, as ERF's
+// surface_temp. Stable columns match the bisection with ERF's calc_psi_m2/calc_psi_h2: 3 m/s over a 2 K cooler
+// ground (Ri_b = 0.073), 1 m/s (Ri_b = 0.65, past Businger-Dyer's bound of 0.19) and a calm column (Ri_b = 32.7,
+// bounded to 4); the flux is downward and finite in all three. Unstable columns (5 K warmer ground, 8, 3 and 1 m/s)
+// match it too and differ from Businger-Dyer. At Ri_b = 0.65 the root is zeta below 10 (Businger-Dyer, bounded to
+// 0.19, gives more than 10).
+TEST(SurfaceTemperature, JimenezMatchesTheBisection)
+{
+    PCase c = flat_column(24);
+    gust::State q;
+    define_state(q, c);
+    const double z0 = 0.1, d = 5.0;
+    SurfaceLayerOptions cb_opt = temperature_options(298.0);
+    cb_opt.stable_functions = SurfaceLayerOptions::StableFunctions::jimenez;
+    for (const double U : {3.0, 1.0, 0.0}) {
+        uniform_state(q, U);
+        gust::SurfaceState s;
+        gust::compute_surface_state(q, cb_opt, kBuoyancy, c.mesh, c.geom, s);
+        const Reference want = reference_most(std::max(U, 0.1), d, z0, 2.0, 0, true);
+        const std::string tag = "U " + std::to_string(U);
+        EXPECT_NEAR(at00(s.ustar), want.ustar, tol(1e-11, 1e-4) * want.ustar) << tag;
+        EXPECT_NEAR(at00(s.qflux), want.q, tol(1e-11, 1e-4) * std::abs(want.q)) << tag;
+        EXPECT_NEAR(at00(s.inv_L) * d, want.zeta, tol(1e-10, 1e-4) * (1 + std::abs(want.zeta))) << tag;
+        EXPECT_NEAR(at00(s.heat_coef), want.c, tol(1e-11, 1e-4) * want.c) << tag;
+        EXPECT_LT(at00(s.qflux), 0) << tag;
+        EXPECT_TRUE(std::isfinite(at00(s.qflux))) << tag;
+    }
+    {
+        uniform_state(q, 1.0);
+        const Reference r = reference_most(1.0, d, z0, 2.0, 0, true);
+        const Reference bd = reference_most(1.0, d, z0, 2.0);
+        EXPECT_GT(r.zeta, 0.5);
+        EXPECT_LT(r.zeta, 10.0);
+        EXPECT_GT(bd.zeta, 10.0);
+    }
+    SurfaceLayerOptions warm_cb = temperature_options(305.0);
+    warm_cb.stable_functions = SurfaceLayerOptions::StableFunctions::jimenez;
+    for (const double U : {8.0, 3.0, 1.0}) {
+        uniform_state(q, U);
+        gust::SurfaceState a, b;
+        gust::compute_surface_state(q, warm_cb, kBuoyancy, c.mesh, c.geom, a);
+        gust::compute_surface_state(q, temperature_options(305.0), kBuoyancy, c.mesh, c.geom, b);
+        const Reference want = reference_most(U, d, z0, -5.0, 0, true);
+        const std::string tag = "warm U " + std::to_string(U);
+        EXPECT_NEAR(at00(a.ustar), want.ustar, tol(1e-11, 1e-4) * want.ustar) << tag;
+        EXPECT_NEAR(at00(a.qflux), want.q, tol(1e-11, 1e-4) * std::abs(want.q)) << tag;
+        EXPECT_NEAR(at00(a.inv_L) * d, want.zeta, tol(1e-10, 1e-4) * (1 + std::abs(want.zeta))) << tag;
+        EXPECT_GT(at00(a.qflux), 0) << tag;
+        EXPECT_NE(at00(a.qflux), at00(b.qflux)) << tag;
+    }
 }
 
 // Zero wind: U is floored at 0.1 m/s, so Ri_b = g d dtheta / (theta_0 0.01) is -81.75 over a 5 K warmer ground and
@@ -281,7 +384,7 @@ TEST(SurfaceTemperature, MapIsReadTheSameOnEveryDecomposition)
 }
 
 // The options: exactly one of the value and the file; the value in [150, 350] K; neither without the stability;
-// no qnse; no heat flux beside it.
+// no qnse; no heat flux beside it; the thermal roughness kb in [0, 20], only with the stability.
 TEST(SurfaceTemperature, OptionsAreChecked)
 {
     auto first = [] (const SurfaceLayerOptions& o) {
@@ -313,6 +416,17 @@ TEST(SurfaceTemperature, OptionsAreChecked)
     neutral.surface_temperature = 0;
     neutral.surface_temperature_file = "t.xyz";
     EXPECT_NE(first(neutral).find("surface_temperature_file is set"), std::string::npos);
+    // bc.surface_kb_inverse in [0, 20], only with the stability.
+    SurfaceLayerOptions kb = temperature_options(290);
+    kb.kb_inverse = 20;
+    EXPECT_EQ(first(kb), "");
+    kb.kb_inverse = amrex::Real(-0.5);
+    EXPECT_NE(first(kb).find("kb_inverse"), std::string::npos);
+    kb.kb_inverse = 21;
+    EXPECT_NE(first(kb).find("kb_inverse"), std::string::npos);
+    SurfaceLayerOptions kb_neutral;
+    kb_neutral.kb_inverse = 2;
+    EXPECT_NE(first(kb_neutral).find("kb_inverse"), std::string::npos);
 }
 
 } // namespace

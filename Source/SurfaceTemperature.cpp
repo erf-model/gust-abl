@@ -1,6 +1,7 @@
 #include "SurfaceTemperature.H"
 
 #include "SurfaceRoughness.H"
+#include "SurfaceWstar_K.H"
 #include "TerrainSurface.H"
 
 #include <AMReX_ParallelDescriptor.H>
@@ -26,33 +27,37 @@ int cell_index (int i, int lo, int hi, bool periodic)
 
 } // namespace
 
-void check_surface_temperature_map (const char* op, const amrex::MultiFab& map, const amrex::MultiFab& like)
+void check_surface_temperature_map (const char* op, const amrex::MultiFab& map, const amrex::MultiFab& like,
+                                    const char* what)
 {
     const amrex::IntVect ng = map.nGrowVect();
     if (map.nComp() != 1 || !map.ixType().cellCentered() || ng[0] < 1 || ng[1] < 1
         || map.boxArray() != ground_slab(amrex::convert(like.boxArray(), amrex::IntVect(0)))
         || map.DistributionMap() != like.DistributionMap()) {
-        amrex::Abort(std::string("gust: ") + op + ": the surface temperature map is not on this level's ground slab");
+        amrex::Abort(std::string("gust: ") + op + ": the " + what + " is not on this level's ground slab");
     }
 }
 
-void read_surface_temperature_map (const std::string& file, const std::string& key, int k, double power,
-                                   const amrex::Geometry& geom, const amrex::BoxArray& cell_ba,
-                                   const amrex::DistributionMapping& dm, amrex::MultiFab& theta_s)
+namespace {
+
+// A map of one value per ground column from "x y value" points (the temperature map's reader): name the value in the
+// messages, every value finite and in [lo, hi] (range: "[lo, hi] unit").
+void read_column_map (const std::string& file, const std::string& key, int k, double power, const char* name,
+                      double lo, double hi, const std::string& range, const amrex::Geometry& geom,
+                      const amrex::BoxArray& cell_ba, const amrex::DistributionMapping& dm, amrex::MultiFab& theta_s)
 {
     const TerrainPoints pts = read_xyz_points(file, key);
     const auto n = static_cast<long>(pts.z.size());
     std::vector<std::string> err;
-    const std::string range = surface_temperature_range();
     if (pts.nonfinite > 0) {
-        err.push_back(std::to_string(pts.nonfinite)
-                      + " lines hold a value that is not finite; every theta_s must be finite and in " + range);
+        err.push_back(std::to_string(pts.nonfinite) + " lines hold a value that is not finite; every " + name
+                      + " must be finite and in " + range);
     }
     long bad = 0;
     for (const double v : pts.z) {
-        if (!(v >= kSurfaceTemperatureMin && v <= kSurfaceTemperatureMax)) { ++bad; }
+        if (!(v >= lo && v <= hi)) { ++bad; }
     }
-    if (bad > 0) { err.push_back(std::to_string(bad) + " points have theta_s outside " + range); }
+    if (bad > 0) { err.push_back(std::to_string(bad) + " points have " + name + " outside " + range); }
     if (k < 1 || k > n) {
         err.push_back("terrain.idw_neighbors = " + std::to_string(k) + " must be between 1 and the number of points ("
                       + std::to_string(n) + ")");
@@ -88,7 +93,23 @@ void read_surface_temperature_map (const std::string& file, const std::string& k
     }
 }
 
-std::string surface_temperature_summary (const amrex::MultiFab& theta_s)
+} // namespace
+
+void read_surface_temperature_map (const std::string& file, const std::string& key, int k, double power,
+                                   const amrex::Geometry& geom, const amrex::BoxArray& cell_ba,
+                                   const amrex::DistributionMapping& dm, amrex::MultiFab& theta_s)
+{
+    read_column_map(file, key, k, power, "theta_s", kSurfaceTemperatureMin, kSurfaceTemperatureMax,
+                    surface_temperature_range(), geom, cell_ba, dm, theta_s);
+}
+
+void read_pblh_map (const std::string& file, const std::string& key, int k, double power, const amrex::Geometry& geom,
+                    const amrex::BoxArray& cell_ba, const amrex::DistributionMapping& dm, amrex::MultiFab& zi)
+{
+    read_column_map(file, key, k, power, "z_i", kPblhMin, kPblhMax, "[10, 10000] m", geom, cell_ba, dm, zi);
+}
+
+std::string surface_temperature_summary (const amrex::MultiFab& theta_s, const char* unit)
 {
     amrex::ReduceOps<amrex::ReduceOpMin, amrex::ReduceOpMax, amrex::ReduceOpSum> ops;
     amrex::ReduceData<amrex::Real, amrex::Real, double> data(ops);   // the sum in double for the mean
@@ -107,7 +128,8 @@ std::string surface_temperature_summary (const amrex::MultiFab& theta_s)
     amrex::ParallelAllReduce::Sum(sum, amrex::ParallelDescriptor::Communicator());
     const double mean = sum / static_cast<double>(theta_s.boxArray().numPts());
     char b[128];
-    std::snprintf(b, sizeof(b), "min %.6g, max %.6g, mean %.6g K", static_cast<double>(lo), static_cast<double>(hi), mean);
+    std::snprintf(b, sizeof(b), "min %.6g, max %.6g, mean %.6g %s", static_cast<double>(lo), static_cast<double>(hi), mean,
+                  unit);
     return b;
 }
 

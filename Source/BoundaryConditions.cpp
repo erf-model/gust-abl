@@ -304,7 +304,7 @@ void fill_no_flux_w (State& q, const BoundaryInputs& in, const amrex::Geometry& 
 //! The wall law's gradient of u, v (components 0, 1) and theta (2) on the
 //! valid and first ghost columns of g (the surface state's slab); Z0 the
 //! roughness accessor (SurfaceRoughness.H).
-template <class Z0>
+template <class Z0, bool JIMENEZ = false>
 void ground_gradients (const SurfaceState& ss, const SurfaceLayerOptions& surface_opt, amrex::MultiFab& ground_grad)
 {
     // The wall law's gradient per column: u*/(kappa (d0 + z0)) along the
@@ -329,7 +329,8 @@ void ground_gradients (const SurfaceState& ss, const SurfaceLayerOptions& surfac
             // and bc.surface_stable_functions' stable side (data, not a branch).
             const amrex::Real zeta = amrex::max(amrex::min(d0(i, j, k) * il(i, j, k), amrex::Real(100)), -amrex::Real(100));
             amrex::Real phi_m, phi_h;
-            most_phi(zeta, sc, phi_m, phi_h);
+            // Jimenez phi with bc.surface_stable_functions = jimenez (its own kernel).
+            if constexpr (JIMENEZ) { most_phi_jimenez(zeta, phi_m, phi_h); } else { most_phi(zeta, sc, phi_m, phi_h); }
             const amrex::Real s = kappa * (d0(i, j, k) + zf(i, j));
             const amrex::Real tmag = std::sqrt(ta(i, j, k, 0) * ta(i, j, k, 0) + ta(i, j, k, 1) * ta(i, j, k, 1)
                                                + ta(i, j, k, 2) * ta(i, j, k, 2));
@@ -493,11 +494,14 @@ void BoundaryConditions::fill_ghosts (State& q, const SurfaceLayerOptions* surfa
             ground_grad.define(ss->ustar.boxArray(), ss->ustar.DistributionMap(), 3, amrex::IntVect(2, 2, 0));
             ground_grad.setVal(unset);
             // The wall law's gradient per column (ground_gradients).
+            const bool cb = surface_opt->stable_functions == SurfaceLayerOptions::StableFunctions::jimenez;
             if (surface_opt->z0_map != nullptr) {
                 check_roughness_map("fill_ghosts", *surface_opt->z0_map, m_mesh.detJ);
-                ground_gradients<MapZ0>(*ss, *surface_opt, ground_grad);
+                if (cb) { ground_gradients<MapZ0, true>(*ss, *surface_opt, ground_grad); }
+                else { ground_gradients<MapZ0>(*ss, *surface_opt, ground_grad); }
             } else {
-                ground_gradients<UniformZ0>(*ss, *surface_opt, ground_grad);
+                if (cb) { ground_gradients<UniformZ0, true>(*ss, *surface_opt, ground_grad); }
+                else { ground_gradients<UniformZ0>(*ss, *surface_opt, ground_grad); }
             }
             ground_grad.FillBoundary(m_geom.periodicity());
             {

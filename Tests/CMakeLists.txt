@@ -43,6 +43,7 @@ add_executable(unit_tests
     Unit_Tests/test_SurfaceLayer.cpp
     Unit_Tests/test_SurfaceRoughness.cpp
     Unit_Tests/test_SurfaceTemperature.cpp
+    Unit_Tests/test_SurfaceWstar.cpp
     Unit_Tests/test_BuildingForcing.cpp
     Unit_Tests/test_ImmersedTerrain.cpp
     Unit_Tests/test_ImmersedSurface.cpp

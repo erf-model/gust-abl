@@ -346,12 +346,41 @@ class SurfaceChecker(Checker):
             if c.s("bc.surface_stable_functions") == "qnse":
                 self.error("bc.surface_stable_functions", "GUST stops: bc.surface_stable_functions = qnse is not "
                                                           "available with bc.surface_stability = surface_temperature "
-                                                          "(Businger-Dyer only).", "Remove the key.")
+                                                          "(businger_dyer or jimenez).", "Remove the key.")
         else:
-            for k in ("bc.surface_temperature", "bc.surface_temperature_file"):
+            if c.s("bc.surface_stable_functions") == "jimenez":
+                self.error("bc.surface_stable_functions", "GUST stops: bc.surface_stable_functions = jimenez is "
+                                                          "available only with bc.surface_stability = "
+                                                          "surface_temperature.",
+                           "Set bc.surface_stability = surface_temperature, or remove the key.")
+            for k in ("bc.surface_temperature", "bc.surface_temperature_file", "bc.surface_kb_inverse"):
                 if self.given(k):
                     self.error(k, "GUST stops: %s is set but bc.surface_stability is %s; it would be ignored."
                                % (k, stability), "Set bc.surface_stability = surface_temperature, or remove the key.")
+        # SurfaceLayer.cpp, check_surface_layer_options: Beljaars's w* and its boundary layer depth.
+        zi_value, zi_file = self.given("bc.surface_pblh"), self.given("bc.surface_pblh_file")
+        if c.s("bc.surface_wstar") == "beljaars":
+            if stability not in ("heat_flux", "surface_temperature"):
+                self.error("bc.surface_wstar", "GUST stops: bc.surface_wstar = beljaars needs bc.surface_stability = "
+                                               "heat_flux or surface_temperature (w* is 0 on a neutral surface).",
+                           "Set a heat flux or a ground temperature, or remove the key.")
+            elif stability == "heat_flux" and flux is not None and not flux > 0:
+                self.error("bc.surface_wstar", "GUST stops: bc.surface_wstar = beljaars with bc.surface_heat_flux = "
+                                               "%s <= 0: w* is 0 and would be ignored." % _g(flux),
+                           "Remove the key, or give an upward flux.")
+            if zi_value and zi_file:
+                self.error("bc.surface_pblh_file", "GUST stops: bc.surface_pblh and bc.surface_pblh_file cannot both "
+                                                   "be given (one boundary layer depth: a value or a map).",
+                           "Keep one of the two.")
+            elif not zi_value and not zi_file:
+                self.error("bc.surface_wstar", "GUST stops: bc.surface_wstar = beljaars needs exactly one of "
+                                               "bc.surface_pblh (m) and bc.surface_pblh_file.",
+                           "Give the boundary layer depth, or a map of it.")
+        else:
+            for k, given in (("bc.surface_pblh", zi_value), ("bc.surface_pblh_file", zi_file)):
+                if given:
+                    self.error(k, "GUST stops: %s is set but bc.surface_wstar is none; it would be ignored." % k,
+                               "Set bc.surface_wstar = beljaars, or remove the key.")
         q = {k: c.r("bc.surface_qnse_" + k) for k in ("am", "bm", "ah", "bh")}
         if None in q.values():
             return
@@ -374,8 +403,8 @@ class SurfaceChecker(Checker):
                 dflt = float(c.ref.default("bc.surface_qnse_" + k)[0])
                 if q[k] != dflt:
                     self.error("bc.surface_qnse_" + k, "GUST stops: bc.surface_qnse_%s is set but "
-                                                       "bc.surface_stable_functions is businger_dyer; it would be "
-                                                       "ignored." % k,
+                                                       "bc.surface_stable_functions is %s; it would be "
+                                                       "ignored." % (k, c.s("bc.surface_stable_functions")),
                                "Set bc.surface_stable_functions = qnse, or remove the coefficient.")
 
 

@@ -1,7 +1,8 @@
 // The stable side of MOST's stability functions (StabilityFunctions.H, bc.surface_stable_functions).
 // Businger-Dyer (the default) is ERF's calc_phi/calc_psi exactly; QNSE (Sukoriansky et al. 2005, ERF's
 // enable_qnse_stable_functions) is pinned to values computed independently in Python, its psi to a numerical
-// integral of (1 - phi)/x, and its unstable side is Businger-Dyer's.
+// integral of (1 - phi)/x, and its unstable side is Businger-Dyer's. The Jimenez pair (surface_temperature only) is
+// pinned to Python values and to ERF's calc_psi_m2/calc_psi_h2 on both sides.
 
 #include "ColumnGuess.H"
 #include "ERF_MOSTUtils.H"
@@ -141,4 +142,69 @@ TEST(StabilityFunctions, ColumnWallGradients)
     gust::column_wall_gradients(us, ts, il, z, 0.0, kappa, dU, dT, kQnse);
     EXPECT_NEAR(dU, us * 2.916666666666667 / (kappa * z), tol(1e-12, 1e-6));
     EXPECT_NEAR(dT, ts * 2.916666666666667 / (kappa * z), tol(1e-12, 1e-6));
+}
+
+// bc.surface_stable_functions = jimenez, ERF's Jimenez et al. (2012) pair. Stable side Cheng and Brutsaert (2005): psi_m = -6.1 ln(zeta + (1 +
+// zeta^2.5)^(1/2.5)), psi_h = -5.3 ln(zeta + (1 + zeta^1.1)^(1/1.1)) and phi = 1 - zeta psi', pinned at zeta = 0.1,
+// 1, 10, 100 to values computed in Python (mpmath, 30 digits, phi by its numerical derivative), and equal to ERF's
+// calc_psi_m2/calc_psi_h2 (extern_erf/ERF_MOSTUtils.H). The unstable side (the Businger-Dyer and free-convection
+// blend) likewise; zeta = 0 gives psi = 0 and phi = 1.
+TEST(StabilityFunctions, JimenezPair)
+{
+    struct Row { double zeta, psi_m, psi_h, phi_m, phi_h; };
+    const Row rows[] = {
+        {0.1, -0.5883959379291539, -0.84098277137607233, 1.5713921003566282, 1.8089697833695153},
+        {1, -5.1322658401041618, -5.6023522548976726, 5.3649340796961089, 4.5708225288528175},
+        {10, -18.277819976407348, -16.064719899140247, 7.090379385815271, 6.098220471076017},
+        {100, -32.319748135894224, -28.096256286095339, 7.0999695002439979, 6.2833369639835132}};
+    const similarity_funs sf;
+    for (const Row& r : rows) {
+        const auto z = static_cast<amrex::Real>(r.zeta);
+        amrex::Real pm, ph;
+        gust::most_phi_jimenez(z, pm, ph);
+        EXPECT_NEAR(gust::most_psi_m_jimenez(z), r.psi_m, tol(1e-13, 1e-5) * std::abs(r.psi_m)) << r.zeta;
+        EXPECT_NEAR(gust::most_psi_h_jimenez(z), r.psi_h, tol(1e-13, 1e-5) * std::abs(r.psi_h)) << r.zeta;
+        EXPECT_NEAR(pm, r.phi_m, tol(1e-12, 1e-5) * r.phi_m) << r.zeta;
+        EXPECT_NEAR(ph, r.phi_h, tol(1e-12, 1e-5) * r.phi_h) << r.zeta;
+        EXPECT_NEAR(gust::most_psi_m_jimenez(z), sf.calc_psi_m2(z), tol(1e-13, 1e-5) * std::abs(r.psi_m)) << r.zeta;
+        EXPECT_NEAR(gust::most_psi_h_jimenez(z), sf.calc_psi_h2(z), tol(1e-13, 1e-5) * std::abs(r.psi_h)) << r.zeta;
+    }
+    // Unstable side: the blend, pinned at zeta = -0.1, -1, -5, -50 (mpmath, ERF's formulas), and ERF's
+    // calc_psi_m2/calc_psi_h2; phi by the numerical derivative of that psi.
+    const Row urows[] = {
+        {-0.1, 0.28336310869192893, 0.53513129873064347, 0.78806858654634916, 0.61839727881579906},
+        {-1, 1.1226456679594171, 1.8882809525335583, 0.46464826857294017, 0.26706949856546559},
+        {-5, 2.1662698828511077, 3.1259808982560125, 0.26457943850303298, 0.18465386239021944},
+        {-50, 4.0376028880047439, 5.135011778146106, 0.12573219345306984, 0.083939696564407946}};
+    for (const Row& r : urows) {
+        const auto z = static_cast<amrex::Real>(r.zeta);
+        amrex::Real pm, ph;
+        gust::most_phi_jimenez(z, pm, ph);
+        EXPECT_NEAR(gust::most_psi_m_jimenez(z), r.psi_m, tol(1e-13, 1e-5) * std::abs(r.psi_m)) << r.zeta;
+        EXPECT_NEAR(gust::most_psi_h_jimenez(z), r.psi_h, tol(1e-13, 1e-5) * std::abs(r.psi_h)) << r.zeta;
+        EXPECT_NEAR(pm, r.phi_m, tol(1e-12, 1e-5) * r.phi_m) << r.zeta;
+        EXPECT_NEAR(ph, r.phi_h, tol(1e-12, 1e-5) * r.phi_h) << r.zeta;
+        EXPECT_NEAR(gust::most_psi_m_jimenez(z), sf.calc_psi_m2(z), tol(1e-13, 1e-5) * std::abs(r.psi_m)) << r.zeta;
+        EXPECT_NEAR(gust::most_psi_h_jimenez(z), sf.calc_psi_h2(z), tol(1e-13, 1e-5) * std::abs(r.psi_h)) << r.zeta;
+    }
+    amrex::Real pm, ph;
+    gust::most_phi_jimenez(0, pm, ph);
+    EXPECT_EQ(pm, 1);
+    EXPECT_EQ(ph, 1);
+    EXPECT_EQ(gust::most_psi_m_jimenez(0), 0);
+    EXPECT_EQ(gust::most_psi_h_jimenez(0), 0);
+}
+
+// jimenez is refused with the other stabilities (its kernels are the surface-temperature wall model's) and
+// accepted with surface_temperature.
+TEST(StabilityFunctions, JimenezOnlyWithSurfaceTemperature)
+{
+    SurfaceLayerOptions o;
+    o.stable_functions = SurfaceLayerOptions::StableFunctions::jimenez;
+    EXPECT_TRUE(mentions(gust::check_surface_layer_options(o), "jimenez is available only"));
+    o.stability = SurfaceLayerOptions::Stability::heat_flux;
+    EXPECT_TRUE(mentions(gust::check_surface_layer_options(o), "jimenez is available only"));
+    o.stability = SurfaceLayerOptions::Stability::surface_temperature;
+    o.surface_temperature = 290;
+    EXPECT_TRUE(gust::check_surface_layer_options(o).empty());
 }

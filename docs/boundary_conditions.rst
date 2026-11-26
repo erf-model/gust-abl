@@ -161,7 +161,8 @@ The two give identical results where :math:`\ln((d + z_0)/z_0) \ge 1`.
 
 **Stable functions.** ``bc.surface_stable_functions`` selects the stable side
 (:math:`\zeta = z/L > 0`) of the flux-gradient functions :math:`\phi_m, \phi_h` and their integrals
-:math:`\psi = \int_0^\zeta (1 - \phi(x))/x\,dx`. Both use one form,
+:math:`\psi = \int_0^\zeta (1 - \phi(x))/x\,dx`; ``jimenez`` also sets the unstable side (below).
+``businger_dyer`` and ``qnse`` use one form,
 
 .. math::
 
@@ -176,7 +177,25 @@ The two give identical results where :math:`\ln((d + z_0)/z_0) \ge 1`.
   :math:`a/b = 12.5` in very stable air, so the surface stress does not collapse as fast as with
   Businger–Dyer's linear :math:`\phi`.
 
-The unstable side is Businger–Dyer's with either choice. The selection applies to the wall model's
+- ``jimenez``: ERF's pair (Jiménez et al. 2012), only with ``bc.surface_stability = surface_temperature``.
+  Stable side, Cheng and Brutsaert (2005):
+
+  .. math::
+
+     \psi(\zeta) = -a\,\ln\!\left(\zeta + (1 + \zeta^b)^{1/b}\right),
+
+  with :math:`a = 6.1, b = 2.5` (momentum) and :math:`a = 5.3, b = 1.1` (heat). :math:`\phi` stays bounded
+  in very stable air, and the bulk Richardson number is bounded at 4 instead of 0.19. Unstable side,
+
+  .. math::
+
+     \psi(\zeta) = \frac{\psi_K + \zeta^2\,\psi_C}{1 + \zeta^2}, \qquad
+     \psi_C = \tfrac32 \ln\frac{y^2 + y + 1}{3} - \sqrt3\,\arctan\frac{2y + 1}{\sqrt3} + \frac{\pi}{\sqrt3},
+
+  with :math:`\psi_K` Businger–Dyer's, :math:`y = (1 - c\,\zeta)^{1/3}`, :math:`c = 10` (momentum) and 34 (heat).
+  It differs from Businger–Dyer by a few per cent for :math:`\zeta < -2`.
+
+With ``businger_dyer`` and ``qnse`` the unstable side is Businger–Dyer's. The selection applies to the wall model's
 :math:`u_*` (``bc.surface_stability = heat_flux``), the ground gradients of the ghost cells, and the stratified
 column (:ref:`stratified column <column-stability>`).
 
@@ -213,7 +232,7 @@ reference point and the ground, so the flux falls where the wind falls. The colu
    \mathrm{Ri}_b = \frac{g\,d\,(\theta_r - \theta_s)}{\theta_0\,U^2}, \qquad
    \zeta - \mathrm{Ri}_b\,\frac{c_m(\zeta)^2}{c_h(\zeta)} = 0, \qquad
    c_m = \max\left(\ln\frac{d + z_0}{z_0} - \psi_m(\zeta),\, m\right), \quad
-   c_h = \max\left(\ln\frac{d + z_0}{z_0} - \psi_h(\zeta),\, m\right),
+   c_h = \max\left(\ln\frac{d + z_0}{z_0} + kB^{-1} - \psi_h(\zeta),\, m\right),
 
 .. math::
 
@@ -228,6 +247,9 @@ reference point and the ground, so the flux falls where the wind falls. The colu
 - :math:`\psi_m, \psi_h`: Businger–Dyer (``qnse`` is refused with this ground condition); :math:`m`, :math:`U`,
   :math:`d` and :math:`z_0` as above.
 - :math:`c`: the exchange velocity (m/s) of the heat flux.
+- :math:`kB^{-1} = \ln(z_0/z_{0t})` (``bc.surface_kb_inverse``, default 0, in [0, 20]): the thermal roughness
+  :math:`z_{0t}` of the heat transfer, below the momentum roughness :math:`z_0` over most land. A larger value
+  lowers the flux at the same :math:`\theta_s - \theta_r`; 0 keeps :math:`z_{0t} = z_0`.
 
 GUST's :math:`\theta` is the virtual potential temperature :math:`\theta_v`, so :math:`\theta_s` is the ground's
 :math:`\theta_v` too (``tools/hrrr_outer.py`` writes :math:`\theta_{v,s} = T_\mathrm{skin}\,(10^5/p_s)^{0.2857}
@@ -240,8 +262,8 @@ without the bound a calm, cooled column has no root and no flux. With the bound 
 The root is bracketed in :math:`[-100, 0]` or :math:`[0, 100]` (the side of :math:`\mathrm{Ri}_b`'s sign) and found
 by Newton's method with bisection steps, to round-off, as the ``heat_flux`` solve. ERF's ``surface_temp`` mode uses the
 stability functions of Jiménez et al. instead; on the stable side the two differ by up to about 10 % at low
-wind (0.1 % on the unstable side). Thermal roughness is not modelled: :math:`z_{0h} = z_0`. Over a radiometric skin
-temperature this overestimates the flux (by a factor of about 1.7 for :math:`kB^{-1} = 2` at 5 m/s and a 6 K
+wind (0.1 % on the unstable side). With the default :math:`kB^{-1} = 0` the thermal roughness is
+:math:`z_{0h} = z_0`. Over a radiometric skin temperature this overestimates the flux (by a factor of about 1.7 for :math:`kB^{-1} = 2` at 5 m/s and a 6 K
 difference), and the bound 0.19 lies far beyond the range Businger–Dyer was fitted for (:math:`\zeta \lesssim 1`),
 so strongly stable columns are only bounded, not modelled. A bracket without a root (only
 possible at the bounds) gives its far end. At zero wind :math:`U` is still floored at 0.1 m/s, so the flux stays
@@ -269,6 +291,37 @@ deck names again: the checkpoint does not record the map. ``init.first_guess = c
 The map's interpolation is the inverse-distance-weighted mean of :math:`\theta_s` itself over the
 ``terrain.idw_neighbors`` nearest points (weight :math:`r^{-p}`, :math:`p` = ``terrain.idw_power``); a point within
 :math:`10^{-6}` m of a cell centre gives its own value, and ghost columns take the column they image.
+
+.. _surface-wstar:
+
+**Convective velocity.** ``bc.surface_wstar = beljaars`` adds the eddies of a convective boundary layer to the wall
+model's wind (Beljaars, 1995), as ERF's ``surface_flux`` and ``surface_temp`` modes do (``ERF_Wstar.H``):
+
+.. math::
+
+   w_* = \left(\frac{g}{\theta_0}\,z_i\,q\right)^{1/3} \ (q > 0), \qquad w_* = 0 \ (q \le 0), \qquad
+   U_\mathrm{eff} = \sqrt{U^2 + (\beta\,w_*)^2} .
+
+- :math:`q`: the column's kinematic heat flux (K m/s), given (``heat_flux``) or solved (``surface_temperature``).
+- :math:`z_i`: the boundary layer depth (m), from ``bc.surface_pblh`` or the map ``bc.surface_pblh_file``.
+- :math:`\beta = 1.2`: Beljaars's coefficient.
+- :math:`U`, :math:`g`, :math:`\theta_0`: as above.
+
+:math:`U_\mathrm{eff}` replaces :math:`U` in the Monin–Obukhov solve and in the drag: :math:`u_* = \kappa
+U_\mathrm{eff}/c_m` and the stress is :math:`u_*^2/U_\mathrm{eff}` times the wind, so a calm, heated column keeps
+a stress and a flux. A stable or neutral column has :math:`w_* = 0` and the numbers of a run without the key.
+
+With ``heat_flux`` :math:`U_\mathrm{eff}` is direct. With ``surface_temperature`` :math:`q` depends on
+:math:`U_\mathrm{eff}`; GUST solves the fixed point :math:`U_\mathrm{eff} = F(U_\mathrm{eff})` of each column to
+round-off, from :math:`U_\mathrm{eff} = U`. In a sweep of winds, temperature differences and depths the slope
+:math:`|F'|` at the fixed point stayed below 0.13, and 8–15 iterations reach it. Two differences from ERF: ERF lags
+:math:`q` by one step, and it uses the cell's :math:`\theta_v` where GUST uses the reference :math:`\theta_0` of
+every buoyancy term. With Businger–Dyer and the floor :math:`c_h \ge m`, :math:`q` is not monotone in the wind in
+strongly unstable, calm columns (:math:`\zeta < -1`); there :math:`w_*` raises :math:`u_*` but can lower
+:math:`q`.
+
+:math:`U_\mathrm{eff}` and :math:`z_i` are not written to the plotfile. A restart reads the map again, as the ground
+temperature map. ``tools/hrrr_outer.py``'s ``write_pblh`` writes the map from HRRR's boundary layer height.
 
 .. _roughness-map:
 

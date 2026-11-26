@@ -287,20 +287,36 @@ class HrrrField:
         f = lambda k: np.asarray(self.d[k], float).ravel()
         return f("sfc_t") * (1e5 / f("sfc_sp")) ** KAPPA_P * (1.0 + 0.61 * f("sfc_sh2"))
 
+    def pblh(self):
+        """Per column, HRRR's boundary layer height z_i (HPBL, m above ground): the depth in Beljaars's convective
+        velocity w* = (g / theta_0 z_i q)^(1/3) (bc.surface_wstar = beljaars)."""
+        if "sfc_blh" not in self.d:
+            raise HrrrOuterError(f"{self.label}: the crop has no boundary layer height (sfc_blh); fetch it again "
+                                 "with 'hrrr_outer.py fetch'")
+        return np.asarray(self.d["sfc_blh"], float).ravel()
+
+    def write_pblh(self, path, half, lo=10.0, hi=10000.0):
+        """Write the columns within half (m) of the centre as 'x y z_i' lines (bc.surface_pblh_file); returns
+        (count, min, max, mean). A value outside [lo, hi] m (bc.surface_pblh's range) refuses the hour."""
+        return self._write_column_map(path, half, self.pblh(), "boundary layer height", "m", lo, hi, "{:.1f}")
+
+    def _write_column_map(self, path, half, values, what, unit, lo, hi, fmt):
+        m = self.box(half)
+        if not m.any():
+            raise HrrrOuterError(f"{self.label}: no HRRR column within {half:.0f} m of the centre")
+        v = values[m]
+        if not (np.isfinite(v).all() and (v >= lo).all() and (v <= hi).all()):
+            raise HrrrOuterError(f"{self.label}: the {what} ({np.nanmin(v):.2f} to {np.nanmax(v):.2f} {unit}) "
+                                 f"must be finite and in [{lo:g}, {hi:g}] {unit}")
+        with open(path, "w") as out:
+            for x, y, t in zip(self.X.ravel()[m], self.Y.ravel()[m], v):
+                out.write(f"{x:.2f} {y:.2f} {fmt.format(t)}\n")
+        return int(m.sum()), float(v.min()), float(v.max()), float(v.mean())
+
     def write_surface_theta(self, path, half, lo=150.0, hi=350.0):
         """Write the columns within half (m) of the centre as 'x y theta_v,s' lines (bc.surface_temperature_file);
         returns (count, min, max, mean). A value outside [lo, hi] K refuses the hour."""
-        m = self.box(half)
-        th = self.surface_theta()[m]
-        if not m.any():
-            raise HrrrOuterError(f"{self.label}: no HRRR column within {half:.0f} m of the centre")
-        if not (np.isfinite(th).all() and (th >= lo).all() and (th <= hi).all()):
-            raise HrrrOuterError(f"{self.label}: the skin theta_v ({np.nanmin(th):.2f} to {np.nanmax(th):.2f} K) "
-                                 f"must be finite and in [{lo:g}, {hi:g}] K")
-        with open(path, "w") as out:
-            for x, y, t in zip(self.X.ravel()[m], self.Y.ravel()[m], th):
-                out.write(f"{x:.2f} {y:.2f} {t:.3f}\n")
-        return int(m.sum()), float(th.min()), float(th.max()), float(th.mean())
+        return self._write_column_map(path, half, self.surface_theta(), "skin theta_v", "K", lo, hi, "{:.3f}")
 
 
 # ---------------------------------------------------------------------------------------------------- checkpoints

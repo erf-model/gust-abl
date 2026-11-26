@@ -492,6 +492,35 @@ class Forcing(unittest.TestCase):
                 ho.HrrrField(d, LAT0, LON0).write_surface_theta(os.path.join(tmp, "t.xyz"), 10000.0)
             self.assertFalse(os.path.exists(os.path.join(tmp, "t.xyz")))
 
+    def test_pblh_map(self):
+        """'x y z_i' lines of HRRR's HPBL within the half-width, values as given; refused without sfc_blh and
+        outside [10, 10000] m (bc.surface_pblh's range). Mutant: the range check dropped."""
+        d = crop()
+        fld = ho.HrrrField(d, LAT0, LON0)
+        d.pop("sfc_blh", None)
+        with self.assertRaisesRegex(ho.HrrrOuterError, r"no boundary layer height \(sfc_blh\)"):
+            ho.HrrrField(d, LAT0, LON0).pblh()
+        one = np.ones_like(d["sfc_orog"])
+        zi = 800.0 + np.arange(one.size).reshape(one.shape)
+        d["sfc_blh"] = zi
+        fld = ho.HrrrField(d, LAT0, LON0)
+        with tempfile.TemporaryDirectory(prefix="ut_hrrr_pblh_") as tmp:
+            path = os.path.join(tmp, "z.xyz")
+            n, lo, hi, _ = fld.write_pblh(path, 10000.0)
+            rows = np.loadtxt(path, ndmin=2)
+            self.assertEqual(rows.shape, (n, 3))
+            m = fld.box(10000.0)
+            np.testing.assert_allclose(rows[:, 2], zi.ravel()[m], atol=0.05)
+            np.testing.assert_allclose(rows[:, 0], fld.X.ravel()[m], atol=0.005)
+            self.assertEqual((lo, hi), (zi.ravel()[m].min(), zi.ravel()[m].max()))
+            for bad in (5.0, 2e4, np.nan):
+                d["sfc_blh"] = zi.copy()
+                d["sfc_blh"].ravel()[np.nonzero(m)[0][0]] = bad
+                os.remove(path) if os.path.exists(path) else None
+                with self.assertRaisesRegex(ho.HrrrOuterError, r"must be finite and in \[10, 10000\] m"):
+                    ho.HrrrField(d, LAT0, LON0).write_pblh(path, 10000.0)
+                self.assertFalse(os.path.exists(path))
+
 
 class Top(unittest.TestCase):
     def test_top_refusals(self):

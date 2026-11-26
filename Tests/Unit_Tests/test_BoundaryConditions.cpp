@@ -828,7 +828,10 @@ TEST(BoundaryFill, NarrowDomainFillsTheLowFaceFirst)
 // difference of u and v across the first cell centre equals the wall law's
 // gradient u*/(kappa (d0 + z0)) along the tangential wind, and theta's equals
 // -q/(kappa u* (d0 + z0)); k is even. Both stable sides: Businger-Dyer and
-// QNSE (bc.surface_stable_functions). The homogeneous fill gives a zero
+// QNSE (bc.surface_stable_functions), and the Jimenez pair over a 2 K cooler
+// ground (bc.surface_stability = surface_temperature, bc.surface_stable_functions
+// = jimenez: phi from a numerical derivative of ERF's calc_psi_m2/calc_psi_h2,
+// q per column). The homogeneous fill gives a zero
 // gradient (the ghost equals the mirrored interior point), no-flux w of the
 // perturbation on the ground, and keeps k even.
 TEST(BoundaryFill, GroundGradientIsTheWallLaw)
@@ -843,7 +846,8 @@ TEST(BoundaryFill, GroundGradientIsTheWallLaw)
     }
     BoundaryInputs in;
     BoundaryConditions bc(in, c.geom, c.mesh, kNoCoriolis);
-    for (const bool qnse : {false, true}) {
+    for (const int mode : {0, 1, 2}) {   // 0 Businger-Dyer, 1 QNSE, 2 Jimenez (surface temperature)
+        const bool qnse = (mode == 1), jim = (mode == 2);
         q.theta.setVal(300.0);
         q.tke.setVal(0.3);
         q.p.setVal(0.0);
@@ -853,6 +857,12 @@ TEST(BoundaryFill, GroundGradientIsTheWallLaw)
         so.stability = gust::SurfaceLayerOptions::Stability::heat_flux;
         so.heat_flux = amrex::Real(-0.004);   // weak enough that every column has a MOST solution
         if (qnse) { so.stable_functions = gust::SurfaceLayerOptions::StableFunctions::qnse; }
+        if (jim) {
+            so.stability = gust::SurfaceLayerOptions::Stability::surface_temperature;
+            so.heat_flux = 0;
+            so.surface_temperature = 298;
+            so.stable_functions = gust::SurfaceLayerOptions::StableFunctions::jimenez;
+        }
         gust::SurfaceState s;
         bc.fill_ghosts(q, &so, kBuoy, false, &s);
         // The fill covers the two lateral ghost columns too (periodic images and
@@ -867,6 +877,8 @@ TEST(BoundaryFill, GroundGradientIsTheWallLaw)
         d02.ParallelCopy(s.d0, 0, 0, 1, amrex::IntVect(0), ng2, c.geom.periodicity());
         il2.ParallelCopy(s.inv_L, 0, 0, 1, amrex::IntVect(0), ng2, c.geom.periodicity());
         ta2.ParallelCopy(s.tau, 0, 0, 3, amrex::IntVect(0), ng2, c.geom.periodicity());
+        amrex::MultiFab qf2(s.ustar.boxArray(), s.ustar.DistributionMap(), 1, ng2);
+        qf2.ParallelCopy(s.qflux, 0, 0, 1, amrex::IntVect(0), ng2, c.geom.periodicity());
         // The node heights of those columns (three lateral ghost nodes, the
         // periodic images; the fab's own have one): the fill gives each ghost
         // column the value of the box that owns it, at its own heights.
@@ -875,13 +887,29 @@ TEST(BoundaryFill, GroundGradientIsTheWallLaw)
         const similarity_funs sfuns;   // MOST's phi_m, phi_h (ERF's; its branches are
         // both evaluated by the compiler, so the invalid trap is off while they are called).
         // QNSE (bc.surface_stable_functions = qnse) on this stable side: (1 + 2.5 zeta)/(1 + 0.2 zeta), written out.
-        auto phi_m = [&] (double zt) { return qnse ? (1 + 2.5 * zt) / (1 + 0.2 * zt) : double(sfuns.calc_phi_m(static_cast<amrex::Real>(zt))); };
-        auto phi_h = [&] (double zt) { return qnse ? (1 + 2.5 * zt) / (1 + 0.2 * zt) : double(sfuns.calc_phi_h(static_cast<amrex::Real>(zt))); };
+        // Jimenez: phi = 1 - zeta psi', psi' a centred difference of ERF's psi (h = 1e-5 zeta: error ~1e-10).
+        auto jphi = [&] (double zt, bool heat) {
+            const double h = 1e-5 * std::max(std::abs(zt), 1e-3);
+            auto ps = [&] (double x) {
+                const auto r = static_cast<amrex::Real>(x);
+                return double(heat ? sfuns.calc_psi_h2(r) : sfuns.calc_psi_m2(r));
+            };
+            return 1 - zt * (ps(zt + h) - ps(zt - h)) / (2 * h);
+        };
+        auto phi_m = [&] (double zt) {
+            if (jim) { return jphi(zt, false); }
+            return qnse ? (1 + 2.5 * zt) / (1 + 0.2 * zt) : double(sfuns.calc_phi_m(static_cast<amrex::Real>(zt)));
+        };
+        auto phi_h = [&] (double zt) {
+            if (jim) { return jphi(zt, true); }
+            return qnse ? (1 + 2.5 * zt) / (1 + 0.2 * zt) : double(sfuns.calc_phi_h(static_cast<amrex::Real>(zt)));
+        };
         const auto prev_fpe = amrex::disableFPExcept(amrex::FPExcept::invalid);
         for (amrex::MFIter mfi(q.p, false); mfi.isValid(); ++mfi) {
             const auto z = host_copy(z3, mfi);
             const auto u = host_copy(q.u, mfi), v = host_copy(q.v, mfi), t = host_copy(q.theta, mfi), k = host_copy(q.tke, mfi);
             const auto us = host_copy(us2, mfi), d0 = host_copy(d02, mfi), ta = host_copy(ta2, mfi), il = host_copy(il2, mfi);
+            const auto qf = host_copy(qf2, mfi);
             amrex::Box gb = mfi.validbox();
             gb.grow(ng2);
             gb.setBig(2, 0);
@@ -911,18 +939,19 @@ TEST(BoundaryFill, GroundGradientIsTheWallLaw)
                 const bool has_u = (i > gb.smallEnd(0)), has_v = (j > gb.smallEnd(1));
                 const double gu = has_u ? 0.5 * (wall(i - 1, j) * dir(i - 1, j, 0) + wall(i, j) * dir(i, j, 0)) : 0;
                 const double gv = has_v ? 0.5 * (wall(i, j - 1) * dir(i, j - 1, 1) + wall(i, j) * dir(i, j, 1)) : 0;
-                if (has_u) { EXPECT_NEAR(grad_of(u, 1), gu, tol(1e-12, 1e-4) * (1 + std::abs(gu))); }
-                if (has_v) { EXPECT_NEAR(grad_of(v, 2), gv, tol(1e-12, 1e-4) * (1 + std::abs(gv))); }
-                const double gt = 0.004 / (0.41 * us(amrex::IntVect(i, j, 0)) * (d0(amrex::IntVect(i, j, 0)) + 0.1))
+                if (has_u) { EXPECT_NEAR(grad_of(u, 1), gu, tol(jim ? 1e-9 : 1e-12, 1e-4) * (1 + std::abs(gu))); }
+                if (has_v) { EXPECT_NEAR(grad_of(v, 2), gv, tol(jim ? 1e-9 : 1e-12, 1e-4) * (1 + std::abs(gv))); }
+                const double gt = -double(qf(amrex::IntVect(i, j, 0)))
+                                  / (0.41 * us(amrex::IntVect(i, j, 0)) * (d0(amrex::IntVect(i, j, 0)) + 0.1))
                                   * phi_h(zeta(i, j));
                 EXPECT_GT(zeta(i, j), 0.0);   // stable: phi_h > 1 here, so the factor is tested
                 // theta ~ 300 K: a float resolves 3e-5 K, 2e-4 of this gradient over a layer.
-                EXPECT_NEAR(grad_of(t, 0), gt, tol(1e-12, 2e-3) * gt);
+                EXPECT_NEAR(grad_of(t, 0), gt, tol(jim ? 1e-9 : 1e-12, 2e-3) * gt);   // jim: phi by finite difference, ~1e-10
                 EXPECT_EQ(k(amrex::IntVect(i, j, -1)), k(amrex::IntVect(i, j, 0)));
                 EXPECT_EQ(k(amrex::IntVect(i, j, -2)), k(amrex::IntVect(i, j, 1)));
                 // The second layer continues the same slope.
                 const double z1 = node_mean(z, 1, i, j, -1), z2 = node_mean(z, 1, i, j, -2);
-                if (has_u) { EXPECT_NEAR((double(u(amrex::IntVect(i, j, -1))) - u(amrex::IntVect(i, j, -2))) / (z1 - z2), gu, tol(1e-12, 1e-4) * (1 + std::abs(gu))); }
+                if (has_u) { EXPECT_NEAR((double(u(amrex::IntVect(i, j, -1))) - u(amrex::IntVect(i, j, -2))) / (z1 - z2), gu, tol(jim ? 1e-9 : 1e-12, 1e-4) * (1 + std::abs(gu))); }
             });
         }
         std::feclearexcept(FE_ALL_EXCEPT);

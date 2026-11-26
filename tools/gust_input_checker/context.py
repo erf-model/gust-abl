@@ -23,7 +23,8 @@ OWNED = ("mesh", "terrain", "init", "turb", "bc", "steady", "solver", "io", "for
          "canopy", "buildings", "abl", "unsteady", "nest")
 AMREX = ("amrex", "fab", "fabarray", "vismf", "tiny_profiler", "DistributionMapping", "device", "hypre")
 SURFACE_KEYS = ("surface_z0", "surface_z0_file", "surface_zref", "surface_stability", "surface_heat_flux",
-                "surface_temperature", "surface_temperature_file",
+                "surface_temperature", "surface_temperature_file", "surface_kb_inverse",
+                "surface_wstar", "surface_pblh", "surface_pblh_file",
                 "surface_wall_k", "surface_denominator_floor", "surface_stable_functions", "surface_qnse_am",
                 "surface_qnse_bm", "surface_qnse_ah", "surface_qnse_bh")
 NEWTON_KEYS = ("newton_gmres_restart", "newton_gmres_max_iters", "newton_fd_eps_scale", "newton_krylov_rtol",

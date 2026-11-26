@@ -95,14 +95,14 @@ void require_surface_state_of (const State& q, const ResidualInputs& in, const M
     SurfaceState fresh;
     compute_surface_state(q, *in.surface, in.buoyancy, mesh, geom, fresh);
     const char* names[] = {"ustar", "speed", "zref", "d0", "inv_L", "tau", "drag", "kwall", "area", "qflux", "heat_coef",
-                           "theta_s"};
+                           "theta_s", "pblh"};
     const amrex::MultiFab* a[] = {&fresh.ustar, &fresh.speed, &fresh.zref, &fresh.d0, &fresh.inv_L,
                                   &fresh.tau, &fresh.drag, &fresh.kwall, &fresh.area, &fresh.qflux, &fresh.heat_coef,
-                                  &fresh.theta_s};
+                                  &fresh.theta_s, &fresh.pblh};
     const amrex::MultiFab* b[] = {&given.ustar, &given.speed, &given.zref, &given.d0, &given.inv_L,
                                   &given.tau, &given.drag, &given.kwall, &given.area, &given.qflux, &given.heat_coef,
-                                  &given.theta_s};
-    for (int n = 0; n < 12; ++n) {
+                                  &given.theta_s, &given.pblh};
+    for (int n = 0; n < 13; ++n) {
         if (b[n]->boxArray() != a[n]->boxArray() || b[n]->DistributionMap() != a[n]->DistributionMap()) {
             amrex::Abort(std::string("gust: residual: the given surface state is not on q's layout (") + names[n] + ")");
         }

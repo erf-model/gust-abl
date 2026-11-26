@@ -330,9 +330,35 @@ CASES = [
      ["E bc.surface_temperature values"], []),
     ("surface_temperature_missing", "solve", "bc.surface_stability = surface_temperature\n",
      ["E bc.surface_stability surface"], []),
+    ("surface_kb_inverse_ok", "solve", "bc.surface_stability = surface_temperature\nbc.surface_temperature = 290\n"
+     "bc.surface_kb_inverse = 2\n", [], ["E bc.surface_kb_inverse"]),
+    ("surface_kb_inverse_range", "solve", "bc.surface_stability = surface_temperature\nbc.surface_temperature = 290\n"
+     "bc.surface_kb_inverse = 25\n", ["E bc.surface_kb_inverse values"], []),
+    ("surface_kb_inverse_neutral", "solve", "bc.surface_kb_inverse = 2\n", ["E bc.surface_kb_inverse surface"], []),
+    ("surface_wstar_ok", "solve", "bc.surface_stability = surface_temperature\nbc.surface_temperature = 290\n"
+     "bc.surface_wstar = beljaars\nbc.surface_pblh = 800\n", [], ["E bc.surface_wstar", "E bc.surface_pblh"]),
+    ("surface_wstar_flux_ok", "solve", "bc.surface_stability = heat_flux\nbc.surface_heat_flux = 0.1\n"
+     "bc.surface_wstar = beljaars\nbc.surface_pblh = 800\n", [], ["E bc.surface_wstar", "E bc.surface_pblh"]),
+    ("surface_wstar_neutral", "solve", "bc.surface_wstar = beljaars\nbc.surface_pblh = 800\n",
+     ["E bc.surface_wstar surface"], []),
+    ("surface_wstar_downward", "solve", "bc.surface_stability = heat_flux\nbc.surface_heat_flux = -0.02\n"
+     "bc.surface_wstar = beljaars\nbc.surface_pblh = 800\n", ["E bc.surface_wstar surface"], []),
+    ("surface_wstar_no_depth", "solve", "bc.surface_stability = surface_temperature\nbc.surface_temperature = 290\n"
+     "bc.surface_wstar = beljaars\n", ["E bc.surface_wstar surface"], []),
+    ("surface_wstar_two_depths", "solve", "bc.surface_stability = surface_temperature\nbc.surface_temperature = 290\n"
+     "bc.surface_wstar = beljaars\nbc.surface_pblh = 800\nbc.surface_pblh_file = zi.xyz\n",
+     ["E bc.surface_pblh_file surface"], []),
+    ("surface_pblh_range", "solve", "bc.surface_stability = surface_temperature\nbc.surface_temperature = 290\n"
+     "bc.surface_wstar = beljaars\nbc.surface_pblh = 5\n", ["E bc.surface_pblh values"], []),
+    ("surface_pblh_no_wstar", "solve", "bc.surface_stability = surface_temperature\nbc.surface_temperature = 290\n"
+     "bc.surface_pblh = 800\n", ["E bc.surface_pblh surface"], []),
     ("surface_temperature_neutral", "solve", "bc.surface_temperature = 290\n", ["E bc.surface_temperature surface"], []),
     ("surface_temperature_qnse", "solve", "bc.surface_stability = surface_temperature\nbc.surface_temperature = 290\n"
      "bc.surface_stable_functions = qnse\n", ["E bc.surface_stable_functions surface"], []),
+    ("surface_temperature_jimenez", "solve", "bc.surface_stability = surface_temperature\nbc.surface_temperature = 290\n"
+     "bc.surface_stable_functions = jimenez\n", [], ["E bc.surface_stable_functions"]),
+    ("surface_jimenez_flux", "solve", "bc.surface_heat_flux = 0.02\nbc.surface_stability = surface_flux\n"
+     "bc.surface_stable_functions = jimenez\n", ["E bc.surface_stable_functions surface"], []),
     ("surface_temperature_abl_flux", "solve", "bc.surface_stability = surface_temperature\nbc.surface_temperature = 290\nabl.theta = surface_flux\nbc.rayleigh_zdamp = 700\n"
      "bc.rayleigh_dampcoef = 0.01\nbc.rayleigh_fields = w theta\n", [], ["E bc.surface_stability", "E bc.surface_heat_flux"]),
     ("surface_temperature_abl_capped", "solve", "bc.surface_stability = surface_temperature\nbc.surface_temperature = 290\nabl.theta = capped\n", ["E bc.surface_stability"], []),

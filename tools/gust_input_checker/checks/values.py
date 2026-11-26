@@ -115,9 +115,13 @@ bc.surface_stability neutral,heat_flux,surface_temperature 1
 bc.surface_heat_flux real 1
 bc.surface_temperature real 1 >=150&<=350
 bc.surface_temperature_file str 1
+bc.surface_kb_inverse real 1 >=0&<=20
+bc.surface_wstar none,beljaars 1
+bc.surface_pblh real 1 >=10&<=10000
+bc.surface_pblh_file str 1
 bc.surface_wall_k dirichlet,source 1
 bc.surface_denominator_floor log_law,one 1
-bc.surface_stable_functions businger_dyer,qnse 1
+bc.surface_stable_functions businger_dyer,qnse,jimenez 1
 bc.surface_qnse_am real 1
 bc.surface_qnse_bm real 1
 bc.surface_qnse_ah real 1

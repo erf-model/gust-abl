@@ -222,12 +222,13 @@ class TerrainChecker(Checker):
             for key in ("terrain.hill_height", "terrain.hill_half_width", "terrain.hill_shape"):
                 self.no_effect(key, "with terrain.type = %s" % t)
         points = (t == "xyz" or (c.reads_bc and (self.given("bc.surface_z0_file")
-                                                  or self.given("bc.surface_temperature_file")))
+                                                  or self.given("bc.surface_temperature_file")
+                                                  or self.given("bc.surface_pblh_file")))
                   or c.s("canopy.type") == "map")
         if not points and t in ("flat", "agnesi", "erf_grid"):
             for key in ("terrain.idw_neighbors", "terrain.idw_power"):
                 self.no_effect(key, "without points to interpolate (terrain.type = xyz, bc.surface_z0_file, "
-                                    "bc.surface_temperature_file or canopy.type = map)")
+                                    "bc.surface_temperature_file, bc.surface_pblh_file or canopy.type = map)")
 
 
 @register

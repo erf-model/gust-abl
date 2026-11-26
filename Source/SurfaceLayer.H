@@ -42,6 +42,12 @@
 //   kept inside the bracket [-100, 0] or [0, 100]. The bound on Ri_b keeps
 //   q finite and the stable root real at low wind (Businger-Dyer has no
 //   stable root for Ri_b >= 0.2). The flux therefore falls where the wind falls.
+// - bc.surface_wstar = beljaars (heat_flux with q > 0, or surface_temperature):
+//   U is replaced by Beljaars's (1995) U_eff = sqrt(U^2 + (1.2 w*)^2),
+//   w* = (g z_i q / theta_0)^(1/3) for q > 0 (SurfaceWstar_K.H, as ERF), in the
+//   solve and in the stress (u*^2 U_t / U_eff); z_i is bc.surface_pblh or the
+//   map of bc.surface_pblh_file. With surface_temperature q depends on U_eff:
+//   the column's fixed point is found to round-off.
 // A column whose solve fails, or gives u* <= 0, stops the run.
 //
 // The reference height: the default is each column's first cell centre.
@@ -145,17 +151,34 @@ struct SurfaceLayerOptions
     amrex::Real surface_temperature{0};
     //! bc.surface_temperature_file: a file of "x y theta_s" points (SurfaceTemperature.H; empty: the uniform value).
     std::string surface_temperature_file;
+    //! bc.surface_kb_inverse: kB^-1 = ln(z0 / z0t), the heat's roughness length z0t = z0 exp(-kB^-1) in the MOST solve
+    //! of surface_temperature only (0: z0t = z0, the form before the input; at most kKbInverseMax).
+    amrex::Real kb_inverse{0};
     //! The level's theta_s map from surface_temperature_file (null: the uniform value); set by the level that owns
     //! it (LevelSolver), on the surface state's layout.
     const amrex::MultiFab* theta_s_map{nullptr};
+    //! bc.surface_wstar: Beljaars's convective velocity in the column's wind (SurfaceWstar_K.H), U_eff =
+    //! sqrt(U^2 + (1.2 w*)^2) with w* = (g / theta_0 z_i q)^(1/3) for q > 0; heat_flux (q > 0) and surface_temperature
+    //! only. none: U_eff = U (the form before the input).
+    enum class Wstar { none, beljaars };
+    Wstar wstar{Wstar::none};
+    //! bc.surface_pblh: the boundary layer's depth z_i (m) of every column when pblh_map is null; beljaars only
+    //! (0: not given; else in [kPblhMin, kPblhMax]).
+    amrex::Real pblh{0};
+    //! bc.surface_pblh_file: a file of "x y z_i" points (SurfaceTemperature.H's reader; empty: the uniform value).
+    std::string pblh_file;
+    //! The level's z_i map from pblh_file (null: the uniform value); set by the level that owns it (LevelSolver), on
+    //! the surface state's layout.
+    const amrex::MultiFab* pblh_map{nullptr};
     WallK wall_k{WallK::dirichlet};
     DenominatorFloor denominator_floor{DenominatorFloor::log_law};
     //! Axell's Cmu0 (> 0), ERF's default.
     amrex::Real Cmu0{amrex::Real(0.5562)};
     //! von Karman constant (> 0), ERF's KAPPA.
     amrex::Real kappa{amrex::Real(0.41)};
-    //! The stable side of the stability functions (StabilityFunctions.H): Businger-Dyer or QNSE.
-    enum class StableFunctions { businger_dyer, qnse };
+    //! The stable side of the stability functions (StabilityFunctions.H): Businger-Dyer, QNSE, or Cheng-Brutsaert
+    //! (surface_temperature only; its own kernels, so stable_coefficients() does not carry it).
+    enum class StableFunctions { businger_dyer, qnse, jimenez };
     StableFunctions stable_functions{StableFunctions::businger_dyer};
     //! QNSE's coefficients (qnse only): b > 0, a >= b; ERF's defaults.
     amrex::Real qnse_am{amrex::Real(2.5)}, qnse_bm{amrex::Real(0.2)};
@@ -181,9 +204,10 @@ inline Roughness ground_roughness (const SurfaceLayerOptions* opt)
 
 //! Read the ground's keys, bc.surface_z0 or bc.surface_z0_file (not both), bc.surface_zref,
 //! bc.surface_stability (neutral | heat_flux | surface_temperature), bc.surface_heat_flux,
-//! bc.surface_temperature or bc.surface_temperature_file (not both), and
+//! bc.surface_temperature or bc.surface_temperature_file (not both), bc.surface_kb_inverse,
+//! bc.surface_wstar (none | beljaars) with bc.surface_pblh or bc.surface_pblh_file (not both), and
 //! bc.surface_wall_k (dirichlet | source), bc.surface_denominator_floor
-//! (log_law | one), bc.surface_stable_functions (businger_dyer | qnse) and
+//! (log_law | one), bc.surface_stable_functions (businger_dyer | qnse | jimenez) and
 //! bc.surface_qnse_am, _bm, _ah, _bh, and range-check them; aborts
 //! naming the key. Cmu0 and kappa stay the closure's (Closure.H).
 SurfaceLayerOptions read_surface_layer_options ();
@@ -194,7 +218,7 @@ SurfaceLayerOptions read_surface_layer_options ();
 struct SurfaceState
 {
     amrex::MultiFab ustar;   //!< u* (m/s)
-    amrex::MultiFab speed;   //!< U = max(|U_t|, 0.1) at the reference height (m/s)
+    amrex::MultiFab speed;   //!< U = max(|U_t|, 0.1) at the reference height (m/s); U_eff with bc.surface_wstar = beljaars
     amrex::MultiFab zref;    //!< reference height above the ground, vertical (m)
     amrex::MultiFab d0;      //!< normal distance of the first cell centre (m)
     amrex::MultiFab inv_L;   //!< 1/L (1/m)
@@ -207,6 +231,7 @@ struct SurfaceState
                                 //!< the reference point in the first interval (f its weight; 1 - f = 1 at the first centre),
                                 //!< 0 above it; 0 unless surface_temperature
     amrex::MultiFab theta_s; //!< the ground's theta_s (K) with surface_temperature, else 0
+    amrex::MultiFab pblh;    //!< the boundary layer's depth z_i (m) with bc.surface_wstar = beljaars, else 0
     //! Some column's reference interval ends at the top cell, so the state
     //! read the top w face (a z_ref between the last two cell centres, or a
     //! mesh of two layers). The ghost fill writes that face after the wall
