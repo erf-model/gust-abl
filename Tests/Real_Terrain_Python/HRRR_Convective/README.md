@@ -17,7 +17,7 @@ comparison with the AWAKEN observations, and none are used.
 | `prepare.py` | Downloads `awaken.asc` (`tools/fetch_terrain.py`, 36.05–36.68 N, 97.80–97.01 W) and the crops of the six hours below (`tools/hrrr_outer.py fetch`, 45 km half-width); `--neighbours` adds the hours before and after, for the classifier. |
 | `options.py` | Writes the chain of each hour and its nest options, and `run_options.sh`, which runs them one at a time and scores each nest. |
 | `score_options.py` | The score table of the options (Markdown). |
-| `check_convective.py` | The test deck: the hour may10_19 with the recommended option, checked against the numbers of November 2026 (CTest `rt_hrrr_convective`). |
+| `check_convective.py` | The test deck: the hour may10_19 with frozen_buoyant (the C1 option of #161), checked against the numbers of November 2026 (CTest `rt_hrrr_convective`). |
 
 The hours (valid time, UTC; each is forecast hour 1 of the cycle an hour before). q is HRRR's kinematic virtual heat
 flux at the ground and z_i its boundary-layer height, both means over the nest.
@@ -45,6 +45,9 @@ The options (each changes only the nest, so all share the chain's parent):
 | frozen_buoyant_tsurf | frozen_buoyant | HRRR's skin temperature |
 | solved_tsurf | solved | HRRR's skin temperature (at most 2000 iterations) |
 | solved_flux_l200 | solved | HRRR's heat flux, with the length-scale cap at 200 m (`turb.max_geom_lscale = 200`; the scheme's is 100 m) |
+| frozen_buoyant_l200 | `simplec.theta = frozen_buoyant` | neutral, with the length-scale cap at 200 m |
+| `<tsurf option>_kb2` | as frozen_tsurf, frozen_buoyant_tsurf, solved_tsurf | the same, with `bc.surface_kb_inverse = 2` |
+| `<tsurf option>_all` | as frozen_tsurf, frozen_buoyant_tsurf, solved_tsurf | the same, with `bc.surface_kb_inverse = 2`, `bc.surface_stable_functions = jimenez` and `bc.surface_wstar = beljaars` with HRRR's boundary-layer height (`bc.surface_pblh_file = pblh.xyz`) |
 | relaxed_flux_T | `simplec.theta = relaxed_buoyant`, `simplec.theta_relax_time = T` (θ solved and relaxed towards the parent's over T s; buoyancy in w), T = 300, 1000, 3000 | HRRR's heat flux (at most 2000 iterations) |
 
 The three `_tsurf` options read `surface_theta.xyz`, which `options.py` writes into each of their folders: HRRR's
@@ -85,7 +88,8 @@ The nine relaxed_flux runs per class add about another four hours, most of it τ
 hours.
 
 ## Expected Results
-2026-11-25, 4 ranks. Vector rms (m/s) of the nest minus HRRR below 500 m above the ground (`score_options.py` prints
+2026-11-25, 4 ranks (the `_kb2`, `_all` and `frozen_buoyant_l200` rows: 2026-11-26, 8 ranks). Vector rms (m/s) of
+the nest minus HRRR below 500 m above the ground (`score_options.py` prints
 the full table, with bias, rms, direction, the mean speed bias from 5 to 50 m (`bias 5-50`), w, k and iterations):
 
 | Option | may10_19 | may10_20 | may10_21 | apr02_18 | apr04_18 | apr19_21 |
@@ -93,18 +97,25 @@ the full table, with bias, rms, direction, the mean speed bias from 5 to 50 m (`
 | scheme | 0.94 | 0.58 | 1.12 | 1.39 | 1.61 | 1.25 |
 | frozen | 0.78 | 0.48 | 0.82 | 1.50 | 1.58 | 1.15 |
 | frozen_flux | 0.88 | 0.58 | 0.92 | 1.57 | 1.64 | 1.19 |
-| **frozen_buoyant** | **0.54** | **0.36** | **0.60** | 1.67 | 1.41 | 1.29 |
+| frozen_buoyant | 0.54 | **0.36** | 0.60 | 1.67 | 1.41 | 1.29 |
+| **frozen_buoyant_l200** | **0.40** | 0.37 | **0.52** | 1.50 | 1.12 | 0.88 |
 | frozen_buoyant_flux | 0.63 | 0.38 | 0.63 | 1.72 | 1.46 | 1.33 |
 | solved_flux | 1.93 (not steady) | 1.48 (not steady) | 1.00 (not steady) | 1.00 | 1.30 | 0.90 |
 | frozen_tsurf | 0.90 | 0.60 | 0.93 | 1.59 | 1.65 | 1.20 |
 | frozen_buoyant_tsurf | 0.65 | 0.39 | 0.64 | 1.73 | 1.48 | 1.34 |
 | solved_tsurf | 1.87 (not steady) | 1.57 (not steady) | 1.22 | 0.98 | 1.27 | 0.91 |
+| frozen_tsurf_kb2 | 0.86 | 0.56 | 0.90 | 1.56 | 1.63 | 1.19 |
+| frozen_buoyant_tsurf_kb2 | 0.61 | 0.38 | 0.62 | 1.71 | 1.46 | 1.32 |
+| solved_tsurf_kb2 | 1.46 (not steady) | 1.24 (not steady) | — | — | — | — |
+| frozen_tsurf_all | 0.93 | — | — | — | — | — |
+| frozen_buoyant_tsurf_all | 0.68 | — | — | — | — | — |
+| solved_tsurf_all | 1.52 (not steady) | — | — | — | — | — |
 | **solved_flux_l200** | 1.57 | 1.10 | 0.70 | **0.79** | **1.08** | **0.60** |
 | relaxed_flux_300 | 0.70 | 0.37 | 0.58 | 1.12 | 1.35 | 1.12 |
 | relaxed_flux_1000 | 1.02 (not steady) | 0.93 | 0.85 | 1.05 | 1.29 | 0.98 |
 | relaxed_flux_3000 | 1.45 (not steady) | 1.21 (not steady) | 0.94 (not steady) | 1.02 | 1.28 | 0.92 |
 
-- **frozen_buoyant is the recommended option for C1 hours** (0.12 to 0.24 m/s below frozen, 0.22 to 0.52 m/s below
+- frozen_buoyant was the recommended option for C1 hours in #161 (0.12 to 0.24 m/s below frozen, 0.22 to 0.52 m/s below
   the scheme, in each hour). The gain is mostly in speed: the speed bias below 500 m goes from −0.57, −0.36, −0.72
   m/s (frozen) to −0.36, +0.13, −0.06 m/s.
 - Its w is about twice HRRR's (rms 0.065 to 0.077 against 0.026 to 0.038 m/s), most of it in the upper half of
@@ -141,8 +152,8 @@ the full table, with bias, rms, direction, the mean speed bias from 5 to 50 m (`
 - relaxed_flux_300 is steady in the three C1 hours (401, 247 and 219 iterations, against 194, 179 and 166 for
   frozen_buoyant). Its error is within 0.02 m/s of frozen_buoyant in may10_20 and may10_21 and 0.16 m/s higher in
   may10_19, where w reaches 2.8 m/s (rms 0.27 m/s). It does not lower the error near the ground: the bias from 5
-  to 50 m is −0.58, −0.35, −0.56 m/s (frozen_buoyant −0.56, −0.24, −0.43). frozen_buoyant stays the recommended C1
-  option.
+  to 50 m is −0.58, −0.35, −0.56 m/s (frozen_buoyant −0.56, −0.24, −0.43). It stays above frozen_buoyant
+  as a C1 option.
 - A longer τ moves the answer towards solved_flux. In the C1 hours that brings steady updrafts: w max 3.4 to 4.5
   m/s at τ = 1000 s and 4.4 to 5.1 m/s at τ = 3000 s, against 0.45 with frozen_buoyant and 4.9 to 6.6 with
   solved_flux; the vector error rises with it. τ = 1000 s removes the slow bias near the ground in may10_19 and
@@ -152,6 +163,20 @@ the full table, with bias, rms, direction, the mean speed bias from 5 to 50 m (`
   solved_flux_l200 is lower than every τ in the C2 hours (0.79, 1.08, 0.60 m/s) and is the recommended C2
   option. In apr02_18, where frozen_buoyant reaches w = 4.2 m/s, τ = 300 s
   lowers its error from 1.67 to 1.12 m/s.
+- **frozen_buoyant_l200 is the recommended option for C1 hours**: frozen_buoyant with the length cap at 200 m.
+  It is 0.14 and 0.08 m/s below frozen_buoyant in may10_19 and may10_21 and 0.01 m/s above it in may10_20, steady
+  in 174 to 193 iterations. In the C2 hours the cap lowers frozen_buoyant's error by 0.17 to 0.41 m/s, but it stays
+  above solved_flux_l200 (1.50, 1.12, 0.88 against 0.79, 1.08, 0.60 m/s), and apr02_18 keeps w = 4.2 m/s. The cap
+  alone does not close the C2 gap: most of it comes from solving θ.
+- A thermal roughness `bc.surface_kb_inverse = 2` (the `_kb2` rows) lowers each `_tsurf` option's error by 0.01 to
+  0.04 m/s with θ held, in every hour, and solved_tsurf's by 0.41 and 0.33 m/s in may10_19 and may10_20 (w max 5.5
+  and 4.8 against 6.0 and 5.7 m/s). solved_tsurf_kb2 is still not steady after 2000 iterations there, and every
+  `_kb2` row stays above frozen_buoyant; the other solved_tsurf_kb2 hours were not run.
+- Every surface feature together (the `_all` rows: kB⁻¹ = 2, `bc.surface_stable_functions = jimenez`,
+  `bc.surface_wstar = beljaars` with HRRR's boundary-layer height as a map) was run in may10_19 only. Each `_all`
+  row is 0.03 to 0.07 m/s above its `_kb2` row (0.68, 0.93, 1.52 against 0.61, 0.86, 1.46 m/s), and the bias from
+  5 to 50 m moves 0.05 to 0.07 m/s further from zero. The Jimenez functions change only the stable side, so in
+  these hours the difference is mostly w*. The other hours were not run, since the change in may10_19 is small.
 - Three hours per class are a small sample.
 - may10_19 with frozen_buoyant (the test deck): rms 0.39 m/s, bias −0.18 m/s; below 500 m a speed bias of
   −0.36 m/s, a vector rms of 0.54 m/s and 0.2° of direction; steady after 194 iterations.

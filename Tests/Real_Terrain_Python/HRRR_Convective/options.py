@@ -8,13 +8,16 @@ parent (a nest_<option> folder beside the chain's nest):
     frozen        simplec.theta = frozen (theta held at the parent's), neutral ground
     frozen_flux   frozen, with HRRR's heat flux at the ground
     frozen_buoyant  simplec.theta = frozen_buoyant: theta held at the parent's, its buoyancy kept in w
-                  (the recommended option for C1 hours, README)
     frozen_buoyant_flux  frozen_buoyant with HRRR's heat flux at the ground
     frozen_tsurf, frozen_buoyant_tsurf, solved_tsurf
                   frozen, frozen_buoyant and solved theta with bc.surface_stability = surface_temperature: HRRR's skin
                   theta_v as a map (surface_theta.xyz in the option's folder), the flux from Monin-Obukhov
                   similarity cell by cell; solved_tsurf stops at SOLVED_FLUX_ITERATIONS
+    <tsurf option>_kb2  the three _tsurf options with a thermal roughness bc.surface_kb_inverse = 2
+    <tsurf option>_all  the three _tsurf options with kB^-1 = 2, bc.surface_stable_functions = jimenez and
+                  bc.surface_wstar = beljaars with HRRR's boundary-layer height as a map (pblh.xyz in the folder)
     solved_flux_l200  solved_flux with the length-scale cap at 200 m (turb.max_geom_lscale; the scheme's is 100 m)
+    frozen_buoyant_l200  frozen_buoyant with the length-scale cap at 200 m (the recommended option for C1, README)
     relaxed_flux_T  simplec.theta = relaxed_buoyant with simplec.theta_relax_time = T s (T in RELAX_TIMES): theta
                   solved and relaxed towards the parent's, its buoyancy kept in w, HRRR's heat flux at the ground
 
@@ -48,6 +51,13 @@ RELAX_TIMES = (300, 1000, 3000)
 
 # bc.surface_stability = surface_temperature: the map of HRRR's skin theta_v written into the option's folder
 TSURF = {"bc.surface_stability": "surface_temperature", "bc.surface_temperature_file": hc.SURFACE_THETA_FILE}
+# the thermal roughness kB^-1 = ln(z0 / z0t) of the _kb2 and _all options
+KB = {"bc.surface_kb_inverse": 2}
+# the map of HRRR's boundary-layer height written into an _all option's folder (bc.surface_pblh_file)
+PBLH_FILE = "pblh.xyz"
+# the _all options: every surface feature (thermal roughness, Jimenez stable functions, Beljaars w*)
+ALL = dict(KB, **{"bc.surface_stable_functions": "jimenez", "bc.surface_wstar": "beljaars",
+                  "bc.surface_pblh_file": PBLH_FILE})
 
 
 def nest_options(q):
@@ -62,8 +72,12 @@ def nest_options(q):
             "frozen_tsurf": (dict(TSURF, **{"simplec.theta": "frozen"}), ()),
             "frozen_buoyant_tsurf": (dict(TSURF, **{"simplec.theta": "frozen_buoyant"}), ()),
             "solved_tsurf": (dict(TSURF, **{"steady.max_iterations": SOLVED_FLUX_ITERATIONS}), ()),
+            "frozen_buoyant_l200": ({"simplec.theta": "frozen_buoyant", "turb.max_geom_lscale": 200.0}, ()),
             "solved_flux_l200": (dict(flux, **{"steady.max_iterations": SOLVED_FLUX_ITERATIONS,
                                                 "turb.max_geom_lscale": 200.0}), ())}
+    for v in ("frozen_tsurf", "frozen_buoyant_tsurf", "solved_tsurf"):
+        opts[f"{v}_kb2"] = (dict(opts[v][0], **KB), ())
+        opts[f"{v}_all"] = (dict(opts[v][0], **ALL), ())
     for t in RELAX_TIMES:
         relax = {"simplec.theta": "relaxed_buoyant", "simplec.theta_relax_time": t,
                  "steady.max_iterations": SOLVED_FLUX_ITERATIONS}
@@ -163,6 +177,10 @@ def main():
                 # HRRR's columns over the nest and 6 km beyond (as hrrr_outer.py case writes it)
                 n, lo, hi, mean = field.write_surface_theta(os.path.join(d, hc.SURFACE_THETA_FILE), half + 6000.0)
                 print(f"  nest_{v}: skin theta_v of {n} HRRR columns, {lo:.2f} to {hi:.2f} K, mean {mean:.2f} K")
+            if opts[v][0].get("bc.surface_pblh_file") == PBLH_FILE:
+                n, lo, hi, mean = field.write_pblh(os.path.join(d, PBLH_FILE), half + 6000.0)
+                print(f"  nest_{v}: boundary-layer height of {n} HRRR columns, {lo:.0f} to {hi:.0f} m, "
+                      f"mean {mean:.0f} m")
             run.append(f"  (cd {tag}/nest_{v} && rm -rf plt[0-9]* turb[0-9]* chk[0-9]* score.* && "
                        f"$MPI \"$GUST\" inputs > log.txt 2>&1 && {score_cmd(crop)}) || echo \"{tag}/nest_{v} failed\"")
         run.append(f'else echo "{tag}: chain failed (see {tag}/chain.log); nest options not run"; fi')

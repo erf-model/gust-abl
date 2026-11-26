@@ -23,7 +23,7 @@ sys.path.insert(0, HERE)
 from prepare import crop_name  # noqa: E402
 
 HOUR = "may10_19"
-OPTION = "frozen_buoyant"       # the recommended option for C1 hours (README)
+OPTION = "frozen_buoyant"       # the C1 option of #161 (frozen_buoyant_l200 is now lower, README)
 SKIP = 77
 # key: (November 2026, tolerance)
 # The tolerances are meant to cover a re-fetched crop and another machine or MPI library (round-off in the
