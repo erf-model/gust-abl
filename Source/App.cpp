@@ -162,6 +162,14 @@ std::string run_domain (const DomainRole& role)
             err.emplace_back("simplec.theta = " + theta_value(simplec)
                              + " is not supported with steady.stage = simplec_newton (the Newton stage solves theta)");
         }
+        if (newton && simplec.theta_relaxed) {
+            err.emplace_back("simplec.theta = relaxed_buoyant is not supported with steady.stage = simplec_newton "
+                             "(the Newton stage's rows carry no relaxation)");
+        }
+        if (simplec.theta_relaxed && !in.io.restart.empty()) {
+            err.emplace_back("simplec.theta = relaxed_buoyant is not supported with io.restart (the target theta, the "
+                             "first guess's, is not in the checkpoint; start again from the first guess)");
+        }
         if (simplec.theta_frozen && !in.io.restart.empty()) {
             err.emplace_back("simplec.theta = " + theta_value(simplec)
                              + " is not supported with io.restart (theta is held at the first guess; restart with "
@@ -358,6 +366,13 @@ std::string run_domain (const DomainRole& role)
     }
     // Frozen theta meets the unsteady stage only in a patch (elsewhere it needs grid sequencing, which that stage
     // refuses); it is refused there too.
+    if (solve && simplec.theta_relaxed && unsteady) {
+        err.emplace_back("simplec.theta = relaxed_buoyant is not supported with steady.stage = unsteady (not tested)");
+    }
+    if (solve && simplec.theta_relaxed && role.nests != nullptr) {
+        err.emplace_back("simplec.theta = relaxed_buoyant is not supported with nest.names (the joint run's feedback "
+                         "residual carries no relaxation)");
+    }
     if (solve && nest == nullptr && nest_guess && simplec.theta_frozen && unsteady) {
         err.emplace_back("simplec.theta = " + theta_value(simplec)
                          + " is not supported with steady.stage = unsteady and init.first_guess = nest "
@@ -526,6 +541,14 @@ std::string run_domain (const DomainRole& role)
         amrex::Abort(invalid + "\n  simplec.theta = frozen_buoyant needs a nested patch of a parent run (bc.nest_parent, "
                      "init.first_guess = nest): elsewhere the frozen theta is the inflow profile's by height above the "
                      "ground, whose buoyancy over terrain is not a physical force; use simplec.theta = frozen");
+    }
+    if (simplec.theta_relaxed && nest != nullptr) {
+        amrex::Abort(invalid + "\n  simplec.theta = relaxed_buoyant is not supported in the nests of nest.names (not "
+                     "tested); give the patch no nest.names");
+    }
+    if (simplec.theta_relaxed && !nest_guess) {
+        amrex::Abort(invalid + "\n  simplec.theta = relaxed_buoyant needs a nested patch of a parent run (bc.nest_parent, "
+                     "init.first_guess = nest): theta is relaxed towards the parent run's theta");
     }
     if (simplec.theta_frozen && nest == nullptr && !nest_guess && !(sequencing && in.mesh.hierarchy_levels > 1)) {
         amrex::Abort(invalid + "\n  simplec.theta = frozen needs grid sequencing (steady.sequencing = 1, "
@@ -877,6 +900,17 @@ std::string run_domain (const DomainRole& role)
                 char tl[200];
                 std::snprintf(tl, sizeof(tl), "gust: theta frozen at the parent run's theta (bc.nest_parent), interpolated: "
                               "min %.15e, max %.15e, mean %.6f K", static_cast<double>(tmin), static_cast<double>(tmax), tmean);
+                amrex::Print() << tl << "\n";
+            }
+            if (simplec.theta_relaxed) {
+                // The target of simplec.theta = relaxed_buoyant (ThetaRelax.H): this theta, set by the stage's init.
+                const amrex::Real tmin = state.theta.min(0), tmax = state.theta.max(0);
+                const double tmean = static_cast<double>(state.theta.sum(0)) / static_cast<double>(ba.numPts());
+                char tl[240];
+                std::snprintf(tl, sizeof(tl), "gust: theta relaxed towards the parent run's theta (bc.nest_parent) with "
+                              "simplec.theta_relax_time = %g s, interpolated: min %.15e, max %.15e, mean %.6f K",
+                              static_cast<double>(simplec.theta_relax_time), static_cast<double>(tmin),
+                              static_cast<double>(tmax), tmean);
                 amrex::Print() << tl << "\n";
             }
         } else if (initialize && !sequencing) {
@@ -1327,6 +1361,7 @@ std::string run_domain (const DomainRole& role)
             ResidualFields R;
             ResidualInputs plot_in = res_in;   // the residual the run converged: with the stage's upwind blend
             if (!simplec_stage.hybrid_sigma().empty()) { plot_in.hybrid_sigma = &simplec_stage.hybrid_sigma(); }
+            plot_in.theta_relax = simplec_stage.theta_relax();   // with its relaxation source (ThetaRelax.H)
             residual(state, plot_in, mesh, geom, R);
             if (simplec.theta_frozen) { R.theta.setVal(0); }   // theta is data, not an unknown (the stage's R_theta)
             const auto name = write_turbulence_plotfile(in.io.turb_plot_file, state, cf, dist, surface_layer ? &ss : nullptr,

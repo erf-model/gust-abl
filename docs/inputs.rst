@@ -579,7 +579,11 @@ Quick reference
      - ``solve``
      - ``frozen``: θ prescribed (the inflow profile's, or a parent run's in a patch), buoyancy in the closure only;
        ``frozen_buoyant``: θ held at a parent run's in a patch (``init.first_guess = nest`` only), buoyancy in the
-       closure and in the :math:`w` equation
+       closure and in the :math:`w` equation; ``relaxed_buoyant``: θ solved and relaxed towards a parent run's in a
+       patch, buoyancy kept
+   * - ``simplec.theta_relax_time``
+     - none
+     - Relaxation time of ``relaxed_buoyant`` (s)
    * - **Poisson solver** (`solver`_)
      -
      -
@@ -1741,7 +1745,7 @@ See :doc:`solution_algorithm`. Read with ``steady.stage = simplec`` or ``simplec
        aspect ratio is above the tested 50.78. Changes the path, not the answer. May change across a restart.
    * - ``simplec.theta``
      - ``solve``
-     - ``solve``, ``frozen`` or ``frozen_buoyant``. ``frozen``: θ is the inflow profile's θ by height above the ground on every sequenced
+     - ``solve``, ``frozen``, ``frozen_buoyant`` or ``relaxed_buoyant``. ``frozen``: θ is the inflow profile's θ by height above the ground on every sequenced
        level (the steady column's θ with ``init.first_guess = column`` and a non-neutral ``init.column_stability``)
        and is not solved (in a canopy with ``canopy.heat_frozen = blend``, blended towards the leaves' θ,
        :doc:`canopy`); the momentum equations carry no buoyancy force, the closure keeps :math:`N^2`
@@ -1756,6 +1760,16 @@ See :doc:`solution_algorithm`. Read with ``steady.stage = simplec`` or ``simplec
        (:doc:`solution_algorithm`, frozen θ with its buoyancy force); only in a patch (``init.first_guess = nest``),
        refused elsewhere and in the nests of ``nest.names``; ``bc.theta_profile`` is the reference profile of the
        force. Its other limits are those of ``frozen``.
+       ``relaxed_buoyant``: θ solved with an implicit relaxation source towards the parent run's θ,
+       :math:`-(\theta - \theta_p)/\tau` with :math:`\tau` = ``simplec.theta_relax_time``, and its buoyancy kept in the
+       :math:`w` equation (:doc:`solution_algorithm`, θ relaxed towards the parent's); away from the boundary rows
+       :math:`\tau \to 0` gives ``frozen_buoyant`` and :math:`\tau \to \infty` gives ``solve``. Only in a patch (``init.first_guess = nest``);
+       refused elsewhere, in the nests of ``nest.names``, with ``nest.names``, with ``steady.stage = simplec_newton``
+       or ``unsteady``, and with ``io.restart`` (the target θ is not in the checkpoint).
+   * - ``simplec.theta_relax_time``
+     - none
+     - Finite and > 0 (s). The relaxation time :math:`\tau` of ``simplec.theta = relaxed_buoyant``; required with it
+       and refused with any other ``simplec.theta``.
 
 ``solver``
 ----------

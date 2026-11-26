@@ -67,6 +67,7 @@ class CanopyHeat;
 struct CanopyRows;
 class NestDefect;
 class NestRelax;
+class ThetaRelax;
 class NestInject;
 class TimeTerm;
 
@@ -207,6 +208,10 @@ struct ResidualInputs
     //! c (q - q*) to u, v, w, theta and k right after the defect source, and implicit_rows adds c
     //! to their diagonals right after the time term's 1/dt, both before the rows that replace their own.
     const NestRelax* relax{nullptr};
+    //! theta relaxed towards the parent's (ThetaRelax.H, simplec.theta = relaxed_buoyant); null: none. The residual
+    //! adds (theta - theta_p)/tau to R_theta right after the nests' relaxation, and implicit_rows adds 1/tau to
+    //! theta's diagonal right after theirs, both before the rows that replace their own.
+    const ThetaRelax* theta_relax{nullptr};
     //! The nests' injection (NestInject.H, nest.feedback = inject); null: none. The residual zeroes the
     //! rows of u, v, w, p, theta and k on the injected points after every other term and row (the end of
     //! residual()); implicit_rows is unchanged.

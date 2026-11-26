@@ -295,6 +295,37 @@ mesoscale model's (0.065 to 0.077 against 0.026 to 0.038 m/s), most of it in the
 above it, which is where the first limit acts. On three weakly unstable hours it does not lower the error (the
 case README).
 
+**θ relaxed towards the parent's.** ``simplec.theta = relaxed_buoyant`` sits between ``frozen_buoyant`` and θ
+solved. In a patch of a parent run, θ is solved with a relaxation source towards the parent's θ, and its buoyancy
+force stays in the :math:`w` residual:
+
+.. math::
+
+   R_\theta(\mathbf q) + \frac{\theta - \theta_p}{\tau} = 0,\qquad
+   \bigl(\Delta\tau^{-1} + A_1 + \tau^{-1}\bigr)\,\delta\theta = -R_\theta(\mathbf q) - \frac{\theta - \theta_p}{\tau},
+
+- :math:`R_\theta`: the residual of the θ equation (the steady form of :math:`-\partial\theta/\partial t`).
+- :math:`\theta_p`: the parent run's θ, interpolated onto the patch by the first guess; fixed for the run.
+- :math:`\tau`: ``simplec.theta_relax_time`` (s).
+- :math:`\Delta\tau`, :math:`A_1`: the local pseudo-time step and the implicit rows of θ's line sweeps; :math:`\delta\theta`: the
+  update.
+
+**Why implicit:** :math:`1/\tau` does not depend on θ, so it is the source's exact derivative. On the diagonal, a
+step stays a contraction at any :math:`\Delta\tau`, also when :math:`\tau \ll \Delta\tau`. The point-implicit
+buoyancy of the :math:`w` rows reads the same diagonal, so its predicted θ change shrinks with :math:`\tau`.
+
+**What it does:** away from the boundary rows, :math:`\theta - \theta_p = O(\tau R_\theta(\theta_p))`. As
+:math:`\tau \to 0` the option tends to ``frozen_buoyant`` (θ held); as :math:`\tau \to \infty` it tends to θ solved.
+In between, θ follows the parent's on time scales longer than :math:`\tau` and the patch's own transport, mixing
+and surface heat flux on shorter ones. In a steady patch this is a reach in space: a departure from
+:math:`\theta_p` spreads about :math:`\sqrt{K\tau}` vertically (:math:`K` the eddy diffusivity) and about
+:math:`U\tau` along the wind (:math:`U` the wind speed), so a patch shorter than :math:`U\tau` is held only weakly
+along the wind. The relaxation is also the patch's heat sink: with a surface heat flux :math:`H` into a mixed layer of
+depth :math:`z_i`, the layer warms by about :math:`\tau H / z_i` over the parent's. For comparison, the convective
+time scale :math:`z_i/w_*` is about 500–600 s for :math:`H` = 0.28 K m/s and :math:`z_i` = 1000–1500 m.
+It is refused where ``frozen_buoyant`` is, and also with ``nest.names``, ``steady.stage = unsteady`` and
+``io.restart`` (:math:`\theta_p` is not in the checkpoint).
+
 Vertical-velocity cap
 ^^^^^^^^^^^^^^^^^^^^^
 
