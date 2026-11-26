@@ -329,8 +329,11 @@ void ground_gradients (const SurfaceState& ss, const SurfaceLayerOptions& surfac
             // and bc.surface_stable_functions' stable side (data, not a branch).
             const amrex::Real zeta = amrex::max(amrex::min(d0(i, j, k) * il(i, j, k), amrex::Real(100)), -amrex::Real(100));
             amrex::Real phi_m, phi_h;
+            // Captured here, outside the constexpr-if: nvcc refuses an extended device lambda whose
+            // first capture of a variable is inside an if constexpr.
+            [[maybe_unused]] const StableCoefficients sc_l = sc;
             // Jimenez phi with bc.surface_stable_functions = jimenez (its own kernel).
-            if constexpr (JIMENEZ) { most_phi_jimenez(zeta, phi_m, phi_h); } else { most_phi(zeta, sc, phi_m, phi_h); }
+            if constexpr (JIMENEZ) { most_phi_jimenez(zeta, phi_m, phi_h); } else { most_phi(zeta, sc_l, phi_m, phi_h); }
             const amrex::Real s = kappa * (d0(i, j, k) + zf(i, j));
             const amrex::Real tmag = std::sqrt(ta(i, j, k, 0) * ta(i, j, k, 0) + ta(i, j, k, 1) * ta(i, j, k, 1)
                                                + ta(i, j, k, 2) * ta(i, j, k, 2));
