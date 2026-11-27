@@ -8,7 +8,6 @@
     check_nest_faces.py frozen PARENT_PLOTFILE PREFIX OX OY TOL_THETA MIN_RANGE TOL_VEL TOL_TKE -- COMMAND [ARGS ...]
     check_nest_faces.py frozen_buoyant PARENT_PLOTFILE PREFIX OX OY TOL_THETA MIN_RANGE TOL_VEL TOL_TKE FROZEN_PLOTFILE
                         -- COMMAND [ARGS ...]
-    check_nest_faces.py relaxed PREFIX TOL_THETA TOL_W MIN_FREE FROZEN_BUOYANT_PLOTFILE -- COMMAND [ARGS ...]
 
 COMMAND is run with io.plot_file=PREFIX_plt io.chk_file=PREFIX_chk appended
 (the decks do not name their outputs).
@@ -66,23 +65,6 @@ held, its buoyancy kept in w), and one check more:
    plotfile of frozen), whose w has no buoyancy force. The parent solved theta
    with its buoyancy, so a patch that drops the force (frozen) or applies it
    with a wrong sign or size moves away from the parent's w.
-
-relaxed: a patch with simplec.theta = relaxed_buoyant (theta solved, relaxed
-towards the parent run's theta with the time scale simplec.theta_relax_time).
-COMMAND (which gives neither steady.max_iterations nor simplec.theta) is run
-to steady twice: with a time scale of 1e-3 s (PREFIX_small) and of 1e6 s
-(PREFIX_large). Checked:
-
-1. both logs say theta is relaxed towards the parent run's theta with the
-   time scale given;
-2. both runs reach the steady verdict, and theta is solved: its residual is
-   not 0 in every row;
-3. the small time scale is the frozen_buoyant limit: theta within TOL_THETA
-   (K) and w within TOL_W (m/s) of the steady frozen_buoyant patch
-   (FROZEN_BUOYANT_PLOTFILE) in every cell. A sign flip of the source or a
-   source without its diagonal does not reach steady at 1e-3 s;
-4. the test is not vacuous: with the large time scale theta leaves the
-   parent's by more than MIN_FREE (K) somewhere.
 
 same: FIELD of two plotfiles on the same cells is equal bit for bit (no run).
 
@@ -282,58 +264,6 @@ def frozen_buoyant(parent_plt, prefix, ox, oy, tol_theta, min_range, tol_vel, to
     return bad
 
 
-def max_diff(field, a, b):
-    ha, A = erf_plotfile.read_fields(a, [field])
-    hb, B = erf_plotfile.read_fields(b, [field])
-    if ha["lo"] != hb["lo"] or ha["hi"] != hb["hi"]:
-        raise SystemExit(f"check_nest_faces: {a} and {b} do not cover the same cells")
-    n = [ha["hi"][d] - ha["lo"][d] + 1 for d in range(3)]
-    worst = 0.0
-    for i in range(n[0]):
-        for j in range(n[1]):
-            for k in range(n[2]):
-                d = abs(A[field][i][j][k] - B[field][i][j][k])
-                if not d <= worst:   # a NaN is kept
-                    worst = d
-    return worst
-
-
-def relaxed(prefix, tol_theta, tol_w, min_free, fb_plt, cmd):
-    bad = []
-    finals = {}
-    for name, tau in ((prefix + "_small", "0.001"), (prefix + "_large", "1e+06")):
-        log = run(named(name, cmd) + ["simplec.theta=relaxed_buoyant", f"simplec.theta_relax_time={tau}",
-                                      "steady.max_iterations=2000"])
-        if not re.search(r"^gust: theta relaxed towards the parent run's theta \(bc\.nest_parent\) with "
-                         rf"simplec\.theta_relax_time = {re.escape(tau)} s, interpolated: ", log, re.M):
-            bad.append(f"{name}: the log does not say theta is relaxed towards the parent run's theta in {tau} s")
-        rows = re.findall(r"^\s*\d+\s+\S+\s+[a-z_]+\s+\S+\s+\S+\s+\S+\s+\S+\s+(\S+)\s+\S+\s+\S+\s*$", log, re.M)
-        if not rows:
-            bad.append(f"{name}: the log has no iteration rows")
-        elif all(float(r) == 0.0 for r in rows):
-            bad.append(f"{name}: theta's residual is 0 in every iteration (theta was not solved)")
-        before = len(bad)
-        need_steady(log, bad)
-        if len(bad) == before:
-            finals[name] = keep_last(name, "plt")
-    if bad:
-        return bad
-    small, large = finals[prefix + "_small"], finals[prefix + "_large"]
-    dt, dw = max_diff("theta", small, fb_plt), max_diff("w", small, fb_plt)
-    print(f"check_nest_faces: 1e-3 s against frozen_buoyant: max |theta| diff = {dt:.3e} K (allowed {tol_theta:g}), "
-          f"max |w| diff = {dw:.3e} m/s (allowed {tol_w:g})")
-    if not dt <= tol_theta:
-        bad.append(f"theta: the 1e-3 s run differs from frozen_buoyant by {dt:.3e} K (allowed {tol_theta:g})")
-    if not dw <= tol_w:
-        bad.append(f"w: the 1e-3 s run differs from frozen_buoyant by {dw:.3e} m/s (allowed {tol_w:g})")
-    free = max_diff("theta", large, fb_plt)
-    print(f"check_nest_faces: 1e6 s: max |theta - parent's| = {free:.3e} K (needed above {min_free:g})")
-    if not free > min_free:
-        bad.append(f"theta: the 1e6 s run stays within {free:.3e} K of the parent's (needed above {min_free:g}): "
-                   "the test is vacuous")
-    return bad
-
-
 def same(field, a, b):
     ha, A = erf_plotfile.read_fields(a, [field])
     hb, B = erf_plotfile.read_fields(b, [field])
@@ -369,8 +299,6 @@ def main(argv):
         bad = frozen(args[1], args[2], int(args[3]), int(args[4]), float(args[5]), float(args[6]), float(args[7]), float(args[8]), cmd)
     elif args[0] == "frozen_buoyant" and len(args) == 10:
         bad = frozen_buoyant(args[1], args[2], int(args[3]), int(args[4]), *[float(a) for a in args[5:9]], args[9], cmd)
-    elif args[0] == "relaxed" and len(args) == 6:
-        bad = relaxed(args[1], float(args[2]), float(args[3]), float(args[4]), args[5], cmd)
     else:
         print(__doc__)
         return 2

@@ -1059,10 +1059,10 @@
 #     is above the tested 50.78. Changes the path, not the answer. May change across a restart.
 #
 # simplec.theta = solve
-#     solve, frozen, frozen_buoyant or relaxed_buoyant. frozen: θ is the inflow profile's θ by height above the
-#     ground on every sequenced level (the steady column's θ with init.first_guess = column and a non-neutral
-#     init.column_stability) and is not solved (in a canopy with canopy.heat_frozen = blend, blended towards the
-#     leaves' θ, docs/canopy.rst); the momentum equations carry no buoyancy force, the closure keeps N^2
+#     solve, frozen or frozen_buoyant. frozen: θ is the inflow profile's θ by height above the ground on every
+#     sequenced level (the steady column's θ with init.first_guess = column and a non-neutral init.column_stability)
+#     and is not solved (in a canopy with canopy.heat_frozen = blend, blended towards the leaves' θ,
+#     docs/canopy.rst); the momentum equations carry no buoyancy force, the closure keeps N^2
 #     (docs/solution_algorithm.rst, prescribed potential temperature). Needs grid sequencing (steady.sequencing = 1,
 #     mesh.hierarchy_levels > 1) or init.first_guess = nest. A patch (init.first_guess = nest) holds the θ of its
 #     parent run (bc.nest_parent), interpolated, whether the parent solved θ or held it; a nest of nest.names holds
@@ -1072,16 +1072,7 @@
 #     used. frozen_buoyant: θ held as with frozen, and its buoyancy force kept in the w equation
 #     (docs/solution_algorithm.rst, frozen θ with its buoyancy force); only in a patch (init.first_guess = nest),
 #     refused elsewhere and in the nests of nest.names; bc.theta_profile is the reference profile of the force. Its
-#     other limits are those of frozen. relaxed_buoyant: θ solved with an implicit relaxation source towards the
-#     parent run's θ, -(θ - θ_p)/τ with τ = simplec.theta_relax_time, and its buoyancy kept in the w equation
-#     (docs/solution_algorithm.rst, θ relaxed towards the parent's); away from the boundary rows τ → 0 gives
-#     frozen_buoyant and τ → ∞ gives solve. Only in a patch (init.first_guess = nest); refused elsewhere, in the
-#     nests of nest.names, with nest.names, with steady.stage = simplec_newton or unsteady, and with io.restart (the
-#     target θ is not in the checkpoint).
-#
-# simplec.theta_relax_time =    # none
-#     Finite and > 0 (s). The relaxation time τ of simplec.theta = relaxed_buoyant; required with it and refused
-#     with any other simplec.theta.
+#     other limits are those of frozen.
 
 # ==================================================================================================================
 # solver

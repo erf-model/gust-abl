@@ -5,8 +5,7 @@ tools/hrrr_outer.py score by run_options.sh), as a Markdown table on stdout.
     python3 score_options.py [DIR]          DIR: the folder options.py wrote (default: beside this script)
 
 Columns: nest minus HRRR at all heights (speed bias and rms), below 500 m (speed bias, vector rms, direction),
-the near-surface speed bias (mean of the level biases with mean height 5 to 50 m above ground), w (rms and max),
-k / k_HRRR below 500 m, iterations and the steady verdict. The all-heights columns cover the
+w (rms and max), k / k_HRRR below 500 m, iterations and the steady verdict. The all-heights columns cover the
 heights up to the nest's top. A run without a score is listed as missing. Exit status 0.
 """
 import json
@@ -18,7 +17,7 @@ sys.path.insert(0, HERE)
 from options import NEST_OPTIONS  # noqa: E402
 from prepare import HOURS  # noqa: E402
 
-COLS = ("option", "bias", "rms", "bias<500", "vec rms<500", "dir<500", "bias 5-50", "w rms", "w max", "k ratio", "its",
+COLS = ("option", "bias", "rms", "bias<500", "vec rms<500", "dir<500", "w rms", "w max", "k ratio", "its",
         "steady")
 
 
@@ -34,10 +33,8 @@ def row(tag, option, path):
         return f"| {tag} | {option} | " + " | ".join(["missing"] + [""] * (len(COLS) - 2)) + " |"
     s = json.load(open(path))
     st = {True: "yes", False: "no", None: "?"}[s["steady"]]
-    near = [lv["bias"] for lv in s["levels"] if 5.0 <= lv["agl"] <= 50.0]
-    nb = f"{sum(near) / len(near):.2f}" if near else "-"
     return (f"| {tag} | {option} | {s['bias']:.2f} | {s['rms']:.2f} | {s['low_speed_bias']:.2f} | "
-            f"{s['low_vector_rms']:.2f} | {s['low_dir_diff']:.1f} | {nb} | {s['w_rms']:.3f} | {s['w_max']:.2f} | "
+            f"{s['low_vector_rms']:.2f} | {s['low_dir_diff']:.1f} | {s['w_rms']:.3f} | {s['w_max']:.2f} | "
             f"{s['k_ratio']:.2f} | {s['iterations'] if s['iterations'] is not None else '?'} | {st} |")
 
 

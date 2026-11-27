@@ -41,7 +41,6 @@ The options (each changes only the nest, so all share the chain's parent):
 | frozen_buoyant | `simplec.theta = frozen_buoyant` (the parent's θ; buoyancy also in w) | neutral |
 | frozen_buoyant_flux | frozen_buoyant | HRRR's heat flux |
 | solved_flux | solved | HRRR's heat flux (at most 2000 iterations) |
-| relaxed_flux_T | `simplec.theta = relaxed_buoyant`, `simplec.theta_relax_time = T` (θ solved and relaxed towards the parent's over T s; buoyancy in w), T = 300, 1000, 3000 | HRRR's heat flux (at most 2000 iterations) |
 
 ## Data and acknowledgements
 The meteorological fields are from the High-Resolution Rapid Refresh (HRRR) model of NOAA's Global Systems
@@ -68,8 +67,7 @@ GUST=<build>/gust MPI="mpiexec -n 4" options/run_options.sh
 python3 score_options.py options
 ```
 The options take about four hours on 4 ranks of a laptop (6 hours × 6 nests, and the 12 coarser runs); solved_flux
-is most of it in the C1 hours, where it does not reach a steady state. The nine relaxed_flux runs per class add
-about another four hours, most of it τ = 1000 and 3000 s in the C1 hours.
+is most of it in the C1 hours, where it does not reach a steady state.
 
 ## Expected Results
 2026-11-25, 4 ranks. Vector rms (m/s) of the nest minus HRRR below 500 m above the ground (`score_options.py` prints
@@ -83,9 +81,6 @@ the full table, with bias, rms, direction, w, k and iterations):
 | **frozen_buoyant** | **0.54** | **0.36** | **0.60** | 1.67 | 1.41 | 1.29 |
 | frozen_buoyant_flux | 0.63 | 0.38 | 0.63 | 1.72 | 1.46 | 1.33 |
 | solved_flux | 1.93 (not steady) | 1.48 (not steady) | 1.00 (not steady) | **1.00** | **1.30** | **0.90** |
-| relaxed_flux_300 | 0.70 | 0.37 | 0.58 | 1.12 | 1.35 | 1.12 |
-| relaxed_flux_1000 | 1.02 (not steady) | 0.93 | 0.85 | 1.05 | 1.29 | 0.98 |
-| relaxed_flux_3000 | 1.45 (not steady) | 1.21 (not steady) | 0.94 (not steady) | 1.02 | 1.28 | 0.92 |
 
 - **frozen_buoyant is the recommended option for C1 hours** (0.12 to 0.24 m/s below frozen, 0.22 to 0.52 m/s below
   the scheme, in each hour). The gain is mostly in speed: the speed bias below 500 m goes from −0.57, −0.36, −0.72
@@ -102,19 +97,6 @@ the full table, with bias, rms, direction, w, k and iterations):
 - HRRR's heat flux at the ground adds 0.02 to 0.10 m/s with θ held, in every hour.
 - Near the ground (5 to 50 m) frozen_buoyant is slower than HRRR, by 0.5 to 0.6 m/s in may10_19.
   Below HRRR's lowest level the score interpolates HRRR.
-- relaxed_flux_300 is steady in the three C1 hours (401, 247 and 219 iterations, against 194, 179 and 166 for
-  frozen_buoyant). Its error is within 0.02 m/s of frozen_buoyant in may10_20 and may10_21 and 0.16 m/s higher in
-  may10_19, where w reaches 2.8 m/s (rms 0.27 m/s). It does not lower the error near the ground: the bias from 5
-  to 50 m is −0.58, −0.35, −0.56 m/s (frozen_buoyant −0.56, −0.24, −0.43). frozen_buoyant stays the recommended C1
-  option.
-- A longer τ moves the answer towards solved_flux. In the C1 hours that brings steady updrafts: w max 3.4 to 4.5
-  m/s at τ = 1000 s and 4.4 to 5.1 m/s at τ = 3000 s, against 0.45 with frozen_buoyant and 4.9 to 6.6 with
-  solved_flux; the vector error rises with it. τ = 1000 s removes the slow bias near the ground in may10_19 and
-  may10_20 (−0.06 and +0.08 m/s from 5 to 50 m), but with twice frozen_buoyant's vector error.
-- In the C2 hours every τ is steady in 157 to 181 iterations and lies between frozen_buoyant and solved_flux; τ =
-  3000 s is within 0.02 m/s of solved_flux, with a lower w max (0.97 to 1.43 against 1.26 to 2.61 m/s).
-  solved_flux stays the recommended C2 option. In apr02_18, where frozen_buoyant reaches w = 4.2 m/s, τ = 300 s
-  lowers its error from 1.67 to 1.12 m/s.
 - Three hours per class are a small sample.
 - may10_19 with frozen_buoyant (the test deck): rms 0.39 m/s, bias −0.18 m/s; below 500 m a speed bias of
   −0.36 m/s, a vector rms of 0.54 m/s and 0.2° of direction; steady after 194 iterations.
