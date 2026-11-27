@@ -17,4 +17,3 @@ archives, case set-up from YAML, wind libraries and the Kestrel scripts.
 | `Library_Hill` | `rt_library_hill` | A hill sweep run through `run.sh`; wind libraries built from it are blended between directions and checked against the run in between. |
 | `Library_Ensemble` | `rt_library_ensemble` | Ensemble statistics and WindNinja-format output of a wind library, against the same statistics from the runs' plotfiles. |
 | `Kestrel_Dryrun` | `kestrel_*` | A dry run of the Kestrel submit and archive scripts with stub `module`/`sbatch`/`srun`. |
-| `HRRR_Regimes` | `hrrr_regime_awaken` | The stratification class of 16 HRRR hours at the AWAKEN site from `tools/hrrr_regime.py`, pinned with the default thresholds. |

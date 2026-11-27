@@ -3654,23 +3654,6 @@ else()
     message(STATUS "GUST: numpy not found for ${Python3_EXECUTABLE}; hybrid_width_selftest is not registered")
 endif()
 
-# The HRRR stratification classifier (tools/hrrr_regime.py) on synthetic columns, and its classes for the AWAKEN
-# hours in Tests/Infrastructure/HRRR_Regimes; both need numpy.
-execute_process(COMMAND ${Python3_EXECUTABLE} -c "import numpy"
-                RESULT_VARIABLE _gust_numpy_hr OUTPUT_QUIET ERROR_QUIET)
-if(_gust_numpy_hr EQUAL 0)
-    add_test(NAME hrrr_regime_selftest
-             COMMAND ${Python3_EXECUTABLE} -m unittest -v test_hrrr_regime
-             WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/tools)
-    set_tests_properties(hrrr_regime_selftest PROPERTIES LABELS unit ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
-    add_test(NAME hrrr_regime_awaken
-             COMMAND ${Python3_EXECUTABLE} check_classes.py
-             WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/Tests/Infrastructure/HRRR_Regimes)
-    set_tests_properties(hrrr_regime_awaken PROPERTIES LABELS unit ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
-else()
-    message(STATUS "GUST: numpy not found for ${Python3_EXECUTABLE}; hrrr_regime tests are not registered")
-endif()
-
 # --- The extern_erf drift check's own tests -----------------------------------
 add_test(NAME drift_check_selftest
          COMMAND ${Python3_EXECUTABLE} -m unittest -v test_check_extern_erf

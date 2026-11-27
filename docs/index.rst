@@ -106,7 +106,6 @@ Contents
 
    howto
    case_setup
-   hrrr_regimes
    inputs
 
 .. toctree::
