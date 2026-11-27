@@ -16,7 +16,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstdio>
 #include <limits>
 #include <string>
 
@@ -50,14 +49,6 @@ std::vector<std::string> check_simplec_options (const SimplecOptions& opt)
         err.emplace_back("simplec.w_vnn_cap_slope_margin = " + std::to_string(opt.w_vnn_cap_slope_margin)
                          + ": must be 0 (off), or finite and >= 1");
     }
-    if (opt.theta_relaxed && (std::isnan(opt.theta_relax_time) || !(opt.theta_relax_time > 0 && std::isfinite(opt.theta_relax_time)))) {
-        char v[32];   // %g: std::to_string prints -1e-30 as -0.000000
-        std::snprintf(v, sizeof(v), "%g", static_cast<double>(opt.theta_relax_time));
-        err.emplace_back("simplec.theta_relax_time = " + std::string(v) + ": must be finite and > 0 (s)");
-    }
-    if (opt.theta_relaxed && opt.theta_frozen) {
-        err.emplace_back("simplec.theta: relaxed_buoyant solves theta, so it cannot also be frozen");
-    }
     return err;
 }
 
@@ -66,8 +57,7 @@ SimplecOptions read_simplec_options ()
     SimplecOptions opt;
     amrex::ParmParse pp("simplec");
     std::vector<std::string> err;
-    for (const char* key : {"pressure_reltol", "alpha_p", "rotation_relax", "w_vnn_cap", "w_vnn_cap_slope_margin", "theta",
-                            "theta_relax_time"}) {
+    for (const char* key : {"pressure_reltol", "alpha_p", "rotation_relax", "w_vnn_cap", "w_vnn_cap_slope_margin", "theta"}) {
         if (!pp.contains(key)) { continue; }
         opt.given.emplace_back(key);
         if (pp.countname(key) > 1) { err.emplace_back(std::string("simplec.") + key + " is given more than once"); }
@@ -83,23 +73,7 @@ SimplecOptions read_simplec_options ()
         std::string theta = "solve";
         pp.query("theta", theta);
         if (theta == "frozen") { opt.theta_frozen = true; }
-        else if (theta == "frozen_buoyant") { opt.theta_frozen = true; opt.theta_buoyant = true; }
-        else if (theta == "relaxed_buoyant") { opt.theta_relaxed = true; }
-        else if (theta != "solve") {
-            err.emplace_back("simplec.theta = " + theta + ": must be solve, frozen, frozen_buoyant or relaxed_buoyant");
-        }
-        // The time scale: required with relaxed_buoyant, read but ignored (refused) with any other value.
-        const bool tau_given = std::find(opt.given.begin(), opt.given.end(), "theta_relax_time") != opt.given.end();
-        if (opt.theta_relaxed && !tau_given) {
-            err.emplace_back("simplec.theta = relaxed_buoyant needs simplec.theta_relax_time (s, finite and > 0)");
-        } else if (!opt.theta_relaxed && tau_given) {
-            err.emplace_back("simplec.theta_relax_time has no effect unless simplec.theta = relaxed_buoyant; remove it");
-        } else if (opt.theta_relaxed) {
-            pp.query("theta_relax_time", opt.theta_relax_time);
-            for (auto& e : check_simplec_options(opt)) {
-                if (e.find("theta_relax_time") != std::string::npos) { err.push_back(std::move(e)); }
-            }
-        }
+        else if (theta != "solve") { err.emplace_back("simplec.theta = " + theta + ": must be solve or frozen"); }
         // Read but ignored without the cap: refuse it.
         const bool margin_given = std::find(opt.given.begin(), opt.given.end(), "w_vnn_cap_slope_margin") != opt.given.end();
         if (margin_given && opt.w_vnn_cap == 0) {
@@ -342,19 +316,14 @@ SimplecStage::SimplecStage (const SimplecOptions& opt, int sweeps, const Residua
     if (in.closure == nullptr && in.nu == nullptr) {
         amrex::Abort("gust: SimplecStage: without a closure the residual inputs need the diffusivities");
     }
-    if (buoyancy_in_momentum(opt) != in.buoyancy_in_momentum) {
-        amrex::Abort("gust: SimplecStage: simplec.theta = " + theta_value(opt) + " needs the residual inputs with buoyancy_in_momentum = "
-                     + (buoyancy_in_momentum(opt) ? "true" : "false") + " (only frozen turns it off)");
-    }
-    if (opt.theta_buoyant && in.buoyancy_point_implicit) {
-        amrex::Abort("gust: SimplecStage: simplec.theta = frozen_buoyant needs the residual inputs with buoyancy_point_implicit = "
-                     "false (theta is held, so the w rows take no point-implicit buoyancy)");
+    if (opt.theta_frozen == in.buoyancy_in_momentum) {
+        amrex::Abort("gust: SimplecStage: simplec.theta = frozen needs the residual inputs without buoyancy in momentum "
+                     "(buoyancy_in_momentum = false), and only it turns that off");
     }
     if (opt.theta_frozen && in.canopy_heat != nullptr) {
         // The leaf heat with theta frozen is the blend (CanopyHeat.H); skip passes no canopy_heat.
         if (in.canopy_heat->frozen() != CanopyFrozenHeat::blend) {
-            amrex::Abort("gust: SimplecStage: simplec.theta = " + theta_value(opt)
-                         + " takes the leaf heat only with canopy.heat_frozen = blend");
+            amrex::Abort("gust: SimplecStage: simplec.theta = frozen takes the leaf heat only with canopy.heat_frozen = blend");
         }
         if (closure == nullptr) {
             amrex::Abort("gust: SimplecStage: canopy.heat_frozen = blend needs the k-L closure (its k and eps)");
@@ -365,13 +334,6 @@ SimplecStage::SimplecStage (const SimplecOptions& opt, int sweeps, const Residua
         if (std::isnan(sc) || !(sc > 0 && std::isfinite(sc))) {
             amrex::Abort("gust: SimplecStage: the residual scales (jvp_scales) must be finite and > 0");
         }
-    }
-    if (in.theta_relax != nullptr) {
-        amrex::Abort("gust: SimplecStage: the residual inputs' theta_relax is the stage's own (simplec.theta = relaxed_buoyant)");
-    }
-    if (opt.theta_relaxed) {
-        m_theta_relax = ThetaRelax(opt.theta_relax_time);
-        m_in.theta_relax = &m_theta_relax;
     }
     m_R.define(ba, dm);
     m_cf.define(ba, dm);
@@ -404,10 +366,6 @@ void SimplecStage::init (State& q)
     // grid sequencing the ghosts from before the prolongation's projection. The
     // fill is a fixed point, so a restart continues the run bit for bit.
     m_in.bc->fill_ghosts(q, m_in.surface, m_in.buoyancy);
-    // simplec.theta = relaxed_buoyant: the target is theta before the first iteration, the parent's theta interpolated
-    // by the first guess (init.first_guess = nest; no restart, App.cpp). Set here, before any residual (the turbulence
-    // plotfile's residual included).
-    if (m_opt.theta_relaxed && !m_theta_relax.has_target()) { m_theta_relax.set_target(q.theta); }
     // The stage's state lives in q and the closure's history (both
     // checkpointed by the application). The driver's step limit reads nu()
     // before the first residual of the next iteration: the diffusivity of

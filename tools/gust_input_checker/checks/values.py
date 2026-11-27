@@ -253,8 +253,7 @@ simplec.alpha_p real 1 >0&<=1
 simplec.rotation_relax real 1 >0&<=1
 simplec.w_vnn_cap real 1 0|>=16
 simplec.w_vnn_cap_slope_margin real 1 0|>=1
-simplec.theta solve,frozen,frozen_buoyant,relaxed_buoyant 1
-simplec.theta_relax_time real 1 >0
+simplec.theta solve,frozen 1
 solver.poisson_backend gmres_fft,mlmg,gmres_mlmg 1
 solver.poisson_reltol real 1 >0&<1
 solver.poisson_abstol real 1 >=0

@@ -67,7 +67,6 @@ class CanopyHeat;
 struct CanopyRows;
 class NestDefect;
 class NestRelax;
-class ThetaRelax;
 class NestInject;
 class TimeTerm;
 
@@ -158,9 +157,6 @@ struct ResidualInputs
     //! stratification of van der Laan et al. 2024, whose momentum equations
     //! carry no buoyancy).
     bool buoyancy_in_momentum{true};
-    //! The predictor's point-implicit buoyancy in the w rows (Predictor.H) predicts theta's change; false with theta
-    //! held (simplec.theta = frozen_buoyant), where theta does not change and the w rows take the buoyancy explicitly.
-    bool buoyancy_point_implicit{true};
     CoriolisOptions coriolis;
     //! The constant kinematic pressure-gradient force (m/s^2) on u, v, w (Forcing.H).
     amrex::Array<amrex::Real, 3> pressure_gradient{0, 0, 0};
@@ -208,10 +204,6 @@ struct ResidualInputs
     //! c (q - q*) to u, v, w, theta and k right after the defect source, and implicit_rows adds c
     //! to their diagonals right after the time term's 1/dt, both before the rows that replace their own.
     const NestRelax* relax{nullptr};
-    //! theta relaxed towards the parent's (ThetaRelax.H, simplec.theta = relaxed_buoyant); null: none. The residual
-    //! adds (theta - theta_p)/tau to R_theta right after the nests' relaxation, and implicit_rows adds 1/tau to
-    //! theta's diagonal right after theirs, both before the rows that replace their own.
-    const ThetaRelax* theta_relax{nullptr};
     //! The nests' injection (NestInject.H, nest.feedback = inject); null: none. The residual zeroes the
     //! rows of u, v, w, p, theta and k on the injected points after every other term and row (the end of
     //! residual()); implicit_rows is unchanged.

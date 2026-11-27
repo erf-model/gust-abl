@@ -88,7 +88,6 @@ add_executable(unit_tests
     Unit_Tests/test_NewtonStage.cpp
     Unit_Tests/test_LeeWake.cpp
     Unit_Tests/test_FrozenTheta.cpp
-    Unit_Tests/test_ThetaRelax.cpp
 )
 target_include_directories(unit_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Unit_Tests)
 target_link_libraries(unit_tests PRIVATE gust_core GTest::gtest)
@@ -1302,7 +1301,7 @@ gust_add_test(NAME abort_ri_gate_range NP 1 LABELS "regression;smoke"
 # Frozen with a stratified column first guess and with nests runs in
 # rt_nests_flat_abl_*; in a patch of a parent run, in rt_nest_faces_frozen.
 gust_add_test(NAME abort_simplec_theta_value NP 1 LABELS "regression;smoke"
-              PREFIX ${EXPECT_ABORT} "simplec\\.theta = fixed: must be solve, frozen, frozen_buoyant or relaxed_buoyant" --
+              PREFIX ${EXPECT_ABORT} "simplec\\.theta = fixed: must be solve or frozen" --
               COMMAND $<TARGET_FILE:gust> ${HILL3D_NEUTRAL_CASE}/inputs_steady_hill3d_neutral
                       simplec.theta=fixed ${GUST_TEST_AMREX_FLAGS})
 gust_add_test(NAME abort_simplec_theta_newton NP 1 LABELS "regression;smoke"
@@ -1317,37 +1316,6 @@ gust_add_test(NAME abort_simplec_theta_no_sequencing NP 1 LABELS "regression;smo
               PREFIX ${EXPECT_ABORT} "simplec\\.theta = frozen needs grid sequencing" --
               COMMAND $<TARGET_FILE:gust> ${HILL3D_NEUTRAL_CASE}/inputs_steady_hill3d_neutral simplec.theta=frozen
                       ${GUST_TEST_AMREX_FLAGS})
-# frozen_buoyant outside a patch of a parent run (here a sequenced run, whose frozen theta is the inflow profile's
-# by height above the ground).
-gust_add_test(NAME abort_simplec_theta_buoyant_no_patch NP 1 LABELS "regression;smoke"
-              PREFIX ${EXPECT_ABORT} "simplec\\.theta = frozen_buoyant needs a nested patch of a parent run" --
-              COMMAND $<TARGET_FILE:gust> ${HILL3D_NEUTRAL_CASE}/inputs_sequencing_restart simplec.theta=frozen_buoyant init.first_guess=profile
-                      ${GUST_TEST_AMREX_FLAGS})
-# relaxed_buoyant (theta solved, relaxed towards the parent run's theta, ThetaRelax.H): refused outside a patch of a
-# parent run, with the Newton stage, a restart, the unsteady stage and nest.names. In a patch it runs in
-# rt_nest_faces_relaxed_buoyant.
-set(RELAXED_ARGS simplec.theta=relaxed_buoyant simplec.theta_relax_time=1000)
-gust_add_test(NAME abort_simplec_theta_relaxed_no_patch NP 1 LABELS "regression;smoke"
-              PREFIX ${EXPECT_ABORT} "simplec\\.theta = relaxed_buoyant needs a nested patch of a parent run" --
-              COMMAND $<TARGET_FILE:gust> ${HILL3D_NEUTRAL_CASE}/inputs_steady_hill3d_neutral ${RELAXED_ARGS}
-                      ${GUST_TEST_AMREX_FLAGS})
-gust_add_test(NAME abort_simplec_theta_relaxed_newton NP 1 LABELS "regression;smoke"
-              PREFIX ${EXPECT_ABORT} "simplec\\.theta = relaxed_buoyant is not supported with steady\\.stage = simplec_newton" --
-              COMMAND $<TARGET_FILE:gust> ${HILL2D_CASE}/inputs_steady_hill2d_newton ${RELAXED_ARGS}
-                      ${GUST_TEST_AMREX_FLAGS})
-gust_add_test(NAME abort_simplec_theta_relaxed_restart NP 1 LABELS "regression;smoke"
-              PREFIX ${EXPECT_ABORT} "simplec\\.theta = relaxed_buoyant is not supported with io\\.restart" --
-              COMMAND $<TARGET_FILE:gust> ${HILL3D_NEUTRAL_CASE}/inputs_sequencing_restart ${RELAXED_ARGS}
-                      io.restart=seq_chk00003 ${GUST_TEST_AMREX_FLAGS})
-gust_add_test(NAME abort_simplec_theta_relaxed_unsteady NP 1 LABELS "regression;smoke"
-              PREFIX ${EXPECT_ABORT} "simplec\\.theta = relaxed_buoyant is not supported with steady\\.stage = unsteady" --
-              COMMAND $<TARGET_FILE:gust> ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Unsteady_Hill_2D/inputs_unsteady_hill2d
-                      unsteady.stop_time=600 unsteady.dt=60 io.write_checkpoint=0 init.first_guess=profile
-                      ${RELAXED_ARGS} ${GUST_TEST_AMREX_FLAGS})
-gust_add_test(NAME abort_simplec_theta_relaxed_nests NP 1 LABELS "regression;smoke"
-              PREFIX ${EXPECT_ABORT} "simplec\\.theta = relaxed_buoyant is not supported with nest\\.names" --
-              COMMAND $<TARGET_FILE:gust> ${CMAKE_CURRENT_SOURCE_DIR}/Canonical_RANS/Nests_Flat_ABL/inputs_stable_gabls1
-                      ${RELAXED_ARGS} ${GUST_TEST_AMREX_FLAGS})
 # The Newton stage's keys and the switch rules have no effect
 # with steady.stage = simplec (one stage), so they abort there.
 gust_add_test(NAME abort_newton_keys_no_newton_stage NP 1 LABELS "regression;smoke"
@@ -1826,24 +1794,6 @@ if(GUST_PRECISION STREQUAL "DOUBLE")
                   PREFIX ${NESTF_CHECK} frozen frozen_parent_plt_final frozen_patch 8 6 1e-10 0.01 0.15 0.06 --
                   COMMAND $<TARGET_FILE:gust> ${NEST_FACES_CASE}/inputs_hill_patch_restart "mesh.max_grid_size=13 9"
                           bc.nest_parent=frozen_parent_chk_final init.first_guess=nest ${NESTF_OTHER}
-                          ${GUST_TEST_AMREX_FLAGS})
-    # simplec.theta = frozen_buoyant in the same patch: theta held as with frozen, its buoyancy kept in w; the
-    # checks of frozen, and the patch's w is closer to the parent's than the frozen patch's (check 7).
-    gust_add_test(NAME rt_nest_faces_frozen_buoyant NP 2 LABELS "regression;smoke" RUN_DIR ${NESTF_DIR}
-                  FIXTURES_REQUIRED "nest_faces_frozen_parent;nest_faces_frozen_patch"
-                  FIXTURES_SETUP nest_faces_frozen_buoyant
-                  PREFIX ${NESTF_CHECK} frozen_buoyant frozen_parent_plt_final frozen_buoyant_patch 8 6 1e-10 0.01 0.08
-                         0.03 frozen_patch_plt_final --
-                  COMMAND $<TARGET_FILE:gust> ${NEST_FACES_CASE}/inputs_hill_patch_restart "mesh.max_grid_size=13 9"
-                          bc.nest_parent=frozen_parent_chk_final init.first_guess=nest ${NESTF_STABLE}
-                          ${GUST_TEST_AMREX_FLAGS})
-    # relaxed_buoyant in the same patch: with a time scale of 1e-3 s the steady patch is the frozen_buoyant one;
-    # with 1e6 s theta leaves the parent's (check_nest_faces.py relaxed).
-    gust_add_test(NAME rt_nest_faces_relaxed_buoyant NP 2 LABELS "regression;smoke" RUN_DIR ${NESTF_DIR}
-                  FIXTURES_REQUIRED "nest_faces_frozen_parent;nest_faces_frozen_buoyant"
-                  PREFIX ${NESTF_CHECK} relaxed relaxed_patch 1e-5 1e-3 1e-3 frozen_buoyant_patch_plt_final --
-                  COMMAND $<TARGET_FILE:gust> ${NEST_FACES_CASE}/inputs_hill_patch_restart "mesh.max_grid_size=13 9"
-                          bc.nest_parent=frozen_parent_chk_final init.first_guess=nest ${NESTF_STABLE}
                           ${GUST_TEST_AMREX_FLAGS})
     # The leaves' blend in a patch with frozen theta: the parent run's theta would be blended again.
     gust_add_test(NAME abort_nest_faces_frozen_canopy_blend NP 1 LABELS "regression;smoke" RUN_DIR ${NESTF_DIR}
@@ -3702,58 +3652,6 @@ if(_gust_numpy_hw EQUAL 0)
     set_tests_properties(hybrid_width_selftest PROPERTIES LABELS unit ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
 else()
     message(STATUS "GUST: numpy not found for ${Python3_EXECUTABLE}; hybrid_width_selftest is not registered")
-endif()
-
-# The HRRR stratification classifier (tools/hrrr_regime.py) on synthetic columns, and its classes for the AWAKEN
-# hours in Tests/Infrastructure/HRRR_Regimes; both need numpy.
-execute_process(COMMAND ${Python3_EXECUTABLE} -c "import numpy"
-                RESULT_VARIABLE _gust_numpy_hr OUTPUT_QUIET ERROR_QUIET)
-if(_gust_numpy_hr EQUAL 0)
-    add_test(NAME hrrr_regime_selftest
-             COMMAND ${Python3_EXECUTABLE} -m unittest -v test_hrrr_regime
-             WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/tools)
-    set_tests_properties(hrrr_regime_selftest PROPERTIES LABELS unit ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
-    add_test(NAME hrrr_regime_awaken
-             COMMAND ${Python3_EXECUTABLE} check_classes.py
-             WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/Tests/Infrastructure/HRRR_Regimes)
-    set_tests_properties(hrrr_regime_awaken PROPERTIES LABELS unit ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
-    # HRRR as the outer level (tools/hrrr_outer.py, tools/hrrr_outer_case.py) on synthetic crops, checkpoints and
-    # plotfiles; the case reader also needs PyYAML.
-    execute_process(COMMAND ${Python3_EXECUTABLE} -c "import yaml"
-                    RESULT_VARIABLE _gust_yaml_ho OUTPUT_QUIET ERROR_QUIET)
-    if(_gust_yaml_ho EQUAL 0)
-        add_test(NAME hrrr_outer_selftest
-                 COMMAND ${Python3_EXECUTABLE} -m unittest -v test_hrrr_outer
-                 WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/tools)
-        set_tests_properties(hrrr_outer_selftest PROPERTIES LABELS unit ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
-        # A neutral HRRR hour with a strong cap (Tests/Real_Terrain_Python/HRRR_Neutral/README.md): the chain of
-        # 2023-04-05 13 UTC with the recommended option, run from the downloads of the case's prepare.py
-        # (GUST_HRRR_NEUTRAL_DATA, default: the case folder) and checked against the numbers of November 2026.
-        # Skipped (exit 77) without the downloads. About 15 minutes on 4 ranks, so label nightly; MPI builds only
-        # (a serial run would pass the timeout).
-        if(GUST_MPI)
-            string(JOIN " " _hrrr_launch ${MPIEXEC_EXECUTABLE} ${MPIEXEC_PREFLAGS} ${_extra_mpiexec}
-                   ${MPIEXEC_NUMPROC_FLAG} 4)
-            add_test(NAME rt_hrrr_neutral
-                     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/Real_Terrain_Python/HRRR_Neutral/check_neutral.py
-                             run --gust $<TARGET_FILE:gust> --work ${CMAKE_CURRENT_BINARY_DIR}/run/rt_hrrr_neutral
-                             --mpi "${_hrrr_launch}")
-            set_tests_properties(rt_hrrr_neutral PROPERTIES LABELS "nightly" SKIP_RETURN_CODE 77 TIMEOUT 3600
-                                 PROCESSORS 4 ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
-            # A convective HRRR hour (Tests/Real_Terrain_Python/HRRR_Convective/README.md): the chain of
-            # 2023-05-10 19 UTC with frozen theta and its buoyancy force, from the case's downloads
-            # (GUST_HRRR_CONVECTIVE_DATA, default: the case folder), checked against the numbers of November 2026.
-            # Skipped (exit 77) without the downloads. About 10 minutes on 4 ranks.
-            add_test(NAME rt_hrrr_convective
-                     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/Real_Terrain_Python/HRRR_Convective/check_convective.py
-                             run --gust $<TARGET_FILE:gust> --work ${CMAKE_CURRENT_BINARY_DIR}/run/rt_hrrr_convective
-                             --mpi "${_hrrr_launch}")
-            set_tests_properties(rt_hrrr_convective PROPERTIES LABELS "nightly" SKIP_RETURN_CODE 77 TIMEOUT 3600
-                                 PROCESSORS 4 ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
-        endif()
-    endif()
-else()
-    message(STATUS "GUST: numpy not found for ${Python3_EXECUTABLE}; hrrr_regime tests are not registered")
 endif()
 
 # --- The extern_erf drift check's own tests -----------------------------------
