@@ -2970,33 +2970,6 @@ Current tests
        closed form worked in the script from each column. Registered when Python has numpy. Label ``unit``. The
        mutants with the sign of :math:`L`, the latent term dropped and the jet fall-off from the ground each fail
        it.
-   * - ``hrrr_outer_selftest``
-     - ``tools/hrrr_outer.py`` and ``tools/hrrr_outer_case.py`` (:doc:`hrrr_outer`) on made-up crops, checkpoints
-       and plotfiles: the wind rotation from HRRR's grid to UTM against a conformal Lambert projection on WGS84 at
-       three sites (36.36 N 97.41 W, 40 N 104.5 W, 33 N 100.9 W; 2e-6 rad), :math:`\theta_v` and k against closed
-       forms, the log law below the first level, w from :math:`\omega` against its closed form, a point outside
-       the crop refused, the download regexes matching every field read, an f00 crop refused (also by ``fetch``
-       before any download), a cloudy hour refused by name (by ``to-chk`` before anything is written), a
-       checkpoint of two boxes written and read back (:math:`\theta`, k, u, v and w at the heights of their cells
-       and faces, w = 0 on the ground, p and the ghost points kept), the score (equal fields give 0; a nest 1 m/s
-       faster gives bias = rms = 1; iterations and the steady verdict from the log), the meshes of the AWAKEN case
-       and their face alignment, the chain's decks and ``run.sh``, and the ``hrrr`` section's unknown keys and
-       ranges. Beside them: "not steady" and "diverged" read as not steady; w's largest magnitude over the cells
-       inside the margin only; the lateral fluxes of a uniform wind against the face areas on a sloped ground;
-       a top above HRRR's highest level refused with the checkpoint left as it was; the geostrophic wind of a
-       plane pressure field against :math:`(-\partial_y p, \partial_x p)/(\rho f)` (2e-4) and refused where
-       the fit would use extrapolated pressures; the virtual surface heat flux against its closed form; the
-       tops above 3600 m, a cloud check reaching past the crop, a ``utm_zone`` other than the centre's,
-       ``output.prefix``, a float ``parent_ratio`` and a ``cloud_mixing_ratio`` read as text refused; a refused
-       command exits with 1. Registered when Python has numpy and PyYAML. Label ``unit``. ``tools/hrrr_outer_mutants.py`` runs
-       41 one-line mutants and each fails it, among them: an f00 crop accepted, cloud water not downloaded, the
-       winds not rotated, the grid rotation or the UTM convergence left out or turned the wrong way, a cloudy hour
-       accepted, :math:`\theta` for :math:`\theta_v`, the sign of w, heights above sea level, u at the v faces, a
-       top below 3000 m, a nest off the parent's faces, the first-guess decks not stripped, "not steady after"
-       read as steady, w's maximum over the whole nest, the latent part of the heat flux left out and the
-       geostrophic fit on extrapolated pressures accepted. Two mutants are
-       equivalent and dropped: w = 0 on the ground (the interpolated w is already 0 there) and the cap line (the
-       case's automatic cap is already 100 m).
    * - ``rt_bolund_files_converter``
      - ``Tests/Real_Terrain/Bolund_Terrain_Files/to_gust_xyz.py selftest`` on small made-up grids: a 3 × 2 grid of
        heights as an ESRI ASCII grid, a Surfer grid and a point file gives the same points (1e-9); a shift with
