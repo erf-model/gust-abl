@@ -2997,16 +2997,6 @@ Current tests
        geostrophic fit on extrapolated pressures accepted. Two mutants are
        equivalent and dropped: w = 0 on the ground (the interpolated w is already 0 there) and the cap line (the
        case's automatic cap is already 100 m).
-   * - ``rt_hrrr_neutral``
-     - ``Tests/Real_Terrain_Python/HRRR_Neutral/check_neutral.py run``: the chain of a neutral HRRR hour under a
-       strong cap (2023-04-05 13 UTC at the AWAKEN site) with the recommended option for such hours (Coriolis
-       off), from the downloads of the case's ``prepare.py`` (``GUST_HRRR_NEUTRAL_DATA``, default the case
-       folder), against the numbers of November 2026: rms 0.93 ± 0.05 m/s, bias −0.48 ± 0.08 m/s, below 500 m a
-       speed bias of −1.06 ± 0.08 m/s, a vector rms of 1.17 ± 0.05 m/s and a direction of 0.1 ± 1.0°, the
-       steady verdict within 1.5 times the 447 iterations, and w max below 1.5 m/s. Skipped (exit status 77)
-       without the downloads. About 15 minutes on 4 ranks; label ``nightly``; MPI builds only. The one-line
-       mutant of ``options.py`` that leaves the deck unchanged in this option (``"no_coriolis": ({}, ())``, so
-       Coriolis stays on) fails it (rms 1.37, vector rms 1.73).
    * - ``rt_bolund_files_converter``
      - ``Tests/Real_Terrain/Bolund_Terrain_Files/to_gust_xyz.py selftest`` on small made-up grids: a 3 × 2 grid of
        heights as an ESRI ASCII grid, a Surfer grid and a point file gives the same points (1e-9); a shift with
