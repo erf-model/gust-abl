@@ -46,7 +46,7 @@ jobs:
 
     steps:
       - name: Checkout (with submodules)
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
         with:
           submodules: recursive
 
@@ -59,7 +59,7 @@ jobs:
             python3-yaml python3-numpy python3-scipy   # the case tool's tests; scipy: nest_placement_selftest
 
       - name: Set up ccache
-        uses: actions/cache@v5
+        uses: actions/cache@v4
         with:
           path: .ccache
           key: ccache-${{ matrix.compiler }}-${{ matrix.build_type }}-${{ github.sha }}
@@ -119,7 +119,7 @@ jobs:
 
     steps:
       - name: Checkout (with submodules)
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
         with:
           submodules: recursive
 
@@ -130,7 +130,7 @@ jobs:
             build-essential cmake ninja-build ccache libfftw3-dev
 
       - name: Set up ccache
-        uses: actions/cache@v5
+        uses: actions/cache@v4
         with:
           path: .ccache
           key: ccache-single-${{ github.sha }}
@@ -166,12 +166,12 @@ jobs:
           df -h /
 
       - name: Checkout (with submodules)
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
         with:
           submodules: recursive
 
       - name: Install CUDA toolkit
-        uses: Jimver/cuda-toolkit@v0.2.36
+        uses: Jimver/cuda-toolkit@v0.2.19
         with:
           cuda: '12.4.1'
           method: 'network'
@@ -208,12 +208,12 @@ jobs:
 
     steps:
       - name: Checkout (with submodules)
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
         with:
           submodules: recursive
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v5
         with:
           python-version: '3.x'
 
@@ -224,16 +224,7 @@ jobs:
         run: vcpkg install fftw3:x64-windows
 
       - name: Set up MSVC
-        # vcvarsall in place of ilammy/msvc-dev-cmd, which has no Node 24 release.
-        shell: pwsh
-        run: |
-          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * `
-            -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-          cmd /c "`"$vs\VC\Auxiliary\Build\vcvarsall.bat`" x64 && set" | ForEach-Object {
-            if ($_ -match '^([^=]+)=(.*)$' -and [Environment]::GetEnvironmentVariable($Matches[1]) -ne $Matches[2]) {
-              "$($Matches[1])=$($Matches[2])" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-            }
-          }
+        uses: ilammy/msvc-dev-cmd@v1
 
       - name: Configure
         run: |
@@ -267,12 +258,12 @@ jobs:
 
     steps:
       - name: Checkout (with submodules)
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
         with:
           submodules: recursive
 
       - name: Install CUDA toolkit
-        uses: Jimver/cuda-toolkit@v0.2.36
+        uses: Jimver/cuda-toolkit@v0.2.19
         with:
           cuda: '12.6.1'
           sub-packages: '["nvcc", "cudart", "cuda_profiler_api", "cufft_dev", "cusparse_dev", "curand_dev"]'
@@ -286,16 +277,9 @@ jobs:
           echo "$pwd" >> $env:GITHUB_PATH
 
       - name: Set up MSVC
-        # vcvarsall in place of ilammy/msvc-dev-cmd, which has no Node 24 release.
-        shell: pwsh
-        run: |
-          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * `
-            -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-          cmd /c "`"$vs\VC\Auxiliary\Build\vcvarsall.bat`" x64 10.0.22621.0 && set" | ForEach-Object {
-            if ($_ -match '^([^=]+)=(.*)$' -and [Environment]::GetEnvironmentVariable($Matches[1]) -ne $Matches[2]) {
-              "$($Matches[1])=$($Matches[2])" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-            }
-          }
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          sdk: 10.0.22621.0
 
       - name: Configure and build
         run: |
@@ -322,7 +306,7 @@ jobs:
 
     steps:
       - name: Checkout (with submodules)
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
         with:
           submodules: recursive
 
@@ -366,7 +350,7 @@ jobs:
 
     steps:
       - name: Checkout (with submodules)
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
         with:
           submodules: recursive
 
@@ -413,7 +397,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
 
       - name: Clone ERF (history only; files fetched on demand)
         run: git clone --filter=blob:none --no-checkout https://github.com/erf-model/ERF.git "$RUNNER_TEMP/ERF"
@@ -438,10 +422,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v5
         with:
           python-version: '3.x'
 

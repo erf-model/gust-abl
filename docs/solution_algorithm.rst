@@ -256,45 +256,6 @@ field, with the buoyancy back in the momentum equations. With the leaves' heat e
 ``canopy.heat_frozen = blend`` sets :math:`\theta` in the canopy between the frozen field and the leaves' :math:`\theta`
 each iteration, and ``skip`` (the default) leaves it out (:doc:`canopy`, canopy heat).
 
-**Frozen θ with its buoyancy force.** ``simplec.theta = frozen_buoyant`` holds :math:`\theta` as ``frozen`` does in a
-patch of a parent run, and keeps the buoyancy force :math:`-g(\theta - \theta_\mathrm{ref})/\theta_0` in the
-:math:`w` residual:
-
-.. math::
-
-   \theta(\mathbf x) = \theta_\mathrm{parent}(\mathbf x),\qquad
-   R_w = R_w^{\,g=0} - \frac{g}{\theta_0}\bigl(\theta - \theta_\mathrm{ref}(z)\bigr),
-
-- :math:`\theta_\mathrm{parent}`: the parent run's :math:`\theta`, interpolated onto the patch (above).
-- :math:`\theta_\mathrm{ref}(z)`: the reference profile of the buoyancy force (the sounding ``bc.theta_profile``), as with
-  :math:`\theta` solved; its hydrostatic part goes into :math:`p'`.
-
-The pressure correction turns the horizontal differences of :math:`\theta` into a horizontal pressure force, so
-the patch carries the force its parent balanced (a baroclinic parent, such as a mesoscale model's :math:`\theta`,
-gives the thermal-wind part of the flow). The predictor's point-implicit buoyancy is dropped: it couples :math:`w`
-to the change of :math:`\theta`, and a held :math:`\theta` does not change, so the force is a fixed source with
-no buoyancy oscillation to damp. It is refused outside a patch of a parent run (``init.first_guess = nest``): there
-the frozen field is the inflow profile's by height above the ground, whose force over terrain is not physical
-(above). It is refused in the nests of ``nest.names`` too (not tested). Its other limits are those of ``frozen``.
-
-Limits:
-
-- The held field is only as good as the parent's. A parent whose :math:`\theta` was laid by height above its
-  own ground (``tools/hrrr_outer.py to-chk`` puts the mesoscale model's :math:`\theta` at each point's height
-  above GUST's ground) follows the patch's ground detail aloft as well, and in a stable layer, such as the capping
-  inversion, that gives a horizontal force the mesoscale model does not have. With a 0.0028 K/m inversion
-  500 m deep over slopes of 0.02 to 0.06 it is of order :math:`10^{-3}` m/s², twice the Coriolis force of a
-  6 m/s wind. The held :math:`\theta` cannot weaken it.
-- The hydrostatic part of :math:`p'` grows with :math:`\theta - \theta_\mathrm{ref}` and is differenced along the
-  sloping surfaces of the mesh. Give ``bc.theta_profile`` close to the patch's horizontal mean :math:`\theta`.
-
-On the three convective hours of ``Tests/Real_Terrain_Python/HRRR_Convective`` (10 May 2023, 19 to 21 UTC) it
-lowers the patch's vector rms against the mesoscale model below 500 m to 0.54, 0.36 and 0.60 m/s, from 0.78, 0.48
-and 0.82 m/s with ``frozen`` and 0.94, 0.58 and 1.12 m/s with θ solved. The rms of :math:`w` is about twice the
-mesoscale model's (0.065 to 0.077 against 0.026 to 0.038 m/s), most of it in the upper half of the mixed layer and
-above it, which is where the first limit acts. On three weakly unstable hours it does not lower the error (the
-case README).
-
 Vertical-velocity cap
 ^^^^^^^^^^^^^^^^^^^^^
 

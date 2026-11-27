@@ -73,8 +73,7 @@ SimplecOptions read_simplec_options ()
         std::string theta = "solve";
         pp.query("theta", theta);
         if (theta == "frozen") { opt.theta_frozen = true; }
-        else if (theta == "frozen_buoyant") { opt.theta_frozen = true; opt.theta_buoyant = true; }
-        else if (theta != "solve") { err.emplace_back("simplec.theta = " + theta + ": must be solve, frozen or frozen_buoyant"); }
+        else if (theta != "solve") { err.emplace_back("simplec.theta = " + theta + ": must be solve or frozen"); }
         // Read but ignored without the cap: refuse it.
         const bool margin_given = std::find(opt.given.begin(), opt.given.end(), "w_vnn_cap_slope_margin") != opt.given.end();
         if (margin_given && opt.w_vnn_cap == 0) {
@@ -317,19 +316,14 @@ SimplecStage::SimplecStage (const SimplecOptions& opt, int sweeps, const Residua
     if (in.closure == nullptr && in.nu == nullptr) {
         amrex::Abort("gust: SimplecStage: without a closure the residual inputs need the diffusivities");
     }
-    if (buoyancy_in_momentum(opt) != in.buoyancy_in_momentum) {
-        amrex::Abort("gust: SimplecStage: simplec.theta = " + theta_value(opt) + " needs the residual inputs with buoyancy_in_momentum = "
-                     + (buoyancy_in_momentum(opt) ? "true" : "false") + " (only frozen turns it off)");
-    }
-    if (opt.theta_buoyant && in.buoyancy_point_implicit) {
-        amrex::Abort("gust: SimplecStage: simplec.theta = frozen_buoyant needs the residual inputs with buoyancy_point_implicit = "
-                     "false (theta is held, so the w rows take no point-implicit buoyancy)");
+    if (opt.theta_frozen == in.buoyancy_in_momentum) {
+        amrex::Abort("gust: SimplecStage: simplec.theta = frozen needs the residual inputs without buoyancy in momentum "
+                     "(buoyancy_in_momentum = false), and only it turns that off");
     }
     if (opt.theta_frozen && in.canopy_heat != nullptr) {
         // The leaf heat with theta frozen is the blend (CanopyHeat.H); skip passes no canopy_heat.
         if (in.canopy_heat->frozen() != CanopyFrozenHeat::blend) {
-            amrex::Abort("gust: SimplecStage: simplec.theta = " + theta_value(opt)
-                         + " takes the leaf heat only with canopy.heat_frozen = blend");
+            amrex::Abort("gust: SimplecStage: simplec.theta = frozen takes the leaf heat only with canopy.heat_frozen = blend");
         }
         if (closure == nullptr) {
             amrex::Abort("gust: SimplecStage: canopy.heat_frozen = blend needs the k-L closure (its k and eps)");

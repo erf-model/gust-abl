@@ -577,9 +577,7 @@ Quick reference
      - The cap's safety margin on sloping ground (0: off)
    * - ``simplec.theta``
      - ``solve``
-     - ``frozen``: θ prescribed (the inflow profile's, or a parent run's in a patch), buoyancy in the closure only;
-       ``frozen_buoyant``: θ held at a parent run's in a patch (``init.first_guess = nest`` only), buoyancy in the
-       closure and in the :math:`w` equation
+     - ``frozen``: θ prescribed (the inflow profile's, or a parent run's in a patch), buoyancy in the closure only
    * - **Poisson solver** (`solver`_)
      -
      -
@@ -1741,7 +1739,7 @@ See :doc:`solution_algorithm`. Read with ``steady.stage = simplec`` or ``simplec
        aspect ratio is above the tested 50.78. Changes the path, not the answer. May change across a restart.
    * - ``simplec.theta``
      - ``solve``
-     - ``solve``, ``frozen`` or ``frozen_buoyant``. ``frozen``: θ is the inflow profile's θ by height above the ground on every sequenced
+     - ``solve`` or ``frozen``. ``frozen``: θ is the inflow profile's θ by height above the ground on every sequenced
        level (the steady column's θ with ``init.first_guess = column`` and a non-neutral ``init.column_stability``)
        and is not solved (in a canopy with ``canopy.heat_frozen = blend``, blended towards the leaves' θ,
        :doc:`canopy`); the momentum equations carry no buoyancy force, the closure keeps :math:`N^2`
@@ -1752,10 +1750,6 @@ See :doc:`solution_algorithm`. Read with ``steady.stage = simplec`` or ``simplec
        ``steady.stage = simplec_newton``, with ``io.restart``, and in a patch with ``steady.stage = unsteady``.
        With ``frozen``, ``theta`` in ``bc.rayleigh_fields`` and ``bc.zhi_theta_grad`` have no effect, and in a
        patch with ``nest`` faces on its four sides ``bc.theta_profile`` is not used.
-       ``frozen_buoyant``: θ held as with ``frozen``, and its buoyancy force kept in the :math:`w` equation
-       (:doc:`solution_algorithm`, frozen θ with its buoyancy force); only in a patch (``init.first_guess = nest``),
-       refused elsewhere and in the nests of ``nest.names``; ``bc.theta_profile`` is the reference profile of the
-       force. Its other limits are those of ``frozen``.
 
 ``solver``
 ----------

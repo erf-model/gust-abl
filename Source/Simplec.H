@@ -89,32 +89,14 @@ struct SimplecOptions
     //! the cap is lowered on sloping ground so the pressure operator stays
     //! definite with this safety factor (Predictor.H).
     amrex::Real w_vnn_cap_slope_margin{4};
-    //! simplec.theta, "solve" (default), "frozen" or "frozen_buoyant": with frozen, theta is the
+    //! simplec.theta, "solve" (default) or "frozen": with frozen, theta is the
     //! inflow profile's theta by height above the ground (set on every
     //! sequenced level) and is not solved; the closure uses it as given and the
     //! momentum equations carry no buoyancy (a prescribed stratification, van
-    //! der Laan et al. 2024; docs/solution_algorithm.rst). frozen_buoyant holds
-    //! theta the same way and keeps its buoyancy in the w equation, so a
-    //! parent run's horizontal theta differences act as a pressure force (a
-    //! nested patch only, App.cpp).
+    //! der Laan et al. 2024; docs/solution_algorithm.rst).
     bool theta_frozen{false};
-    bool theta_buoyant{false};   //!< simplec.theta = frozen_buoyant (theta_frozen is then true as well)
     std::vector<std::string> given;                  //!< the simplec.* keys given
 };
-
-//! Whether the momentum equations carry theta's buoyancy under these options:
-//! yes unless simplec.theta = frozen (frozen_buoyant keeps it).
-inline bool buoyancy_in_momentum (const SimplecOptions& o) { return !o.theta_frozen || o.theta_buoyant; }
-
-//! Whether the w rows take the point-implicit buoyancy of the theta change
-//! (Predictor.cpp): only when theta is solved (a held theta does not change).
-inline bool buoyancy_point_implicit (const SimplecOptions& o) { return !o.theta_frozen; }
-
-//! The simplec.theta value these options stand for (for messages).
-inline std::string theta_value (const SimplecOptions& o)
-{
-    return o.theta_buoyant ? "frozen_buoyant" : (o.theta_frozen ? "frozen" : "solve");
-}
 
 //! The smallest non-zero simplec.w_vnn_cap (Predictor.H).
 inline constexpr amrex::Real w_vnn_cap_min = 16;

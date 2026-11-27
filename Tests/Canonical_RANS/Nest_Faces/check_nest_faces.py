@@ -6,8 +6,6 @@
     check_nest_faces.py open  PARENT_PLOTFILE PREFIX OX OY TOL_VEL TOL_TKE NET_LO NET_HI -- COMMAND [ARGS ...]
     check_nest_faces.py same FIELD PLOTFILE_A PLOTFILE_B
     check_nest_faces.py frozen PARENT_PLOTFILE PREFIX OX OY TOL_THETA MIN_RANGE TOL_VEL TOL_TKE -- COMMAND [ARGS ...]
-    check_nest_faces.py frozen_buoyant PARENT_PLOTFILE PREFIX OX OY TOL_THETA MIN_RANGE TOL_VEL TOL_TKE FROZEN_PLOTFILE
-                        -- COMMAND [ARGS ...]
 
 COMMAND is run with io.plot_file=PREFIX_plt io.chk_file=PREFIX_chk appended
 (the decks do not name their outputs).
@@ -57,14 +55,6 @@ iteration (PREFIX_one) and to steady (PREFIX). Checked:
    above the ground has 0.0015 K on the first level and differs from the
    held field by up to 0.28 K, so it fails checks 4 and 5;
 6. check 4 of patch (u, v, w, k against the parent, TOL_VEL and TOL_TKE).
-
-frozen_buoyant: the same with simplec.theta=frozen_buoyant appended (theta
-held, its buoyancy kept in w), and one check more:
-7. the force acts and is the parent's: the 2 x 2 means of w are closer to the
-   parent's w than those of the frozen patch (FROZEN_PLOTFILE, the steady
-   plotfile of frozen), whose w has no buoyancy force. The parent solved theta
-   with its buoyancy, so a patch that drops the force (frozen) or applies it
-   with a wrong sign or size moves away from the parent's w.
 
 same: FIELD of two plotfiles on the same cells is equal bit for bit (no run).
 
@@ -179,11 +169,11 @@ def two_by_two(parent_plt, final, ox, oy, tol_vel, tol_tke):
     return bad
 
 
-def frozen(parent_plt, prefix, ox, oy, tol_theta, min_range, tol_vel, tol_tke, cmd, value="frozen"):
+def frozen(parent_plt, prefix, ox, oy, tol_theta, min_range, tol_vel, tol_tke, cmd):
     bad = []
     logs = {}
     for name, count in ((prefix + "_one", 1), (prefix, 2000)):
-        logs[name] = run(named(name, cmd) + [f"simplec.theta={value}", f"steady.max_iterations={count}"])
+        logs[name] = run(named(name, cmd) + ["simplec.theta=frozen", f"steady.max_iterations={count}"])
         if not re.search(r"^gust: theta frozen at the parent run's theta \(bc\.nest_parent\), interpolated: min \S+, "
                          r"max \S+, mean \S+ K$", logs[name], re.M):
             bad.append(f"{name}: the log does not say theta is frozen at the parent run's theta")
@@ -235,35 +225,6 @@ def frozen(parent_plt, prefix, ox, oy, tol_theta, min_range, tol_vel, tol_tke, c
     return bad + two_by_two(parent_plt, final, ox, oy, tol_vel, tol_tke)
 
 
-def w_distance(parent_plt, plt, ox, oy):
-    """max |2 x 2 mean of w - parent's w| over the parent cells under the patch."""
-    _, P = erf_plotfile.read_fields(parent_plt, ["w"])
-    hq, Q = erf_plotfile.read_fields(plt, ["w"])
-    nx, ny, nz = [hq["hi"][d] - hq["lo"][d] + 1 for d in range(3)]
-    q, p = Q["w"], P["w"]
-    worst = 0.0
-    for i in range(nx // 2):
-        for j in range(ny // 2):
-            for k in range(nz):
-                d = abs(0.25 * (q[2 * i][2 * j][k] + q[2 * i + 1][2 * j][k] + q[2 * i][2 * j + 1][k]
-                                + q[2 * i + 1][2 * j + 1][k]) - p[i + ox][j + oy][k])
-                if not d <= worst:   # a NaN is kept
-                    worst = d
-    return worst
-
-
-def frozen_buoyant(parent_plt, prefix, ox, oy, tol_theta, min_range, tol_vel, tol_tke, frozen_plt, cmd):
-    bad = frozen(parent_plt, prefix, ox, oy, tol_theta, min_range, tol_vel, tol_tke, cmd, value="frozen_buoyant")
-    if any("does not fit" in b or "log" in b for b in bad):
-        return bad
-    fb = w_distance(parent_plt, f"{prefix}_plt_final", ox, oy)
-    fr = w_distance(parent_plt, frozen_plt, ox, oy)
-    print(f"check_nest_faces: w: max |2 x 2 mean - parent| = {fb:.3e} with frozen_buoyant, {fr:.3e} with frozen")
-    if not fb < fr:
-        bad.append(f"w: frozen_buoyant is not closer to the parent's w than frozen ({fb:.3e} against {fr:.3e})")
-    return bad
-
-
 def same(field, a, b):
     ha, A = erf_plotfile.read_fields(a, [field])
     hb, B = erf_plotfile.read_fields(b, [field])
@@ -297,8 +258,6 @@ def main(argv):
                     removed=args[0] == "patch")
     elif args[0] == "frozen" and len(args) == 9:
         bad = frozen(args[1], args[2], int(args[3]), int(args[4]), float(args[5]), float(args[6]), float(args[7]), float(args[8]), cmd)
-    elif args[0] == "frozen_buoyant" and len(args) == 10:
-        bad = frozen_buoyant(args[1], args[2], int(args[3]), int(args[4]), *[float(a) for a in args[5:9]], args[9], cmd)
     else:
         print(__doc__)
         return 2

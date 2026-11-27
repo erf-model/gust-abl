@@ -144,7 +144,7 @@ void check_theta (Theta theta, Drive drive, const AblSetupFacts& f, std::vector<
         err.emplace_back(pre + "refuses forcing.gravity = 0 (theta would not act on the flow)");
     }
     if (theta != Theta::frozen && f.simplec.theta_frozen) {
-        err.emplace_back(pre + "refuses simplec.theta = " + theta_value(f.simplec) + " (use abl.theta = frozen)");
+        err.emplace_back(pre + "refuses simplec.theta = frozen (use abl.theta = frozen)");
     }
     if (theta != Theta::surface_flux && flux_surface) {
         err.emplace_back(pre + "refuses bc.surface_stability = heat_flux (use abl.theta = surface_flux)");

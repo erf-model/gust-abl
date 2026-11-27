@@ -5,7 +5,6 @@
 import math
 import os
 import shutil
-import subprocess
 import tempfile
 import unittest
 
@@ -572,18 +571,6 @@ class Chain(unittest.TestCase):
         order = [run.index(t) for t in ("\nstep hrrr_raw", "\" to-chk ", "\nstep parent", "\nstep nest", "\" score ")]
         self.assertEqual(order, sorted(order))
         self.assertFalse(os.path.exists(os.path.join(self.tmp, "c", "nest", "run.sh")))
-
-    def test_rerun_clears_the_parent_checkpoint(self):
-        """run.sh's clean-up line removes the parent checkpoint a previous run left (a directory) and succeeds."""
-        hc.build_chain(os.path.join(self.tmp, "case.yaml"))
-        case = os.path.join(self.tmp, "c")
-        clean = [ln for ln in open(os.path.join(case, "run.sh")).read().splitlines() if ln.startswith("rm ")]
-        self.assertEqual(len(clean), 1)
-        os.makedirs(os.path.join(case, "parent", "chk00000", "Level_0"))
-        open(os.path.join(case, "parent", "chk00000", "Header"), "w").close()
-        r = subprocess.run(["bash", "-e", "-c", clean[0]], cwd=case, capture_output=True, text=True)
-        self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertFalse(os.path.exists(os.path.join(case, "parent", "chk00000")))
 
     def test_strip_stage_keys(self):
         path = os.path.join(self.tmp, "deck")
